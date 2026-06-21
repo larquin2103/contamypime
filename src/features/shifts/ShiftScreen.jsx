@@ -12,12 +12,18 @@ import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 
 export function ShiftScreen() {
   const { activeShift, loading, isMine } = useShift()
+  // El resultado del cierre vive aqui para que sobreviva a que el turno
+  // pase a "cerrado" (si no, la pantalla saltaria a "Abrir turno").
+  const [closeResult, setCloseResult] = useState(null)
 
+  if (closeResult) {
+    return <CloseResult result={closeResult} onDone={() => setCloseResult(null)} />
+  }
   if (loading) {
     return <div className="screen"><p className="muted">Cargando…</p></div>
   }
   if (!activeShift) return <OpenShiftForm />
-  if (isMine) return <ActiveShiftPanel shift={activeShift} />
+  if (isMine) return <ActiveShiftPanel shift={activeShift} onClosed={setCloseResult} />
   return <OtherShiftBlocked shift={activeShift} />
 }
 
@@ -66,12 +72,12 @@ function OpenShiftForm() {
 }
 
 // ---- Turno activo (mio) ----
-function ActiveShiftPanel({ shift }) {
+function ActiveShiftPanel({ shift, onClosed }) {
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   const [closing, setClosing] = useState(false)
 
   if (closing) {
-    return <CloseShiftPanel shift={shift} onCancel={() => setClosing(false)} />
+    return <CloseShiftPanel shift={shift} onCancel={() => setClosing(false)} onClosed={onClosed} />
   }
 
   return (
@@ -142,11 +148,10 @@ function Row({ label, data, sign = '', strong = false }) {
 }
 
 // ---- Cerrar turno (cuadre + semaforo) ----
-function CloseShiftPanel({ shift, onCancel }) {
+function CloseShiftPanel({ shift, onCancel, onClosed }) {
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   const [declared, setDeclared] = useState({})
   const [notes, setNotes] = useState('')
-  const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const doClose = async () => {
@@ -154,11 +159,8 @@ function CloseShiftPanel({ shift, onCancel }) {
     const cash = {}
     for (const c of CASH_CURRENCIES) cash[c] = Number(declared[c]) || 0
     const res = await shiftsRepo.close({ shiftId: shift.id, declaredCash: cash, notes })
-    setResult(res)
-    setBusy(false)
+    onClosed(res)
   }
-
-  if (result) return <CloseResult result={result} />
 
   return (
     <div className="screen">
@@ -193,7 +195,7 @@ function CloseShiftPanel({ shift, onCancel }) {
   )
 }
 
-function CloseResult({ result }) {
+function CloseResult({ result, onDone }) {
   const { semaphore, expectedCash, declared, difference, base } = result
   const labels = {
     green: 'El turno cuadra',
@@ -228,7 +230,9 @@ function CloseResult({ result }) {
         </table>
       </section>
 
-      <p className="muted">Turno cerrado. Puedes abrir uno nuevo desde esta pantalla.</p>
+      <button className="btn btn--primary btn--block" onClick={onDone}>
+        Listo — abrir nuevo turno
+      </button>
     </div>
   )
 }
