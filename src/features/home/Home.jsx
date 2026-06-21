@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { useShift } from '../../app/providers/ShiftProvider'
 import { FOREIGN_CURRENCIES, ROLE_LABELS } from '../../db/constants'
 
 export function Home() {
   const { user, isOwner } = useAuth()
   const { baseCurrency, rates } = useCurrency()
+  const { hasActive, isMine } = useShift()
 
   return (
     <div className="screen">
@@ -13,6 +15,12 @@ export function Home() {
         <h2>Hola, {user.name}</h2>
         <span className="badge">{ROLE_LABELS[user.role]}</span>
       </div>
+
+      <Link to="/shift" className={`shift-status shift-status--${hasActive ? (isMine ? 'mine' : 'other') : 'none'}`}>
+        {!hasActive && <span>🟢 Sin turno abierto — toca para abrir</span>}
+        {hasActive && isMine && <span>🧾 Tu turno está activo — gestionar / cerrar</span>}
+        {hasActive && !isMine && <span>🔒 Turno activo de otro vendedor</span>}
+      </Link>
 
       <section className="card">
         <h3>Tasas vigentes</h3>

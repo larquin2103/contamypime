@@ -23,6 +23,9 @@ export function Layout({ children }) {
         <NavLink to="/catalog" className="nav-item">
           📦<span>Catalogo</span>
         </NavLink>
+        <NavLink to="/shift" className="nav-item">
+          🧾<span>Turno</span>
+        </NavLink>
         {isOwner && (
           <>
             <NavLink to="/settings" className="nav-item">
