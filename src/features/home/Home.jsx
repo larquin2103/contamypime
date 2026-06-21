@@ -38,16 +38,21 @@ export function Home() {
         </p>
       </section>
 
-      {isOwner && (
-        <div className="quick-links">
-          <Link className="btn btn--block" to="/settings">
-            ⚙️ Ajustes
-          </Link>
-          <Link className="btn btn--block" to="/users">
-            👥 Usuarios
-          </Link>
-        </div>
-      )}
+      <div className="quick-links">
+        <Link className="btn btn--block" to="/catalog">
+          📦 Catalogo
+        </Link>
+        {isOwner && (
+          <>
+            <Link className="btn btn--block" to="/settings">
+              ⚙️ Ajustes
+            </Link>
+            <Link className="btn btn--block" to="/users">
+              👥 Usuarios
+            </Link>
+          </>
+        )}
+      </div>
     </div>
   )
 }

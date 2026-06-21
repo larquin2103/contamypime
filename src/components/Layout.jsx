@@ -20,6 +20,9 @@ export function Layout({ children }) {
         <NavLink to="/" end className="nav-item">
           🏠<span>Inicio</span>
         </NavLink>
+        <NavLink to="/catalog" className="nav-item">
+          📦<span>Catalogo</span>
+        </NavLink>
         {isOwner && (
           <>
             <NavLink to="/settings" className="nav-item">

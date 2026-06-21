@@ -6,6 +6,7 @@ import { Layout } from '../components/Layout'
 import { Onboarding } from '../features/auth/Onboarding'
 import { Login } from '../features/auth/Login'
 import { Home } from '../features/home/Home'
+import { Catalog } from '../features/products/Catalog'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
@@ -27,6 +28,7 @@ export function AppRouter() {
     <Layout>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/catalog" element={<Catalog />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
