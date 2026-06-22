@@ -91,6 +91,9 @@ function ActiveShiftPanel({ shift, onClosed }) {
       <Link className="btn btn--primary btn--block btn--lg" to="/sell">
         💵 Registrar venta
       </Link>
+      <Link className="btn btn--block" to="/entry">
+        📥 Entrada de mercancia
+      </Link>
 
       <section className="card">
         <div className="kv">

@@ -50,6 +50,9 @@ export function Home() {
         <Link className="btn btn--block" to="/catalog">
           📦 Catalogo
         </Link>
+        <Link className="btn btn--block" to="/entry">
+          📥 Entrada de mercancia
+        </Link>
         {isOwner && (
           <>
             <Link className="btn btn--block" to="/settings">

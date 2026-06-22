@@ -10,6 +10,7 @@ import { Catalog } from '../features/products/Catalog'
 import { ImportScreen } from '../features/import/ImportScreen'
 import { ShiftScreen } from '../features/shifts/ShiftScreen'
 import { SalesScreen } from '../features/sales/SalesScreen'
+import { EntryScreen } from '../features/inventory/EntryScreen'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
@@ -35,6 +36,7 @@ export function AppRouter() {
         <Route path="/import" element={<ImportScreen />} />
         <Route path="/shift" element={<ShiftScreen />} />
         <Route path="/sell" element={<SalesScreen />} />
+        <Route path="/entry" element={<EntryScreen />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="*" element={<Navigate to="/" replace />} />

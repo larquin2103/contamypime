@@ -717,3 +717,31 @@ input[type='file'] {
   gap: 8px;
   margin-bottom: 10px;
 }
+
+/* ----- Entradas de mercancia ----- */
+.entry-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.entry-line {
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+  padding: 12px;
+}
+.entry-line__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.entry-line .field {
+  margin-bottom: 0;
+}
+.link-del {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 0.85rem;
+}

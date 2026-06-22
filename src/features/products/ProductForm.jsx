@@ -5,7 +5,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 
 // Alta / edicion de producto. Solo dueno (la creacion desde entrada de
 // mercancia por el vendedor llega en el Bloque 7).
-export function ProductForm({ product, categories, onClose }) {
+export function ProductForm({ product, categories, onClose, onCreated, hideOpeningStock = false }) {
   const { user } = useAuth()
   const editing = !!product
   const [code, setCode] = useState(product?.code ?? '')
@@ -36,16 +36,17 @@ export function ProductForm({ product, categories, onClose }) {
       if (editing) {
         await productsRepo.update(product.id, { code, name, categoryId, unit, price, cost })
       } else {
-        await productsRepo.create({
+        const newProductId = await productsRepo.create({
           code,
           name,
           categoryId,
           unit,
           price,
           cost,
-          openingStock,
+          openingStock: hideOpeningStock ? 0 : openingStock,
           userId: user.id
         })
+        if (onCreated) onCreated(newProductId)
       }
       onClose()
     } catch (e) {
@@ -114,7 +115,7 @@ export function ProductForm({ product, categories, onClose }) {
           </label>
         </div>
 
-        {!editing && (
+        {!editing && !hideOpeningStock && (
           <label className="field">
             <span>Existencia inicial</span>
             <input
