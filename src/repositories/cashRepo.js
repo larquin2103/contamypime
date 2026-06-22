@@ -25,5 +25,10 @@ export const cashRepo = {
   async byShift(shiftId) {
     const rows = await db.cashMovements.where('shiftId').equals(shiftId).toArray()
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  async listAll() {
+    const rows = await db.cashMovements.toArray()
+    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }
 }

@@ -811,6 +811,64 @@ input[type='file'] {
   gap: 6px;
 }
 
+/* ----- Conteo por denominacion ----- */
+.close-cur {
+  margin-bottom: 16px;
+}
+.denom__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.denom__total {
+  font-weight: 700;
+  color: var(--primary-600);
+  font-variant-numeric: tabular-nums;
+}
+.denom__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.denom__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+.denom__value {
+  min-width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.denom__x {
+  color: var(--muted);
+}
+.denom__row input {
+  padding: 8px;
+  text-align: center;
+}
+.cuadre-mini {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.85rem;
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.toggle-row input {
+  width: auto;
+}
+
 /* ----- Cambio de precio ----- */
 .ok-text {
   color: var(--ok);

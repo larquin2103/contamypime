@@ -1,6 +1,6 @@
 import { db } from '../db/db'
 import { now } from '../lib/dates'
-import { DEFAULT_SEMAPHORE_CONFIG } from '../db/constants'
+import { DEFAULT_SEMAPHORE_CONFIG, DEFAULT_DENOMINATIONS } from '../db/constants'
 
 // Acceso a la configuracion (almacen key-value).
 export const configRepo = {
@@ -23,5 +23,9 @@ export const configRepo = {
 
   async getSemaphoreConfig() {
     return this.get('semaphore', DEFAULT_SEMAPHORE_CONFIG)
+  },
+
+  async getDenominations() {
+    return this.get('denominations', DEFAULT_DENOMINATIONS)
   }
 }

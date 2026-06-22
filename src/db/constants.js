@@ -71,3 +71,10 @@ export const DEFAULT_SEMAPHORE_CONFIG = {
   greenMaxPct: 1, // |dif| <= 1% del esperado  -> cuadra
   yellowMaxPct: 3 // |dif| <= 3%               -> diferencia menor; mas -> critica
 }
+
+// Denominaciones por defecto para el conteo de caja al cierre (Fase 2).
+// Editables por el dueno en Ajustes.
+export const DEFAULT_DENOMINATIONS = {
+  MN: [1000, 500, 200, 100, 50, 20, 10, 5, 3, 1],
+  USD: [100, 50, 20, 10, 5, 1]
+}

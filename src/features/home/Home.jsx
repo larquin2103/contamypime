@@ -38,14 +38,6 @@ export function Home() {
         </div>
       </section>
 
-      <section className="card">
-        <h3>Proximamente (Fase 1)</h3>
-        <p className="muted">
-          Catalogo, importacion, turnos, ventas, compras, caja y cuadre se iran activando
-          en los siguientes bloques.
-        </p>
-      </section>
-
       <div className="quick-links">
         <Link className="btn btn--block" to="/catalog">
           📦 Catalogo
@@ -54,6 +46,9 @@ export function Home() {
           <>
             <Link className="btn btn--block" to="/entry">
               📥 Entrada de mercancia
+            </Link>
+            <Link className="btn btn--block" to="/finances">
+              💰 Deudas y caja
             </Link>
             <Link className="btn btn--block" to="/settings">
               ⚙️ Ajustes

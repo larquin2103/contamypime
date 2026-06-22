@@ -5,7 +5,7 @@ import { ratesRepo } from '../../repositories/ratesRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
-import { FOREIGN_CURRENCIES, DEFAULT_SEMAPHORE_CONFIG } from '../../db/constants'
+import { FOREIGN_CURRENCIES, CASH_CURRENCIES, DEFAULT_SEMAPHORE_CONFIG } from '../../db/constants'
 import { formatMoney, baseToForeign } from '../../lib/currency'
 import { genRecoveryCode } from '../../lib/pin'
 import { formatDateTime } from '../../lib/dates'
@@ -29,8 +29,59 @@ export function Settings() {
       <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
       <SemaphoreSection />
+      <DenominationsSection />
       <SecuritySection userId={user.id} />
     </div>
+  )
+}
+
+function DenominationsSection() {
+  const denoms = useLiveQuery(() => configRepo.getDenominations(), [], null)
+  const [draft, setDraft] = useState(null)
+  const [saved, setSaved] = useState(false)
+
+  const value = draft ?? denoms
+  if (!value) return null
+
+  const setCur = (cur, text) => {
+    setDraft({ ...value, [cur]: text })
+  }
+
+  const save = async () => {
+    const parsed = {}
+    for (const cur of CASH_CURRENCIES) {
+      const list = String(value[cur] ?? '')
+        .toString()
+      const arr = (Array.isArray(value[cur]) ? value[cur].join(',') : list)
+        .split(',')
+        .map((s) => Number(String(s).trim()))
+        .filter((n) => n > 0)
+        .sort((a, b) => b - a)
+      parsed[cur] = arr
+    }
+    await configRepo.set('denominations', parsed)
+    setDraft(null)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
+
+  return (
+    <section className="card">
+      <h3>Denominaciones de billetes</h3>
+      <p className="muted">Para contar la caja al cierre. Separa los valores con comas.</p>
+      {CASH_CURRENCIES.map((cur) => (
+        <label key={cur} className="field">
+          <span>{cur}</span>
+          <input
+            value={Array.isArray(value[cur]) ? value[cur].join(', ') : value[cur] ?? ''}
+            onChange={(e) => setCur(cur, e.target.value)}
+          />
+        </label>
+      ))}
+      <button className="btn btn--primary btn--block" onClick={save}>
+        {saved ? 'Guardado ✓' : 'Guardar denominaciones'}
+      </button>
+    </section>
   )
 }
 

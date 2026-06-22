@@ -107,7 +107,7 @@ export const shiftsRepo = {
     }
   },
 
-  async close({ shiftId, declaredCash, notes = '' }) {
+  async close({ shiftId, declaredCash, denominations = null, notes = '' }) {
     const summary = await this.getSummary(shiftId)
     if (!summary) throw new Error('Turno no encontrado')
 
@@ -128,6 +128,7 @@ export const shiftsRepo = {
       status: SHIFT_STATUS.CLOSED,
       closedAt: now(),
       declaredCash: declared,
+      denominations, // conteo por billete al cierre (Fase 2)
       expectedCash: summary.expectedCash,
       difference,
       semaphore: sem.color,

@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
+import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { OtherShiftBlocked } from './OtherShiftBlocked'
 import { CashInputs } from '../../components/CashInputs'
+import { DenominationCounter, totalsFromCounts } from '../../components/DenominationCounter'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { CASH_CURRENCIES } from '../../db/constants'
-import { formatMoney } from '../../lib/currency'
+import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 
@@ -174,18 +176,34 @@ function Row({ label, data, sign = '', strong = false }) {
   )
 }
 
-// ---- Cerrar turno (cuadre + semaforo) ----
+// ---- Cerrar turno: conteo por denominacion + cuadre (Fase 2) ----
 function CloseShiftPanel({ shift, onCancel, onClosed }) {
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
-  const [declared, setDeclared] = useState({})
+  const denominations = useLiveQuery(() => configRepo.getDenominations(), [], null)
+  const [counts, setCounts] = useState({}) // { MN: {1000: '2', ...}, USD: {...} }
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
+
+  if (!summary || !denominations) {
+    return <div className="screen"><p className="muted">Calculando…</p></div>
+  }
+
+  const declared = totalsFromCounts(counts, denominations)
+  const diff = {}
+  for (const c of CASH_CURRENCIES) diff[c] = round2((declared[c] || 0) - summary.expectedCash[c])
+
+  const setCurrencyCounts = (cur, next) => setCounts((prev) => ({ ...prev, [cur]: next }))
 
   const doClose = async () => {
     setBusy(true)
     const cash = {}
-    for (const c of CASH_CURRENCIES) cash[c] = Number(declared[c]) || 0
-    const res = await shiftsRepo.close({ shiftId: shift.id, declaredCash: cash, notes })
+    for (const c of CASH_CURRENCIES) cash[c] = declared[c] || 0
+    const res = await shiftsRepo.close({
+      shiftId: shift.id,
+      declaredCash: cash,
+      denominations: counts,
+      notes
+    })
     onClosed(res)
   }
 
@@ -194,22 +212,39 @@ function CloseShiftPanel({ shift, onCancel, onClosed }) {
       <button className="link-back" onClick={onCancel}>← Volver al turno</button>
       <h2>Cerrar turno</h2>
 
-      {summary && (
-        <section className="card">
-          <h3>Esperado en caja</h3>
-          <div className="convert-grid">
-            {CASH_CURRENCIES.map((c) => (
-              <div key={c} className="convert-cell">
-                <span className="muted">{c}</span>
-                <strong>{formatMoney(summary.expectedCash[c], c)}</strong>
-              </div>
-            ))}
+      <section className="card">
+        <h3>Cuenta el efectivo por denominacion</h3>
+        {CASH_CURRENCIES.map((c) => (
+          <div key={c} className="close-cur">
+            <DenominationCounter
+              currency={c}
+              denominations={denominations[c] || []}
+              counts={counts[c] || {}}
+              onChange={(next) => setCurrencyCounts(c, next)}
+            />
+            <div className="cuadre-mini">
+              <span>Esperado {formatMoney(summary.expectedCash[c], c)}</span>
+              <span className={diff[c] === 0 ? 'ok-text' : 'warn-text'}>
+                Dif {formatMoney(diff[c], c)}
+              </span>
+            </div>
           </div>
+        ))}
+      </section>
+
+      {summary.transfersCount > 0 && (
+        <section className="card">
+          <h3>Transferencias (aparte del efectivo)</h3>
+          {Object.entries(summary.transfersByCur).map(([c, v]) => (
+            <div key={c} className="kv">
+              <span className="muted">{c}</span>
+              <strong>{formatMoney(v, c)}</strong>
+            </div>
+          ))}
         </section>
       )}
 
       <section className="card">
-        <CashInputs label="Efectivo contado (declarado)" values={declared} onChange={setDeclared} />
         <label className="field">
           <span>Notas (opcional)</span>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} />

@@ -49,5 +49,19 @@ export const debtsRepo = {
   async byShift(shiftId) {
     const rows = await db.internalDebts.where('shiftId').equals(shiftId).toArray()
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  async listAll() {
+    const rows = await db.internalDebts.toArray()
+    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  // Marca una deuda como saldada (no se borra: queda con fecha y quien la saldo).
+  async settle(id, byUserId) {
+    await db.internalDebts.update(id, {
+      settled: true,
+      settledAt: now(),
+      settledBy: byUserId
+    })
   }
 }
