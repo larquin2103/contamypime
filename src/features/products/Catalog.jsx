@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { Link } from 'react-router-dom'
 import { productsRepo } from '../../repositories/productsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
@@ -43,6 +44,9 @@ export function Catalog() {
         <h2>Catalogo</h2>
         {isOwner && (
           <div className="header-actions">
+            <Link className="btn btn--ghost btn--sm" to="/import">
+              ⬆ Importar
+            </Link>
             <button className="btn btn--ghost btn--sm" onClick={() => setShowCategories(true)}>
               Categorias
             </button>

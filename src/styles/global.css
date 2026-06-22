@@ -124,6 +124,8 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
 }
 .welcome {
@@ -399,6 +401,7 @@ select:focus {
 .header-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .search-input {
   margin-bottom: 8px;
@@ -554,4 +557,77 @@ select:focus {
 }
 .cuadre-emoji {
   font-size: 2rem;
+}
+
+/* ----- Importacion ----- */
+input[type='file'] {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed var(--surface-2);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+}
+.import-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.chip {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  white-space: nowrap;
+}
+.chip.is-ok {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+.chip.is-dup {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fcd34d;
+}
+.chip.is-error {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+.import-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--gap);
+}
+.import-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border-left: 3px solid var(--surface-2);
+}
+.import-row.is-ok {
+  border-left-color: var(--ok);
+}
+.import-row.is-dup {
+  border-left-color: var(--warn);
+}
+.import-row.is-error {
+  border-left-color: var(--danger);
+}
+.import-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.import-row__main .muted {
+  font-size: 0.78rem;
+}
+.row-msg {
+  font-size: 0.76rem;
+  color: var(--muted);
 }

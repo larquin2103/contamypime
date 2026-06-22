@@ -1,0 +1,163 @@
+import { normalize } from '../../lib/search'
+import { UNITS } from '../../db/constants'
+import { productsRepo } from '../../repositories/productsRepo'
+import { categoriesRepo } from '../../repositories/categoriesRepo'
+
+// Columnas de la plantilla (orden exacto del plan maestro + existencia inicial).
+export const TEMPLATE_HEADERS = [
+  'Nombre',
+  'Codigo',
+  'Categoria',
+  'Unidad',
+  'Precio venta',
+  'Costo',
+  'Existencia inicial'
+]
+
+const TEMPLATE_EXAMPLE = [
+  ['Aceite vegetal 1L', 'AV001', 'Aceites', 'u', 2.5, 1.8, 30],
+  ['Arroz 1kg', 'AR001', 'Granos', 'kg', 1.2, 0.85, 50]
+]
+
+// xlsx se carga bajo demanda (code-splitting): solo pesa cuando se importa.
+async function loadXLSX() {
+  return import('xlsx')
+}
+
+// --- Plantilla descargable (.xlsx) ---
+export async function buildTemplateBlob() {
+  const XLSX = await loadXLSX()
+  const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_EXAMPLE])
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Productos')
+  const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+  return new Blob([out], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  })
+}
+
+// Normaliza el encabezado de columna para tolerar acentos/mayusculas/espacios.
+function normHeader(h) {
+  return normalize(h).replace(/\s+/g, ' ')
+}
+
+function parseNum(v) {
+  if (v === '' || v == null) return null
+  if (typeof v === 'number') return v
+  let s = String(v).trim().replace(/[^0-9.,-]/g, '')
+  if (s.includes('.') && s.includes(',')) s = s.replace(/,/g, '') // coma = miles
+  else s = s.replace(',', '.') // coma = decimal
+  const n = parseFloat(s)
+  return isNaN(n) ? null : n
+}
+
+function parseUnit(v) {
+  const s = normalize(v)
+  if (['u', 'un', 'und', 'unidad', 'unidades', 'u.'].includes(s)) return 'u'
+  if (['kg', 'kgs', 'kilo', 'kilos', 'kilogramo', 'kilogramos'].includes(s)) return 'kg'
+  if (['caja', 'cajas', 'cj'].includes(s)) return 'caja'
+  return UNITS.includes(s) ? s : ''
+}
+
+// Extrae los campos canonicos de una fila cruda (objeto keyed por encabezado).
+function extractRow(obj) {
+  const get = (names) => {
+    for (const k of Object.keys(obj)) {
+      if (names.includes(normHeader(k))) return obj[k]
+    }
+    return ''
+  }
+  return {
+    name: String(get(['nombre', 'producto', 'descripcion'])).trim(),
+    code: String(get(['codigo', 'code', 'sku'])).trim(),
+    category: String(get(['categoria', 'category', 'rubro'])).trim(),
+    unit: parseUnit(get(['unidad', 'unit', 'um', 'u/m', 'medida'])),
+    price: parseNum(get(['precio venta', 'precio', 'precio de venta', 'pvp', 'venta'])),
+    cost: parseNum(get(['costo', 'coste', 'cost'])) ?? 0,
+    stock: parseNum(get(['existencia inicial', 'existencia', 'stock', 'cantidad', 'inventario'])) ?? 0
+  }
+}
+
+// Lee el archivo (.xlsx/.csv) y valida cada fila contra el catalogo existente.
+// Devuelve filas con estado: ok | dup (duplicado, se omite) | error.
+export async function parseAndValidate(buffer, { existingProducts }) {
+  const XLSX = await loadXLSX()
+  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  if (!ws) return { rows: [], summary: { total: 0, ok: 0, dup: 0, error: 0 } }
+  const json = XLSX.utils.sheet_to_json(ws, { defval: '' })
+
+  const existCodes = new Set(existingProducts.filter((p) => p.code).map((p) => normalize(p.code)))
+  const existNames = new Set(existingProducts.map((p) => normalize(p.name)))
+  const seenCodes = new Set()
+  const seenNames = new Set()
+
+  const rows = json.map((obj, i) => {
+    const draft = extractRow(obj)
+    const errors = []
+    if (!draft.name) errors.push('Falta el nombre')
+    if (!draft.unit) errors.push('Unidad invalida (u/kg/caja)')
+    if (draft.price == null) errors.push('Precio de venta invalido')
+
+    let status = errors.length ? 'error' : 'ok'
+    let dupReason = ''
+    if (status === 'ok') {
+      const codeKey = draft.code ? normalize(draft.code) : ''
+      const nameKey = normalize(draft.name)
+      if (codeKey && (existCodes.has(codeKey) || seenCodes.has(codeKey))) {
+        status = 'dup'
+        dupReason = `Codigo repetido (${draft.code})`
+      } else if (existNames.has(nameKey) || seenNames.has(nameKey)) {
+        status = 'dup'
+        dupReason = 'Nombre ya existe'
+      } else {
+        if (codeKey) seenCodes.add(codeKey)
+        seenNames.add(nameKey)
+      }
+    }
+    return { line: i + 2, draft, status, errors, dupReason }
+  })
+
+  const summary = {
+    total: rows.length,
+    ok: rows.filter((r) => r.status === 'ok').length,
+    dup: rows.filter((r) => r.status === 'dup').length,
+    error: rows.filter((r) => r.status === 'error').length
+  }
+  return { rows, summary }
+}
+
+// Confirma la importacion: crea categorias faltantes y los productos validos
+// (con su existencia inicial trazada en el libro mayor).
+export async function commitImport(okRows, { userId }) {
+  const cats = await categoriesRepo.list()
+  const catByName = {}
+  for (const c of cats) catByName[normalize(c.name)] = c.id
+
+  let created = 0
+  for (const r of okRows) {
+    let categoryId = null
+    const catName = r.draft.category
+    if (catName) {
+      const key = normalize(catName)
+      if (!catByName[key]) {
+        categoryId = await categoriesRepo.create(catName)
+        catByName[key] = categoryId
+      } else {
+        categoryId = catByName[key]
+      }
+    }
+    await productsRepo.create({
+      code: r.draft.code,
+      name: r.draft.name,
+      categoryId,
+      unit: r.draft.unit,
+      price: r.draft.price,
+      cost: r.draft.cost,
+      openingStock: r.draft.stock,
+      userId
+    })
+    created++
+  }
+  return created
+}
