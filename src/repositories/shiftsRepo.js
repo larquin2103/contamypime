@@ -62,13 +62,19 @@ export const shiftsRepo = {
     const debts = await db.internalDebts.where('shiftId').equals(shiftId).toArray()
 
     const salesCash = emptyCash()
+    const transfersByCur = {}
     let salesCount = 0
+    let transfersCount = 0
     for (const s of sales) {
       if (s.voided) continue
       salesCount++
-      // Contrato con el Bloque 5: cada venta en efectivo guarda la moneda
-      // y el monto cobrado (neto, ya sin el cambio) en esa moneda.
-      if (s.cashCurrency && salesCash[s.cashCurrency] != null) {
+      if (s.paymentMethod === 'transfer') {
+        // Transferencias: separadas del efectivo, no entran a caja (Fase 2).
+        transfersCount++
+        const cur = s.transferCurrency || 'MN'
+        transfersByCur[cur] = round2((transfersByCur[cur] || 0) + Number(s.transferAmount || 0))
+      } else if (s.cashCurrency && salesCash[s.cashCurrency] != null) {
+        // Efectivo: monto neto que entra a caja (ya sin el cambio).
         salesCash[s.cashCurrency] += Number(s.cashAmount || 0)
       }
     }
@@ -92,6 +98,8 @@ export const shiftsRepo = {
       shift,
       salesCount,
       salesCash,
+      transfersByCur,
+      transfersCount,
       withdrawalsByCur,
       expectedCash,
       internalDebtTotal,

@@ -8,7 +8,8 @@ import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney, baseToForeign } from '../../lib/currency'
-import { CASH_CURRENCIES } from '../../db/constants'
+import { parseSms } from '../../lib/sms'
+import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS } from '../../db/constants'
 
 export function SalesScreen() {
   const { user } = useAuth()
@@ -18,8 +19,14 @@ export function SalesScreen() {
 
   const [query, setQuery] = useState('')
   const [cart, setCart] = useState([]) // [{ productId, name, unit, unitPrice, unitCost, qty, stock }]
+  const [payMethod, setPayMethod] = useState(PAYMENT_METHODS.CASH)
   const [payCurrency, setPayCurrency] = useState(baseCurrency)
   const [paid, setPaid] = useState('')
+  // transferencia
+  const [transferCurrency, setTransferCurrency] = useState('MN')
+  const [transferRef, setTransferRef] = useState('')
+  const [sms, setSms] = useState('')
+  const [transferAmount, setTransferAmount] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [lastSale, setLastSale] = useState(null)
 
@@ -84,12 +91,44 @@ export function SalesScreen() {
     () => round2(cart.reduce((a, l) => a + l.unitPrice * l.qty, 0)),
     [cart]
   )
+  // --- efectivo ---
   const rate = payCurrency === baseCurrency ? 1 : rateOf(payCurrency)
   const totalInCur =
     payCurrency === baseCurrency ? totalBase : baseToForeign(totalBase, rate)
   const paidNum = Number(paid) || 0
   const change = round2(paidNum - totalInCur)
-  const canCharge = cart.length > 0 && paidNum >= totalInCur && (payCurrency === baseCurrency || rate > 0)
+
+  // --- transferencia ---
+  const transferRate = transferCurrency === baseCurrency ? 1 : rateOf(transferCurrency)
+  const totalTransfer =
+    transferCurrency === baseCurrency ? totalBase : baseToForeign(totalBase, transferRate)
+  const transferNum = transferAmount === '' ? totalTransfer : Number(transferAmount) || 0
+
+  const isCash = payMethod === PAYMENT_METHODS.CASH
+  const canCharge =
+    cart.length > 0 &&
+    (isCash
+      ? paidNum >= totalInCur && (payCurrency === baseCurrency || rate > 0)
+      : transferNum > 0 && (transferCurrency === baseCurrency || transferRate > 0))
+
+  // Al pegar el SMS, autocompleta monto y referencia.
+  const onSmsChange = (text) => {
+    setSms(text)
+    const { amount, reference } = parseSms(text)
+    if (reference) setTransferRef(reference)
+    if (amount != null) setTransferAmount(String(amount))
+  }
+
+  const resetCheckout = () => {
+    setCart([])
+    setPaid('')
+    setPayMethod(PAYMENT_METHODS.CASH)
+    setPayCurrency(baseCurrency)
+    setTransferCurrency('MN')
+    setTransferRef('')
+    setSms('')
+    setTransferAmount('')
+  }
 
   const charge = async () => {
     setConfirming(true)
@@ -102,21 +141,36 @@ export function SalesScreen() {
       unitCost: l.unitCost,
       lineTotal: round2(l.unitPrice * l.qty)
     }))
-    await salesRepo.create({
-      shiftId: activeShift.id,
-      sellerId: user.id,
-      items,
-      totalBase,
-      paymentCurrency: payCurrency,
-      cashAmount: round2(totalInCur),
-      amountPaid: paidNum,
-      change,
-      rate: payCurrency === baseCurrency ? null : rate
-    })
-    setLastSale({ totalInCur: round2(totalInCur), change, payCurrency })
-    setCart([])
-    setPaid('')
-    setPayCurrency(baseCurrency)
+    if (isCash) {
+      await salesRepo.create({
+        shiftId: activeShift.id,
+        sellerId: user.id,
+        items,
+        totalBase,
+        paymentMethod: PAYMENT_METHODS.CASH,
+        paymentCurrency: payCurrency,
+        cashAmount: round2(totalInCur),
+        amountPaid: paidNum,
+        change,
+        rate: payCurrency === baseCurrency ? null : rate
+      })
+      setLastSale({ method: 'cash', change, payCurrency })
+    } else {
+      await salesRepo.create({
+        shiftId: activeShift.id,
+        sellerId: user.id,
+        items,
+        totalBase,
+        paymentMethod: PAYMENT_METHODS.TRANSFER,
+        transferCurrency,
+        transferAmount: round2(transferNum),
+        transferReference: transferRef,
+        transferSms: sms,
+        rate: transferCurrency === baseCurrency ? null : transferRate
+      })
+      setLastSale({ method: 'transfer', transferCurrency, transferRef })
+    }
+    resetCheckout()
     setConfirming(false)
   }
 
@@ -129,7 +183,9 @@ export function SalesScreen() {
 
       {lastSale && (
         <div className="sale-done" onClick={() => setLastSale(null)}>
-          ✅ Venta cobrada · Cambio: {formatMoney(lastSale.change, lastSale.payCurrency)}
+          {lastSale.method === 'cash'
+            ? `✅ Venta cobrada · Cambio: ${formatMoney(lastSale.change, lastSale.payCurrency)}`
+            : `✅ Transferencia cobrada · Ref: ${lastSale.transferRef || '—'} (${lastSale.transferCurrency})`}
           <span className="muted"> (toca para cerrar)</span>
         </div>
       )}
@@ -194,44 +250,114 @@ export function SalesScreen() {
             <strong className="total-amount">{formatMoney(totalBase, baseCurrency)}</strong>
           </div>
 
-          <p className="field-label">Pago en efectivo</p>
-          <div className="pay-currencies">
-            {CASH_CURRENCIES.map((c) => (
-              <button
-                key={c}
-                className={`btn btn--sm ${payCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
-                onClick={() => setPayCurrency(c)}
-                disabled={c !== baseCurrency && !rateOf(c)}
-              >
-                {c}
-              </button>
-            ))}
+          <div className="tabs">
+            <button
+              className={`tab ${isCash ? 'is-active' : ''}`}
+              onClick={() => setPayMethod(PAYMENT_METHODS.CASH)}
+            >
+              Efectivo
+            </button>
+            <button
+              className={`tab ${!isCash ? 'is-active' : ''}`}
+              onClick={() => setPayMethod(PAYMENT_METHODS.TRANSFER)}
+            >
+              Transferencia
+            </button>
           </div>
 
-          {payCurrency !== baseCurrency && (
-            <p className="muted">
-              Total en {payCurrency}: <strong>{formatMoney(totalInCur, payCurrency)}</strong>{' '}
-              (tasa {rate})
-            </p>
+          {isCash ? (
+            <>
+              <div className="pay-currencies">
+                {CASH_CURRENCIES.map((c) => (
+                  <button
+                    key={c}
+                    className={`btn btn--sm ${payCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
+                    onClick={() => setPayCurrency(c)}
+                    disabled={c !== baseCurrency && !rateOf(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+
+              {payCurrency !== baseCurrency && (
+                <p className="muted">
+                  Total en {payCurrency}: <strong>{formatMoney(totalInCur, payCurrency)}</strong>{' '}
+                  (tasa {rate})
+                </p>
+              )}
+
+              <label className="field">
+                <span>Recibido ({payCurrency})</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  value={paid}
+                  onChange={(e) => setPaid(e.target.value)}
+                  placeholder="0"
+                />
+              </label>
+
+              <div className="total-row">
+                <span>Cambio</span>
+                <strong className={`total-amount ${change < 0 ? 'neg' : ''}`}>
+                  {formatMoney(change, payCurrency)}
+                </strong>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="pay-currencies">
+                {TRANSFER_CURRENCIES.map((c) => (
+                  <button
+                    key={c}
+                    className={`btn btn--sm ${transferCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
+                    onClick={() => setTransferCurrency(c)}
+                    disabled={c !== baseCurrency && !rateOf(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+
+              <p className="muted">
+                A cobrar: <strong>{formatMoney(totalTransfer, transferCurrency)}</strong>
+                {transferCurrency !== baseCurrency && ` (tasa ${transferRate})`}
+              </p>
+
+              <label className="field">
+                <span>Pega el SMS de confirmacion</span>
+                <textarea
+                  rows={3}
+                  value={sms}
+                  onChange={(e) => onSmsChange(e.target.value)}
+                  placeholder="Pega aqui el mensaje del banco…"
+                />
+              </label>
+
+              <div className="form-row">
+                <label className="field">
+                  <span>Monto recibido ({transferCurrency})</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={transferAmount}
+                    onChange={(e) => setTransferAmount(e.target.value)}
+                    placeholder={String(totalTransfer)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Referencia</span>
+                  <input
+                    value={transferRef}
+                    onChange={(e) => setTransferRef(e.target.value)}
+                    placeholder="No. de operacion"
+                  />
+                </label>
+              </div>
+              <p className="muted">La transferencia no entra a la caja de efectivo.</p>
+            </>
           )}
-
-          <label className="field">
-            <span>Recibido ({payCurrency})</span>
-            <input
-              type="number"
-              inputMode="decimal"
-              value={paid}
-              onChange={(e) => setPaid(e.target.value)}
-              placeholder="0"
-            />
-          </label>
-
-          <div className="total-row">
-            <span>Cambio</span>
-            <strong className={`total-amount ${change < 0 ? 'neg' : ''}`}>
-              {formatMoney(change, payCurrency)}
-            </strong>
-          </div>
 
           <button
             className="btn btn--primary btn--block"

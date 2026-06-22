@@ -13,14 +13,22 @@ export const salesRepo = {
     sellerId,
     items,
     totalBase,
-    paymentCurrency,
-    cashAmount,
-    amountPaid,
-    change,
-    rate = null
+    paymentMethod = 'cash',
+    // efectivo
+    paymentCurrency = null,
+    cashAmount = 0,
+    amountPaid = 0,
+    change = 0,
+    rate = null,
+    // transferencia
+    transferCurrency = null,
+    transferAmount = 0,
+    transferReference = '',
+    transferSms = ''
   }) {
     const id = newId()
     const ts = now()
+    const isCash = paymentMethod === 'cash'
     await db.transaction('rw', db.sales, db.stockMovements, db.products, async () => {
       await db.sales.add({
         id,
@@ -29,13 +37,20 @@ export const salesRepo = {
         createdAt: ts,
         items, // [{ productId, name, unit, qty, unitPrice, unitCost, lineTotal }]
         totalBase,
-        paymentCurrency,
-        // Contrato con shiftsRepo.getSummary: moneda y monto neto que entra a caja.
-        cashCurrency: paymentCurrency,
-        cashAmount,
-        amountPaid,
-        change,
+        paymentMethod,
+        // Contrato con shiftsRepo.getSummary: solo el efectivo entra a caja.
+        // En transferencia, cashCurrency queda null para no afectar el cuadre de caja.
+        paymentCurrency: isCash ? paymentCurrency : null,
+        cashCurrency: isCash ? paymentCurrency : null,
+        cashAmount: isCash ? cashAmount : 0,
+        amountPaid: isCash ? amountPaid : 0,
+        change: isCash ? change : 0,
         rate,
+        // datos de transferencia (Fase 2)
+        transferCurrency: isCash ? null : transferCurrency,
+        transferAmount: isCash ? 0 : transferAmount,
+        transferReference: isCash ? '' : transferReference,
+        transferSms: isCash ? '' : transferSms,
         voided: false
       })
       for (const it of items) {

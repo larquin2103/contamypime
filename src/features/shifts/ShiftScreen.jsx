@@ -138,6 +138,13 @@ function ActiveShiftPanel({ shift, onClosed }) {
             </tbody>
           </table>
         )}
+        {summary && summary.transfersCount > 0 && (
+          <p className="muted">
+            Transferencias (no es efectivo):{' '}
+            {Object.entries(summary.transfersByCur).map(([c, v]) => formatMoney(v, c)).join(' · ')}
+            {' '}({summary.transfersCount})
+          </p>
+        )}
         {summary && summary.internalDebtTotal > 0 && (
           <p className="muted">
             Deuda interna del turno: {formatMoney(summary.internalDebtTotal)} (no es ingreso)
@@ -226,6 +233,8 @@ function CloseResult({ result, onDone }) {
     salesCash,
     withdrawalsByCur,
     internalDebtTotal,
+    transfersByCur = {},
+    transfersCount = 0,
     shift
   } = result
   const { toBase } = useCurrency()
@@ -279,6 +288,14 @@ function CloseResult({ result, onDone }) {
       <section className="card">
         <h3>Resumen del turno</h3>
         <div className="kv"><span className="muted">Ventas</span><strong>{salesCount}</strong></div>
+        {transfersCount > 0 && (
+          <div className="kv">
+            <span className="muted">Transferencias (no efectivo)</span>
+            <strong>
+              {Object.entries(transfersByCur).map(([c, v]) => formatMoney(v, c)).join(' · ')}
+            </strong>
+          </div>
+        )}
         <div className="kv">
           <span className="muted">Deuda interna (no es ingreso)</span>
           <strong>{formatMoney(internalDebtTotal)}</strong>

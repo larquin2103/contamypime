@@ -36,6 +36,15 @@ export const FOREIGN_CURRENCIES = CURRENCIES.filter((c) => !c.isBase)
 // Monedas que se aceptan como EFECTIVO en ventas / cuadre (Fase 1).
 export const CASH_CURRENCIES = CURRENCIES.filter((c) => c.cash).map((c) => c.code)
 
+// Monedas para pago por TRANSFERENCIA (Fase 2): bancaria en MN y electronica MLC.
+export const TRANSFER_CURRENCIES = ['MN', 'MLC']
+
+// Metodos de pago de una venta.
+export const PAYMENT_METHODS = {
+  CASH: 'cash',
+  TRANSFER: 'transfer'
+}
+
 // Tipos de movimiento del libro mayor de inventario.
 export const MOVEMENT_TYPES = {
   PURCHASE_IN: 'purchase_in',
