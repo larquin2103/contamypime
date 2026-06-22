@@ -1,9 +1,11 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../app/providers/AuthProvider'
+import { useShift } from '../app/providers/ShiftProvider'
 
 // Shell de la app autenticada: cabecera + contenido + navegacion inferior.
 export function Layout({ children }) {
   const { user, logout, isOwner } = useAuth()
+  const { canSell } = useShift()
 
   return (
     <div className="app-shell">
@@ -26,6 +28,11 @@ export function Layout({ children }) {
         <NavLink to="/shift" className="nav-item">
           🧾<span>Turno</span>
         </NavLink>
+        {canSell && (
+          <NavLink to="/sell" className="nav-item">
+            💵<span>Vender</span>
+          </NavLink>
+        )}
         {isOwner && (
           <>
             <NavLink to="/settings" className="nav-item">

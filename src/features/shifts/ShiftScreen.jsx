@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
@@ -86,6 +87,10 @@ function ActiveShiftPanel({ shift, onClosed }) {
         <h2>Turno activo</h2>
         <span className="badge badge--live">● En curso</span>
       </div>
+
+      <Link className="btn btn--primary btn--block btn--lg" to="/sell">
+        💵 Registrar venta
+      </Link>
 
       <section className="card">
         <div className="kv">
