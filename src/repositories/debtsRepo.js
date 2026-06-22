@@ -7,7 +7,7 @@ import { MOVEMENT_TYPES } from '../db/constants'
 // Deuda interna: retiro de producto sin pago. Descuenta inventario, NO cuenta
 // como ingreso y queda como deuda asociada a un usuario registrado.
 export const debtsRepo = {
-  async create({ shiftId, debtorUserId, registeredBy, productId, qty, unitValue, note = '' }) {
+  async create({ shiftId, debtorUserId, registeredBy, authorizedBy = '', productId, qty, unitValue, note = '' }) {
     const id = newId()
     const ts = now()
     const q = Math.abs(Number(qty))
@@ -18,6 +18,7 @@ export const debtsRepo = {
         shiftId,
         userId: debtorUserId, // a quien se le asocia la deuda
         registeredBy,
+        authorizedBy,
         productId,
         qty: q,
         valueAtTime,

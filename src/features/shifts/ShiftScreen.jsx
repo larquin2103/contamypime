@@ -75,6 +75,7 @@ function OpenShiftForm() {
 
 // ---- Turno activo (mio) ----
 function ActiveShiftPanel({ shift, onClosed }) {
+  const { isOwner } = useAuth()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   const [closing, setClosing] = useState(false)
 
@@ -92,15 +93,19 @@ function ActiveShiftPanel({ shift, onClosed }) {
       <Link className="btn btn--primary btn--block btn--lg" to="/sell">
         💵 Registrar venta
       </Link>
-      <Link className="btn btn--block" to="/entry">
-        📥 Entrada de mercancia
-      </Link>
-      <Link className="btn btn--block" to="/price">
-        🏷️ Cambiar precio
-      </Link>
       <Link className="btn btn--block" to="/cash">
         💸 Caja y deudas
       </Link>
+      {isOwner && (
+        <>
+          <Link className="btn btn--block" to="/entry">
+            📥 Entrada de mercancia
+          </Link>
+          <Link className="btn btn--block" to="/price">
+            🏷️ Cambiar precio
+          </Link>
+        </>
+      )}
 
       <section className="card">
         <div className="kv">

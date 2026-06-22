@@ -12,6 +12,7 @@ import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { CASH_CURRENCIES } from '../../db/constants'
+import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 
 export function CashScreen() {
   const { user, isOwner } = useAuth()
@@ -50,9 +51,9 @@ export function CashScreen() {
       </div>
 
       {tab === 'extraccion' ? (
-        <WithdrawForm shift={activeShift} user={user} />
+        <WithdrawForm shift={activeShift} user={user} isOwner={isOwner} />
       ) : (
-        <DebtForm shift={activeShift} user={user} />
+        <DebtForm shift={activeShift} user={user} isOwner={isOwner} />
       )}
 
       <Movements shiftId={activeShift.id} />
@@ -60,31 +61,38 @@ export function CashScreen() {
   )
 }
 
-function WithdrawForm({ shift, user }) {
+function WithdrawForm({ shift, user, isOwner }) {
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState(CASH_CURRENCIES[0])
   const [reason, setReason] = useState('')
-  const [authorizedBy, setAuthorizedBy] = useState(user.name)
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [askAuth, setAskAuth] = useState(false)
 
   const valid = Number(amount) > 0 && reason.trim()
 
-  const submit = async () => {
+  const doWithdraw = async (authName) => {
     setBusy(true)
+    setAskAuth(false)
     await cashRepo.withdraw({
       shiftId: shift.id,
       userId: user.id,
       amount,
       currency,
       reason,
-      authorizedBy
+      authorizedBy: authName
     })
     setAmount('')
     setReason('')
     setSaved(true)
     setBusy(false)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  const submit = () => {
+    if (!valid) return
+    if (isOwner) doWithdraw(user.name)
+    else setAskAuth(true) // el vendedor necesita autorizacion del dueno
   }
 
   return (
@@ -107,19 +115,19 @@ function WithdrawForm({ shift, user }) {
         <span>Motivo</span>
         <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: pago a proveedor" />
       </label>
-      <label className="field">
-        <span>Autorizado por</span>
-        <input value={authorizedBy} onChange={(e) => setAuthorizedBy(e.target.value)} />
-      </label>
+      {!isOwner && <p className="muted">Requiere autorizacion del dueno (PIN) al confirmar.</p>}
       {saved && <p className="ok-text">✓ Extraccion registrada</p>}
       <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
         {busy ? 'Registrando…' : 'Registrar extraccion'}
       </button>
+      {askAuth && (
+        <OwnerAuthModal onCancel={() => setAskAuth(false)} onAuthorized={(owner) => doWithdraw(owner.name)} />
+      )}
     </section>
   )
 }
 
-function DebtForm({ shift, user }) {
+function DebtForm({ shift, user, isOwner }) {
   const { baseCurrency } = useCurrency()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const users = useLiveQuery(() => usersRepo.listActive(), [], [])
@@ -130,6 +138,7 @@ function DebtForm({ shift, user }) {
   const [note, setNote] = useState('')
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [askAuth, setAskAuth] = useState(false)
 
   const results = useMemo(() => {
     if (!query.trim()) return []
@@ -139,12 +148,14 @@ function DebtForm({ shift, user }) {
   const value = product ? round2((Number(qty) || 0) * product.price) : 0
   const valid = product && Number(qty) > 0 && debtor
 
-  const submit = async () => {
+  const doCreate = async (authName) => {
     setBusy(true)
+    setAskAuth(false)
     await debtsRepo.create({
       shiftId: shift.id,
       debtorUserId: debtor,
       registeredBy: user.id,
+      authorizedBy: authName,
       productId: product.id,
       qty,
       unitValue: product.price,
@@ -158,6 +169,12 @@ function DebtForm({ shift, user }) {
     setSaved(true)
     setBusy(false)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  const submit = () => {
+    if (!valid) return
+    if (isOwner) doCreate(user.name)
+    else setAskAuth(true)
   }
 
   return (
@@ -213,6 +230,7 @@ function DebtForm({ shift, user }) {
             <span>Nota (opcional)</span>
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
+          {!isOwner && <p className="muted">Requiere autorizacion del dueno (PIN) al confirmar.</p>}
           {saved && <p className="ok-text">✓ Deuda registrada</p>}
           <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
             {busy ? 'Registrando…' : 'Registrar deuda'}
@@ -220,6 +238,9 @@ function DebtForm({ shift, user }) {
         </>
       )}
       {saved && !product && <p className="ok-text">✓ Deuda registrada</p>}
+      {askAuth && (
+        <OwnerAuthModal onCancel={() => setAskAuth(false)} onAuthorized={(owner) => doCreate(owner.name)} />
+      )}
     </section>
   )
 }

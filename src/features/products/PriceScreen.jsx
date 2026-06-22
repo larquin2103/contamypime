@@ -18,14 +18,14 @@ export function PriceScreen() {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(null)
 
-  const allowed = isOwner || canSell
-  if (!allowed) {
+  // Solo el dueno cambia precios.
+  if (!isOwner) {
     return (
       <div className="screen">
         <h2>Cambiar precio</h2>
         <section className="card">
-          <p>Para cambiar precios necesitas <strong>tu turno abierto</strong>.</p>
-          <Link className="btn btn--primary btn--block" to="/shift">Ir a Turno</Link>
+          <p>Solo el <strong>dueno</strong> puede cambiar precios.</p>
+          <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>
     )
