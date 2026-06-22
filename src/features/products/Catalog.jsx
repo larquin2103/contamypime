@@ -47,6 +47,9 @@ export function Catalog() {
             <Link className="btn btn--ghost btn--sm" to="/import">
               ⬆ Importar
             </Link>
+            <Link className="btn btn--ghost btn--sm" to="/price">
+              🏷️ Precios
+            </Link>
             <button className="btn btn--ghost btn--sm" onClick={() => setShowCategories(true)}>
               Categorias
             </button>

@@ -34,7 +34,9 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
     setBusy(true)
     try {
       if (editing) {
-        await productsRepo.update(product.id, { code, name, categoryId, unit, price, cost })
+        // El precio se cambia aparte para que quede en el historial.
+        await productsRepo.update(product.id, { code, name, categoryId, unit, cost })
+        await productsRepo.changePrice(product.id, price, { userId: user.id })
       } else {
         const newProductId = await productsRepo.create({
           code,

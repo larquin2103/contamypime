@@ -7,6 +7,7 @@ import { Onboarding } from '../features/auth/Onboarding'
 import { Login } from '../features/auth/Login'
 import { Home } from '../features/home/Home'
 import { Catalog } from '../features/products/Catalog'
+import { PriceScreen } from '../features/products/PriceScreen'
 import { ImportScreen } from '../features/import/ImportScreen'
 import { ShiftScreen } from '../features/shifts/ShiftScreen'
 import { SalesScreen } from '../features/sales/SalesScreen'
@@ -33,6 +34,7 @@ export function AppRouter() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/catalog" element={<Catalog />} />
+        <Route path="/price" element={<PriceScreen />} />
         <Route path="/import" element={<ImportScreen />} />
         <Route path="/shift" element={<ShiftScreen />} />
         <Route path="/sell" element={<SalesScreen />} />

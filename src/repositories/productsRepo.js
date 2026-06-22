@@ -1,6 +1,7 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
+import { round2 } from '../lib/currency'
 import { buildSearchTokens } from '../lib/search'
 import { stockRepo } from './stockRepo'
 import { MOVEMENT_TYPES } from '../db/constants'
@@ -77,5 +78,36 @@ export const productsRepo = {
 
   async setActive(id, active) {
     await db.products.update(id, { active, updatedAt: now() })
+  },
+
+  // Cambia el precio de venta y deja el cambio en el historial (priceChanges).
+  // Las ventas ya registradas conservan su precio congelado: NO se tocan.
+  // Devuelve true si hubo cambio real.
+  async changePrice(id, newPrice, { userId = null, shiftId = null, note = '' } = {}) {
+    const np = round2(Number(newPrice) || 0)
+    let changed = false
+    await db.transaction('rw', db.products, db.priceChanges, async () => {
+      const p = await db.products.get(id)
+      if (!p) return
+      if (round2(p.price) === np) return
+      await db.priceChanges.add({
+        id: newId(),
+        productId: id,
+        oldPrice: p.price,
+        newPrice: np,
+        userId,
+        shiftId,
+        note,
+        createdAt: now()
+      })
+      await db.products.update(id, { price: np, updatedAt: now() })
+      changed = true
+    })
+    return changed
+  },
+
+  async priceHistory(id) {
+    const rows = await db.priceChanges.where('productId').equals(id).toArray()
+    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }
 }
