@@ -774,6 +774,37 @@ input[type='file'] {
   text-align: right;
 }
 
+/* ----- Seguridad / recuperacion ----- */
+.recovery-code {
+  font-family: ui-monospace, 'Courier New', monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-align: center;
+  background: var(--bg);
+  border: 1px dashed var(--primary-600);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 10px 0;
+  color: var(--primary-600);
+  user-select: all;
+}
+.link-recover {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+.item-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* ----- Cambio de precio ----- */
 .ok-text {
   color: var(--ok);

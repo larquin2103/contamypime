@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
-import { ROLE_LABELS } from '../../db/constants'
+import { ROLE_LABELS, ROLES } from '../../db/constants'
 
 export function Login() {
   const { login } = useAuth()
@@ -12,6 +12,7 @@ export function Login() {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [recovering, setRecovering] = useState(false)
 
   const tryLogin = async (nextPin) => {
     setBusy(true)
@@ -22,6 +23,13 @@ export function Login() {
       setPin('')
     }
     setBusy(false)
+  }
+
+  const backToList = () => {
+    setSelected(null)
+    setPin('')
+    setError('')
+    setRecovering(false)
   }
 
   if (!selected) {
@@ -44,10 +52,20 @@ export function Login() {
     )
   }
 
+  if (recovering) {
+    return (
+      <div className="screen screen--centered">
+        <div className="card auth-card">
+          <RecoverPin user={selected} onCancel={() => setRecovering(false)} onDone={tryLogin} />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="screen screen--centered">
       <div className="card auth-card">
-        <button className="link-back" onClick={() => { setSelected(null); setPin(''); setError('') }}>
+        <button className="link-back" onClick={backToList}>
           ← Cambiar usuario
         </button>
         <h2>Hola, {selected.name}</h2>
@@ -61,7 +79,66 @@ export function Login() {
           {busy ? 'Entrando...' : 'Entrar'}
         </button>
         {error && <p className="error">{error}</p>}
+        {selected.role === ROLES.OWNER && (
+          <button className="link-recover" onClick={() => { setRecovering(true); setError('') }}>
+            ¿Olvidaste tu PIN?
+          </button>
+        )}
       </div>
     </div>
+  )
+}
+
+// Recuperacion del PIN del dueno mediante el codigo de recuperacion.
+function RecoverPin({ user, onCancel, onDone }) {
+  const [code, setCode] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [step, setStep] = useState('code') // code -> pin
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const checkCode = async () => {
+    setError('')
+    const ok = await usersRepo.verifyRecovery(user.id, code)
+    if (!ok) return setError('Codigo de recuperacion incorrecto')
+    setStep('pin')
+  }
+
+  const saveNewPin = async () => {
+    if (newPin.length < 4) return setError('El PIN debe tener al menos 4 digitos')
+    setBusy(true)
+    await usersRepo.setPin(user.id, newPin)
+    await onDone(newPin) // inicia sesion con el PIN nuevo
+  }
+
+  return (
+    <>
+      <button className="link-back" onClick={onCancel}>← Volver</button>
+      <h2>Recuperar PIN</h2>
+      {step === 'code' && (
+        <>
+          <p className="field-label">Escribe tu codigo de recuperacion</p>
+          <input
+            autoFocus
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="ABCD-EF12-34"
+          />
+          <button className="btn btn--primary btn--block" disabled={!code.trim()} onClick={checkCode}>
+            Verificar
+          </button>
+        </>
+      )}
+      {step === 'pin' && (
+        <>
+          <p className="field-label">Crea tu nuevo PIN</p>
+          <PinInput value={newPin} onChange={setNewPin} />
+          <button className="btn btn--primary btn--block" disabled={newPin.length < 4 || busy} onClick={saveNewPin}>
+            {busy ? 'Guardando…' : 'Guardar y entrar'}
+          </button>
+        </>
+      )}
+      {error && <p className="error">{error}</p>}
+    </>
   )
 }

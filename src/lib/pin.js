@@ -43,3 +43,16 @@ export async function verifyPin(pin, saltHex, expectedHash) {
   const { hash } = await hashPin(pin, saltHex)
   return hash === expectedHash
 }
+
+// Codigo de recuperacion para el PIN del dueno (offline, sin correo).
+// Formato legible: ABCD-EF12-34. Se muestra una vez y se guarda hasheado.
+export function genRecoveryCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(5))
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase()
+  return `${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 10)}`
+}
+
+// Normaliza el codigo que teclea el usuario (sin guiones, mayusculas).
+export function normalizeRecoveryCode(code) {
+  return String(code || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+}

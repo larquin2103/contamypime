@@ -1,7 +1,7 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
-import { hashPin, verifyPin } from '../lib/pin'
+import { hashPin, verifyPin, normalizeRecoveryCode } from '../lib/pin'
 import { ROLES } from '../db/constants'
 
 // Usuarios y autenticacion por PIN.
@@ -57,5 +57,22 @@ export const usersRepo = {
     if (!user || !user.active) return null
     const ok = await verifyPin(pin, user.pinSalt, user.pinHash)
     return ok ? user : null
+  },
+
+  async getOwner() {
+    const all = await db.users.toArray()
+    return all.find((u) => u.role === ROLES.OWNER) || null
+  },
+
+  // --- Codigo de recuperacion (solo para el dueno) ---
+  async setRecoveryCode(id, code) {
+    const { hash, salt } = await hashPin(normalizeRecoveryCode(code))
+    await db.users.update(id, { recoveryHash: hash, recoverySalt: salt, updatedAt: now() })
+  },
+
+  async verifyRecovery(id, code) {
+    const u = await db.users.get(id)
+    if (!u || !u.recoveryHash) return false
+    return verifyPin(normalizeRecoveryCode(code), u.recoverySalt, u.recoveryHash)
   }
 }

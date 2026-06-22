@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { configRepo } from '../../repositories/configRepo'
 import { ratesRepo } from '../../repositories/ratesRepo'
+import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { FOREIGN_CURRENCIES, DEFAULT_SEMAPHORE_CONFIG } from '../../db/constants'
 import { formatMoney, baseToForeign } from '../../lib/currency'
+import { genRecoveryCode } from '../../lib/pin'
 import { formatDateTime } from '../../lib/dates'
 
 export function Settings() {
@@ -27,7 +29,35 @@ export function Settings() {
       <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
       <SemaphoreSection />
+      <SecuritySection userId={user.id} />
     </div>
+  )
+}
+
+function SecuritySection({ userId }) {
+  const [code, setCode] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const regenerate = async () => {
+    setBusy(true)
+    const newCode = genRecoveryCode()
+    await usersRepo.setRecoveryCode(userId, newCode)
+    setCode(newCode)
+    setBusy(false)
+  }
+
+  return (
+    <section className="card">
+      <h3>Codigo de recuperacion</h3>
+      <p className="muted">
+        Sirve para recuperar tu PIN si lo olvidas. Al regenerarlo, el codigo anterior deja de
+        funcionar. Guardalo en un lugar seguro.
+      </p>
+      {code && <div className="recovery-code">{code}</div>}
+      <button className="btn btn--block" disabled={busy} onClick={regenerate}>
+        {busy ? 'Generando…' : code ? 'Regenerar otro' : 'Regenerar codigo'}
+      </button>
+    </section>
   )
 }
 
