@@ -30,8 +30,44 @@ export function Settings() {
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
       <SemaphoreSection />
       <DenominationsSection />
+      <WhatsappSection />
       <SecuritySection userId={user.id} />
     </div>
+  )
+}
+
+function WhatsappSection() {
+  const current = useLiveQuery(() => configRepo.get('ownerWhatsapp', ''), [], undefined)
+  const [draft, setDraft] = useState(null)
+  const [saved, setSaved] = useState(false)
+  const value = draft ?? current ?? ''
+
+  const save = async () => {
+    await configRepo.set('ownerWhatsapp', value.trim())
+    setDraft(null)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
+
+  return (
+    <section className="card">
+      <h3>WhatsApp del dueno</h3>
+      <p className="muted">
+        Para recibir el reporte de cierre de cada turno. Incluye el codigo de pais (ej. 53 para Cuba).
+      </p>
+      <label className="field">
+        <span>Numero (con codigo de pais)</span>
+        <input
+          inputMode="tel"
+          value={value}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Ej: 535XXXXXXX"
+        />
+      </label>
+      <button className="btn btn--primary btn--block" onClick={save}>
+        {saved ? 'Guardado ✓' : 'Guardar numero'}
+      </button>
+    </section>
   )
 }
 

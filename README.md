@@ -87,5 +87,13 @@ Colecciones en IndexedDB (PK = UUID string en todas):
 - [x] **Bloque 9** — Extracciones de caja + deuda interna
 - [x] **Bloque 10** — Cuadre de turno + semáforo
 
-Las Fases 2, 3 y 4 (transferencias bancarias, conteo físico, multi-punto, sincronización
+## Plan de implementación (Fase 2) — ✅ COMPLETA
+
+- [x] **Bloque 11** — Pago por transferencia bancaria + captura de SMS (extrae monto/referencia)
+- [x] **Bloque 12** — Cuadre por denominación de billetes + efectivo vs transferencias separados
+- [x] **Bloque 13** — Gestión y saldo de deudas internas + historial de extracciones con filtros
+- [x] **Bloque 14** — Exportar/importar turno (JSON) — traspaso offline con herencia de caja
+- [x] **Bloque 15** — WhatsApp: compartir turno + reporte de cierre al dueño
+
+Las Fases 3 y 4 (conteo físico, multi-punto, panel del dueño, auditoría, sincronización
 Firebase) están planificadas pero **no** se construyen todavía.

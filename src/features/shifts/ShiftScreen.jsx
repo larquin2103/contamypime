@@ -13,6 +13,7 @@ import { CASH_CURRENCIES } from '../../db/constants'
 import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
+import { buildCloseReport, openWhatsapp } from '../../lib/whatsapp'
 
 export function ShiftScreen() {
   const { activeShift, loading, isMine } = useShift()
@@ -34,10 +35,19 @@ export function ShiftScreen() {
 // ---- Abrir turno ----
 function OpenShiftForm() {
   const { user } = useAuth()
+  // Caja heredada de un turno recibido por traspaso (Bloque 14).
+  const inherited = useLiveQuery(() => configRepo.get('inheritedOpeningCash', null), [], undefined)
   const [openingCash, setOpeningCash] = useState({})
   const [point, setPoint] = useState('Principal')
+  const [usedInherited, setUsedInherited] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // Prefill con la caja heredada (una sola vez).
+  if (inherited && !usedInherited && Object.keys(openingCash).length === 0 && Object.keys(inherited).length) {
+    setOpeningCash(Object.fromEntries(CASH_CURRENCIES.map((c) => [c, String(inherited[c] ?? '')])))
+    setUsedInherited(true)
+  }
 
   const open = async () => {
     setError('')
@@ -46,6 +56,7 @@ function OpenShiftForm() {
       const cash = {}
       for (const c of CASH_CURRENCIES) cash[c] = Number(openingCash[c]) || 0
       await shiftsRepo.open({ sellerId: user.id, openingCash: cash, point })
+      await configRepo.set('inheritedOpeningCash', {}) // consumida
     } catch (e) {
       setError(e.message)
       setBusy(false)
@@ -57,6 +68,9 @@ function OpenShiftForm() {
       <h2>Abrir turno</h2>
       <section className="card">
         <p className="muted">Inicias turno como <strong>{user.name}</strong>.</p>
+        {usedInherited && (
+          <p className="muted">💡 Fondo prellenado con la caja del turno recibido.</p>
+        )}
         <label className="field">
           <span>Punto de venta</span>
           <input value={point} onChange={(e) => setPoint(e.target.value)} />
@@ -70,6 +84,9 @@ function OpenShiftForm() {
         <button className="btn btn--primary btn--block" disabled={busy} onClick={open}>
           {busy ? 'Abriendo…' : 'Abrir turno'}
         </button>
+        <Link className="btn btn--ghost btn--block" to="/handoff">
+          🔄 Recibir turno de otro vendedor
+        </Link>
       </section>
     </div>
   )
@@ -273,10 +290,16 @@ function CloseResult({ result, onDone }) {
     shift
   } = result
   const { toBase } = useCurrency()
+  const { user } = useAuth()
+  const ownerWhatsapp = useLiveQuery(() => configRepo.get('ownerWhatsapp', ''), [], '')
   const labels = {
     green: 'El turno cuadra',
     yellow: 'Diferencia menor',
     red: 'Diferencia critica'
+  }
+
+  const sendReport = () => {
+    openWhatsapp(ownerWhatsapp, buildCloseReport(result, user.name))
   }
 
   // Equivalencia informativa: todo el efectivo declarado expresado en base.
@@ -337,6 +360,12 @@ function CloseResult({ result, onDone }) {
         </div>
       </section>
 
+      <button className="btn btn--block" onClick={sendReport}>
+        📲 Enviar reporte al dueno {ownerWhatsapp ? '' : '(WhatsApp)'}
+      </button>
+      <Link className="btn btn--block" to="/handoff">
+        🔄 Entregar turno (traspaso)
+      </Link>
       <button className="btn btn--primary btn--block" onClick={onDone}>
         Listo — abrir nuevo turno
       </button>

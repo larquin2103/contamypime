@@ -14,6 +14,7 @@ import { SalesScreen } from '../features/sales/SalesScreen'
 import { EntryScreen } from '../features/inventory/EntryScreen'
 import { CashScreen } from '../features/cash/CashScreen'
 import { FinancesScreen } from '../features/cash/FinancesScreen'
+import { HandoffScreen } from '../features/handoff/HandoffScreen'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
@@ -43,6 +44,7 @@ export function AppRouter() {
         <Route path="/entry" element={<EntryScreen />} />
         <Route path="/cash" element={<CashScreen />} />
         <Route path="/finances" element={<FinancesScreen />} />
+        <Route path="/handoff" element={<HandoffScreen />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
