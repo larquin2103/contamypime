@@ -12,6 +12,7 @@ import { ImportScreen } from '../features/import/ImportScreen'
 import { ShiftScreen } from '../features/shifts/ShiftScreen'
 import { SalesScreen } from '../features/sales/SalesScreen'
 import { EntryScreen } from '../features/inventory/EntryScreen'
+import { CashScreen } from '../features/cash/CashScreen'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
@@ -39,6 +40,7 @@ export function AppRouter() {
         <Route path="/shift" element={<ShiftScreen />} />
         <Route path="/sell" element={<SalesScreen />} />
         <Route path="/entry" element={<EntryScreen />} />
+        <Route path="/cash" element={<CashScreen />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="*" element={<Navigate to="/" replace />} />

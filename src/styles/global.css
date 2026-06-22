@@ -746,6 +746,34 @@ input[type='file'] {
   font-size: 0.85rem;
 }
 
+/* ----- Tabs ----- */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: var(--gap);
+  background: var(--surface);
+  padding: 4px;
+  border-radius: 12px;
+}
+.tab {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+.tab.is-active {
+  background: var(--primary);
+  color: var(--text);
+}
+.equiv {
+  margin-top: 10px;
+  text-align: right;
+}
+
 /* ----- Cambio de precio ----- */
 .ok-text {
   color: var(--ok);

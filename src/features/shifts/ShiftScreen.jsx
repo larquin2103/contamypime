@@ -6,6 +6,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { OtherShiftBlocked } from './OtherShiftBlocked'
 import { CashInputs } from '../../components/CashInputs'
+import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { CASH_CURRENCIES } from '../../db/constants'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
@@ -96,6 +97,9 @@ function ActiveShiftPanel({ shift, onClosed }) {
       </Link>
       <Link className="btn btn--block" to="/price">
         🏷️ Cambiar precio
+      </Link>
+      <Link className="btn btn--block" to="/cash">
+        💸 Caja y deudas
       </Link>
 
       <section className="card">
@@ -207,12 +211,31 @@ function CloseShiftPanel({ shift, onCancel, onClosed }) {
 }
 
 function CloseResult({ result, onDone }) {
-  const { semaphore, expectedCash, declared, difference, base } = result
+  const {
+    semaphore,
+    expectedCash,
+    declared,
+    difference,
+    base,
+    salesCount,
+    salesCash,
+    withdrawalsByCur,
+    internalDebtTotal,
+    shift
+  } = result
+  const { toBase } = useCurrency()
   const labels = {
     green: 'El turno cuadra',
     yellow: 'Diferencia menor',
     red: 'Diferencia critica'
   }
+
+  // Equivalencia informativa: todo el efectivo declarado expresado en base.
+  const declaredInBase = CASH_CURRENCIES.reduce(
+    (acc, c) => acc + (c === base ? Number(declared[c] || 0) : toBase(Number(declared[c] || 0), c)),
+    0
+  )
+
   return (
     <div className="screen">
       <div className={`cuadre-banner cuadre-banner--${semaphore.color}`}>
@@ -226,6 +249,7 @@ function CloseResult({ result, onDone }) {
       </div>
 
       <section className="card">
+        <h3>Cuadre de caja</h3>
         <table className="cash-table">
           <thead>
             <tr>
@@ -234,11 +258,26 @@ function CloseResult({ result, onDone }) {
             </tr>
           </thead>
           <tbody>
-            <Row label="Esperado" data={expectedCash} />
+            <Row label="Fondo inicial" data={shift.openingCash} />
+            <Row label="Ventas efectivo" data={salesCash} />
+            <Row label="Extracciones" data={withdrawalsByCur} sign="-" />
+            <Row label="Esperado" data={expectedCash} strong />
             <Row label="Declarado" data={declared} />
             <Row label="Diferencia" data={difference} strong />
           </tbody>
         </table>
+        <p className="muted equiv">
+          Equivalente declarado en {base}: <strong>{formatMoney(declaredInBase, base)}</strong>
+        </p>
+      </section>
+
+      <section className="card">
+        <h3>Resumen del turno</h3>
+        <div className="kv"><span className="muted">Ventas</span><strong>{salesCount}</strong></div>
+        <div className="kv">
+          <span className="muted">Deuda interna (no es ingreso)</span>
+          <strong>{formatMoney(internalDebtTotal)}</strong>
+        </div>
       </section>
 
       <button className="btn btn--primary btn--block" onClick={onDone}>
