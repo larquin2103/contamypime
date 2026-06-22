@@ -73,19 +73,19 @@ Colecciones en IndexedDB (PK = UUID string en todas):
   Fase 1; el cobro real en MLC llega en Fase 2). Tasas independientes por moneda.
 - Cuadre con semáforo 🟢 / 🟡 / 🔴, umbrales configurables por el dueño.
 
-## Plan de implementación (Fase 1)
+## Plan de implementación (Fase 1) — ✅ COMPLETA
 
 - [x] **Bloque 0** — Scaffold PWA + Dexie + repositorios
 - [x] **Bloque 1** — Ajustes: moneda base, tasas (USD/MLC), conversor, umbrales del semáforo
 - [x] **Bloque 2** — Auth con PIN (onboarding del dueño, login, gestión de usuarios)
-- [ ] **Bloque 3** — Catálogo + categorías + búsqueda rápida
-- [ ] **Bloque 4** — Apertura/cierre de turno
-- [ ] **Bloque 5** — Ventas de mostrador (efectivo, cambio, descuento de stock)
-- [ ] **Bloque 6** — Importación Excel/CSV (plantilla + validación)
-- [ ] **Bloque 7** — Entradas/compras (con alta de producto en el flujo)
-- [ ] **Bloque 8** — Cambio de precio mid-turno + historial
-- [ ] **Bloque 9** — Extracciones de caja + deuda interna
-- [ ] **Bloque 10** — Cuadre de turno + semáforo
+- [x] **Bloque 3** — Catálogo + categorías + búsqueda rápida
+- [x] **Bloque 4** — Apertura/cierre de turno
+- [x] **Bloque 5** — Ventas de mostrador (efectivo, cambio, descuento de stock)
+- [x] **Bloque 6** — Importación Excel/CSV (plantilla + validación)
+- [x] **Bloque 7** — Entradas/compras (con alta de producto en el flujo)
+- [x] **Bloque 8** — Cambio de precio mid-turno + historial
+- [x] **Bloque 9** — Extracciones de caja + deuda interna
+- [x] **Bloque 10** — Cuadre de turno + semáforo
 
 Las Fases 2, 3 y 4 (transferencias bancarias, conteo físico, multi-punto, sincronización
 Firebase) están planificadas pero **no** se construyen todavía.
