@@ -14,3 +14,6 @@ dev-dist
 # Python
 __pycache__/
 *.pyc
+
+# Firebase (cache local del deploy, se regenera)
+.firebase/
