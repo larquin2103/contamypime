@@ -50,6 +50,9 @@ export function Home() {
         </Link>
         {isOwner && (
           <>
+            <Link className="btn btn--block" to="/dashboard">
+              📊 Panel del dueno
+            </Link>
             <Link className="btn btn--block" to="/entry">
               📥 Entrada de mercancia
             </Link>

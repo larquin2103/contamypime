@@ -14,6 +14,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
   const [unit, setUnit] = useState(product?.unit ?? UNITS[0])
   const [price, setPrice] = useState(product?.price ?? '')
   const [cost, setCost] = useState(product?.cost ?? '')
+  const [minStock, setMinStock] = useState(product?.minStock ?? '')
   const [openingStock, setOpeningStock] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -35,7 +36,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
     try {
       if (editing) {
         // El precio se cambia aparte para que quede en el historial.
-        await productsRepo.update(product.id, { code, name, categoryId, unit, cost })
+        await productsRepo.update(product.id, { code, name, categoryId, unit, cost, minStock: Number(minStock) || 0 })
         await productsRepo.changePrice(product.id, price, { userId: user.id })
       } else {
         const newProductId = await productsRepo.create({
@@ -45,6 +46,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
           unit,
           price,
           cost,
+          minStock: Number(minStock) || 0,
           openingStock: hideOpeningStock ? 0 : openingStock,
           userId: user.id
         })
@@ -116,6 +118,17 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
             />
           </label>
         </div>
+
+        <label className="field">
+          <span>Stock minimo (alerta de reabastecimiento)</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={minStock}
+            onChange={(e) => setMinStock(e.target.value)}
+            placeholder="0"
+          />
+        </label>
 
         {!editing && !hideOpeningStock && (
           <label className="field">

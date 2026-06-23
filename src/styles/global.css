@@ -955,6 +955,59 @@ input[type='file'] {
   padding: 8px;
 }
 
+/* ----- Panel del dueno ----- */
+.period-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: var(--gap);
+  flex-wrap: wrap;
+}
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.kpi {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kpi strong {
+  font-size: 1.25rem;
+}
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: 12px;
+}
+.rank-row__pos {
+  font-weight: 700;
+  color: var(--primary-600);
+  min-width: 20px;
+  text-align: center;
+}
+.rank-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.rank-row__main .muted {
+  font-size: 0.78rem;
+}
+.rot-select {
+  width: auto;
+  padding: 6px 8px;
+}
+
 /* ----- Cambio de precio ----- */
 .ok-text {
   color: var(--ok);

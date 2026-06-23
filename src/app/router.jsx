@@ -16,6 +16,7 @@ import { CountScreen } from '../features/inventory/CountScreen'
 import { CashScreen } from '../features/cash/CashScreen'
 import { FinancesScreen } from '../features/cash/FinancesScreen'
 import { HandoffScreen } from '../features/handoff/HandoffScreen'
+import { DashboardScreen } from '../features/dashboard/DashboardScreen'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
@@ -47,6 +48,7 @@ export function AppRouter() {
         <Route path="/cash" element={<CashScreen />} />
         <Route path="/finances" element={<FinancesScreen />} />
         <Route path="/handoff" element={<HandoffScreen />} />
+        <Route path="/dashboard" element={<DashboardScreen />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="*" element={<Navigate to="/" replace />} />

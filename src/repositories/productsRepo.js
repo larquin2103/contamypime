@@ -30,7 +30,7 @@ export const productsRepo = {
 
   // Crea producto. Si openingStock > 0, registra el movimiento de apertura
   // (queda trazado en el libro mayor, nunca se inyecta el stock "a mano").
-  async create({ code, name, categoryId, unit, price, cost, openingStock = 0, userId = null }) {
+  async create({ code, name, categoryId, unit, price, cost, minStock = 0, openingStock = 0, userId = null }) {
     const id = newId()
     const ts = now()
     await db.products.add({
@@ -43,7 +43,7 @@ export const productsRepo = {
       price: Number(price) || 0,
       cost: Number(cost) || 0,
       stock: 0,
-      minStock: 0,
+      minStock: Number(minStock) || 0,
       active: true,
       createdAt: ts,
       updatedAt: ts
