@@ -45,8 +45,8 @@ export function DashboardScreen() {
   if (!isOwner) {
     return (
       <div className="screen">
-        <h2>Panel del dueno</h2>
-        <p className="muted">Solo el dueno puede ver el panel.</p>
+        <h2>Panel del dueño</h2>
+        <p className="muted">Solo el dueño puede ver el panel.</p>
         <Link className="btn btn--primary btn--block" to="/">Volver</Link>
       </div>
     )
@@ -56,7 +56,7 @@ export function DashboardScreen() {
 
   return (
     <div className="screen">
-      <h2>Panel del dueno</h2>
+      <h2>Panel del dueño</h2>
 
       <div className="period-row">
         {PERIODS.map(([k, label]) => (

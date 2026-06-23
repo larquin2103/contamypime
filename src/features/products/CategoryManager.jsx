@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 
-// Gestion de categorias (solo dueno). Baja logica: nunca se borran.
+// Gestion de categorias (solo dueño). Baja logica: nunca se borran.
 export function CategoryManager({ onClose }) {
   const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
   const [name, setName] = useState('')

@@ -37,7 +37,7 @@ export function SalesScreen() {
         <section className="card">
           <p>Para registrar ventas necesitas tener <strong>tu turno abierto</strong>.</p>
           <p className="muted">
-            Solo el vendedor con turno activo puede vender — ni siquiera el dueno sin turno.
+            Solo el vendedor con turno activo puede vender — ni siquiera el dueño sin turno.
           </p>
           <Link className="btn btn--primary btn--block" to="/shift">
             Ir a Turno

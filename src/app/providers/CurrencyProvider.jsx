@@ -7,7 +7,7 @@ import { foreignToBase, baseToForeign } from '../../lib/currency'
 const CurrencyContext = createContext(null)
 
 // Expone la moneda base, las tasas vigentes y helpers de conversion.
-// Todo reactivo: si el dueno cambia la tasa en Ajustes, se actualiza al vuelo.
+// Todo reactivo: si el dueño cambia la tasa en Ajustes, se actualiza al vuelo.
 export function CurrencyProvider({ children }) {
   const baseCurrency = useLiveQuery(() => configRepo.getBaseCurrency(), [], 'MN')
   const rates = useLiveQuery(() => ratesRepo.currentRates(), [], {})

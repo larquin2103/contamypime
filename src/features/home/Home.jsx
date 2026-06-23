@@ -51,7 +51,7 @@ export function Home() {
         {isOwner && (
           <>
             <Link className="btn btn--block" to="/dashboard">
-              📊 Panel del dueno
+              📊 Panel del dueño
             </Link>
             <Link className="btn btn--block" to="/audit">
               🗂️ Auditoria

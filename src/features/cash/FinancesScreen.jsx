@@ -8,7 +8,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 
-// Gestion de deudas internas y historial de extracciones (solo dueno).
+// Gestion de deudas internas y historial de extracciones (solo dueño).
 export function FinancesScreen() {
   const { user, isOwner } = useAuth()
   const [tab, setTab] = useState('deudas')
@@ -17,7 +17,7 @@ export function FinancesScreen() {
     return (
       <div className="screen">
         <h2>Deudas y caja</h2>
-        <p className="muted">Solo el dueno puede ver esta seccion.</p>
+        <p className="muted">Solo el dueño puede ver esta seccion.</p>
         <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
       </div>
     )

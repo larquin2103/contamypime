@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { usersRepo } from '../repositories/usersRepo'
 import { PinInput } from './PinInput'
 
-// Pide el PIN del dueno para autorizar una operacion sensible (extraccion,
+// Pide el PIN del dueño para autorizar una operacion sensible (extraccion,
 // deuda interna) cuando la registra un vendedor.
 export function OwnerAuthModal({ onAuthorized, onCancel }) {
   const [pin, setPin] = useState('')
@@ -18,7 +18,7 @@ export function OwnerAuthModal({ onAuthorized, onCancel }) {
     if (ok) {
       onAuthorized(owner)
     } else {
-      setError('PIN del dueno incorrecto')
+      setError('PIN del dueño incorrecto')
       setPin('')
     }
   }
@@ -26,8 +26,8 @@ export function OwnerAuthModal({ onAuthorized, onCancel }) {
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Autorizacion del dueno</h3>
-        <p className="muted">Esta operacion necesita el PIN del dueno para autorizarse.</p>
+        <h3>Autorizacion del dueño</h3>
+        <p className="muted">Esta operacion necesita el PIN del dueño para autorizarse.</p>
         <PinInput value={pin} onChange={setPin} />
         {error && <p className="error">{error}</p>}
         <div className="modal__actions">

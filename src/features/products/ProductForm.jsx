@@ -3,7 +3,7 @@ import { productsRepo } from '../../repositories/productsRepo'
 import { UNITS, UNIT_LABELS } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
 
-// Alta / edicion de producto. Solo dueno (la creacion desde entrada de
+// Alta / edicion de producto. Solo dueño (la creacion desde entrada de
 // mercancia por el vendedor llega en el Bloque 7).
 export function ProductForm({ product, categories, onClose, onCreated, hideOpeningStock = false }) {
   const { user } = useAuth()

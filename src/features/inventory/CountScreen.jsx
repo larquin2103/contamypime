@@ -17,7 +17,7 @@ export function CountScreen() {
     return <div className="screen"><p className="muted">Cargando…</p></div>
   }
 
-  // Hay un conteo esperando aprobacion: el dueno lo revisa; el resto espera.
+  // Hay un conteo esperando aprobacion: el dueño lo revisa; el resto espera.
   if (pending) {
     return isOwner ? (
       <CountReview count={pending} ownerId={user.id} />
@@ -25,7 +25,7 @@ export function CountScreen() {
       <div className="screen">
         <h2>Conteo fisico</h2>
         <section className="card">
-          <p>Hay un conteo enviado, esperando la <strong>aprobacion del dueno</strong>.</p>
+          <p>Hay un conteo enviado, esperando la <strong>aprobacion del dueño</strong>.</p>
         </section>
       </div>
     )
@@ -38,7 +38,7 @@ export function CountScreen() {
       <h2>Conteo fisico</h2>
       <section className="card">
         <p className="muted">
-          Cuenta el inventario por categorias. Al terminar, el dueno aprueba y se ajustan
+          Cuenta el inventario por categorias. Al terminar, el dueño aprueba y se ajustan
           las existencias.
         </p>
         <button
@@ -187,7 +187,7 @@ function CountEditor({ draft }) {
   )
 }
 
-// ---- Revision / aprobacion (dueno) ----
+// ---- Revision / aprobacion (dueño) ----
 function CountReview({ count, ownerId }) {
   const creator = useLiveQuery(() => usersRepo.get(count.createdBy), [count.createdBy])
   const [busy, setBusy] = useState(false)

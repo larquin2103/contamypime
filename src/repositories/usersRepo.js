@@ -64,7 +64,7 @@ export const usersRepo = {
     return all.find((u) => u.role === ROLES.OWNER) || null
   },
 
-  // --- Codigo de recuperacion (solo para el dueno) ---
+  // --- Codigo de recuperacion (solo para el dueño) ---
   async setRecoveryCode(id, code) {
     const { hash, salt } = await hashPin(normalizeRecoveryCode(code))
     await db.users.update(id, { recoveryHash: hash, recoverySalt: salt, updatedAt: now() })

@@ -2,7 +2,7 @@ import { formatMoney } from './currency'
 import { SEMAPHORE_EMOJI } from './semaphore'
 
 // Abre WhatsApp con un texto prellenado (wa.me). Funciona online (es para
-// avisar al dueno; el resto de la app sigue siendo offline).
+// avisar al dueño; el resto de la app sigue siendo offline).
 export function openWhatsapp(number, text) {
   const num = String(number || '').replace(/[^0-9]/g, '')
   const base = num ? `https://wa.me/${num}` : 'https://wa.me/'
@@ -24,7 +24,7 @@ export async function shareFile(blob, filename, text) {
   return false
 }
 
-// Reporte de cierre para enviar al dueno.
+// Reporte de cierre para enviar al dueño.
 export function buildCloseReport(result, fromName) {
   const { shift, base, expectedCash, declared, difference, semaphore, salesCount, transfersByCur, internalDebtTotal } =
     result

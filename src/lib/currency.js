@@ -1,7 +1,7 @@
 // Conversion de moneda. La "tasa" se define como:
 //   cuanta MONEDA BASE vale 1 unidad de la moneda extranjera.
 //   Ej: 1 USD = 320 MN  ->  rate = 320
-// Asi el dueno la edita como la piensa ("el dolar esta a 320").
+// Asi el dueño la edita como la piensa ("el dolar esta a 320").
 
 export function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100

@@ -89,7 +89,7 @@ export function Login() {
   )
 }
 
-// Recuperacion del PIN del dueno mediante el codigo de recuperacion.
+// Recuperacion del PIN del dueño mediante el codigo de recuperacion.
 function RecoverPin({ user, onCancel, onDone }) {
   const [code, setCode] = useState('')
   const [newPin, setNewPin] = useState('')

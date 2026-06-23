@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { usersRepo } from '../../repositories/usersRepo'
 import { formatDateTime } from '../../lib/dates'
 
-// Hay un turno activo de OTRO vendedor: ni el dueno puede operar sobre el.
+// Hay un turno activo de OTRO vendedor: ni el dueño puede operar sobre el.
 export function OtherShiftBlocked({ shift }) {
   const seller = useLiveQuery(() => usersRepo.get(shift.sellerId), [shift.sellerId])
 

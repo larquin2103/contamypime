@@ -8,7 +8,7 @@ function inRange(iso, from, to) {
   return true
 }
 
-// Analitica para el panel del dueno. Todo se deriva de las ventas (no se
+// Analitica para el panel del dueño. Todo se deriva de las ventas (no se
 // guardan agregados): costo vs ganancia, ranking y rotacion.
 export const analyticsRepo = {
   async report({ from = null, to = null } = {}) {

@@ -125,7 +125,7 @@ export const shiftsRepo = {
     // Semaforo sobre la moneda base (la principal del cuadre).
     const sem = evalSemaphore(summary.expectedCash[base], Number(declared[base] || 0), cfg)
 
-    // Lo cerro alguien distinto al vendedor del turno? (p.ej. el dueno por abandono)
+    // Lo cerro alguien distinto al vendedor del turno? (p.ej. el dueño por abandono)
     const forced = !!closedBy && closedBy !== summary.shift.sellerId
 
     await db.shifts.update(shiftId, {

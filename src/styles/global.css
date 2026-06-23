@@ -58,6 +58,19 @@ h3 {
 .brand--sm {
   font-size: 1.1rem;
 }
+.app-header__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.active-user {
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ----- Layout shell ----- */
 .app-shell {
@@ -955,7 +968,7 @@ input[type='file'] {
   padding: 8px;
 }
 
-/* ----- Panel del dueno ----- */
+/* ----- Panel del dueño ----- */
 .period-row {
   display: flex;
   gap: 8px;

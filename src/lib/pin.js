@@ -44,7 +44,7 @@ export async function verifyPin(pin, saltHex, expectedHash) {
   return hash === expectedHash
 }
 
-// Codigo de recuperacion para el PIN del dueno (offline, sin correo).
+// Codigo de recuperacion para el PIN del dueño (offline, sin correo).
 // Formato legible: ABCD-EF12-34. Se muestra una vez y se guarda hasheado.
 export function genRecoveryCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(5))

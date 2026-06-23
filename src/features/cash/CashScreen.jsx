@@ -92,7 +92,7 @@ function WithdrawForm({ shift, user, isOwner }) {
   const submit = () => {
     if (!valid) return
     if (isOwner) doWithdraw(user.name)
-    else setAskAuth(true) // el vendedor necesita autorizacion del dueno
+    else setAskAuth(true) // el vendedor necesita autorizacion del dueño
   }
 
   return (
@@ -115,7 +115,7 @@ function WithdrawForm({ shift, user, isOwner }) {
         <span>Motivo</span>
         <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: pago a proveedor" />
       </label>
-      {!isOwner && <p className="muted">Requiere autorizacion del dueno (PIN) al confirmar.</p>}
+      {!isOwner && <p className="muted">Requiere autorizacion del dueño (PIN) al confirmar.</p>}
       {saved && <p className="ok-text">✓ Extraccion registrada</p>}
       <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
         {busy ? 'Registrando…' : 'Registrar extraccion'}
@@ -230,7 +230,7 @@ function DebtForm({ shift, user, isOwner }) {
             <span>Nota (opcional)</span>
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
-          {!isOwner && <p className="muted">Requiere autorizacion del dueno (PIN) al confirmar.</p>}
+          {!isOwner && <p className="muted">Requiere autorizacion del dueño (PIN) al confirmar.</p>}
           {saved && <p className="ok-text">✓ Deuda registrada</p>}
           <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
             {busy ? 'Registrando…' : 'Registrar deuda'}

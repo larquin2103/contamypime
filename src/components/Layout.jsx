@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../app/providers/AuthProvider'
 import { useShift } from '../app/providers/ShiftProvider'
+import { ROLE_LABELS } from '../db/constants'
 
 // Shell de la app autenticada: cabecera + contenido + navegacion inferior.
 export function Layout({ children }) {
@@ -10,7 +11,12 @@ export function Layout({ children }) {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <span className="brand brand--sm">MypiCuadre</span>
+        <div className="app-header__brand">
+          <span className="brand brand--sm">MypiCuadre</span>
+          <span className="active-user">
+            {user.name} · {ROLE_LABELS[user.role]}
+          </span>
+        </div>
         <button className="btn btn--ghost btn--sm" onClick={logout}>
           Salir
         </button>

@@ -28,7 +28,7 @@ export function ImportScreen() {
     return (
       <div className="screen">
         <h2>Importar inventario</h2>
-        <p className="muted">Solo el dueno puede importar el catalogo.</p>
+        <p className="muted">Solo el dueño puede importar el catalogo.</p>
       </div>
     )
   }

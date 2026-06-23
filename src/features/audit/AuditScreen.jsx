@@ -58,7 +58,7 @@ export function AuditScreen() {
     return (
       <div className="screen">
         <h2>Auditoria</h2>
-        <p className="muted">Solo el dueno puede ver la auditoria.</p>
+        <p className="muted">Solo el dueño puede ver la auditoria.</p>
         <Link className="btn btn--primary btn--block" to="/">Volver</Link>
       </div>
     )
@@ -102,7 +102,7 @@ export function AuditScreen() {
                 Esperado {m(s.expectedCash?.[baseCurrency] ?? 0)} · Declarado {m(s.declaredCash?.[baseCurrency] ?? 0)} · Dif {m(s.difference?.[baseCurrency] ?? 0)}
               </span>
               <div className="audit-flags">
-                {s.forced && <span className="flag flag--warn">cerrado por dueno</span>}
+                {s.forced && <span className="flag flag--warn">cerrado por dueño</span>}
                 {s.countSkipped && <span className="flag flag--warn">sin conteo</span>}
               </div>
             </div>

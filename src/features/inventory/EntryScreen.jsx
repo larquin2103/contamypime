@@ -25,13 +25,13 @@ export function EntryScreen() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
 
-  // Solo el dueno registra entradas de mercancia (y ve costos).
+  // Solo el dueño registra entradas de mercancia (y ve costos).
   if (!isOwner) {
     return (
       <div className="screen">
         <h2>Entrada de mercancia</h2>
         <section className="card">
-          <p>Solo el <strong>dueno</strong> puede registrar entradas de mercancia.</p>
+          <p>Solo el <strong>dueño</strong> puede registrar entradas de mercancia.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>

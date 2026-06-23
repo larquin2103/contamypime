@@ -5,7 +5,7 @@ import { PinInput } from '../../components/PinInput'
 import { ROLES } from '../../db/constants'
 import { genRecoveryCode } from '../../lib/pin'
 
-// Primer arranque: no hay usuarios. Creamos al DUENO con su PIN.
+// Primer arranque: no hay usuarios. Creamos al DUEÑO con su PIN.
 export function Onboarding() {
   const { login } = useAuth()
   const [name, setName] = useState('')
@@ -48,12 +48,12 @@ export function Onboarding() {
     <div className="screen screen--centered">
       <div className="card auth-card">
         <h1 className="brand">MypiCuadre</h1>
-        <p className="muted">Configuracion inicial — crea la cuenta del dueno</p>
+        <p className="muted">Configuracion inicial — crea la cuenta del dueño</p>
 
         {step === 'name' && (
           <>
             <label className="field">
-              <span>Nombre del dueno</span>
+              <span>Nombre del dueño</span>
               <input
                 autoFocus
                 value={name}

@@ -22,7 +22,7 @@ import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
 // Decide que mostrar segun el estado:
-//  - sin usuarios          -> Onboarding (crear dueno)
+//  - sin usuarios          -> Onboarding (crear dueño)
 //  - usuarios pero sin sesion -> Login
 //  - con sesion            -> app (Layout + rutas)
 export function AppRouter() {

@@ -5,8 +5,8 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
 import { ROLES, ROLE_LABELS } from '../../db/constants'
 
-// Gestion de usuarios (solo dueno). Los usuarios nunca se borran: se desactivan.
-// Jerarquia unica: el dueno es uno solo; aqui solo se crean vendedores.
+// Gestion de usuarios (solo dueño). Los usuarios nunca se borran: se desactivan.
+// Jerarquia unica: el dueño es uno solo; aqui solo se crean vendedores.
 export function UsersAdmin() {
   const { user, isOwner } = useAuth()
   const users = useLiveQuery(() => usersRepo.list(), [], [])
@@ -17,7 +17,7 @@ export function UsersAdmin() {
     return (
       <div className="screen">
         <h2>Usuarios</h2>
-        <p className="muted">Solo el dueno puede gestionar usuarios.</p>
+        <p className="muted">Solo el dueño puede gestionar usuarios.</p>
       </div>
     )
   }
@@ -62,7 +62,7 @@ export function UsersAdmin() {
   )
 }
 
-// Solo crea VENDEDORES (el dueno es unico, definido en el onboarding).
+// Solo crea VENDEDORES (el dueño es unico, definido en el onboarding).
 function NewUserForm({ onClose }) {
   const [name, setName] = useState('')
   const [pin, setPin] = useState('')
@@ -107,7 +107,7 @@ function NewUserForm({ onClose }) {
   )
 }
 
-// El dueno resetea el PIN de cualquier usuario (incluido el suyo).
+// El dueño resetea el PIN de cualquier usuario (incluido el suyo).
 function ResetPinForm({ user, onClose }) {
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)

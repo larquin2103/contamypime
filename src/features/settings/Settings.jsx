@@ -18,7 +18,7 @@ export function Settings() {
     return (
       <div className="screen">
         <h2>Ajustes</h2>
-        <p className="muted">Solo el dueno puede modificar la configuracion.</p>
+        <p className="muted">Solo el dueño puede modificar la configuracion.</p>
       </div>
     )
   }
@@ -51,7 +51,7 @@ function WhatsappSection() {
 
   return (
     <section className="card">
-      <h3>WhatsApp del dueno</h3>
+      <h3>WhatsApp del dueño</h3>
       <p className="muted">
         Para recibir el reporte de cierre de cada turno. Incluye el codigo de pais (ej. 53 para Cuba).
       </p>

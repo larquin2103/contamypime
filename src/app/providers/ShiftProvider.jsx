@@ -6,7 +6,7 @@ import { useAuth } from './AuthProvider'
 const ShiftContext = createContext(null)
 
 // Expone el turno activo a toda la app. Regla de oro (plan):
-// solo el vendedor del turno activo puede vender — ni siquiera el dueno
+// solo el vendedor del turno activo puede vender — ni siquiera el dueño
 // sin haber abierto turno.
 export function ShiftProvider({ children }) {
   const { user } = useAuth()

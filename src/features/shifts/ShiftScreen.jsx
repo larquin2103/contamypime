@@ -31,7 +31,7 @@ export function ShiftScreen() {
   }
   if (!activeShift) return <OpenShiftForm />
   if (isMine) return <ActiveShiftPanel shift={activeShift} onClosed={setCloseResult} />
-  // Turno de otro vendedor: el dueno puede cerrarlo (p.ej. quedo abierto); el
+  // Turno de otro vendedor: el dueño puede cerrarlo (p.ej. quedo abierto); el
   // resto solo ve el bloqueo.
   if (isOwner) return <ForeignShiftOwner shift={activeShift} onClosed={setCloseResult} />
   return <OtherShiftBlocked shift={activeShift} />
@@ -198,7 +198,7 @@ function Row({ label, data, sign = '', strong = false }) {
   )
 }
 
-// ---- Turno de otro vendedor, visto por el dueno (p.ej. quedo abierto) ----
+// ---- Turno de otro vendedor, visto por el dueño (p.ej. quedo abierto) ----
 function ForeignShiftOwner({ shift, onClosed }) {
   const seller = useLiveQuery(() => usersRepo.get(shift.sellerId), [shift.sellerId])
   const [closing, setClosing] = useState(false)
@@ -224,7 +224,7 @@ function ForeignShiftOwner({ shift, onClosed }) {
         </p>
         <p className="muted">
           Si el vendedor salio de la app sin cerrar, sus ventas y movimientos siguen guardados.
-          Como dueno puedes cerrar su turno haciendo el cuadre, o esperar a que el vuelva.
+          Como dueño puedes cerrar su turno haciendo el cuadre, o esperar a que el vuelva.
         </p>
         <button className="btn btn--primary btn--block" onClick={() => setClosing(true)}>
           Cerrar turno de {seller?.name || 'vendedor'}
@@ -266,7 +266,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
     const autoNote = [
       notes,
       countSkipped ? '[cerrado sin contar efectivo]' : '',
-      forcedByOwner ? '[cerrado por el dueno]' : ''
+      forcedByOwner ? '[cerrado por el dueño]' : ''
     ].filter(Boolean).join(' ')
     const res = await shiftsRepo.close({
       shiftId: shift.id,
@@ -338,7 +338,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
             <p>
               Se registrara la caja declarada en <strong>0</strong> y quedara una diferencia de{' '}
               <strong>{formatMoney(diff[CASH_CURRENCIES[0]], CASH_CURRENCIES[0])}</strong>.
-              El cierre quedara marcado como <em>sin conteo</em> para que el dueno lo revise.
+              El cierre quedara marcado como <em>sin conteo</em> para que el dueño lo revise.
             </p>
             <div className="modal__actions">
               <button className="btn btn--ghost" onClick={() => setWarnNoCount(false)}>
@@ -405,7 +405,7 @@ function CloseResult({ result, onDone }) {
 
       {(forced || countSkipped) && (
         <div className="alert-flags">
-          {forced && <span className="flag flag--warn">Cerrado por el dueno</span>}
+          {forced && <span className="flag flag--warn">Cerrado por el dueño</span>}
           {countSkipped && <span className="flag flag--warn">Sin conteo de efectivo</span>}
         </div>
       )}
@@ -451,7 +451,7 @@ function CloseResult({ result, onDone }) {
       </section>
 
       <button className="btn btn--block" onClick={sendReport}>
-        📲 Enviar reporte al dueno {ownerWhatsapp ? '' : '(WhatsApp)'}
+        📲 Enviar reporte al dueño {ownerWhatsapp ? '' : '(WhatsApp)'}
       </button>
       <Link className="btn btn--block" to="/handoff">
         🔄 Entregar turno (traspaso)
