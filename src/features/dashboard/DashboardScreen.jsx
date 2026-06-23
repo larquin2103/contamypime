@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
+import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { formatMoney } from '../../lib/currency'
@@ -150,10 +151,7 @@ export function DashboardScreen() {
 }
 
 function CategoryBreakdown({ rows, money }) {
-  const cats = useLiveQuery(async () => {
-    const { categoriesRepo } = await import('../../repositories/categoriesRepo')
-    return categoriesRepo.list()
-  }, [], [])
+  const cats = useLiveQuery(() => categoriesRepo.list(), [], [])
   const name = useMemo(() => {
     const map = { __none: 'Sin categoria' }
     for (const c of cats) map[c.id] = c.name
