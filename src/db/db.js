@@ -35,3 +35,9 @@ db.version(1).stores({
 db.version(2).stores({
   counts: 'id, status, createdAt'
 })
+
+// Fase 4 - Bloque 23: estado de sincronizacion (cursores por coleccion).
+// `key` = p.ej. "push:products" -> guarda la marca de agua ya subida.
+db.version(3).stores({
+  syncState: 'key'
+})

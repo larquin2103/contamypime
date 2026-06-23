@@ -1,0 +1,44 @@
+// Fase 4 - Colecciones que se sincronizan con Firestore.
+//
+// Cada una se replica en /businesses/{businessId}/{name}/{docId}, donde docId
+// es la clave primaria local (UUID string; en `config` es la clave key-value).
+export const SYNC_COLLECTIONS = [
+  { name: 'users', pk: 'id' },
+  { name: 'config', pk: 'key' },
+  { name: 'exchangeRates', pk: 'id' },
+  { name: 'categories', pk: 'id' },
+  { name: 'products', pk: 'id' },
+  { name: 'priceChanges', pk: 'id' },
+  { name: 'shifts', pk: 'id' },
+  { name: 'sales', pk: 'id' },
+  { name: 'stockMovements', pk: 'id' },
+  { name: 'purchases', pk: 'id' },
+  { name: 'cashMovements', pk: 'id' },
+  { name: 'internalDebts', pk: 'id' },
+  { name: 'auditEvents', pk: 'id' },
+  { name: 'counts', pk: 'id' }
+]
+
+// Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a
+// la nube (sesion de sync propia, caja heredada del turno local, etc.).
+export const LOCAL_CONFIG_KEYS = new Set([
+  'syncEnabled',
+  'syncBusinessId',
+  'syncEmail',
+  'inheritedOpeningCash'
+])
+
+// Campos de marca de tiempo, de mas reciente a base. La "marca de sync" de un
+// registro = el mayor (ISO ordena lexicograficamente) de los presentes. Como
+// toda mutacion actualiza alguno (updatedAt/closedAt/settledAt...), crece de
+// forma monotona y permite detectar cambios para subir/bajar.
+const TS_FIELDS = ['updatedAt', 'settledAt', 'closedAt', 'openedAt', 'effectiveFrom', 'createdAt']
+
+export function syncTs(rec) {
+  let max = ''
+  for (const f of TS_FIELDS) {
+    const v = rec?.[f]
+    if (typeof v === 'string' && v > max) max = v
+  }
+  return max
+}

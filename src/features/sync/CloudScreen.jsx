@@ -8,6 +8,7 @@ import {
   linkDevice,
   unlinkDevice
 } from './syncService'
+import { syncNow } from './syncEngine'
 
 export function CloudScreen() {
   const { isOwner } = useAuth()
@@ -77,6 +78,20 @@ export function CloudScreen() {
     }
   }
 
+  const doSync = async () => {
+    setError('')
+    setOk('')
+    setBusy(true)
+    try {
+      const { up } = await syncNow()
+      setOk(`Sincronización: ${up.queued} cambio(s) enviado(s) a la nube.`)
+    } catch (e) {
+      setError('No se pudo sincronizar: ' + e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const doUnlink = async () => {
     if (!confirm('¿Desvincular este dispositivo de la nube? Los datos locales se conservan.')) return
     setBusy(true)
@@ -104,6 +119,9 @@ export function CloudScreen() {
           <p className="muted">Cuenta del negocio:</p>
           <p><strong>{cloudUser.email}</strong></p>
           <p className="muted"><small>ID del negocio: {cloudUser.uid}</small></p>
+          <button className="btn btn--primary btn--block" disabled={busy} onClick={doSync}>
+            {busy ? 'Sincronizando…' : '🔄 Sincronizar ahora'}
+          </button>
           <button className="btn btn--block" disabled={busy} onClick={doUnlink}>
             Desvincular este dispositivo
           </button>
