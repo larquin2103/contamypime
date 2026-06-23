@@ -61,5 +61,10 @@ export const stockRepo = {
   async movements(productId) {
     const rows = await db.stockMovements.where('productId').equals(productId).toArray()
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  async listAll() {
+    const rows = await db.stockMovements.toArray()
+    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }
 }

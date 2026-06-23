@@ -109,5 +109,10 @@ export const productsRepo = {
   async priceHistory(id) {
     const rows = await db.priceChanges.where('productId').equals(id).toArray()
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  async allPriceChanges() {
+    const rows = await db.priceChanges.toArray()
+    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }
 }

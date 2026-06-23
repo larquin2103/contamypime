@@ -83,5 +83,10 @@ export const salesRepo = {
   async byShift(shiftId) {
     const rows = await db.sales.where('shiftId').equals(shiftId).toArray()
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  async listAll() {
+    const rows = await db.sales.toArray()
+    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }
 }

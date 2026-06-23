@@ -17,6 +17,7 @@ import { CashScreen } from '../features/cash/CashScreen'
 import { FinancesScreen } from '../features/cash/FinancesScreen'
 import { HandoffScreen } from '../features/handoff/HandoffScreen'
 import { DashboardScreen } from '../features/dashboard/DashboardScreen'
+import { AuditScreen } from '../features/audit/AuditScreen'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
@@ -49,6 +50,7 @@ export function AppRouter() {
         <Route path="/finances" element={<FinancesScreen />} />
         <Route path="/handoff" element={<HandoffScreen />} />
         <Route path="/dashboard" element={<DashboardScreen />} />
+        <Route path="/audit" element={<AuditScreen />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="*" element={<Navigate to="/" replace />} />

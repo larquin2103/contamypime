@@ -1008,6 +1008,38 @@ input[type='file'] {
   padding: 6px 8px;
 }
 
+/* ----- Auditoria ----- */
+.tabs--scroll {
+  overflow-x: auto;
+}
+.tabs--scroll .tab {
+  white-space: nowrap;
+  flex: 0 0 auto;
+  min-width: 90px;
+}
+.audit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: 12px;
+}
+.audit-row__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.audit-row .muted {
+  font-size: 0.8rem;
+}
+.audit-flags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 /* ----- Cambio de precio ----- */
 .ok-text {
   color: var(--ok);

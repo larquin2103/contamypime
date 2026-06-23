@@ -53,6 +53,9 @@ export function Home() {
             <Link className="btn btn--block" to="/dashboard">
               📊 Panel del dueno
             </Link>
+            <Link className="btn btn--block" to="/audit">
+              🗂️ Auditoria
+            </Link>
             <Link className="btn btn--block" to="/entry">
               📥 Entrada de mercancia
             </Link>
