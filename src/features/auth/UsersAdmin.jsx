@@ -4,9 +4,11 @@ import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
 import { ROLES, ROLE_LABELS } from '../../db/constants'
+import { formatDateTime } from '../../lib/dates'
 
 // Gestion de usuarios (solo dueño). Los usuarios nunca se borran: se desactivan.
-// Jerarquia unica: el dueño es uno solo; aqui solo se crean vendedores.
+// Tras sincronizar pueden aparecer duplicados (si se creo un dueño local antes
+// de vincular); aqui se pueden desactivar, conservando siempre un dueño activo.
 export function UsersAdmin() {
   const { user, isOwner } = useAuth()
   const users = useLiveQuery(() => usersRepo.list(), [], [])
@@ -22,6 +24,18 @@ export function UsersAdmin() {
     )
   }
 
+  const activeOwners = users.filter((u) => u.role === ROLES.OWNER && u.active).length
+  const hasDuplicates = users.filter((u) => u.active).length > new Set(
+    users.filter((u) => u.active).map((u) => `${u.role}:${u.name.trim().toLowerCase()}`)
+  ).size
+
+  const toggle = (u) => {
+    if (u.active && u.role === ROLES.OWNER) {
+      if (!confirm(`¿Desactivar al dueño "${u.name}"? Úsalo solo para quitar un duplicado; conserva el dueño correcto.`)) return
+    }
+    usersRepo.setActive(u.id, !u.active)
+  }
+
   return (
     <div className="screen">
       <div className="screen__header">
@@ -31,29 +45,40 @@ export function UsersAdmin() {
         </button>
       </div>
 
+      {hasDuplicates && (
+        <p className="muted" style={{ marginBottom: 10 }}>
+          Hay usuarios con el mismo nombre. Si son <strong>duplicados de la sincronización</strong>,
+          desactiva los sobrantes (deja activo el que usas para entrar en cada dispositivo).
+        </p>
+      )}
+
       <div className="list">
-        {users.map((u) => (
-          <div key={u.id} className={`list-item ${u.active ? '' : 'is-inactive'}`}>
-            <div>
-              <strong>{u.name}</strong>
-              <span className="badge">{ROLE_LABELS[u.role]}</span>
-              {!u.active && <span className="badge badge--muted">Inactivo</span>}
-            </div>
-            <div className="item-actions">
-              <button className="btn btn--ghost btn--sm" onClick={() => setResetting(u)}>
-                PIN
-              </button>
-              {u.id !== user.id && u.role !== ROLES.OWNER && (
-                <button
-                  className="btn btn--ghost btn--sm"
-                  onClick={() => usersRepo.setActive(u.id, !u.active)}
-                >
-                  {u.active ? 'Desactivar' : 'Activar'}
+        {users.map((u) => {
+          // Se puede alternar si no eres tu mismo y no dejas al negocio sin dueño.
+          const canToggle = u.id !== user.id && !(u.role === ROLES.OWNER && u.active && activeOwners <= 1)
+          return (
+            <div key={u.id} className={`list-item ${u.active ? '' : 'is-inactive'}`}>
+              <div>
+                <strong>{u.name}</strong>
+                <span className="badge">{ROLE_LABELS[u.role]}</span>
+                {!u.active && <span className="badge badge--muted">Inactivo</span>}
+                {u.id === user.id && <span className="badge badge--muted">Tú</span>}
+                <br />
+                <span className="muted"><small>#{u.id.slice(0, 6)} · creado {formatDateTime(u.createdAt)}</small></span>
+              </div>
+              <div className="item-actions">
+                <button className="btn btn--ghost btn--sm" onClick={() => setResetting(u)}>
+                  PIN
                 </button>
-              )}
+                {canToggle && (
+                  <button className="btn btn--ghost btn--sm" onClick={() => toggle(u)}>
+                    {u.active ? 'Desactivar' : 'Activar'}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {showForm && <NewUserForm onClose={() => setShowForm(false)} />}
