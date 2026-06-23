@@ -122,10 +122,10 @@ sigue distinguiendo al vendedor. Todo cuelga de `businesses/{businessId}/…` en
 protegido por reglas. Encaja en el plan **Spark (gratis)**.
 
 - [x] **Bloque 21** — Infraestructura: SDK Firebase, init con cache offline, reglas e índices Firestore
-- [ ] **Bloque 22** — Cuenta de nube del negocio (Auth email/contraseña) + alta de dispositivos
-- [ ] **Bloque 23** — Motor de subida (push) con marca de agua por `updatedAt`
-- [ ] **Bloque 24** — Bajada en tiempo real (pull) + recálculo de stock desde el libro mayor
-- [ ] **Bloque 25** — Indicador de estado de sync + alta de dispositivo desde la nube
-- [ ] **Bloque 26** — Reglas de seguridad por `businessId`, índices y manejo de conflictos
+- [x] **Bloque 22** — Cuenta de nube del negocio (Auth email/contraseña) + alta de dispositivos
+- [x] **Bloque 23** — Motor de subida (push) con marca de agua por `updatedAt`
+- [x] **Bloque 24** — Bajada en tiempo real (pull) + recálculo de stock desde el libro mayor
+- [x] **Bloque 25** — Indicador de estado de sync + alta de dispositivo desde la nube
+- [x] **Bloque 26** — Reglas de seguridad por `businessId`, índices y manejo de conflictos
 
 La app ya está preparada para instalarse como PWA (ver `DEPLOY.md`).

@@ -24,6 +24,13 @@ export const shiftsRepo = {
     return db.shifts.get(id)
   },
 
+  // Todos los turnos abiertos. Normalmente 0 o 1; >1 indica que dos
+  // dispositivos abrieron turno a la vez (sin conexion) y luego sincronizaron.
+  async listOpen() {
+    const open = await db.shifts.where('status').equals(SHIFT_STATUS.OPEN).toArray()
+    return open.sort((a, b) => (a.openedAt < b.openedAt ? -1 : 1))
+  },
+
   async list() {
     const all = await db.shifts.toArray()
     return all.sort((a, b) => (a.openedAt < b.openedAt ? 1 : -1))

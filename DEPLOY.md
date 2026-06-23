@@ -38,6 +38,24 @@ npm run deploy
 Esto construye la app y la sube. Al terminar te muestra la **Hosting URL**
 (algo como `https://mypicuadre.web.app`).
 
+### 4b. Sincronización (Fase 4) — habilitar Firestore una sola vez
+Para que los teléfonos se sincronicen entre sí necesitas activar la base de
+datos en la nube y subir sus reglas de seguridad:
+
+1. En la consola de Firebase → **Build → Firestore Database → Crear base de datos**
+   (modo *producción*, la región más cercana).
+2. En **Authentication → Sign-in method**, activa **Correo electrónico/Contraseña**.
+3. Sube las reglas de seguridad (van en `firestore.rules`):
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+4. En la app (teléfono del dueño): **☁️ Sincronización → Crear cuenta del negocio**
+   (nombre + correo + contraseña). En cada otro teléfono: **Vincular dispositivo**
+   con el **mismo correo y contraseña**.
+
+> Solo hace falta internet para vincular la primera vez. Después la app sigue
+> funcionando sin conexión y se sincroniza sola cuando vuelve internet.
+
 ### 5. Instalar en el Android
 1. Abre esa URL en **Chrome** del teléfono.
 2. Menú **⋮** → **Agregar a la pantalla de inicio** / **Instalar app**.
@@ -62,7 +80,8 @@ Esto construye la app y la sube. Al terminar te muestra la **Hosting URL**
 ---
 
 ## Notas
-- Los datos viven en el teléfono (IndexedDB). Cada dispositivo tiene los suyos
-  hasta que llegue la sincronización (Fase 4).
-- Firebase **Hosting** (plan Spark) es gratis y suficiente. La base de datos
-  Firestore de la Fase 4 es aparte y se configura más adelante.
+- Los datos viven en el teléfono (IndexedDB) y, si activas la sincronización
+  (paso 4b), se replican en Firestore para compartirlos entre dispositivos.
+  Sin activarla, cada teléfono tiene los suyos y el traspaso es por archivo JSON.
+- Firebase **Hosting** y **Firestore** (plan Spark) son gratis y suficientes
+  para una tienda pequeña.
