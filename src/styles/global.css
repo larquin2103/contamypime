@@ -1154,3 +1154,23 @@ input[type='file'] {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ----- Importacion de entradas (masiva) ----- */
+.link-inline {
+  background: none;
+  border: none;
+  color: var(--primary-600);
+  cursor: pointer;
+  font-size: inherit;
+  text-decoration: underline;
+  padding: 0;
+}
+.import-entry-hint {
+  padding: 12px 14px;
+}
+.import-result--ok {
+  border-left: 4px solid var(--ok);
+}
+.import-result--warn {
+  border-left: 4px solid var(--warn, #d97706);
+}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
@@ -10,6 +10,7 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { ProductForm } from '../products/ProductForm'
+import { parseEntryFile, buildEntryTemplateBlob, ENTRY_TEMPLATE_HEADERS } from '../import/entryImportService'
 
 export function EntryScreen() {
   const { user, isOwner } = useAuth()
@@ -24,6 +25,8 @@ export function EntryScreen() {
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
+  const [importMsg, setImportMsg] = useState(null) // { added, notFound:[], errors:[] }
+  const fileRef = useRef(null)
 
   // Solo el dueño registra entradas de mercancia (y ve costos).
   if (!isOwner) {
@@ -54,6 +57,45 @@ export function EntryScreen() {
   const onCreated = async (newId) => {
     const p = await productsRepo.get(newId)
     if (p) addLine(p)
+  }
+
+  // Importacion masiva: lee el Excel, coteja por codigo/nombre y rellena las
+  // lineas (sumando si un producto ya estaba). Luego se revisa y se registra.
+  const downloadTemplate = async () => {
+    const blob = await buildEntryTemplateBlob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'plantilla_entrada.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const onImportFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBusy(true)
+    setImportMsg(null)
+    try {
+      const buffer = await file.arrayBuffer()
+      const all = await productsRepo.list()
+      const { lines: parsed, notFound, errors } = await parseEntryFile(buffer, all)
+      setLines((prev) => {
+        const next = [...prev]
+        for (const l of parsed) {
+          const i = next.findIndex((x) => x.productId === l.productId)
+          if (i >= 0) next[i] = { ...next[i], qty: round2(Number(next[i].qty) + l.qty), unitCost: l.unitCost }
+          else next.push(l)
+        }
+        return next
+      })
+      setImportMsg({ added: parsed.length, notFound, errors })
+    } catch (err) {
+      setImportMsg({ added: 0, notFound: [], errors: ['No se pudo leer el archivo: ' + err.message] })
+    } finally {
+      setBusy(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   const update = (productId, field, value) =>
@@ -105,10 +147,47 @@ export function EntryScreen() {
     <div className="screen">
       <div className="screen__header">
         <h2>Entrada de mercancia</h2>
-        <button className="btn btn--ghost btn--sm" onClick={() => setCreating(true)}>
-          + Producto nuevo
-        </button>
+        <div className="header-actions">
+          <button className="btn btn--ghost btn--sm" onClick={() => fileRef.current?.click()} disabled={busy}>
+            ⬆ Importar Excel
+          </button>
+          <button className="btn btn--ghost btn--sm" onClick={() => setCreating(true)}>
+            + Producto nuevo
+          </button>
+        </div>
       </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        onChange={onImportFile}
+        style={{ display: 'none' }}
+      />
+
+      <section className="card import-entry-hint">
+        <p className="muted">
+          Para cargar muchos productos a la vez, usa <strong>⬆ Importar Excel</strong>.
+          Columnas: {ENTRY_TEMPLATE_HEADERS.join(', ')} (coteja por codigo).{' '}
+          <button className="link-inline" onClick={downloadTemplate}>Descargar plantilla</button>
+        </p>
+      </section>
+
+      {importMsg && (
+        <section className={`card ${importMsg.notFound.length || importMsg.errors.length ? 'import-result--warn' : 'import-result--ok'}`}>
+          <strong>{importMsg.added} producto(s) agregado(s) a la entrada.</strong>
+          {importMsg.notFound.length > 0 && (
+            <p className="muted">
+              No encontrados en el catalogo ({importMsg.notFound.length}): {importMsg.notFound.slice(0, 15).join(', ')}
+              {importMsg.notFound.length > 15 ? '…' : ''}. Créalos en el catalogo y vuelve a importar.
+            </p>
+          )}
+          {importMsg.errors.length > 0 && (
+            <p className="muted">{importMsg.errors.slice(0, 10).join(' · ')}</p>
+          )}
+          <button className="link-inline" onClick={() => setImportMsg(null)}>Ocultar</button>
+        </section>
+      )}
 
       <input
         className="search-input"
