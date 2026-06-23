@@ -107,9 +107,10 @@ export const shiftsRepo = {
     }
   },
 
-  async close({ shiftId, declaredCash, denominations = null, notes = '' }) {
+  async close({ shiftId, declaredCash, denominations = null, notes = '', closedBy = null, countSkipped = false }) {
     const summary = await this.getSummary(shiftId)
     if (!summary) throw new Error('Turno no encontrado')
+    if (summary.shift.status === SHIFT_STATUS.CLOSED) throw new Error('El turno ya fue cerrado')
 
     const cfg = await configRepo.getSemaphoreConfig()
     let base = await configRepo.getBaseCurrency()
@@ -124,9 +125,15 @@ export const shiftsRepo = {
     // Semaforo sobre la moneda base (la principal del cuadre).
     const sem = evalSemaphore(summary.expectedCash[base], Number(declared[base] || 0), cfg)
 
+    // Lo cerro alguien distinto al vendedor del turno? (p.ej. el dueno por abandono)
+    const forced = !!closedBy && closedBy !== summary.shift.sellerId
+
     await db.shifts.update(shiftId, {
       status: SHIFT_STATUS.CLOSED,
       closedAt: now(),
+      closedBy,
+      forced,
+      countSkipped,
       declaredCash: declared,
       denominations, // conteo por billete al cierre (Fase 2)
       expectedCash: summary.expectedCash,
@@ -136,6 +143,6 @@ export const shiftsRepo = {
       notes
     })
 
-    return { ...summary, declared, difference, semaphore: sem, base }
+    return { ...summary, declared, difference, semaphore: sem, base, forced, countSkipped }
   }
 }

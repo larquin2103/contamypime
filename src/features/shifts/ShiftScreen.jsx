@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { configRepo } from '../../repositories/configRepo'
+import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { OtherShiftBlocked } from './OtherShiftBlocked'
@@ -17,6 +18,7 @@ import { buildCloseReport, openWhatsapp } from '../../lib/whatsapp'
 
 export function ShiftScreen() {
   const { activeShift, loading, isMine } = useShift()
+  const { isOwner } = useAuth()
   // El resultado del cierre vive aqui para que sobreviva a que el turno
   // pase a "cerrado" (si no, la pantalla saltaria a "Abrir turno").
   const [closeResult, setCloseResult] = useState(null)
@@ -29,6 +31,9 @@ export function ShiftScreen() {
   }
   if (!activeShift) return <OpenShiftForm />
   if (isMine) return <ActiveShiftPanel shift={activeShift} onClosed={setCloseResult} />
+  // Turno de otro vendedor: el dueno puede cerrarlo (p.ej. quedo abierto); el
+  // resto solo ve el bloqueo.
+  if (isOwner) return <ForeignShiftOwner shift={activeShift} onClosed={setCloseResult} />
   return <OtherShiftBlocked shift={activeShift} />
 }
 
@@ -193,13 +198,51 @@ function Row({ label, data, sign = '', strong = false }) {
   )
 }
 
+// ---- Turno de otro vendedor, visto por el dueno (p.ej. quedo abierto) ----
+function ForeignShiftOwner({ shift, onClosed }) {
+  const seller = useLiveQuery(() => usersRepo.get(shift.sellerId), [shift.sellerId])
+  const [closing, setClosing] = useState(false)
+
+  if (closing) {
+    return (
+      <CloseShiftPanel
+        shift={{ ...shift, sellerName: seller?.name }}
+        forcedByOwner
+        onCancel={() => setClosing(false)}
+        onClosed={onClosed}
+      />
+    )
+  }
+
+  return (
+    <div className="screen">
+      <h2>Turno abierto de otro vendedor</h2>
+      <section className="card">
+        <p>
+          Hay un turno abierto por <strong>{seller?.name || 'un vendedor'}</strong> desde{' '}
+          {formatDateTime(shift.openedAt)}.
+        </p>
+        <p className="muted">
+          Si el vendedor salio de la app sin cerrar, sus ventas y movimientos siguen guardados.
+          Como dueno puedes cerrar su turno haciendo el cuadre, o esperar a que el vuelva.
+        </p>
+        <button className="btn btn--primary btn--block" onClick={() => setClosing(true)}>
+          Cerrar turno de {seller?.name || 'vendedor'}
+        </button>
+      </section>
+    </div>
+  )
+}
+
 // ---- Cerrar turno: conteo por denominacion + cuadre (Fase 2) ----
-function CloseShiftPanel({ shift, onCancel, onClosed }) {
+function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
+  const { user } = useAuth()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   const denominations = useLiveQuery(() => configRepo.getDenominations(), [], null)
   const [counts, setCounts] = useState({}) // { MN: {1000: '2', ...}, USD: {...} }
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
+  const [warnNoCount, setWarnNoCount] = useState(false)
 
   if (!summary || !denominations) {
     return <div className="screen"><p className="muted">Calculando…</p></div>
@@ -211,23 +254,40 @@ function CloseShiftPanel({ shift, onCancel, onClosed }) {
 
   const setCurrencyCounts = (cur, next) => setCounts((prev) => ({ ...prev, [cur]: next }))
 
-  const doClose = async () => {
+  // No conto nada pero se esperaba efectivo -> cierre sin cuadre real.
+  const declaredTotal = CASH_CURRENCIES.reduce((a, c) => a + (declared[c] || 0), 0)
+  const expectedTotal = CASH_CURRENCIES.reduce((a, c) => a + summary.expectedCash[c], 0)
+  const noCount = declaredTotal === 0 && expectedTotal > 0
+
+  const doClose = async (countSkipped) => {
     setBusy(true)
     const cash = {}
     for (const c of CASH_CURRENCIES) cash[c] = declared[c] || 0
+    const autoNote = [
+      notes,
+      countSkipped ? '[cerrado sin contar efectivo]' : '',
+      forcedByOwner ? '[cerrado por el dueno]' : ''
+    ].filter(Boolean).join(' ')
     const res = await shiftsRepo.close({
       shiftId: shift.id,
       declaredCash: cash,
       denominations: counts,
-      notes
+      notes: autoNote,
+      closedBy: user.id,
+      countSkipped
     })
     onClosed(res)
   }
 
+  const onConfirm = () => {
+    if (noCount) setWarnNoCount(true) // pide confirmacion explicita
+    else doClose(false)
+  }
+
   return (
     <div className="screen">
-      <button className="link-back" onClick={onCancel}>← Volver al turno</button>
-      <h2>Cerrar turno</h2>
+      <button className="link-back" onClick={onCancel}>← Volver</button>
+      <h2>Cerrar turno{forcedByOwner ? ` de ${shift.sellerName || 'vendedor'}` : ''}</h2>
 
       <section className="card">
         <h3>Cuenta el efectivo por denominacion</h3>
@@ -266,10 +326,31 @@ function CloseShiftPanel({ shift, onCancel, onClosed }) {
           <span>Notas (opcional)</span>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
-        <button className="btn btn--primary btn--block" disabled={busy} onClick={doClose}>
+        <button className="btn btn--primary btn--block" disabled={busy} onClick={onConfirm}>
           {busy ? 'Cerrando…' : 'Confirmar cierre'}
         </button>
       </section>
+
+      {warnNoCount && (
+        <div className="modal-backdrop" onClick={() => setWarnNoCount(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>⚠️ No contaste el efectivo</h3>
+            <p>
+              Se registrara la caja declarada en <strong>0</strong> y quedara una diferencia de{' '}
+              <strong>{formatMoney(diff[CASH_CURRENCIES[0]], CASH_CURRENCIES[0])}</strong>.
+              El cierre quedara marcado como <em>sin conteo</em> para que el dueno lo revise.
+            </p>
+            <div className="modal__actions">
+              <button className="btn btn--ghost" onClick={() => setWarnNoCount(false)}>
+                Volver a contar
+              </button>
+              <button className="btn btn--primary" disabled={busy} onClick={() => doClose(true)}>
+                Cerrar sin contar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -287,6 +368,8 @@ function CloseResult({ result, onDone }) {
     internalDebtTotal,
     transfersByCur = {},
     transfersCount = 0,
+    forced = false,
+    countSkipped = false,
     shift
   } = result
   const { toBase } = useCurrency()
@@ -319,6 +402,13 @@ function CloseResult({ result, onDone }) {
           </p>
         </div>
       </div>
+
+      {(forced || countSkipped) && (
+        <div className="alert-flags">
+          {forced && <span className="flag flag--warn">Cerrado por el dueno</span>}
+          {countSkipped && <span className="flag flag--warn">Sin conteo de efectivo</span>}
+        </div>
+      )}
 
       <section className="card">
         <h3>Cuadre de caja</h3>

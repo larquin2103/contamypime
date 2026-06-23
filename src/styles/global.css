@@ -868,6 +868,22 @@ input[type='file'] {
 .toggle-row input {
   width: auto;
 }
+.alert-flags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: var(--gap);
+}
+.flag {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.flag--warn {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fcd34d;
+}
 
 /* ----- Cambio de precio ----- */
 .ok-text {
