@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
 import { ROLES } from '../../db/constants'
 import { genRecoveryCode } from '../../lib/pin'
+import { parseSnapshot, applySnapshot } from '../handoff/handoffService'
 
 // Primer arranque: no hay usuarios. Creamos al DUEÑO con su PIN.
 export function Onboarding() {
@@ -16,6 +17,26 @@ export function Onboarding() {
   const [busy, setBusy] = useState(false)
   const [recovery, setRecovery] = useState(null)
   const [createdId, setCreatedId] = useState(null)
+  const fileRef = useRef(null)
+
+  // Un telefono nuevo arranca vacio. Si el vendedor recibio un turno por
+  // WhatsApp, al cargarlo obtiene los usuarios y el catalogo, y luego puede
+  // iniciar sesion. (Al aplicar, el conteo de usuarios sube y la app pasa al login.)
+  const receiveTurno = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setError('')
+    setBusy(true)
+    try {
+      const snap = parseSnapshot(await file.text())
+      await applySnapshot(snap)
+      // No hace falta navegar: el conteo de usuarios cambia y aparece el login.
+    } catch (err) {
+      setError(err.message)
+      setBusy(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   // Validamos y mostramos el codigo, pero AUN no creamos el usuario: si lo
   // creamos aqui, el conteo de usuarios pasa a 1 y la app saltaria al login,
@@ -68,6 +89,23 @@ export function Onboarding() {
             >
               Continuar
             </button>
+
+            <div className="auth-divider"><span>o</span></div>
+            <p className="muted">¿Eres vendedor y te enviaron un turno?</p>
+            <button
+              className="btn btn--block"
+              disabled={busy}
+              onClick={() => fileRef.current?.click()}
+            >
+              {busy ? 'Recibiendo…' : '🔄 Recibir turno (archivo)'}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={receiveTurno}
+              style={{ display: 'none' }}
+            />
           </>
         )}
 

@@ -17,6 +17,9 @@ export async function buildSnapshot(fromUserName) {
   ])
   const ratesObj = await ratesRepo.currentRates()
   const rates = Object.values(ratesObj)
+  // Cuentas de usuario (con PIN hasheado) para que el vendedor pueda iniciar
+  // sesion en su propio dispositivo offline. En Fase 4 esto sera por la nube.
+  const users = await db.users.toArray()
   const categories = await db.categories.toArray()
   const products = await db.products.toArray()
   const allDebts = await db.internalDebts.toArray()
@@ -31,6 +34,7 @@ export async function buildSnapshot(fromUserName) {
   return {
     meta: { app: APP_TAG, version: SNAPSHOT_VERSION, exportedAt: now(), fromUserName },
     config: { baseCurrency, semaphore, denominations },
+    users,
     rates,
     categories,
     products,
@@ -71,6 +75,7 @@ export async function applySnapshot(snap) {
     if (snap.config.semaphore) await configRepo.set('semaphore', snap.config.semaphore)
     if (snap.config.denominations) await configRepo.set('denominations', snap.config.denominations)
   }
+  if (snap.users?.length) await db.users.bulkPut(snap.users)
   if (snap.rates?.length) await db.exchangeRates.bulkPut(snap.rates)
   if (snap.categories?.length) await db.categories.bulkPut(snap.categories)
   if (snap.products?.length) await db.products.bulkPut(snap.products)
