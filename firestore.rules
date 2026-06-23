@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore para MypiCuadre (Fase 4).
+//
+// Modelo: todos los datos de un negocio cuelgan de /businesses/{businessId}.
+// Solo usuarios autenticados que sean miembros del negocio pueden leer/escribir.
+// Nada se borra (append-only / borrado logico), igual que en la base local.
+//
+// Estas reglas se endurecen y prueban a fondo en el Bloque 26.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /businesses/{businessId} {
+      // El negocio se "reclama" al crearlo: el creador queda como dueño.
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow read, update: if isMember(businessId);
+
+      // Todo el arbol de datos del negocio (ventas, productos, turnos, etc.).
+      match /{document=**} {
+        allow read: if isMember(businessId);
+        allow create, update: if isMember(businessId);
+        allow delete: if false; // append-only: nada se borra
+      }
+    }
+
+    // Es miembro si es el dueño o esta en la lista de uids del negocio.
+    function isMember(businessId) {
+      let biz = get(/databases/$(database)/documents/businesses/$(businessId));
+      return request.auth != null && biz != null && (
+        biz.data.ownerUid == request.auth.uid ||
+        (biz.data.memberUids != null && request.auth.uid in biz.data.memberUids)
+      );
+    }
+  }
+}

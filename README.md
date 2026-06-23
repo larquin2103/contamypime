@@ -95,7 +95,7 @@ Colecciones en IndexedDB (PK = UUID string en todas):
 - [x] **Bloque 14** — Exportar/importar turno (JSON) — traspaso offline con herencia de caja
 - [x] **Bloque 15** — WhatsApp: compartir turno + reporte de cierre al dueño
 
-## Plan de implementación (Fase 3) — en curso
+## Plan de implementación (Fase 3) — ✅ COMPLETA (salvo multi-punto, diferido)
 
 - [x] **Bloque 16** — Conteo físico interactivo por categorías (con aprobación del dueño)
 - [x] **Bloque 17** — Panel del dueño + análisis (ganancias, ranking, rotación, reabastecimiento)
@@ -103,5 +103,29 @@ Colecciones en IndexedDB (PK = UUID string en todas):
 - [x] **Bloque 20** — Exportación PDF y Excel (ventas, cierres, inventario)
 - [ ] **Bloque 19** — Multi-punto de venta *(diferido: para cuando haya más de un punto)*
 
-La Fase 4 (sincronización Firebase en tiempo real) está planificada pero **no** se
-construye todavía. La app ya está preparada para instalarse como PWA (ver `DEPLOY.md`).
+## Plan de implementación (Fase 4) — en curso
+
+Sincronización multi-dispositivo con Firebase/Firestore, **offline-first**: cada vendedor
+opera en su móvil sin conexión y, al haber internet, los dispositivos se sincronizan solos.
+Se mantiene **Dexie como fuente de verdad local** y se monta una capa de sync propia y ligera
+(en vez de migrar a RxDB). El modelo append-only la hace robusta:
+
+- Colecciones **inmutables** (`sales`, `stockMovements`, `priceChanges`, `purchases`,
+  `cashMovements`, `auditEvents`): se suben una vez, **sin conflictos**.
+- Colecciones **mutables** (`products`, `users`, `config`, `exchangeRates`, `categories`,
+  `shifts`, `internalDebts`, `counts`): **última escritura gana** por `updatedAt`.
+- El **stock se recalcula desde `stockMovements`** tras cada fusión → dos vendedores
+  vendiendo en paralelo offline no se pisan el stock.
+
+Identidad de nube: una cuenta Firebase (email/contraseña) por negocio; el **PIN local**
+sigue distinguiendo al vendedor. Todo cuelga de `businesses/{businessId}/…` en Firestore,
+protegido por reglas. Encaja en el plan **Spark (gratis)**.
+
+- [x] **Bloque 21** — Infraestructura: SDK Firebase, init con cache offline, reglas e índices Firestore
+- [ ] **Bloque 22** — Cuenta de nube del negocio (Auth email/contraseña) + alta de dispositivos
+- [ ] **Bloque 23** — Motor de subida (push) con marca de agua por `updatedAt`
+- [ ] **Bloque 24** — Bajada en tiempo real (pull) + recálculo de stock desde el libro mayor
+- [ ] **Bloque 25** — Indicador de estado de sync + alta de dispositivo desde la nube
+- [ ] **Bloque 26** — Reglas de seguridad por `businessId`, índices y manejo de conflictos
+
+La app ya está preparada para instalarse como PWA (ver `DEPLOY.md`).
