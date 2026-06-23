@@ -95,5 +95,13 @@ Colecciones en IndexedDB (PK = UUID string en todas):
 - [x] **Bloque 14** — Exportar/importar turno (JSON) — traspaso offline con herencia de caja
 - [x] **Bloque 15** — WhatsApp: compartir turno + reporte de cierre al dueño
 
-Las Fases 3 y 4 (conteo físico, multi-punto, panel del dueño, auditoría, sincronización
-Firebase) están planificadas pero **no** se construyen todavía.
+## Plan de implementación (Fase 3) — en curso
+
+- [x] **Bloque 16** — Conteo físico interactivo por categorías (con aprobación del dueño)
+- [x] **Bloque 17** — Panel del dueño + análisis (ganancias, ranking, rotación, reabastecimiento)
+- [x] **Bloque 18** — Auditoría histórica inmutable
+- [x] **Bloque 20** — Exportación PDF y Excel (ventas, cierres, inventario)
+- [ ] **Bloque 19** — Multi-punto de venta *(diferido: para cuando haya más de un punto)*
+
+La Fase 4 (sincronización Firebase en tiempo real) está planificada pero **no** se
+construye todavía. La app ya está preparada para instalarse como PWA (ver `DEPLOY.md`).

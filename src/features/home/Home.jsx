@@ -56,6 +56,9 @@ export function Home() {
             <Link className="btn btn--block" to="/audit">
               🗂️ Auditoria
             </Link>
+            <Link className="btn btn--block" to="/reports">
+              📄 Reportes (PDF/Excel)
+            </Link>
             <Link className="btn btn--block" to="/entry">
               📥 Entrada de mercancia
             </Link>

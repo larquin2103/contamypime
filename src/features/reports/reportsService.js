@@ -1,0 +1,144 @@
+import { db } from '../../db/db'
+import { formatDateTime } from '../../lib/dates'
+import { round2 } from '../../lib/currency'
+import { SHIFT_STATUS } from '../../db/constants'
+
+function inRange(iso, from, to) {
+  const d = (iso || '').slice(0, 10)
+  if (from && d < from) return false
+  if (to && d > to) return false
+  return true
+}
+
+async function userMap() {
+  const users = await db.users.toArray()
+  const m = {}
+  for (const u of users) m[u.id] = u.name
+  return m
+}
+
+// --- Builders: cada uno devuelve { title, subtitle, head, rows, filename } ---
+
+export async function buildSalesReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const sales = (await db.sales.toArray())
+    .filter((s) => !s.voided && inRange(s.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const rows = sales.map((s) => [
+    formatDateTime(s.createdAt),
+    names[s.sellerId] || 'vendedor',
+    s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo',
+    s.paymentMethod === 'transfer' ? s.transferReference || '' : '',
+    round2(s.totalBase)
+  ])
+  const total = round2(sales.reduce((a, s) => a + Number(s.totalBase || 0), 0))
+  rows.push(['', '', '', 'TOTAL', total])
+  return {
+    title: 'Reporte de ventas',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Vendedor', 'Metodo', 'Referencia', 'Total'],
+    rows,
+    filename: 'ventas'
+  }
+}
+
+export async function buildInventoryReport() {
+  const cats = await db.categories.toArray()
+  const catName = {}
+  for (const c of cats) catName[c.id] = c.name
+  const products = (await db.products.toArray())
+    .filter((p) => p.active)
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const rows = products.map((p) => [
+    p.code || '',
+    p.name,
+    catName[p.categoryId] || 'Sin categoria',
+    p.unit,
+    round2(p.stock),
+    round2(p.cost),
+    round2(p.price),
+    round2(p.stock * p.cost)
+  ])
+  const valorTotal = round2(products.reduce((a, p) => a + p.stock * p.cost, 0))
+  rows.push(['', '', '', '', '', '', 'VALOR INVENTARIO', valorTotal])
+  return {
+    title: 'Inventario actual',
+    subtitle: `Generado ${formatDateTime(new Date().toISOString())}`,
+    head: ['Codigo', 'Producto', 'Categoria', 'Unidad', 'Stock', 'Costo', 'Precio', 'Valor (stock*costo)'],
+    rows,
+    filename: 'inventario'
+  }
+}
+
+export async function buildShiftsReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const shifts = (await db.shifts.toArray())
+    .filter((s) => s.status === SHIFT_STATUS.CLOSED && inRange(s.closedAt, from, to))
+    .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))
+  const sem = { green: 'Cuadra', yellow: 'Dif. menor', red: 'Dif. critica' }
+  const rows = shifts.map((s) => [
+    formatDateTime(s.openedAt),
+    formatDateTime(s.closedAt),
+    names[s.sellerId] || 'vendedor',
+    round2(s.expectedCash?.MN ?? 0),
+    round2(s.declaredCash?.MN ?? 0),
+    round2(s.difference?.MN ?? 0),
+    sem[s.semaphore] || '',
+    [s.forced ? 'cerrado por dueño' : '', s.countSkipped ? 'sin conteo' : ''].filter(Boolean).join('; ')
+  ])
+  return {
+    title: 'Cierres de turno',
+    subtitle: rangeLabel(from, to),
+    head: ['Abierto', 'Cerrado', 'Vendedor', 'Esperado MN', 'Declarado MN', 'Diferencia MN', 'Cuadre', 'Notas'],
+    rows,
+    filename: 'cierres'
+  }
+}
+
+function rangeLabel(from, to) {
+  if (!from && !to) return 'Todo el periodo'
+  return `Periodo: ${from || '...'} a ${to || '...'}`
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// --- Exportadores (carga diferida de las librerias) ---
+
+export async function exportExcel(report) {
+  const XLSX = await import('xlsx')
+  const ws = XLSX.utils.aoa_to_sheet([report.head, ...report.rows])
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Reporte')
+  const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+  downloadBlob(
+    new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    `${report.filename}.xlsx`
+  )
+}
+
+export async function exportPdf(report) {
+  const { jsPDF } = await import('jspdf')
+  const autoTable = (await import('jspdf-autotable')).default
+  const doc = new jsPDF()
+  doc.setFontSize(14)
+  doc.text(report.title, 14, 16)
+  doc.setFontSize(10)
+  doc.setTextColor(120)
+  doc.text(`MypiCuadre · ${report.subtitle || ''}`, 14, 22)
+  doc.setTextColor(0)
+  autoTable(doc, {
+    head: [report.head],
+    body: report.rows,
+    startY: 28,
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [15, 118, 110] }
+  })
+  doc.save(`${report.filename}.pdf`)
+}
