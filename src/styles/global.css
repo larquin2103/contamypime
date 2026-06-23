@@ -1097,3 +1097,29 @@ input[type='file'] {
 .price-hist:last-child {
   border-bottom: none;
 }
+
+/* ----- Selector segmentado (sincronizacion) ----- */
+.seg {
+  display: flex;
+  gap: 6px;
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 4px;
+  margin: 12px 0;
+}
+.seg__btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 10px 8px;
+  border-radius: 9px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.seg__btn--on {
+  background: var(--surface);
+  color: var(--primary-600);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}

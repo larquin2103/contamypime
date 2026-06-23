@@ -19,6 +19,7 @@ import { HandoffScreen } from '../features/handoff/HandoffScreen'
 import { DashboardScreen } from '../features/dashboard/DashboardScreen'
 import { AuditScreen } from '../features/audit/AuditScreen'
 import { ReportsScreen } from '../features/reports/ReportsScreen'
+import { CloudScreen } from '../features/sync/CloudScreen'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
@@ -53,6 +54,7 @@ export function AppRouter() {
         <Route path="/dashboard" element={<DashboardScreen />} />
         <Route path="/audit" element={<AuditScreen />} />
         <Route path="/reports" element={<ReportsScreen />} />
+        <Route path="/cloud" element={<CloudScreen />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
