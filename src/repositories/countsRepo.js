@@ -36,7 +36,7 @@ export const countsRepo = {
     if (existing) return existing.id
     const products = await db.products.toArray()
     const items = products
-      .filter((p) => p.active)
+      .filter((p) => p.active && Number(p.stock || 0) > 0)
       .map((p) => ({
         productId: p.id,
         name: p.name,

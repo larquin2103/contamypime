@@ -1265,3 +1265,66 @@ input[type='file'] {
   display: block;
   margin: 6px 0 4px;
 }
+
+/* ----- Asistente de cierre (pasos) ----- */
+.close-steps {
+  display: flex;
+  gap: 4px;
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 14px;
+  overflow-x: auto;
+}
+.close-step {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.close-step__n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-weight: 700;
+}
+.close-step.is-active { color: var(--text); }
+.close-step.is-active .close-step__n { background: var(--primary); color: #fff; }
+.close-step.is-done .close-step__n { background: var(--ok); color: #052e16; }
+
+/* ----- Resumen de ventas del turno ----- */
+.sale-summary { display: flex; flex-direction: column; gap: 10px; }
+.sale-card {
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.sale-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.sale-items { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.sale-items th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--surface-2);
+  padding: 2px 4px;
+}
+.sale-items td { padding: 3px 4px; }
+.sale-items .num { text-align: right; }
+.sale-card__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 0.9rem;
+}

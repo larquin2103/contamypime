@@ -114,7 +114,20 @@ export const shiftsRepo = {
     }
   },
 
-  async close({ shiftId, declaredCash, denominations = null, notes = '', closedBy = null, countSkipped = false }) {
+  // Efectivo a heredar por el proximo turno: el fondo del ultimo turno cerrado
+  // (lo que el dueño dejo en caja). Se deriva de los turnos (que SI sincronizan).
+  async lastClosedCash() {
+    const closed = (await db.shifts.toArray())
+      .filter((s) => s.status === SHIFT_STATUS.CLOSED && s.closedAt)
+      .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))
+    const last = closed[0]
+    if (!last) return null
+    return last.closingFloat || last.declaredCash || null
+  },
+
+  // `closingFloat` (opcional): efectivo que se deja en caja para el proximo
+  // turno; lo demas se considera retirado por el dueño (ajuste del saldo final).
+  async close({ shiftId, declaredCash, denominations = null, notes = '', closedBy = null, countSkipped = false, closingFloat = null }) {
     const summary = await this.getSummary(shiftId)
     if (!summary) throw new Error('Turno no encontrado')
     if (summary.shift.status === SHIFT_STATUS.CLOSED) throw new Error('El turno ya fue cerrado')
@@ -135,6 +148,13 @@ export const shiftsRepo = {
     // Lo cerro alguien distinto al vendedor del turno? (p.ej. el dueño por abandono)
     const forced = !!closedBy && closedBy !== summary.shift.sellerId
 
+    // Fondo que queda para el proximo turno y retiro del dueño (declarado - fondo).
+    const float = closingFloat ? { ...emptyCash(), ...closingFloat } : { ...declared }
+    const ownerWithdrawal = emptyCash()
+    for (const c of CASH_CURRENCIES) {
+      ownerWithdrawal[c] = round2(Math.max(0, Number(declared[c] || 0) - Number(float[c] || 0)))
+    }
+
     await db.shifts.update(shiftId, {
       status: SHIFT_STATUS.CLOSED,
       closedAt: now(),
@@ -147,9 +167,11 @@ export const shiftsRepo = {
       difference,
       semaphore: sem.color,
       semaphoreDetail: sem,
+      closingFloat: float, // efectivo que hereda el proximo turno
+      ownerWithdrawal, // retirado por el dueño al cierre (ajuste del saldo)
       notes
     })
 
-    return { ...summary, declared, difference, semaphore: sem, base, forced, countSkipped }
+    return { ...summary, declared, difference, semaphore: sem, base, forced, countSkipped, closingFloat: float, ownerWithdrawal }
   }
 }
