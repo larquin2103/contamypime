@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
@@ -172,6 +172,15 @@ function CloudLinkInline() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const [slow, setSlow] = useState(false)
+
+  // Si tras vincular tarda demasiado en llegar la lista de usuarios, avisamos
+  // y ofrecemos reintentar (no dejar la pantalla colgada sin salida).
+  useEffect(() => {
+    if (!done) return
+    const t = setTimeout(() => setSlow(true), 12000)
+    return () => clearTimeout(t)
+  }, [done])
 
   if (!isFirebaseConfigured()) return null
 
@@ -194,6 +203,19 @@ function CloudLinkInline() {
       <div className="cloud-link">
         <p className="ok-text">Dispositivo vinculado. Descargando datos del negocio…</p>
         <p className="muted"><small>En unos segundos aparecerá la lista de usuarios para entrar.</small></p>
+        {slow && (
+          <>
+            <p className="muted">
+              <small>
+                Está tardando. Verifica que tengas internet y que el otro dispositivo ya haya
+                subido los datos (en él: ☁️ Sincronización → Sincronizar ahora).
+              </small>
+            </p>
+            <button className="btn btn--block" onClick={() => window.location.reload()}>
+              Reintentar
+            </button>
+          </>
+        )}
       </div>
     )
   }
