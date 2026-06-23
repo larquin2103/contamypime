@@ -59,6 +59,14 @@ export const SHIFT_STATUS = {
   CLOSED: 'closed'
 }
 
+// Estados de un conteo fisico (Fase 3).
+export const COUNT_STATUS = {
+  DRAFT: 'draft', // en progreso
+  PENDING: 'pending', // enviado, espera aprobacion del dueno
+  APPROVED: 'approved', // aprobado -> ajustes aplicados
+  REJECTED: 'rejected'
+}
+
 // Colores del semaforo de cuadre.
 export const SEMAPHORE = {
   GREEN: 'green',

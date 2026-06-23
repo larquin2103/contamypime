@@ -30,3 +30,8 @@ db.version(1).stores({
   internalDebts: 'id, shiftId, userId, productId, settled, createdAt',
   auditEvents: 'id, entity, entityId, createdAt'
 })
+
+// Fase 3 - Bloque 16: conteo fisico de inventario.
+db.version(2).stores({
+  counts: 'id, status, createdAt'
+})

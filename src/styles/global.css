@@ -885,6 +885,76 @@ input[type='file'] {
   color: #fcd34d;
 }
 
+/* ----- Conteo fisico ----- */
+.progress {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: var(--gap);
+}
+.progress__bar {
+  height: 100%;
+  background: var(--primary-600);
+  transition: width 0.2s;
+}
+.count-cat {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: none;
+  font: inherit;
+  color: var(--text);
+}
+.section-title {
+  margin: 8px 0;
+}
+.count-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: var(--gap);
+}
+.count-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--surface);
+  border-radius: 12px;
+}
+.count-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.count-row__main .muted {
+  font-size: 0.78rem;
+}
+.count-row__input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.count-row__input input {
+  width: 90px;
+  text-align: center;
+  padding: 8px;
+}
+.count-diff {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  text-align: right;
+}
+.count-note {
+  grid-column: 1 / -1;
+  font-size: 0.85rem;
+  padding: 8px;
+}
+
 /* ----- Cambio de precio ----- */
 .ok-text {
   color: var(--ok);

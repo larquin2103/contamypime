@@ -45,6 +45,9 @@ export function Home() {
         <Link className="btn btn--block" to="/handoff">
           🔄 Traspaso de turno
         </Link>
+        <Link className="btn btn--block" to="/count">
+          📋 Conteo fisico
+        </Link>
         {isOwner && (
           <>
             <Link className="btn btn--block" to="/entry">
