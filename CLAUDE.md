@@ -1,0 +1,162 @@
+# CLAUDE.md — Guía del proyecto MypiCuadre
+
+Contexto para Claude Code (y para cualquier desarrollador) al trabajar en este repo.
+El idioma del proyecto, la UI, los comentarios y los mensajes de commit es **español**.
+
+## Qué es
+
+**MypiCuadre**: sistema de gestión para una **MYPIME cubana** (comercio minorista con
+varios vendedores por turnos). Es una **PWA instalable** en Android, **offline-first**:
+todos los datos viven en IndexedDB y la app funciona al 100% sin internet. La
+sincronización en la nube (Fase 4) es opcional y se activa por dispositivo.
+
+## Stack
+
+- **React 18 + Vite 6**, PWA con `vite-plugin-pwa` (service worker `autoUpdate`).
+- **IndexedDB vía [Dexie](https://dexie.org/)** + `dexie-react-hooks` (`useLiveQuery`).
+- **Firebase** (Fase 4): Auth (email/contraseña) + Firestore (cache offline persistente).
+  Hosting en Firebase (plan Spark, gratis).
+- **xlsx** (SheetJS), **jspdf** + **jspdf-autotable** para exportar — todos por
+  importación dinámica (code-split).
+- Sin framework de estado externo: Context Providers + Dexie live queries.
+
+## Comandos
+
+```bash
+npm install        # instala dependencias (incluye el SDK firebase)
+npm run dev        # desarrollo (localhost:5173)
+npm run build      # build de producción a dist/ (NO imprime URL)
+npm run preview    # previsualiza el build (localhost:4173)
+npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
+npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
+```
+
+`firebase-tools` es una CLI **global por máquina** (no viene con `npm install`):
+`npm install -g firebase-tools` + `firebase login`. Reglas de Firestore:
+`firebase deploy --only firestore:rules`.
+
+## Arquitectura y convenciones
+
+```
+src/
+├── app/
+│   ├── router.jsx            # decide onboarding / login / app
+│   └── providers/            # AuthProvider, CurrencyProvider, ShiftProvider, SyncProvider
+├── db/
+│   ├── db.js                 # instancia Dexie + versiones de esquema
+│   ├── constants.js          # enums (roles, monedas, estados, etc.)
+│   └── seed.js               # config mínima en el primer arranque
+├── repositories/             # ÚNICA puerta de acceso a datos (1 por colección)
+├── features/                 # cada función de negocio en su carpeta
+│   ├── auth/ settings/ home/ products/ import/ shifts/ sales/
+│   ├── inventory/ cash/ handoff/ dashboard/ audit/ reports/ sync/
+├── components/               # UI compartida (PinInput, Layout, CashInputs, ...)
+├── lib/                      # utilidades puras (ids, pin, currency, dates, search, firebase)
+└── styles/global.css         # estilos globales (tema oscuro, clases .card .btn .field ...)
+```
+
+**Reglas de diseño (respetarlas siempre):**
+- **Claves primarias = UUID string** en todas las colecciones → migración limpia a la nube.
+- **Nada se borra:** borrado lógico (`deletedAt`/`voided`/`active`) y correcciones como
+  **ajustes nuevos** con nota y marca de tiempo (append-only / auditable).
+- **El stock real se deriva de `stockMovements`** (libro mayor). `products.stock` es solo
+  una **caché** para mostrar rápido; se actualiza dentro de la misma transacción.
+- **El precio se congela por línea de venta** (un cambio de precio no altera ventas pasadas).
+- **La capa `repositories/` aísla el acceso a datos.** Las pantallas NO tocan Dexie
+  directamente; van por los repos. Esto permitió montar la sync sin reescribir pantallas.
+- **Toda mutación actualiza una marca de tiempo** (`updatedAt`/`closedAt`/`settledAt`/...).
+  De esto depende el motor de sincronización; mantenerlo al crear nuevos repos.
+
+**Estilo de código:** imita el código vecino (densidad de comentarios, nombres, idioma).
+Importaciones pesadas (xlsx/jspdf/firebase) siempre con `import()` dinámico.
+
+## Roles y autenticación
+
+- **Login por PIN** (hash PBKDF2 vía WebCrypto, `src/lib/pin.js`). Sesión en `sessionStorage`.
+- **Dueño (OWNER)**: único; hace todo. Etiqueta `ROLE_LABELS.OWNER = 'Dueño'` (con ñ).
+- **Vendedor (SELLER)**: solo **ventas + extracciones de caja + deuda interna**, estas dos
+  últimas **con autorización del dueño** (`OwnerAuthModal`). **NO** hace entradas, NO cambia
+  precios, NO ve costos, NO crea usuarios.
+- **Regla de oro:** solo el vendedor con **turno activo** puede vender (ni el dueño sin turno).
+- **Recuperación de PIN** del dueño mediante **código de recuperación** (hash) que se genera
+  en el onboarding y se puede regenerar en Ajustes.
+
+## Modelo de datos (Dexie)
+
+Versiones en `src/db/db.js`:
+- **v1**: `users, config, exchangeRates, categories, products (*searchTokens), priceChanges,
+  shifts, sales, stockMovements, purchases, cashMovements, internalDebts, auditEvents`.
+- **v2**: `counts` (conteo físico).
+- **v3**: `syncState` (cursores de sincronización `push:<colección>`).
+
+**Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
+vale 1 unidad de la moneda", append-only en `exchangeRates`.
+
+**Cuadre de turno:** semáforo 🟢/🟡/🔴 con umbrales configurables; conteo por denominación
+de billetes; efectivo vs transferencias separados. El dueño puede forzar el cierre de un
+turno abandonado; si se cierra sin contar billetes se marca con bandera.
+
+## Estado por fases
+
+- **Fase 1 — Núcleo Operativo:** ✅ COMPLETA (bloques 0–10).
+- **Fase 2 — Caja completa + traspaso offline:** ✅ COMPLETA (bloques 11–15:
+  transferencia + captura de SMS, denominaciones, deudas/extracciones, export/import de
+  turno JSON, compartir por WhatsApp).
+- **Fase 3 — Conteo físico + auditoría + reportes:** ✅ COMPLETA salvo multi-punto:
+  - 16 conteo físico · 17 panel del dueño/analítica · 18 auditoría inmutable ·
+    20 export PDF/Excel.
+  - **19 Multi-punto de venta: DIFERIDO** (para cuando haya más de un punto).
+- **Fase 4 — Sincronización Firebase:** ✅ COMPLETA (bloques 21–26). Ver abajo.
+
+## Fase 4 — Sincronización (cómo funciona)
+
+Diseño: **Dexie sigue siendo la fuente de verdad local**; encima va una capa de sync propia
+y ligera contra Firestore (NO se migró a RxDB). Carpeta `src/features/sync/`.
+
+- **Identidad:** una cuenta de Firebase (email/contraseña) **por negocio**; el `uid` de esa
+  cuenta **ES el `businessId`**. Todos los datos cuelgan de `/businesses/{businessId}/...`.
+  Cada dispositivo inicia sesión con la **misma cuenta**; el PIN local distingue al vendedor.
+- **`syncService.js`**: `createBusinessAccount`, `linkDevice`, `unlinkDevice`, `observeAuth`,
+  `syncConfig` (flags locales en `config`: `syncEnabled/syncBusinessId/syncEmail`).
+- **`collections.js`**: colecciones a sincronizar, `LOCAL_CONFIG_KEYS` (no viajan a la nube)
+  y `syncTs(rec)` (mayor marca de tiempo del registro).
+- **`pushEngine.js`** (subida): por colección, cursor de marca de agua en `syncState`; sube
+  solo lo cambiado, en lotes de 400. **No espera confirmación del servidor** (Firestore
+  guarda en cache persistente y entrega al reconectar) → no se cuelga offline.
+- **`pullEngine.js`** (bajada): fusión **última escritura gana** (LWW) por `syncTs`; tras
+  fusionar movimientos/productos **recalcula `products.stock` desde el libro mayor**
+  (sin tocar `updatedAt`) → ventas paralelas offline no se pisan el stock.
+- **`syncEngine.js`**: `syncNow()` (push) + `startRealtime/stopRealtime` (`onSnapshot`).
+- **`SyncProvider`** (`app/providers`): arranca la sync a nivel de app **solo si está
+  activada** (si no, ni carga Firebase). Sube al reconectar y cada 20 s. Expone estado para
+  el indicador ☁️/🔄/📴 de la cabecera (`components/Layout.jsx`).
+- **Alta de dispositivo**: el dueño crea/vincula desde `☁️ Sincronización` (`/cloud`,
+  `CloudScreen`); el vendedor puede vincular desde el **onboarding** (baja usuarios/catálogo
+  y la app pasa sola al login).
+- **Conflictos:** si tras sincronizar hay 2+ turnos abiertos a la vez, el Home avisa al dueño.
+- **Seguridad:** `firestore.rules` → `auth.uid == businessId`, append-only (delete prohibido).
+
+**Activación (consola + CLI, una vez):** Firestore Database → Crear (modo producción);
+Auth Email/Password activado; `firebase deploy --only firestore:rules`; luego en la app
+crear/vincular cuenta. Detalle en `DEPLOY.md` (paso 4b).
+
+**Aviso de fusión:** si dos dispositivos ya tienen datos **distintos** y luego se vinculan,
+los UUID propios de cada uno provocan **duplicados**. Recomendado: elegir un dispositivo
+"bueno", vincularlo primero (sube todo), y en los demás vincular sobre datos vacíos/de prueba.
+
+## Despliegue
+
+- `firebase.json`: hosting `site: "mypicuadre"`, public `dist`, rewrites SPA, cache headers
+  (sw/manifest no-cache, assets immutable) + sección `firestore` (rules/indexes).
+- `.firebaserc`: proyecto por defecto `mypicuadre`.
+- Actualizar lo desplegado: `git pull origin main` → `npm install` → `npm run deploy`.
+- En el teléfono la PWA se auto-actualiza al reabrir con internet (cerrar del todo y reabrir).
+
+## Flujo de git
+
+- Rama de desarrollo: **`claude/awesome-dirac-484azm`**. También se mantiene **`main`** al día
+  (de ahí se despliega): commit en la rama → merge fast-forward a `main` → push de ambas.
+- Mensajes de commit en español, descriptivos, por bloque (ej. "Fase 4 - Bloque 23: ...").
+- **No** crear Pull Requests salvo que se pida explícitamente.
+- El entorno remoto tiene el proxy de git en solo lectura; los push directos van con token
+  transitorio del usuario (NUNCA persistir el token en el repo ni en la config).
