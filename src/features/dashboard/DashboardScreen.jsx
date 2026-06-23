@@ -6,6 +6,7 @@ import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { formatMoney } from '../../lib/currency'
+import { DonutChart, TrendChart } from './Charts'
 
 function rangeFor(period) {
   const today = new Date().toISOString().slice(0, 10)
@@ -23,12 +24,45 @@ function rangeFor(period) {
   return { from: null, to: null } // todo
 }
 
+// Periodo inmediatamente anterior, del mismo largo, para comparar (vs anterior).
+function prevRangeFor(period) {
+  const iso = (d) => d.toISOString().slice(0, 10)
+  if (period === 'today') {
+    const d = new Date(); d.setDate(d.getDate() - 1)
+    return { from: iso(d), to: iso(d) }
+  }
+  if (period === '7' || period === '30') {
+    const len = period === '7' ? 7 : 30
+    const to = new Date(); to.setDate(to.getDate() - len)
+    const from = new Date(); from.setDate(from.getDate() - (len * 2 - 1))
+    return { from: iso(from), to: iso(to) }
+  }
+  return { from: null, to: null } // 'all' no compara
+}
+
 const PERIODS = [
   ['today', 'Hoy'],
   ['7', '7 dias'],
   ['30', '30 dias'],
   ['all', 'Todo']
 ]
+
+// Variacion porcentual vs periodo anterior.
+function delta(cur, prev) {
+  if (prev > 0) return Math.round(((cur - prev) / prev) * 1000) / 10
+  if (cur > 0) return 100
+  return 0
+}
+
+function DeltaBadge({ value }) {
+  if (value === 0) return <span className="kpi__delta kpi__delta--flat">— vs anterior</span>
+  const up = value > 0
+  return (
+    <span className={`kpi__delta ${up ? 'kpi__delta--up' : 'kpi__delta--down'}`}>
+      {up ? '▲' : '▼'} {Math.abs(value)}% vs anterior
+    </span>
+  )
+}
 
 export function DashboardScreen() {
   const { isOwner } = useAuth()
@@ -38,7 +72,9 @@ export function DashboardScreen() {
   const [tab, setTab] = useState('top')
 
   const range = useMemo(() => rangeFor(period), [period])
+  const prevRange = useMemo(() => prevRangeFor(period), [period])
   const report = useLiveQuery(() => analyticsRepo.report(range), [range.from, range.to])
+  const prev = useLiveQuery(() => analyticsRepo.report(prevRange), [prevRange.from, prevRange.to])
   const lowRot = useLiveQuery(() => analyticsRepo.lowRotation({ days: rotDays }), [rotDays], [])
   const restock = useLiveQuery(() => analyticsRepo.restock(), [], [])
 
@@ -70,13 +106,50 @@ export function DashboardScreen() {
         ))}
       </div>
 
-      <div className="kpi-grid">
-        <div className="kpi"><span className="muted">Ingresos</span><strong>{m(report?.revenue ?? 0)}</strong></div>
-        <div className="kpi"><span className="muted">Ganancia</span><strong className="ok-text">{m(report?.profit ?? 0)}</strong></div>
-        <div className="kpi"><span className="muted">Costo</span><strong>{m(report?.cost ?? 0)}</strong></div>
-        <div className="kpi"><span className="muted">Margen</span><strong>{report?.marginPct ?? 0}%</strong></div>
+      <div className="stat-grid">
+        <div className="stat-card">
+          <span className="stat-card__label">Ventas netas</span>
+          <strong className="stat-card__value">{m(report?.revenue ?? 0)}</strong>
+          <DeltaBadge value={delta(report?.revenue ?? 0, prev?.revenue ?? 0)} />
+        </div>
+        <div className="stat-card">
+          <span className="stat-card__label">Transacciones</span>
+          <strong className="stat-card__value">{report?.salesCount ?? 0}</strong>
+          <DeltaBadge value={delta(report?.salesCount ?? 0, prev?.salesCount ?? 0)} />
+        </div>
       </div>
-      <p className="muted">{report?.salesCount ?? 0} venta(s) en el periodo.</p>
+
+      <section className="card">
+        <h3 className="section-title">Metodos de pago</h3>
+        <div className="pay-breakdown">
+          <DonutChart
+            segments={[
+              { label: 'Efectivo', value: report?.byMethod?.cash ?? 0, color: '#1fa36b' },
+              { label: 'Transferencia', value: report?.byMethod?.transfer ?? 0, color: '#3b82f6' }
+            ]}
+            centerLabel="Ingresos"
+            centerValue={m(report?.revenue ?? 0)}
+          />
+          <div className="legend">
+            <LegendRow color="#1fa36b" label="Efectivo" value={report?.byMethod?.cash ?? 0}
+                       total={report?.revenue ?? 0} money={m} />
+            <LegendRow color="#3b82f6" label="Transferencia" value={report?.byMethod?.transfer ?? 0}
+                       total={report?.revenue ?? 0} money={m} />
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="card__head">
+          <h3 className="section-title">Tendencia de ingresos</h3>
+          <div className="card__head-right">
+            <span className="muted">Ganancia</span>
+            <strong className="ok-text">{m(report?.profit ?? 0)}</strong>
+          </div>
+        </div>
+        <TrendChart points={report?.daily ?? []} />
+        <p className="muted">{report?.salesCount ?? 0} venta(s) · margen {report?.marginPct ?? 0}%</p>
+      </section>
 
       <div className="tabs">
         <button className={`tab ${tab === 'top' ? 'is-active' : ''}`} onClick={() => setTab('top')}>Mas vendidos</button>
@@ -146,6 +219,17 @@ export function DashboardScreen() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+function LegendRow({ color, label, value, total, money }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0
+  return (
+    <div className="legend-row">
+      <span className="legend-row__dot" style={{ background: color }} />
+      <span className="legend-row__label">{label}</span>
+      <span className="legend-row__val">{money(value)}<small className="muted"> · {pct}%</small></span>
     </div>
   )
 }

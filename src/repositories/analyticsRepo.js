@@ -8,6 +8,18 @@ function inRange(iso, from, to) {
   return true
 }
 
+// Lista de dias 'YYYY-MM-DD' entre from y to (inclusive).
+function daysBetween(from, to) {
+  const out = []
+  const d = new Date(from + 'T00:00:00')
+  const end = new Date(to + 'T00:00:00')
+  while (d <= end) {
+    out.push(d.toISOString().slice(0, 10))
+    d.setDate(d.getDate() + 1)
+  }
+  return out
+}
+
 // Analitica para el panel del dueño. Todo se deriva de las ventas (no se
 // guardan agregados): costo vs ganancia, ranking y rotacion.
 export const analyticsRepo = {
@@ -57,7 +69,38 @@ export const analyticsRepo = {
       .map((e) => ({ ...e, revenue: round2(e.revenue), profit: round2(e.profit) }))
       .sort((a, b) => b.revenue - a.revenue)
 
-    return { salesCount: sales.length, revenue, cost, profit, marginPct, byProduct, byCategory }
+    // Metodos de pago (efectivo vs transferencia) y serie diaria de ingresos.
+    const byMethod = { cash: 0, transfer: 0 }
+    const dayTotals = {}
+    for (const s of sales) {
+      const t = Number(s.totalBase || 0)
+      if (s.paymentMethod === 'transfer') byMethod.transfer += t
+      else byMethod.cash += t
+      const d = (s.createdAt || '').slice(0, 10)
+      if (d) dayTotals[d] = (dayTotals[d] || 0) + t
+    }
+    byMethod.cash = round2(byMethod.cash)
+    byMethod.transfer = round2(byMethod.transfer)
+
+    let daily
+    if (from && to) {
+      daily = daysBetween(from, to).map((d) => ({ day: d, total: round2(dayTotals[d] || 0) }))
+    } else {
+      daily = Object.keys(dayTotals).sort().map((d) => ({ day: d, total: round2(dayTotals[d]) }))
+    }
+    if (daily.length > 60) daily = daily.slice(-60)
+
+    return {
+      salesCount: sales.length,
+      revenue,
+      cost,
+      profit,
+      marginPct,
+      byProduct,
+      byCategory,
+      byMethod,
+      daily
+    }
   },
 
   // Productos sin venta en >= `days` dias (o nunca vendidos).
