@@ -7,6 +7,7 @@ import { genRecoveryCode } from '../../lib/pin'
 import { parseSnapshot, applySnapshot } from '../handoff/handoffService'
 import { isFirebaseConfigured } from '../../lib/firebase'
 import { linkDevice } from '../sync/syncService'
+import { initialPull } from '../sync/syncEngine'
 import { useSync } from '../../app/providers/SyncProvider'
 
 // Primer arranque: no hay usuarios. Creamos al DUEÑO con su PIN.
@@ -190,10 +191,22 @@ function CloudLinkInline() {
     setBusy(true)
     try {
       await linkDevice({ email, password })
-      await refresh() // arranca la sync; realtime baja los datos y el router pasa al login
-      setDone(true)
+      await refresh() // arranca la sync en vivo
+      // Descarga inicial fiable (getDocs); si falla, mostramos el error real.
+      const res = await initialPull()
+      if (!res.ok) {
+        setError('Vinculado, pero no se pudieron descargar los datos: ' + res.reason)
+        setBusy(false)
+        return
+      }
+      if (res.total === 0) {
+        setError('Vinculado, pero la cuenta de la nube esta vacia. ¿Subiste los datos desde el otro dispositivo, y usaste el mismo correo?')
+        setBusy(false)
+        return
+      }
+      setDone(true) // ya hay usuarios -> el router pasa al login
     } catch (e) {
-      setError(e.message)
+      setError('No se pudo descargar: ' + (e?.code || e?.message || e))
       setBusy(false)
     }
   }
