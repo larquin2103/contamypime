@@ -91,7 +91,7 @@ export function Catalog() {
             <div className="product-row__meta">
               <span className="price">{formatMoney(p.price, baseCurrency)}</span>
               <span className={`stock ${p.stock <= 0 ? 'stock--out' : ''}`}>
-                {p.stock} {p.unit}
+                {p.stock <= 0 ? 'Agotado' : `${p.stock} ${p.unit}`}
               </span>
             </div>
           </button>

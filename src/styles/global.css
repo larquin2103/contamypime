@@ -468,6 +468,20 @@ textarea {
 .product-row:disabled {
   cursor: default;
 }
+.product-row:disabled .product-row__main strong {
+  opacity: 0.6;
+}
+.badge-out {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
 .product-row__main {
   display: flex;
   flex-direction: column;

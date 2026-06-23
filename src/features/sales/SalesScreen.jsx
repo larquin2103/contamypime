@@ -53,6 +53,7 @@ export function SalesScreen() {
   }, [products, query])
 
   const addToCart = (p) => {
+    if (Number(p.stock) <= 0) return // agotado: no disponible para venta
     setCart((prev) => {
       const i = prev.findIndex((l) => l.productId === p.id)
       if (i >= 0) {
@@ -199,15 +200,26 @@ export function SalesScreen() {
       />
       {results.length > 0 && (
         <div className="product-list sell-results">
-          {results.map((p) => (
-            <button key={p.id} className="product-row" onClick={() => addToCart(p)}>
-              <div className="product-row__main">
-                <strong>{p.name}</strong>
-                <span className="muted">{p.code ? `${p.code} · ` : ''}{p.stock} {p.unit}</span>
-              </div>
-              <span className="price">{formatMoney(p.price, baseCurrency)}</span>
-            </button>
-          ))}
+          {results.map((p) => {
+            const out = Number(p.stock) <= 0
+            return (
+              <button
+                key={p.id}
+                className="product-row"
+                onClick={() => addToCart(p)}
+                disabled={out}
+              >
+                <div className="product-row__main">
+                  <strong>{p.name}</strong>
+                  <span className="muted">
+                    {p.code ? `${p.code} · ` : ''}
+                    {out ? <span className="badge-out">Agotado</span> : `${p.stock} ${p.unit}`}
+                  </span>
+                </div>
+                <span className="price">{formatMoney(p.price, baseCurrency)}</span>
+              </button>
+            )
+          })}
         </div>
       )}
 

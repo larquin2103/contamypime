@@ -11,10 +11,11 @@ export const ROLE_LABELS = {
 }
 
 // Unidades de medida soportadas por producto.
-export const UNITS = ['u', 'kg', 'caja']
+export const UNITS = ['u', 'lb', 'kg', 'caja']
 
 export const UNIT_LABELS = {
   u: 'Unidad',
+  lb: 'Libra',
   kg: 'Kilogramo',
   caja: 'Caja'
 }
