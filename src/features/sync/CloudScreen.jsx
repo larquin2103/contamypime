@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useSync } from '../../app/providers/SyncProvider'
 import { isFirebaseConfigured } from '../../lib/firebase'
 import {
   observeAuth,
@@ -12,6 +13,7 @@ import { syncNow } from './syncEngine'
 
 export function CloudScreen() {
   const { isOwner } = useAuth()
+  const { refresh } = useSync()
   const [cloudUser, setCloudUser] = useState(undefined) // undefined = cargando
   const [mode, setMode] = useState('link') // 'create' | 'link'
   const [form, setForm] = useState({ email: '', password: '', businessName: '' })
@@ -71,6 +73,7 @@ export function CloudScreen() {
         setOk('Dispositivo vinculado a la cuenta del negocio.')
       }
       setForm({ email: '', password: '', businessName: '' })
+      await refresh()
     } catch (e) {
       setError(e.message)
     } finally {
@@ -97,6 +100,7 @@ export function CloudScreen() {
     setBusy(true)
     try {
       await unlinkDevice()
+      await refresh()
       setOk('Dispositivo desvinculado. Los datos locales siguen intactos.')
     } finally {
       setBusy(false)

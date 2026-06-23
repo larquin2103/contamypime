@@ -1,12 +1,78 @@
+import { getFirebase } from '../../lib/firebase'
+import { syncConfig } from './syncService'
+import { SYNC_COLLECTIONS } from './collections'
 import { pushChanges } from './pushEngine'
+import { mergeIncoming, recomputeStock } from './pullEngine'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Orquestador de sincronizacion.
 //
-// Bloque 23: sube los cambios locales. (La bajada en tiempo real y el
-// arranque automatico llegan en los bloques 24 y 25.)
+//  - syncNow(): sube los cambios locales (Bloque 23).
+//  - startRealtime()/stopRealtime(): escucha Firestore en vivo y fusiona en
+//    Dexie con LWW, recalculando stock desde el libro mayor (Bloque 24).
 // ---------------------------------------------------------------------------
+
 export async function syncNow() {
   const up = await pushChanges()
   return { up }
+}
+
+let listeners = []
+let starting = false
+
+// Procesa una tanda entrante y, si toca inventario, recalcula stock.
+async function handleIncoming(col, docs) {
+  try {
+    const affected = await mergeIncoming(col, docs)
+    if (affected.size) await recomputeStock(affected)
+  } catch (e) {
+    console.warn('[sync] merge', col.name, e?.message)
+  }
+}
+
+export async function startRealtime() {
+  if (listeners.length || starting) return
+  if (!(await syncConfig.isEnabled())) return
+  const businessId = await syncConfig.businessId()
+  if (!businessId) return
+
+  starting = true
+  try {
+    const { db: fs, auth } = await getFirebase()
+    if (!auth.currentUser) return
+    const { collection, onSnapshot } = await import('firebase/firestore')
+
+    for (const col of SYNC_COLLECTIONS) {
+      const ref = collection(fs, 'businesses', businessId, col.name)
+      const unsub = onSnapshot(
+        ref,
+        (snap) => {
+          const docs = snap
+            .docChanges()
+            .filter((c) => c.type === 'added' || c.type === 'modified')
+            .map((c) => c.data())
+          if (docs.length) handleIncoming(col, docs)
+        },
+        (err) => console.warn('[sync] onSnapshot', col.name, err?.code || err?.message)
+      )
+      listeners.push(unsub)
+    }
+  } finally {
+    starting = false
+  }
+}
+
+export function stopRealtime() {
+  for (const unsub of listeners) {
+    try {
+      unsub()
+    } catch {
+      /* noop */
+    }
+  }
+  listeners = []
+}
+
+export function isRealtimeOn() {
+  return listeners.length > 0
 }

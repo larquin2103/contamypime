@@ -1123,3 +1123,20 @@ input[type='file'] {
   color: var(--primary-600);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
+
+/* ----- Indicador de sincronizacion ----- */
+.app-header__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sync-badge {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.sync-badge--busy { animation: sync-spin 1.2s linear infinite; }
+.sync-badge--off { opacity: 0.6; filter: grayscale(1); }
+@keyframes sync-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

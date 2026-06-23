@@ -5,6 +5,9 @@ import { PinInput } from '../../components/PinInput'
 import { ROLES } from '../../db/constants'
 import { genRecoveryCode } from '../../lib/pin'
 import { parseSnapshot, applySnapshot } from '../handoff/handoffService'
+import { isFirebaseConfigured } from '../../lib/firebase'
+import { linkDevice } from '../sync/syncService'
+import { useSync } from '../../app/providers/SyncProvider'
 
 // Primer arranque: no hay usuarios. Creamos al DUEÑO con su PIN.
 export function Onboarding() {
@@ -106,6 +109,8 @@ export function Onboarding() {
               onChange={receiveTurno}
               style={{ display: 'none' }}
             />
+
+            <CloudLinkInline />
           </>
         )}
 
@@ -152,6 +157,70 @@ export function Onboarding() {
 
         {error && <p className="error">{error}</p>}
       </div>
+    </div>
+  )
+}
+
+// Alta de un dispositivo nuevo desde la nube: el vendedor inicia sesion con la
+// cuenta del negocio y, al vincularse, la sincronizacion baja los usuarios y el
+// catalogo. En cuanto llegan los usuarios, la app pasa sola al login.
+function CloudLinkInline() {
+  const { refresh } = useSync()
+  const [open, setOpen] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+
+  if (!isFirebaseConfigured()) return null
+
+  const submit = async () => {
+    setError('')
+    if (!email.trim() || !password) return setError('Escribe correo y contraseña.')
+    setBusy(true)
+    try {
+      await linkDevice({ email, password })
+      await refresh() // arranca la sync; realtime baja los datos y el router pasa al login
+      setDone(true)
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="cloud-link">
+        <p className="ok-text">Dispositivo vinculado. Descargando datos del negocio…</p>
+        <p className="muted"><small>En unos segundos aparecerá la lista de usuarios para entrar.</small></p>
+      </div>
+    )
+  }
+
+  if (!open) {
+    return (
+      <button className="btn btn--block" onClick={() => setOpen(true)}>
+        ☁️ Vincular a la nube del negocio
+      </button>
+    )
+  }
+
+  return (
+    <div className="cloud-link">
+      <p className="muted">Inicia sesión con la cuenta de nube del negocio (la creó el dueño).</p>
+      <label className="field">
+        <span>Correo del negocio</span>
+        <input type="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label className="field">
+        <span>Contraseña</span>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <button className="btn btn--primary btn--block" disabled={busy} onClick={submit}>
+        {busy ? 'Vinculando…' : 'Vincular y descargar'}
+      </button>
     </div>
   )
 }
