@@ -1,6 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#0f766e"/>
-  <text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle"
-        font-family="system-ui, sans-serif" font-size="240" font-weight="700" fill="#ffffff">M</text>
-  <circle cx="256" cy="404" r="34" fill="#fbbf24"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#102a4c"/>
+      <stop offset="1" stop-color="#0a1f3c"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <g fill="#1fa36b">
+    <rect x="158" y="206" width="52" height="150" rx="22"/>
+    <rect x="244" y="166" width="52" height="190" rx="22"/>
+    <rect x="330" y="120" width="52" height="236" rx="22"/>
+  </g>
+  <path d="M128 300 A 132 132 0 0 0 384 300"
+        fill="none" stroke="#1fa36b" stroke-width="36" stroke-linecap="round"/>
+  <path d="M196 300 l46 50 l92 -132"
+        fill="none" stroke="#34c98a" stroke-width="38"
+        stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
