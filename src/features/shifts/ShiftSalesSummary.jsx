@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { salesRepo } from '../../repositories/salesRepo'
+import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
@@ -7,9 +9,12 @@ import { formatDateTime } from '../../lib/dates'
 // Resumen de las ventas del turno para el vendedor: por cada venta, sus
 // articulos (descripcion / unidad / cantidad / importe) y el importe cobrado y
 // el vuelto generado. Se nutre de salesRepo.byShift (datos ya guardados).
+// El vendedor puede exportarlas a PDF.
 export function ShiftSalesSummary({ shiftId }) {
   const sales = useLiveQuery(() => salesRepo.byShift(shiftId), [shiftId], undefined)
   const { baseCurrency } = useCurrency()
+  const { user } = useAuth()
+  const [busy, setBusy] = useState(false)
 
   if (sales === undefined) return <p className="muted">Cargando…</p>
   const active = sales.filter((s) => !s.voided)
@@ -17,9 +22,27 @@ export function ShiftSalesSummary({ shiftId }) {
 
   const total = active.reduce((a, s) => a + Number(s.totalBase || 0), 0)
 
+  const exportPdf = async () => {
+    setBusy(true)
+    try {
+      const { buildShiftSalesReport, exportPdf: toPdf } = await import('../reports/reportsService')
+      const report = await buildShiftSalesReport(shiftId, user?.name || '')
+      await toPdf(report)
+    } catch (e) {
+      alert('No se pudo exportar el PDF: ' + e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="sale-summary">
-      <p className="muted">{active.length} venta(s) · total {formatMoney(total, baseCurrency)}</p>
+      <div className="sale-summary__top">
+        <p className="muted">{active.length} venta(s) · total {formatMoney(total, baseCurrency)}</p>
+        <button className="btn btn--ghost btn--sm" disabled={busy} onClick={exportPdf}>
+          {busy ? '...' : '⬇ PDF'}
+        </button>
+      </div>
       {active.map((s) => {
         const isCash = s.paymentMethod !== 'transfer'
         const cur = isCash ? s.cashCurrency || baseCurrency : s.transferCurrency || 'MN'

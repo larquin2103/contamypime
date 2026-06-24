@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../../app/providers/AuthProvider'
@@ -5,7 +6,28 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
-import { FOREIGN_CURRENCIES, ROLE_LABELS } from '../../db/constants'
+import { countsRepo } from '../../repositories/countsRepo'
+import { FOREIGN_CURRENCIES, ROLE_LABELS, COUNT_STATUS } from '../../db/constants'
+
+// Aviso al vendedor cuando el dueño resuelve su conteo fisico (aprobado/rechazado).
+function CountNotice({ userId }) {
+  const last = useLiveQuery(() => countsRepo.latestResolvedFor(userId), [userId], undefined)
+  const [seen, setSeen] = useState(() => localStorage.getItem('countNoticeSeen'))
+  if (!last || last.id === seen) return null
+  const approved = last.status === COUNT_STATUS.APPROVED
+  const ack = () => { localStorage.setItem('countNoticeSeen', last.id); setSeen(last.id) }
+  return (
+    <div className={`cuadre-banner cuadre-banner--${approved ? 'green' : 'red'}`}>
+      <span className="cuadre-emoji">{approved ? '✅' : '↩️'}</span>
+      <div>
+        <strong>{approved ? 'Tu conteo físico fue aprobado' : 'Tu conteo físico fue rechazado'}</strong>
+        {!approved && last.rejectReason && <p className="muted">Motivo: {last.rejectReason}</p>}
+        {approved && <p className="muted">Las existencias se ajustaron según lo contado.</p>}
+        <button className="btn btn--ghost btn--sm" onClick={ack}>Entendido</button>
+      </div>
+    </div>
+  )
+}
 
 // Aviso al dueño si hay mas de un turno abierto a la vez (puede ocurrir si dos
 // dispositivos abrieron turno sin conexion y luego sincronizaron).
@@ -36,6 +58,7 @@ export function Home() {
         <span className="badge">{ROLE_LABELS[user.role]}</span>
       </div>
 
+      <CountNotice userId={user.id} />
       {isOwner && <ConcurrentShiftWarning />}
 
       <Link to="/shift" className={`shift-status shift-status--${hasActive ? (isMine ? 'mine' : 'other') : 'none'}`}>

@@ -108,8 +108,15 @@ function OpenShiftForm() {
 function ActiveShiftPanel({ shift, onClosed }) {
   const { isOwner } = useAuth()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
-  const [closing, setClosing] = useState(false)
+  // Retoma el cierre si el vendedor fue al conteo y volvio (flujo no se pierde).
+  const [closing, setClosing] = useState(() => sessionStorage.getItem('closeFlowShift') === shift.id)
   const [showSales, setShowSales] = useState(false)
+
+  const startClose = () => {
+    sessionStorage.setItem('closeFlowShift', shift.id)
+    sessionStorage.setItem('closeFlowStep', '1') // arranca desde el principio
+    setClosing(true)
+  }
 
   if (closing) {
     return <CloseShiftPanel shift={shift} onCancel={() => setClosing(false)} onClosed={onClosed} />
@@ -195,7 +202,7 @@ function ActiveShiftPanel({ shift, onClosed }) {
         {showSales && <ShiftSalesSummary shiftId={shift.id} />}
       </section>
 
-      <button className="btn btn--primary btn--block" onClick={() => setClosing(true)}>
+      <button className="btn btn--primary btn--block" onClick={startClose}>
         Cerrar turno
       </button>
     </div>
@@ -259,7 +266,11 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
   const { user, isOwner } = useAuth()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   const denominations = useLiveQuery(() => configRepo.getDenominations(), [], null)
-  const [step, setStep] = useState(1)
+  // Paso persistido: si el vendedor va al conteo y vuelve, retoma donde estaba.
+  const [step, setStepState] = useState(() => Number(sessionStorage.getItem('closeFlowStep')) || 1)
+  const setStep = (n) => { sessionStorage.setItem('closeFlowStep', String(n)); setStepState(n) }
+  const clearFlow = () => { sessionStorage.removeItem('closeFlowShift'); sessionStorage.removeItem('closeFlowStep') }
+  const cancel = () => { clearFlow(); onCancel() }
   const [counts, setCounts] = useState({}) // { MN: {1000: '2', ...}, USD: {...} }
   const [notes, setNotes] = useState('')
   const [floatCash, setFloatCash] = useState(null) // fondo para el proximo turno
@@ -315,6 +326,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
       countSkipped,
       closingFloat
     })
+    clearFlow()
     onClosed(res)
   }
 
@@ -325,7 +337,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
 
   return (
     <div className="screen">
-      <button className="link-back" onClick={onCancel}>← Volver</button>
+      <button className="link-back" onClick={cancel}>← Volver</button>
       <h2>Cerrar turno{forcedByOwner ? ` de ${shift.sellerName || 'vendedor'}` : ''}</h2>
 
       <ol className="close-steps">
@@ -344,7 +356,13 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
             Antes de cerrar, conviene contar el inventario. Los productos agotados no se listan.
             Si ya lo hiciste (o no toca hoy), puedes continuar.
           </p>
-          <Link className="btn btn--block" to="/count">📋 Ir al conteo físico</Link>
+          <Link
+            className="btn btn--block"
+            to="/count"
+            onClick={() => sessionStorage.setItem('closeFlowStep', '3')}
+          >
+            📋 Ir al conteo físico
+          </Link>
           <button className="btn btn--primary btn--block" onClick={() => setStep(2)}>
             Continuar
           </button>

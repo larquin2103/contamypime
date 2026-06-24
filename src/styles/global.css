@@ -1328,3 +1328,10 @@ input[type='file'] {
   margin-top: 8px;
   font-size: 0.9rem;
 }
+
+.sale-summary__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
