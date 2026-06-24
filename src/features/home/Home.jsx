@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import {
+  LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight
+} from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
@@ -29,8 +33,7 @@ function CountNotice({ userId }) {
   )
 }
 
-// Aviso al dueño si hay mas de un turno abierto a la vez (puede ocurrir si dos
-// dispositivos abrieron turno sin conexion y luego sincronizaron).
+// Aviso al dueño si hay mas de un turno abierto a la vez.
 function ConcurrentShiftWarning() {
   const open = useLiveQuery(() => shiftsRepo.listOpen(), [], [])
   const users = useLiveQuery(() => usersRepo.list(), [], [])
@@ -46,82 +49,144 @@ function ConcurrentShiftWarning() {
   )
 }
 
+// Banner de estado de turno (accion primaria de operacion).
+function ShiftBanner() {
+  const { hasActive, isMine } = useShift()
+  let title = 'Sin turno abierto'
+  let sub = 'Ábrelo para empezar a registrar ventas'
+  let cta = 'Abrir'
+  if (hasActive && isMine) { title = 'Turno abierto'; sub = 'Toca para gestionar o cerrar'; cta = 'Gestionar' }
+  else if (hasActive && !isMine) { title = 'Turno activo de otro vendedor'; sub = 'Solo quien lo abrió puede vender'; cta = 'Ver' }
+  return (
+    <Link to="/shift" className="shift-banner">
+      <span className={`shift-dot ${hasActive ? 'shift-dot--on' : ''}`} aria-hidden="true" />
+      <div className="shift-banner__text">
+        <strong>{title}</strong>
+        <span className="muted">{sub}</span>
+      </div>
+      <span className="shift-banner__cta">{cta}</span>
+    </Link>
+  )
+}
+
+// Tarjeta de accion de una seccion (icono + titulo + subtitulo).
+function ActionCard({ to, icon: Icon, title, sub }) {
+  return (
+    <Link to={to} className="action-card">
+      <span className="action-tile"><Icon size={20} strokeWidth={1.8} /></span>
+      <strong className="action-card__title">{title}</strong>
+      <span className="action-card__sub">{sub}</span>
+    </Link>
+  )
+}
+
+function Section({ label, children }) {
+  return (
+    <section className="home-section">
+      <h3 className="home-section__label">{label}</h3>
+      <div className="home-grid">{children}</div>
+    </section>
+  )
+}
+
+function RatesCard() {
+  const { baseCurrency, rates } = useCurrency()
+  return (
+    <section className="card rates-card">
+      <h3 className="rates-card__title">Tasas vigentes</h3>
+      <div className="rates-grid">
+        {FOREIGN_CURRENCIES.map((c) => {
+          const r = rates?.[c.code]?.rate
+          return (
+            <div key={c.code} className="rate-cell">
+              <span className="rate-cell__label">{c.code}</span>
+              <strong className={r ? 'rate-cell__val' : 'rate-cell__val rate-cell__val--empty'}>
+                {r ? `${r} ${baseCurrency}` : '— sin tasa'}
+              </strong>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 export function Home() {
   const { user, isOwner } = useAuth()
-  const { baseCurrency, rates } = useCurrency()
-  const { hasActive, isMine } = useShift()
+  const initial = (user.name || '?').trim().charAt(0).toUpperCase()
 
   return (
-    <div className="screen">
-      <div className="welcome">
-        <h2>Hola, {user.name}</h2>
-        <span className="badge">{ROLE_LABELS[user.role]}</span>
-      </div>
+    <div className="home">
+      <header className="home-header">
+        <div className="home-avatar">{initial}</div>
+        <div className="home-greeting">
+          <span className="home-greeting__hi">Bienvenido de nuevo</span>
+          <div className="home-greeting__row">
+            <strong className="home-greeting__name">{user.name}</strong>
+            <span className="home-badge">{ROLE_LABELS[user.role]}</span>
+          </div>
+        </div>
+      </header>
 
       <CountNotice userId={user.id} />
       {isOwner && <ConcurrentShiftWarning />}
 
-      <Link to="/shift" className={`shift-status shift-status--${hasActive ? (isMine ? 'mine' : 'other') : 'none'}`}>
-        {!hasActive && <span>🟢 Sin turno abierto — toca para abrir</span>}
-        {hasActive && isMine && <span>🧾 Tu turno está activo — gestionar / cerrar</span>}
-        {hasActive && !isMine && <span>🔒 Turno activo de otro vendedor</span>}
-      </Link>
+      <ShiftBanner />
 
-      <section className="card">
-        <h3>Tasas vigentes</h3>
-        <div className="convert-grid">
-          {FOREIGN_CURRENCIES.map((c) => (
-            <div key={c.code} className="convert-cell">
-              <span className="muted">{c.code}</span>
-              <strong>
-                {rates?.[c.code]?.rate
-                  ? `${rates[c.code].rate} ${baseCurrency}`
-                  : '— sin tasa'}
-              </strong>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div className="quick-links">
-        <Link className="btn btn--block" to="/catalog">
-          📦 Catalogo
-        </Link>
-        <Link className="btn btn--block" to="/handoff">
-          🔄 Traspaso de turno
-        </Link>
-        <Link className="btn btn--block" to="/count">
-          📋 Conteo fisico
-        </Link>
+      {/* Destacados */}
+      <div className="home-highlights">
         {isOwner && (
-          <>
-            <Link className="btn btn--block" to="/dashboard">
-              📊 Panel del dueño
-            </Link>
-            <Link className="btn btn--block" to="/audit">
-              🗂️ Auditoria
-            </Link>
-            <Link className="btn btn--block" to="/reports">
-              📄 Reportes (PDF/Excel)
-            </Link>
-            <Link className="btn btn--block" to="/cloud">
-              ☁️ Sincronización
-            </Link>
-            <Link className="btn btn--block" to="/entry">
-              📥 Entrada de mercancia
-            </Link>
-            <Link className="btn btn--block" to="/finances">
-              💰 Deudas y caja
-            </Link>
-            <Link className="btn btn--block" to="/settings">
-              ⚙️ Ajustes
-            </Link>
-            <Link className="btn btn--block" to="/users">
-              👥 Usuarios
-            </Link>
-          </>
+          <Link to="/dashboard" className="highlight highlight--accent">
+            <span className="highlight__tile highlight__tile--accent">
+              <LayoutDashboard size={23} strokeWidth={1.9} />
+            </span>
+            <div className="highlight__text">
+              <strong>Panel del dueño</strong>
+              <span>Ventas, caja y alertas del negocio</span>
+            </div>
+            <ChevronRight size={20} className="highlight__chev" />
+          </Link>
         )}
+        <Link to="/catalog" className="highlight">
+          <span className="highlight__tile">
+            <Package size={21} strokeWidth={1.9} />
+          </span>
+          <div className="highlight__text">
+            <strong>Catálogo</strong>
+            <span>Productos, precios y existencias</span>
+          </div>
+          <ChevronRight size={18} className="highlight__chev highlight__chev--muted" />
+        </Link>
       </div>
+
+      {!isOwner && <RatesCard />}
+
+      {isOwner ? (
+        <>
+          <Section label="Inventario">
+            <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Registrar compras" />
+            <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
+          </Section>
+          <Section label="Operación">
+            <ActionCard to="/handoff" icon={ArrowLeftRight} title="Traspaso de turno" sub="Entregar la caja" />
+            <ActionCard to="/finances" icon={Wallet} title="Deudas y caja" sub="Cobros y pagos" />
+          </Section>
+          <Section label="Gestión">
+            <ActionCard to="/reports" icon={FileText} title="Reportes" sub="PDF y Excel" />
+            <ActionCard to="/audit" icon={ShieldCheck} title="Auditoría" sub="Registro de cambios" />
+          </Section>
+          <Section label="Sistema">
+            <ActionCard to="/cloud" icon={RefreshCw} title="Sincronización" sub="Datos en la nube" />
+            <ActionCard to="/users" icon={Users} title="Usuarios" sub="Permisos y roles" />
+            <ActionCard to="/settings" icon={Settings} title="Ajustes" sub="Preferencias" />
+          </Section>
+        </>
+      ) : (
+        <Section label="Operación">
+          <ActionCard to="/handoff" icon={ArrowLeftRight} title="Traspaso de turno" sub="Entregar la caja" />
+          <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
+        </Section>
+      )}
     </div>
   )
 }

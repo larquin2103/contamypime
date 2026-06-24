@@ -1,9 +1,9 @@
 import { NavLink } from 'react-router-dom'
+import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut } from 'lucide-react'
 import { useAuth } from '../app/providers/AuthProvider'
 import { useShift } from '../app/providers/ShiftProvider'
 import { useSync } from '../app/providers/SyncProvider'
 import { useLicense } from '../app/providers/LicenseProvider'
-import { ROLE_LABELS } from '../db/constants'
 
 // Indicador de sincronizacion en la cabecera (solo si la sync esta activada).
 function SyncBadge() {
@@ -50,24 +50,20 @@ function LicenseBanner() {
   return null
 }
 
-// Shell de la app autenticada: cabecera + contenido + navegacion inferior.
+// Shell de la app autenticada: cabecera fina + contenido + navegacion inferior.
+// La identidad rica (avatar, saludo, rol) vive en el Home; aqui solo la marca.
 export function Layout({ children }) {
-  const { user, logout, isOwner } = useAuth()
+  const { logout, isOwner } = useAuth()
   const { canSell } = useShift()
 
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div className="app-header__brand">
-          <span className="brand brand--sm">MypiCuadre</span>
-          <span className="active-user">
-            {user.name} · {ROLE_LABELS[user.role]}
-          </span>
-        </div>
+        <span className="brand brand--sm">MypiCuadre</span>
         <div className="app-header__right">
           <SyncBadge />
-          <button className="btn btn--ghost btn--sm" onClick={logout}>
-            Salir
+          <button className="btn btn--ghost btn--sm app-header__exit" onClick={logout}>
+            <LogOut size={16} strokeWidth={2} /> Salir
           </button>
         </div>
       </header>
@@ -78,26 +74,26 @@ export function Layout({ children }) {
 
       <nav className="app-nav">
         <NavLink to="/" end className="nav-item">
-          🏠<span>Inicio</span>
+          <Home size={21} strokeWidth={1.9} /><span>Inicio</span>
         </NavLink>
         <NavLink to="/catalog" className="nav-item">
-          📦<span>Catalogo</span>
+          <Package size={21} strokeWidth={1.9} /><span>Catálogo</span>
         </NavLink>
         <NavLink to="/shift" className="nav-item">
-          🧾<span>Turno</span>
+          <ScrollText size={21} strokeWidth={1.9} /><span>Turno</span>
         </NavLink>
         {canSell && (
           <NavLink to="/sell" className="nav-item">
-            💵<span>Vender</span>
+            <DollarSign size={21} strokeWidth={1.9} /><span>Vender</span>
           </NavLink>
         )}
         {isOwner && (
           <>
             <NavLink to="/settings" className="nav-item">
-              ⚙️<span>Ajustes</span>
+              <Settings size={21} strokeWidth={1.9} /><span>Ajustes</span>
             </NavLink>
             <NavLink to="/users" className="nav-item">
-              👥<span>Usuarios</span>
+              <Users size={21} strokeWidth={1.9} /><span>Usuarios</span>
             </NavLink>
           </>
         )}
