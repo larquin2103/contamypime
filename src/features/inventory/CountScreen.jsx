@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { countsRepo } from '../../repositories/countsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
@@ -7,6 +7,18 @@ import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { formatDateTime } from '../../lib/dates'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
+
+// Si el vendedor llego aqui desde el asistente de cierre, le permitimos volver
+// a retomar el cierre (sin perder el flujo) tras contar o decidir no contar.
+function CloseReturnBanner() {
+  const navigate = useNavigate()
+  if (typeof sessionStorage === 'undefined' || !sessionStorage.getItem('closeFlowShift')) return null
+  return (
+    <button className="btn btn--primary btn--block" onClick={() => navigate('/shift')}>
+      ← Volver al cierre del turno
+    </button>
+  )
+}
 
 export function CountScreen() {
   const { user, isOwner } = useAuth()
@@ -27,6 +39,7 @@ export function CountScreen() {
         <section className="card">
           <p>Hay un conteo enviado, esperando la <strong>aprobacion del dueño</strong>.</p>
         </section>
+        <CloseReturnBanner />
       </div>
     )
   }
@@ -36,6 +49,7 @@ export function CountScreen() {
   return (
     <div className="screen">
       <h2>Conteo fisico</h2>
+      <CloseReturnBanner />
       <section className="card">
         <p className="muted">
           Cuenta el inventario por categorias. Al terminar, el dueño aprueba y se ajustan
@@ -71,6 +85,7 @@ function CountEditor({ draft }) {
   const groups = useMemo(() => {
     const g = {}
     items.forEach((it, idx) => {
+      if (Number(it.systemStock) <= 0) return // los agotados no se cuentan
       const key = it.categoryId || '__none'
       if (!g[key]) g[key] = []
       g[key].push({ ...it, idx })
@@ -78,8 +93,9 @@ function CountEditor({ draft }) {
     return g
   }, [items])
 
-  const counted = items.filter((it) => it.physicalQty !== null && it.physicalQty !== '').length
-  const progress = items.length ? Math.round((counted / items.length) * 100) : 0
+  const visible = items.filter((it) => Number(it.systemStock) > 0)
+  const counted = visible.filter((it) => it.physicalQty !== null && it.physicalQty !== '').length
+  const progress = visible.length ? Math.round((counted / visible.length) * 100) : 0
 
   const setItem = (idx, patch) => {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
@@ -154,8 +170,9 @@ function CountEditor({ draft }) {
     <div className="screen">
       <div className="screen__header">
         <h2>Conteo fisico</h2>
-        <span className="badge">{counted}/{items.length}</span>
+        <span className="badge">{counted}/{visible.length}</span>
       </div>
+      <CloseReturnBanner />
       <div className="progress">
         <div className="progress__bar" style={{ width: `${progress}%` }} />
       </div>

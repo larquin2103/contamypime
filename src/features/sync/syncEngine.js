@@ -17,6 +17,34 @@ export async function syncNow() {
   return { up }
 }
 
+// Descarga inicial de una sola pasada (getDocs). A diferencia del listener en
+// tiempo real (onSnapshot, streaming que algunos proxies/VPN bloquean), esto
+// usa peticiones normales y es mas fiable para el primer "bajar todo". Lanza
+// el error real de Firestore si falla (para poder diagnosticar).
+export async function initialPull() {
+  if (!(await syncConfig.isEnabled())) return { ok: false, reason: 'sync desactivada', total: 0 }
+  const businessId = await syncConfig.businessId()
+  if (!businessId) return { ok: false, reason: 'sin negocio vinculado', total: 0 }
+
+  const { db: fs, auth } = await getFirebase()
+  if (!auth.currentUser) return { ok: false, reason: 'sin sesion de nube', total: 0 }
+  const { collection, getDocs } = await import('firebase/firestore')
+
+  let total = 0
+  const affected = new Set()
+  for (const col of SYNC_COLLECTIONS) {
+    const snap = await getDocs(collection(fs, 'businesses', businessId, col.name))
+    const docs = snap.docs.map((d) => d.data())
+    if (docs.length) {
+      const aff = await mergeIncoming(col, docs)
+      aff.forEach((x) => affected.add(x))
+      total += docs.length
+    }
+  }
+  if (affected.size) await recomputeStock(affected)
+  return { ok: true, total }
+}
+
 let listeners = []
 let starting = false
 

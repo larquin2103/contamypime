@@ -8,7 +8,9 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { OtherShiftBlocked } from './OtherShiftBlocked'
 import { CashInputs } from '../../components/CashInputs'
+import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 import { DenominationCounter, totalsFromCounts } from '../../components/DenominationCounter'
+import { ShiftSalesSummary } from './ShiftSalesSummary'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { CASH_CURRENCIES } from '../../db/constants'
 import { formatMoney, round2 } from '../../lib/currency'
@@ -40,8 +42,13 @@ export function ShiftScreen() {
 // ---- Abrir turno ----
 function OpenShiftForm() {
   const { user } = useAuth()
-  // Caja heredada de un turno recibido por traspaso (Bloque 14).
-  const inherited = useLiveQuery(() => configRepo.get('inheritedOpeningCash', null), [], undefined)
+  // Caja a heredar: primero un traspaso explicito por archivo (config local);
+  // si no, el fondo del ultimo turno cerrado (que SI sincroniza entre equipos).
+  const inherited = useLiveQuery(async () => {
+    const local = await configRepo.get('inheritedOpeningCash', null)
+    if (local && Object.keys(local).length) return local
+    return shiftsRepo.lastClosedCash()
+  }, [], undefined)
   const [openingCash, setOpeningCash] = useState({})
   const [point, setPoint] = useState('Principal')
   const [usedInherited, setUsedInherited] = useState(false)
@@ -101,7 +108,15 @@ function OpenShiftForm() {
 function ActiveShiftPanel({ shift, onClosed }) {
   const { isOwner } = useAuth()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
-  const [closing, setClosing] = useState(false)
+  // Retoma el cierre si el vendedor fue al conteo y volvio (flujo no se pierde).
+  const [closing, setClosing] = useState(() => sessionStorage.getItem('closeFlowShift') === shift.id)
+  const [showSales, setShowSales] = useState(false)
+
+  const startClose = () => {
+    sessionStorage.setItem('closeFlowShift', shift.id)
+    sessionStorage.setItem('closeFlowStep', '1') // arranca desde el principio
+    setClosing(true)
+  }
 
   if (closing) {
     return <CloseShiftPanel shift={shift} onCancel={() => setClosing(false)} onClosed={onClosed} />
@@ -177,7 +192,17 @@ function ActiveShiftPanel({ shift, onClosed }) {
         <p className="muted">{summary?.salesCount ?? 0} venta(s) registradas.</p>
       </section>
 
-      <button className="btn btn--primary btn--block" onClick={() => setClosing(true)}>
+      <section className="card">
+        <div className="screen__header">
+          <h3>Ventas del turno</h3>
+          <button className="btn btn--ghost btn--sm" onClick={() => setShowSales((v) => !v)}>
+            {showSales ? 'Ocultar' : 'Ver detalle'}
+          </button>
+        </div>
+        {showSales && <ShiftSalesSummary shiftId={shift.id} />}
+      </section>
+
+      <button className="btn btn--primary btn--block" onClick={startClose}>
         Cerrar turno
       </button>
     </div>
@@ -234,13 +259,23 @@ function ForeignShiftOwner({ shift, onClosed }) {
   )
 }
 
-// ---- Cerrar turno: conteo por denominacion + cuadre (Fase 2) ----
+// ---- Cerrar turno: asistente guiado (conteo -> ventas -> cuadre -> fondo -> cierre) ----
+const CLOSE_STEPS = ['Conteo', 'Ventas', 'Cuadre', 'Fondo', 'Cerrar']
+
 function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
-  const { user } = useAuth()
+  const { user, isOwner } = useAuth()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   const denominations = useLiveQuery(() => configRepo.getDenominations(), [], null)
+  // Paso persistido: si el vendedor va al conteo y vuelve, retoma donde estaba.
+  const [step, setStepState] = useState(() => Number(sessionStorage.getItem('closeFlowStep')) || 1)
+  const setStep = (n) => { sessionStorage.setItem('closeFlowStep', String(n)); setStepState(n) }
+  const clearFlow = () => { sessionStorage.removeItem('closeFlowShift'); sessionStorage.removeItem('closeFlowStep') }
+  const cancel = () => { clearFlow(); onCancel() }
   const [counts, setCounts] = useState({}) // { MN: {1000: '2', ...}, USD: {...} }
   const [notes, setNotes] = useState('')
+  const [floatCash, setFloatCash] = useState(null) // fondo para el proximo turno
+  const [floatUnlocked, setFloatUnlocked] = useState(false) // el dueño autorizo retirar
+  const [askOwner, setAskOwner] = useState(false)
   const [busy, setBusy] = useState(false)
   const [warnNoCount, setWarnNoCount] = useState(false)
 
@@ -251,22 +286,36 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
   const declared = totalsFromCounts(counts, denominations)
   const diff = {}
   for (const c of CASH_CURRENCIES) diff[c] = round2((declared[c] || 0) - summary.expectedCash[c])
-
   const setCurrencyCounts = (cur, next) => setCounts((prev) => ({ ...prev, [cur]: next }))
 
-  // No conto nada pero se esperaba efectivo -> cierre sin cuadre real.
   const declaredTotal = CASH_CURRENCIES.reduce((a, c) => a + (declared[c] || 0), 0)
   const expectedTotal = CASH_CURRENCIES.reduce((a, c) => a + summary.expectedCash[c], 0)
   const noCount = declaredTotal === 0 && expectedTotal > 0
+
+  // Fondo para el proximo turno: por defecto, todo lo declarado (no se retira).
+  const fondo = floatCash ?? Object.fromEntries(CASH_CURRENCIES.map((c) => [c, String(declared[c] ?? 0)]))
+  const retiro = {}
+  for (const c of CASH_CURRENCIES) retiro[c] = round2(Math.max(0, (declared[c] || 0) - (Number(fondo[c]) || 0)))
+  const canEditFloat = isOwner || floatUnlocked
+  const retiroTotal = CASH_CURRENCIES.reduce((a, c) => a + retiro[c], 0)
+
+  const goToFloat = () => {
+    // Al entrar al paso de fondo, prellenar con lo declarado.
+    if (floatCash === null) setFloatCash(Object.fromEntries(CASH_CURRENCIES.map((c) => [c, String(declared[c] ?? 0)])))
+    setStep(4)
+  }
 
   const doClose = async (countSkipped) => {
     setBusy(true)
     const cash = {}
     for (const c of CASH_CURRENCIES) cash[c] = declared[c] || 0
+    const closingFloat = {}
+    for (const c of CASH_CURRENCIES) closingFloat[c] = Number(fondo[c]) || 0
     const autoNote = [
       notes,
       countSkipped ? '[cerrado sin contar efectivo]' : '',
-      forcedByOwner ? '[cerrado por el dueño]' : ''
+      forcedByOwner ? '[cerrado por el dueño]' : '',
+      retiroTotal > 0 ? '[retiro del dueño al cierre]' : ''
     ].filter(Boolean).join(' ')
     const res = await shiftsRepo.close({
       shiftId: shift.id,
@@ -274,62 +323,161 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
       denominations: counts,
       notes: autoNote,
       closedBy: user.id,
-      countSkipped
+      countSkipped,
+      closingFloat
     })
+    clearFlow()
     onClosed(res)
   }
 
   const onConfirm = () => {
-    if (noCount) setWarnNoCount(true) // pide confirmacion explicita
+    if (noCount) setWarnNoCount(true)
     else doClose(false)
   }
 
   return (
     <div className="screen">
-      <button className="link-back" onClick={onCancel}>← Volver</button>
+      <button className="link-back" onClick={cancel}>← Volver</button>
       <h2>Cerrar turno{forcedByOwner ? ` de ${shift.sellerName || 'vendedor'}` : ''}</h2>
 
-      <section className="card">
-        <h3>Cuenta el efectivo por denominacion</h3>
-        {CASH_CURRENCIES.map((c) => (
-          <div key={c} className="close-cur">
-            <DenominationCounter
-              currency={c}
-              denominations={denominations[c] || []}
-              counts={counts[c] || {}}
-              onChange={(next) => setCurrencyCounts(c, next)}
-            />
-            <div className="cuadre-mini">
-              <span>Esperado {formatMoney(summary.expectedCash[c], c)}</span>
-              <span className={diff[c] === 0 ? 'ok-text' : 'warn-text'}>
-                Dif {formatMoney(diff[c], c)}
-              </span>
-            </div>
-          </div>
+      <ol className="close-steps">
+        {CLOSE_STEPS.map((label, i) => (
+          <li key={label} className={`close-step ${step === i + 1 ? 'is-active' : ''} ${step > i + 1 ? 'is-done' : ''}`}>
+            <span className="close-step__n">{i + 1}</span>{label}
+          </li>
         ))}
-      </section>
+      </ol>
 
-      {summary.transfersCount > 0 && (
+      {/* Paso 1: conteo fisico (recomendado, saltable) */}
+      {step === 1 && (
         <section className="card">
-          <h3>Transferencias (aparte del efectivo)</h3>
-          {Object.entries(summary.transfersByCur).map(([c, v]) => (
-            <div key={c} className="kv">
-              <span className="muted">{c}</span>
-              <strong>{formatMoney(v, c)}</strong>
-            </div>
-          ))}
+          <h3>1. Conteo físico (recomendado)</h3>
+          <p className="muted">
+            Antes de cerrar, conviene contar el inventario. Los productos agotados no se listan.
+            Si ya lo hiciste (o no toca hoy), puedes continuar.
+          </p>
+          <Link
+            className="btn btn--block"
+            to="/count"
+            onClick={() => sessionStorage.setItem('closeFlowStep', '3')}
+          >
+            📋 Ir al conteo físico
+          </Link>
+          <button className="btn btn--primary btn--block" onClick={() => setStep(2)}>
+            Continuar
+          </button>
         </section>
       )}
 
-      <section className="card">
-        <label className="field">
-          <span>Notas (opcional)</span>
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
-        <button className="btn btn--primary btn--block" disabled={busy} onClick={onConfirm}>
-          {busy ? 'Cerrando…' : 'Confirmar cierre'}
-        </button>
-      </section>
+      {/* Paso 2: resumen de ventas del turno */}
+      {step === 2 && (
+        <section className="card">
+          <h3>2. Ventas del turno</h3>
+          <ShiftSalesSummary shiftId={shift.id} />
+          <div className="modal__actions">
+            <button className="btn btn--ghost" onClick={() => setStep(1)}>Atrás</button>
+            <button className="btn btn--primary" onClick={() => setStep(3)}>Continuar</button>
+          </div>
+        </section>
+      )}
+
+      {/* Paso 3: cuadre por denominacion */}
+      {step === 3 && (
+        <>
+          <section className="card">
+            <h3>3. Cuenta el efectivo por denominación</h3>
+            {CASH_CURRENCIES.map((c) => (
+              <div key={c} className="close-cur">
+                <DenominationCounter
+                  currency={c}
+                  denominations={denominations[c] || []}
+                  counts={counts[c] || {}}
+                  onChange={(next) => setCurrencyCounts(c, next)}
+                />
+                <div className="cuadre-mini">
+                  <span>Esperado {formatMoney(summary.expectedCash[c], c)}</span>
+                  <span className={diff[c] === 0 ? 'ok-text' : 'warn-text'}>
+                    Dif {formatMoney(diff[c], c)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </section>
+          {summary.transfersCount > 0 && (
+            <section className="card">
+              <h3>Transferencias (aparte del efectivo)</h3>
+              {Object.entries(summary.transfersByCur).map(([c, v]) => (
+                <div key={c} className="kv"><span className="muted">{c}</span><strong>{formatMoney(v, c)}</strong></div>
+              ))}
+            </section>
+          )}
+          <div className="modal__actions">
+            <button className="btn btn--ghost" onClick={() => setStep(2)}>Atrás</button>
+            <button className="btn btn--primary" onClick={goToFloat}>Continuar</button>
+          </div>
+        </>
+      )}
+
+      {/* Paso 4: fondo para el proximo turno / retiro del dueño */}
+      {step === 4 && (
+        <section className="card">
+          <h3>4. Fondo para el próximo turno</h3>
+          <p className="muted">
+            Lo que dejes aquí pasa como caja inicial del siguiente turno. La diferencia con lo
+            declarado se registra como <strong>retiro del dueño</strong> (ajuste del saldo final).
+          </p>
+          <CashInputs
+            label="Fondo a dejar en caja"
+            values={fondo}
+            onChange={canEditFloat ? setFloatCash : undefined}
+            disabled={!canEditFloat}
+          />
+          {!canEditFloat && (
+            <button className="btn btn--block" onClick={() => setAskOwner(true)}>
+              🔒 Autorizar retiro (PIN del dueño)
+            </button>
+          )}
+          <div className="cuadre-mini">
+            <span>Declarado {formatMoney(declaredTotal, CASH_CURRENCIES[0])}…</span>
+            <span className={retiroTotal > 0 ? 'warn-text' : 'ok-text'}>
+              Retiro del dueño: {CASH_CURRENCIES.map((c) => formatMoney(retiro[c], c)).join(' · ')}
+            </span>
+          </div>
+          <div className="modal__actions">
+            <button className="btn btn--ghost" onClick={() => setStep(3)}>Atrás</button>
+            <button className="btn btn--primary" onClick={() => setStep(5)}>Continuar</button>
+          </div>
+        </section>
+      )}
+
+      {/* Paso 5: confirmar */}
+      {step === 5 && (
+        <section className="card">
+          <h3>5. Confirmar cierre</h3>
+          <div className="kv"><span className="muted">Declarado</span><strong>{CASH_CURRENCIES.map((c) => formatMoney(declared[c] || 0, c)).join(' · ')}</strong></div>
+          <div className="kv"><span className="muted">Fondo próximo turno</span><strong>{CASH_CURRENCIES.map((c) => formatMoney(Number(fondo[c]) || 0, c)).join(' · ')}</strong></div>
+          {retiroTotal > 0 && (
+            <div className="kv"><span className="muted">Retiro del dueño</span><strong>{CASH_CURRENCIES.map((c) => formatMoney(retiro[c], c)).join(' · ')}</strong></div>
+          )}
+          <label className="field">
+            <span>Notas (opcional)</span>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+          <div className="modal__actions">
+            <button className="btn btn--ghost" onClick={() => setStep(4)}>Atrás</button>
+            <button className="btn btn--primary" disabled={busy} onClick={onConfirm}>
+              {busy ? 'Cerrando…' : 'Confirmar cierre'}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {askOwner && (
+        <OwnerAuthModal
+          onAuthorized={() => { setFloatUnlocked(true); setAskOwner(false) }}
+          onCancel={() => setAskOwner(false)}
+        />
+      )}
 
       {warnNoCount && (
         <div className="modal-backdrop" onClick={() => setWarnNoCount(false)}>
@@ -370,8 +518,11 @@ function CloseResult({ result, onDone }) {
     transfersCount = 0,
     forced = false,
     countSkipped = false,
+    closingFloat = null,
+    ownerWithdrawal = null,
     shift
   } = result
+  const retiroTotal = ownerWithdrawal ? CASH_CURRENCIES.reduce((a, c) => a + Number(ownerWithdrawal[c] || 0), 0) : 0
   const { toBase } = useCurrency()
   const { user } = useAuth()
   const ownerWhatsapp = useLiveQuery(() => configRepo.get('ownerWhatsapp', ''), [], '')
@@ -448,6 +599,18 @@ function CloseResult({ result, onDone }) {
           <span className="muted">Deuda interna (no es ingreso)</span>
           <strong>{formatMoney(internalDebtTotal)}</strong>
         </div>
+        {closingFloat && (
+          <div className="kv">
+            <span className="muted">Fondo para el próximo turno</span>
+            <strong>{CASH_CURRENCIES.map((c) => formatMoney(Number(closingFloat[c] || 0), c)).join(' · ')}</strong>
+          </div>
+        )}
+        {retiroTotal > 0 && (
+          <div className="kv">
+            <span className="muted">Retiro del dueño al cierre</span>
+            <strong>{CASH_CURRENCIES.map((c) => formatMoney(Number(ownerWithdrawal[c] || 0), c)).join(' · ')}</strong>
+          </div>
+        )}
       </section>
 
       <button className="btn btn--block" onClick={sendReport}>

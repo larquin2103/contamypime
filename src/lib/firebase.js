@@ -30,7 +30,12 @@ async function load() {
 
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig)
     const db = initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      // Detecta redes que bloquean el streaming (WebChannel) de Firestore
+      // -proxies, VPNs como Psiphon, redes corporativas- y cae a long-polling
+      // (peticiones normales). Sin esto, onSnapshot puede no recibir datos y la
+      // sincronizacion se queda "descargando" para siempre.
+      experimentalAutoDetectLongPolling: true
     })
     const auth = getAuth(app)
 

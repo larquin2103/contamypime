@@ -30,13 +30,27 @@ export const countsRepo = {
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   },
 
+  // Ultimo conteo de un usuario ya resuelto (aprobado/rechazado), para avisarle.
+  async latestResolvedFor(userId) {
+    const rows = await db.counts.toArray()
+    return (
+      rows
+        .filter(
+          (c) =>
+            c.createdBy === userId &&
+            (c.status === COUNT_STATUS.APPROVED || c.status === COUNT_STATUS.REJECTED)
+        )
+        .sort((a, b) => ((a.approvedAt || '') < (b.approvedAt || '') ? 1 : -1))[0] || null
+    )
+  },
+
   // Inicia un conteo: toma una foto del stock actual de cada producto activo.
   async startDraft(userId) {
     const existing = await this.getDraft()
     if (existing) return existing.id
     const products = await db.products.toArray()
     const items = products
-      .filter((p) => p.active)
+      .filter((p) => p.active && Number(p.stock || 0) > 0)
       .map((p) => ({
         productId: p.id,
         name: p.name,

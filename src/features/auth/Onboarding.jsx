@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
@@ -7,6 +7,7 @@ import { genRecoveryCode } from '../../lib/pin'
 import { parseSnapshot, applySnapshot } from '../handoff/handoffService'
 import { isFirebaseConfigured } from '../../lib/firebase'
 import { linkDevice } from '../sync/syncService'
+import { initialPull } from '../sync/syncEngine'
 import { useSync } from '../../app/providers/SyncProvider'
 
 // Primer arranque: no hay usuarios. Creamos al DUEÑO con su PIN.
@@ -172,6 +173,15 @@ function CloudLinkInline() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const [slow, setSlow] = useState(false)
+
+  // Si tras vincular tarda demasiado en llegar la lista de usuarios, avisamos
+  // y ofrecemos reintentar (no dejar la pantalla colgada sin salida).
+  useEffect(() => {
+    if (!done) return
+    const t = setTimeout(() => setSlow(true), 12000)
+    return () => clearTimeout(t)
+  }, [done])
 
   if (!isFirebaseConfigured()) return null
 
@@ -181,10 +191,22 @@ function CloudLinkInline() {
     setBusy(true)
     try {
       await linkDevice({ email, password })
-      await refresh() // arranca la sync; realtime baja los datos y el router pasa al login
-      setDone(true)
+      await refresh() // arranca la sync en vivo
+      // Descarga inicial fiable (getDocs); si falla, mostramos el error real.
+      const res = await initialPull()
+      if (!res.ok) {
+        setError('Vinculado, pero no se pudieron descargar los datos: ' + res.reason)
+        setBusy(false)
+        return
+      }
+      if (res.total === 0) {
+        setError('Vinculado, pero la cuenta de la nube esta vacia. ¿Subiste los datos desde el otro dispositivo, y usaste el mismo correo?')
+        setBusy(false)
+        return
+      }
+      setDone(true) // ya hay usuarios -> el router pasa al login
     } catch (e) {
-      setError(e.message)
+      setError('No se pudo descargar: ' + (e?.code || e?.message || e))
       setBusy(false)
     }
   }
@@ -194,6 +216,19 @@ function CloudLinkInline() {
       <div className="cloud-link">
         <p className="ok-text">Dispositivo vinculado. Descargando datos del negocio…</p>
         <p className="muted"><small>En unos segundos aparecerá la lista de usuarios para entrar.</small></p>
+        {slow && (
+          <>
+            <p className="muted">
+              <small>
+                Está tardando. Verifica que tengas internet y que el otro dispositivo ya haya
+                subido los datos (en él: ☁️ Sincronización → Sincronizar ahora).
+              </small>
+            </p>
+            <button className="btn btn--block" onClick={() => window.location.reload()}>
+              Reintentar
+            </button>
+          </>
+        )}
       </div>
     )
   }

@@ -100,6 +100,43 @@ function rangeLabel(from, to) {
   return `Periodo: ${from || '...'} a ${to || '...'}`
 }
 
+// Ventas de UN turno, por linea (para que el vendedor las exporte a PDF):
+// descripcion, unidad, cantidad, importe, metodo, cobrado y vuelto.
+export async function buildShiftSalesReport(shiftId, sellerName = '') {
+  const sales = (await db.sales.where('shiftId').equals(shiftId).toArray())
+    .filter((s) => !s.voided)
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  const rows = []
+  let total = 0
+  for (const s of sales) {
+    const isCash = s.paymentMethod !== 'transfer'
+    const cobrado = isCash ? Number(s.amountPaid || 0) : Number(s.transferAmount || 0)
+    const vuelto = isCash ? Number(s.change || 0) : 0
+    const items = s.items || []
+    items.forEach((it, i) => {
+      rows.push([
+        i === 0 ? formatDateTime(s.createdAt) : '',
+        it.name,
+        it.unit,
+        round2(it.qty),
+        round2(it.lineTotal ?? it.unitPrice * it.qty),
+        i === 0 ? (isCash ? 'Efectivo' : 'Transferencia') : '',
+        i === 0 ? round2(cobrado) : '',
+        i === 0 ? round2(vuelto) : ''
+      ])
+    })
+    total += Number(s.totalBase || 0)
+  }
+  rows.push(['', '', '', '', round2(total), 'TOTAL', '', ''])
+  return {
+    title: 'Ventas del turno',
+    subtitle: `${sellerName ? sellerName + ' · ' : ''}Generado ${formatDateTime(new Date().toISOString())}`,
+    head: ['Fecha', 'Producto', 'U/M', 'Cant', 'Importe', 'Metodo', 'Cobrado', 'Vuelto'],
+    rows,
+    filename: 'ventas_turno'
+  }
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

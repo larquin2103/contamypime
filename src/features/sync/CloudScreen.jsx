@@ -9,7 +9,7 @@ import {
   linkDevice,
   unlinkDevice
 } from './syncService'
-import { syncNow } from './syncEngine'
+import { syncNow, initialPull } from './syncEngine'
 
 export function CloudScreen() {
   const { isOwner } = useAuth()
@@ -86,10 +86,15 @@ export function CloudScreen() {
     setOk('')
     setBusy(true)
     try {
-      const { up } = await syncNow()
-      setOk(`Sincronización: ${up.queued} cambio(s) enviado(s) a la nube.`)
+      const { up } = await syncNow() // sube lo local
+      const down = await initialPull() // y baja de la nube (getDocs, fiable)
+      if (!down.ok) {
+        setError('Subida: ' + up.queued + '. Bajada fallo: ' + down.reason)
+      } else {
+        setOk(`Sincronizado: ${up.queued} enviado(s), ${down.total} recibido(s) de la nube.`)
+      }
     } catch (e) {
-      setError('No se pudo sincronizar: ' + e.message)
+      setError('No se pudo sincronizar: ' + (e?.code || e?.message || e))
     } finally {
       setBusy(false)
     }
