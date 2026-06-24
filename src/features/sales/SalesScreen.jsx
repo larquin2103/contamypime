@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { ChevronLeft, Search, Package } from 'lucide-react'
 import { productsRepo } from '../../repositories/productsRepo'
 import { salesRepo } from '../../repositories/salesRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
@@ -15,6 +16,7 @@ export function SalesScreen() {
   const { user } = useAuth()
   const { activeShift, canSell } = useShift()
   const { baseCurrency, rateOf } = useCurrency()
+  const navigate = useNavigate()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
 
   const [query, setQuery] = useState('')
@@ -177,9 +179,12 @@ export function SalesScreen() {
 
   return (
     <div className="screen">
-      <div className="screen__header">
-        <h2>Vender</h2>
-        <Link className="btn btn--ghost btn--sm" to="/shift">Turno</Link>
+      <div className="pos-nav">
+        <button className="pos-nav__back" onClick={() => navigate(-1)} aria-label="Volver">
+          <ChevronLeft size={20} strokeWidth={2} />
+        </button>
+        <h2 className="pos-nav__title">Vender</h2>
+        <Link className="pos-nav__action" to="/shift">Turno</Link>
       </div>
 
       {lastSale && (
@@ -191,13 +196,16 @@ export function SalesScreen() {
         </div>
       )}
 
-      <input
-        className="search-input"
-        type="search"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar producto (3 letras o codigo)…"
-      />
+      <div className="pos-search">
+        <Search size={17} className="pos-search__icon" strokeWidth={2} />
+        <input
+          className="search-input"
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar producto (3 letras o codigo)…"
+        />
+      </div>
       {results.length > 0 && (
         <div className="product-list sell-results">
           {results.map((p) => {
@@ -231,6 +239,7 @@ export function SalesScreen() {
           <div className="cart">
             {cart.map((l) => (
               <div key={l.productId} className="cart-line">
+                <span className="cart-line__tile"><Package size={19} strokeWidth={1.9} /></span>
                 <div className="cart-line__info">
                   <strong>{l.name}</strong>
                   <span className="muted">

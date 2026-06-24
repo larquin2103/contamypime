@@ -1609,3 +1609,150 @@ input[type='file'] {
 }
 .rate-cell__val { font-size: 17px; font-weight: 800; }
 .rate-cell__val--empty { font-size: 14px; font-weight: 600; font-style: italic; color: var(--text-3); }
+
+/* ----- POS (Vender) y pantallas con cabecera de navegacion ----- */
+.pos-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pos-nav__back {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--icon);
+  cursor: pointer;
+}
+.pos-nav__title {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.pos-nav__action {
+  flex: none;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pos-search { position: relative; margin-bottom: 12px; }
+.pos-search__icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.pos-search .search-input {
+  margin-bottom: 0;
+  padding-left: 42px;
+  border-radius: 14px;
+}
+
+.cart-line__tile {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  color: var(--icon);
+}
+
+/* Refinamientos al estilo de la referencia (aplican a POS/turno/etc.) */
+.product-row { border-color: var(--border); border-radius: 14px; }
+.product-row__meta .price,
+.cart-line__total { color: var(--accent-light); }
+
+.qty-ctrl button {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+}
+.qty-ctrl button:last-child {
+  background: rgba(43, 189, 110, 0.15);
+  border-color: rgba(43, 189, 110, 0.3);
+  color: var(--accent-light);
+}
+.qty-ctrl input {
+  border-color: var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.total-amount {
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--accent-light);
+  font-variant-numeric: tabular-nums;
+}
+.total-amount.neg { color: var(--danger); }
+
+.tabs:not(.tabs--scroll) {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: transparent;
+  padding: 0;
+}
+.tab {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 13px;
+}
+.tab.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.pay-currencies .btn {
+  border-radius: 999px;
+  padding: 7px 20px;
+}
+.pay-currencies .btn--primary {
+  background: rgba(43, 189, 110, 0.15);
+  border-color: rgba(43, 189, 110, 0.38);
+  color: var(--accent-light);
+  box-shadow: none;
+}
+
+/* Pill "En curso" del turno activo */
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(43, 189, 110, 0.14);
+  border: 1px solid rgba(43, 189, 110, 0.32);
+  color: var(--accent-light);
+  font-size: 12px;
+  font-weight: 700;
+}
+.live-pill .shift-dot { width: 7px; height: 7px; }
+
+/* Tabla de caja del turno con la fila "esperado" resaltada en verde */
+.cash-table th,
+.cash-table td { border-bottom-color: var(--border); }
+.cash-table tr.is-strong td { color: var(--accent-light); }

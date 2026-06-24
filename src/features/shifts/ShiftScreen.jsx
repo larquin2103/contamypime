@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { ChevronLeft, Receipt, Wallet, LogOut } from 'lucide-react'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { usersRepo } from '../../repositories/usersRepo'
@@ -107,6 +108,7 @@ function OpenShiftForm() {
 // ---- Turno activo (mio) ----
 function ActiveShiftPanel({ shift, onClosed }) {
   const { isOwner } = useAuth()
+  const navigate = useNavigate()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   // Retoma el cierre si el vendedor fue al conteo y volvio (flujo no se pierde).
   const [closing, setClosing] = useState(() => sessionStorage.getItem('closeFlowShift') === shift.id)
@@ -124,16 +126,19 @@ function ActiveShiftPanel({ shift, onClosed }) {
 
   return (
     <div className="screen">
-      <div className="screen__header">
-        <h2>Turno activo</h2>
-        <span className="badge badge--live">● En curso</span>
+      <div className="pos-nav">
+        <button className="pos-nav__back" onClick={() => navigate(-1)} aria-label="Volver">
+          <ChevronLeft size={20} strokeWidth={2} />
+        </button>
+        <h2 className="pos-nav__title">Turno activo</h2>
+        <span className="live-pill"><span className="shift-dot shift-dot--on" />En curso</span>
       </div>
 
       <Link className="btn btn--primary btn--block btn--lg" to="/sell">
-        💵 Registrar venta
+        <Receipt size={19} strokeWidth={2} /> Registrar venta
       </Link>
       <Link className="btn btn--block" to="/cash">
-        💸 Caja y deudas
+        <Wallet size={18} strokeWidth={1.9} /> Caja y deudas
       </Link>
       {isOwner && (
         <>
@@ -203,7 +208,7 @@ function ActiveShiftPanel({ shift, onClosed }) {
       </section>
 
       <button className="btn btn--primary btn--block" onClick={startClose}>
-        Cerrar turno
+        <LogOut size={18} strokeWidth={2} /> Cerrar turno
       </button>
     </div>
   )
