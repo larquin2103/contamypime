@@ -2,7 +2,9 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { usersRepo } from '../repositories/usersRepo'
 import { useAuth } from './providers/AuthProvider'
+import { useLicense } from './providers/LicenseProvider'
 import { Layout } from '../components/Layout'
+import { ActivationScreen } from '../features/license/ActivationScreen'
 import { Onboarding } from '../features/auth/Onboarding'
 import { Login } from '../features/auth/Login'
 import { Home } from '../features/home/Home'
@@ -24,16 +26,20 @@ import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 
 // Decide que mostrar segun el estado:
+//  - sin licencia valida   -> Activacion (compuerta: ni se crea dueño ni se entra)
 //  - sin usuarios          -> Onboarding (crear dueño)
 //  - usuarios pero sin sesion -> Login
 //  - con sesion            -> app (Layout + rutas)
 export function AppRouter() {
   const userCount = useLiveQuery(() => usersRepo.count(), [])
   const { user } = useAuth()
+  const license = useLicense()
 
-  if (userCount === undefined) {
+  if (!license.ready || userCount === undefined) {
     return <div className="screen screen--centered"><p className="muted">Cargando…</p></div>
   }
+  // Compuerta de activacion: sin licencia firmada y vigente, la app no abre.
+  if (!license.unlocked) return <ActivationScreen />
   if (userCount === 0) return <Onboarding />
   if (!user) return <Login />
 
