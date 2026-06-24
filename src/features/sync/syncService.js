@@ -1,5 +1,6 @@
 import { getFirebase } from '../../lib/firebase'
 import { configRepo } from '../../repositories/configRepo'
+import { registerThisDevice } from './deviceRegistry'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Bloque 22: cuenta de nube del negocio.
@@ -42,8 +43,10 @@ export const syncConfig = {
   }
 }
 
-// Asegura que existe el documento del negocio (lo "reclama" el dueño).
-async function ensureBusinessDoc(db, uid, businessName) {
+// Asegura que existe el documento del negocio (lo "reclama" el dueño). `extra`
+// son campos opcionales (p.ej. maxDispositivos de la licencia) que solo se
+// escriben al crearlo por primera vez.
+async function ensureBusinessDoc(db, uid, businessName, extra = {}) {
   const { doc, getDoc, setDoc, serverTimestamp } = await import('firebase/firestore')
   const ref = doc(db, 'businesses', uid)
   const snap = await getDoc(ref)
@@ -51,20 +54,24 @@ async function ensureBusinessDoc(db, uid, businessName) {
     await setDoc(ref, {
       ownerUid: uid,
       name: businessName || 'Mi negocio',
-      createdAt: serverTimestamp()
+      createdAt: serverTimestamp(),
+      ...extra
     })
   }
   return ref
 }
 
-// Crear la cuenta del negocio (primer dispositivo / dueño).
-export async function createBusinessAccount({ email, password, businessName }) {
+// Crear la cuenta del negocio (primer dispositivo / dueño). `maxDevices` viene
+// de la licencia (maxDispositivos) y queda guardado en el doc del negocio.
+export async function createBusinessAccount({ email, password, businessName, maxDevices = 0 }) {
   const { auth, db } = await getFirebase()
   const { createUserWithEmailAndPassword } = await import('firebase/auth')
   try {
     const cred = await createUserWithEmailAndPassword(auth, email.trim(), password)
     const uid = cred.user.uid
-    await ensureBusinessDoc(db, uid, businessName)
+    const extra = Number(maxDevices) > 0 ? { maxDispositivos: Number(maxDevices) } : {}
+    await ensureBusinessDoc(db, uid, businessName, extra)
+    await registerThisDevice(db, uid, { enforce: true }) // primer dispositivo
     await syncConfig.save({ businessId: uid, email: email.trim() })
     return { uid, email: email.trim() }
   } catch (e) {
@@ -72,18 +79,25 @@ export async function createBusinessAccount({ email, password, businessName }) {
   }
 }
 
-// Vincular este dispositivo a una cuenta de negocio existente.
+// Vincular este dispositivo a una cuenta de negocio existente. Aplica el limite
+// de dispositivos: si se excede, cierra sesion y NO deja el dispositivo a medias.
 export async function linkDevice({ email, password }) {
   const { auth, db } = await getFirebase()
-  const { signInWithEmailAndPassword } = await import('firebase/auth')
+  const { signInWithEmailAndPassword, signOut } = await import('firebase/auth')
+  let signedIn = false
   try {
     const cred = await signInWithEmailAndPassword(auth, email.trim(), password)
+    signedIn = true
     const uid = cred.user.uid
     // Caso borde: cuenta creada fuera de la app y sin negocio aun.
     await ensureBusinessDoc(db, uid, 'Mi negocio')
+    await registerThisDevice(db, uid, { enforce: true }) // puede lanzar device/limit
     await syncConfig.save({ businessId: uid, email: email.trim() })
     return { uid, email: email.trim() }
   } catch (e) {
+    // Si ya habia iniciado sesion pero fallo el limite, deshacemos la sesion.
+    if (signedIn) { try { await signOut(auth) } catch { /* noop */ } }
+    if (e?.code === 'device/limit') throw e // mensaje ya en español
     throw new Error(authErrorMessage(e))
   }
 }

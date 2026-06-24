@@ -29,7 +29,9 @@ export const LOCAL_CONFIG_KEYS = new Set([
   // Licencia de activacion: es LOCAL de cada dispositivo (la compuerta debe
   // funcionar antes de que exista cualquier sync), por eso no viaja a la nube.
   'licenseToken',
-  'licenseLastSeen'
+  'licenseLastSeen',
+  // Id estable de este dispositivo (registro/limite de dispositivos): local.
+  'deviceId'
 ])
 
 // Campos de marca de tiempo, de mas reciente a base. La "marca de sync" de un

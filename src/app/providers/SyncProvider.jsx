@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { observeAuth, syncConfig } from '../../features/sync/syncService'
 import { syncNow, startRealtime, stopRealtime } from '../../features/sync/syncEngine'
+import { touchThisDevice } from '../../features/sync/deviceRegistry'
 
 const SyncContext = createContext(null)
 
@@ -54,8 +55,12 @@ export function SyncProvider({ children }) {
     observeAuth((u) => {
       if (!alive) return
       setCloudUser(u)
-      if (u) startRealtime()
-      else stopRealtime()
+      if (u) {
+        startRealtime()
+        touchThisDevice() // registra/actualiza este dispositivo (sin limite)
+      } else {
+        stopRealtime()
+      }
     }).then((fn) => { unsub = fn })
     return () => {
       alive = false

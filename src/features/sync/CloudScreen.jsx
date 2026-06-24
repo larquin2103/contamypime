@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useSync } from '../../app/providers/SyncProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
 import { isFirebaseConfigured } from '../../lib/firebase'
 import {
   observeAuth,
@@ -10,10 +11,13 @@ import {
   unlinkDevice
 } from './syncService'
 import { syncNow, initialPull } from './syncEngine'
+import { listDevices, removeDevice, getDeviceId } from './deviceRegistry'
 
 export function CloudScreen() {
   const { isOwner } = useAuth()
   const { refresh } = useSync()
+  const license = useLicense()
+  const maxDevices = Number(license.payload?.maxDispositivos || 0)
   const [cloudUser, setCloudUser] = useState(undefined) // undefined = cargando
   const [mode, setMode] = useState('link') // 'create' | 'link'
   const [form, setForm] = useState({ email: '', password: '', businessName: '' })
@@ -66,7 +70,7 @@ export function CloudScreen() {
     setBusy(true)
     try {
       if (mode === 'create') {
-        await createBusinessAccount(form)
+        await createBusinessAccount({ ...form, maxDevices })
         setOk('Cuenta del negocio creada y este dispositivo vinculado.')
       } else {
         await linkDevice(form)
@@ -137,6 +141,8 @@ export function CloudScreen() {
         </section>
       )}
 
+      {cloudUser && <DevicesPanel maxDevices={maxDevices} />}
+
       {cloudUser === null && (
         <>
           <div className="seg">
@@ -202,5 +208,76 @@ export function CloudScreen() {
 
       {ok && <p className="ok-text">{ok}</p>}
     </div>
+  )
+}
+
+// Panel de dispositivos vinculados al negocio (límite de la licencia).
+function DevicesPanel({ maxDevices }) {
+  const [devices, setDevices] = useState(undefined) // undefined = cargando
+  const [thisId, setThisId] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = useCallback(async () => {
+    setError('')
+    try {
+      const [list, id] = await Promise.all([listDevices(), getDeviceId()])
+      setDevices(list)
+      setThisId(id)
+    } catch (e) {
+      setError('No se pudo leer la lista (¿sin conexión?): ' + (e?.code || e?.message || e))
+      setDevices([])
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const remove = async (deviceId) => {
+    if (deviceId === thisId) {
+      if (!confirm('Este es el dispositivo actual. ¿Quitarlo de la lista? Seguirá funcionando hasta que lo desvincules.')) return
+    } else if (!confirm('¿Quitar este dispositivo? Liberará una plaza del límite.')) return
+    setBusy(true)
+    try {
+      await removeDevice(deviceId)
+      await load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const fmt = (ts) => {
+    const s = ts?.seconds
+    if (!s) return ''
+    try { return new Date(s * 1000).toLocaleDateString('es-CU') } catch { return '' }
+  }
+
+  return (
+    <section className="card">
+      <h3>Dispositivos vinculados</h3>
+      <p className="muted">
+        {maxDevices > 0
+          ? `Plan con límite de ${maxDevices} dispositivo(s).`
+          : 'Sin límite de dispositivos en esta licencia.'}
+        {devices !== undefined && ` Activos: ${devices.length}${maxDevices > 0 ? ' / ' + maxDevices : ''}.`}
+      </p>
+
+      {devices === undefined && <p className="muted">Cargando…</p>}
+      {devices && devices.length === 0 && <p className="muted">Aún no hay dispositivos registrados.</p>}
+
+      {devices && devices.map((d) => (
+        <div key={d.id} className="rate-row">
+          <div className="rate-row__info">
+            <strong>{d.name || 'Dispositivo'}{d.id === thisId ? ' (este)' : ''}</strong>
+            <span className="muted"><small>Vinculado: {fmt(d.linkedAt) || '—'}</small></span>
+          </div>
+          <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => remove(d.id)}>
+            Quitar
+          </button>
+        </div>
+      ))}
+
+      {error && <p className="error">{error}</p>}
+      <button className="btn btn--block" disabled={busy} onClick={load}>Actualizar lista</button>
+    </section>
   )
 }
