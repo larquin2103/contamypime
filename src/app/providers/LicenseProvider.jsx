@@ -1,39 +1,68 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { licenseRepo } from '../../repositories/licenseRepo'
-import { evaluateLicense } from '../../lib/license'
+import { evaluateLicense, today } from '../../lib/license'
 
 const LicenseContext = createContext(null)
 
+const WARN_DAYS = 7   // avisa "por vencer" con esta antelacion
+const GRACE_DAYS = 3  // dias de gracia tras caducar antes del bloqueo total
+
 // ---------------------------------------------------------------------------
-// Fase 5 - Bloque 28: estado de la licencia de activacion a nivel de app.
+// Fase 5 - Bloque 28/29: estado de la licencia a nivel de app.
 //
-//  - Lee el token guardado en `config` (reactivo via useLiveQuery).
-//  - Lo evalua sin conexion (firma + vigencia) y expone el estado.
-//  - `activate` verifica un codigo nuevo y, si es valido, lo guarda.
+//  - Lee el token y la marca de agua de fecha desde `config` (reactivo).
+//  - ANTI-TRAMPA DE RELOJ: la "fecha efectiva" nunca es menor que la mayor
+//    fecha ya vista (licenseLastSeen). Asi, atrasar el reloj del dispositivo
+//    NO revive una licencia caducada. La marca de agua solo avanza.
+//  - PERIODO DE GRACIA: tras caducar, sigue abriendo unos dias (GRACE_DAYS)
+//    con aviso fuerte, antes del bloqueo total.
 //
-// La COMPUERTA que decide si dejar pasar a la app vive en el router; aqui solo
-// se calcula el estado. status: 'none' | 'invalid' | 'expired' | 'expiring' | 'active'
+// status: 'none' | 'invalid' | 'expired' | 'grace' | 'expiring' | 'active'
+// La COMPUERTA del router deja pasar si `unlocked` (active/expiring/grace).
 // ---------------------------------------------------------------------------
 export function LicenseProvider({ children }) {
-  // El token vive en config; si cambia (al activar/renovar) se re-evalua solo.
   const token = useLiveQuery(() => licenseRepo.getToken(), [], undefined)
-  const [state, setState] = useState({ ready: false, status: 'none', payload: null, daysLeft: null })
+  const lastSeen = useLiveQuery(() => licenseRepo.getLastSeen(), [], undefined)
+  const [state, setState] = useState({
+    ready: false, status: 'none', payload: null, daysLeft: null, clockBack: false, graceLeft: null
+  })
 
   useEffect(() => {
-    if (token === undefined) return // aun cargando desde Dexie
+    if (token === undefined || lastSeen === undefined) return // aun cargando de Dexie
     let alive = true
-    evaluateLicense(token).then((ev) => {
-      if (!alive) return
-      setState({ ready: true, status: ev.status, payload: ev.payload, daysLeft: ev.daysLeft })
-    })
-    return () => { alive = false }
-  }, [token])
+    ;(async () => {
+      const sysToday = today()
+      // Fecha efectiva: nunca menor que la mayor fecha ya vista (anti atraso).
+      const effective = lastSeen && lastSeen > sysToday ? lastSeen : sysToday
+      const clockBack = !!(lastSeen && sysToday < lastSeen)
 
-  // Verifica firma + vigencia ANTES de guardar. Devuelve {ok} o {ok:false, ...}
-  // con el motivo para mostrarlo en la pantalla de activacion.
+      const ev = await evaluateLicense(token, { nowDate: effective, warnDays: WARN_DAYS })
+      let status = ev.status
+      let graceLeft = null
+      // Recien caducada pero dentro de la gracia -> sigue abriendo, con aviso.
+      if (ev.status === 'expired' && ev.daysLeft >= -GRACE_DAYS) {
+        status = 'grace'
+        graceLeft = GRACE_DAYS + ev.daysLeft // dias de gracia que quedan
+      }
+
+      if (!alive) return
+      setState({ ready: true, status, payload: ev.payload, daysLeft: ev.daysLeft, clockBack, graceLeft })
+
+      // Avanza la marca de agua (monotona). Solo escribe si crece -> estable.
+      if (!lastSeen || sysToday > lastSeen) {
+        await licenseRepo.setLastSeen(sysToday)
+      }
+    })()
+    return () => { alive = false }
+  }, [token, lastSeen])
+
+  // Verifica firma + vigencia (con fecha efectiva) ANTES de guardar/renovar.
   const activate = useCallback(async (raw) => {
-    const ev = await evaluateLicense(raw)
+    const sysToday = today()
+    const ls = await licenseRepo.getLastSeen()
+    const effective = ls && ls > sysToday ? ls : sysToday
+    const ev = await evaluateLicense(raw, { nowDate: effective, warnDays: WARN_DAYS })
     if (ev.status === 'active' || ev.status === 'expiring') {
       await licenseRepo.setToken(raw)
       return { ok: true, payload: ev.payload }
@@ -43,8 +72,9 @@ export function LicenseProvider({ children }) {
 
   const value = {
     ...state,
-    // ¿Esta la app desbloqueada? (firma valida y no caducada)
-    unlocked: state.status === 'active' || state.status === 'expiring',
+    unlocked: ['active', 'expiring', 'grace'].includes(state.status),
+    warnDays: WARN_DAYS,
+    graceDays: GRACE_DAYS,
     activate,
     deactivate: () => licenseRepo.clear()
   }

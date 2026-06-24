@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../app/providers/AuthProvider'
 import { useShift } from '../app/providers/ShiftProvider'
 import { useSync } from '../app/providers/SyncProvider'
+import { useLicense } from '../app/providers/LicenseProvider'
 import { ROLE_LABELS } from '../db/constants'
 
 // Indicador de sincronizacion en la cabecera (solo si la sync esta activada).
@@ -18,6 +19,35 @@ function SyncBadge() {
       {icon}
     </span>
   )
+}
+
+// Aviso de licencia por vencer / en gracia / reloj atrasado. El dueño la renueva
+// desde Ajustes; el aviso lo ven todos para que no los agarre por sorpresa.
+function LicenseBanner() {
+  const { status, daysLeft, graceLeft, clockBack } = useLicense()
+  const plural = (n) => (Math.abs(n) === 1 ? '' : 's')
+  if (clockBack) {
+    return (
+      <div className="license-bar license-bar--warn">
+        ⏰ La fecha del dispositivo parece atrasada. Ajústala para evitar problemas con la licencia.
+      </div>
+    )
+  }
+  if (status === 'grace') {
+    return (
+      <div className="license-bar license-bar--danger">
+        ⛔ Tu licencia caducó. Te queda{plural(graceLeft)} {graceLeft} día{plural(graceLeft)} de gracia — renuévala ya en Ajustes.
+      </div>
+    )
+  }
+  if (status === 'expiring') {
+    return (
+      <div className="license-bar license-bar--warn">
+        ⚠️ Tu licencia vence en {daysLeft} día{plural(daysLeft)}. Renuévala pronto en Ajustes.
+      </div>
+    )
+  }
+  return null
 }
 
 // Shell de la app autenticada: cabecera + contenido + navegacion inferior.
@@ -41,6 +71,8 @@ export function Layout({ children }) {
           </button>
         </div>
       </header>
+
+      <LicenseBanner />
 
       <main className="app-main">{children}</main>
 

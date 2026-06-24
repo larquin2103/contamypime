@@ -5,6 +5,7 @@ import { ratesRepo } from '../../repositories/ratesRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
 import { FOREIGN_CURRENCIES, CASH_CURRENCIES, DEFAULT_SEMAPHORE_CONFIG } from '../../db/constants'
 import { formatMoney, baseToForeign } from '../../lib/currency'
 import { genRecoveryCode } from '../../lib/pin'
@@ -32,7 +33,90 @@ export function Settings() {
       <DenominationsSection />
       <WhatsappSection />
       <SecuritySection userId={user.id} />
+      <LicenseSection />
     </div>
+  )
+}
+
+// Estado de la licencia + renovacion (pegar un codigo nuevo). El dueño ve aqui
+// negocio, plan, vencimiento y dias restantes; cuando vence o esta por vencer,
+// pega la licencia que le entregue el proveedor para renovar al instante.
+const LICENSE_STATUS = {
+  active: { label: 'Activa', cls: 'ok-text' },
+  expiring: { label: 'Por vencer', cls: 'warn-text' },
+  grace: { label: 'Caducada (en gracia)', cls: 'warn-text' },
+  expired: { label: 'Caducada', cls: 'error' },
+  invalid: { label: 'No válida', cls: 'error' },
+  none: { label: 'Sin licencia', cls: 'muted' }
+}
+
+function LicenseSection() {
+  const lic = useLicense()
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null) // { ok, text }
+
+  const p = lic.payload
+  const st = LICENSE_STATUS[lic.status] || LICENSE_STATUS.none
+
+  const renew = async () => {
+    setBusy(true)
+    setMsg(null)
+    const res = await lic.activate(code)
+    if (res.ok) {
+      setCode('')
+      setMsg({ ok: true, text: 'Licencia aplicada ✓' })
+    } else if (res.status === 'expired') {
+      setMsg({ ok: false, text: 'Esa licencia ya caducó. Pide una nueva al proveedor.' })
+    } else {
+      setMsg({ ok: false, text: 'El código no es válido. Cópialo completo.' })
+    }
+    setBusy(false)
+  }
+
+  return (
+    <section className="card">
+      <h3>Licencia de activación</h3>
+      {p ? (
+        <>
+          <div className="kv"><span className="muted">Negocio</span><strong>{p.negocio}</strong></div>
+          <div className="kv"><span className="muted">Plan</span><strong>{p.plan}</strong></div>
+          <div className="kv"><span className="muted">Estado</span><strong className={st.cls}>{st.label}</strong></div>
+          <div className="kv"><span className="muted">Vence</span><strong>{p.expira || 'sin caducidad'}</strong></div>
+          {Number.isFinite(lic.daysLeft) && (
+            <div className="kv">
+              <span className="muted">Días restantes</span>
+              <strong>{lic.daysLeft >= 0 ? lic.daysLeft : `vencida hace ${-lic.daysLeft}`}</strong>
+            </div>
+          )}
+          {lic.status === 'grace' && (
+            <p className="warn-text">Periodo de gracia: quedan {lic.graceLeft} día(s) antes del bloqueo.</p>
+          )}
+          {lic.clockBack && (
+            <p className="warn-text">⏰ La fecha del dispositivo parece atrasada; ajústala.</p>
+          )}
+        </>
+      ) : (
+        <p className="muted">No hay una licencia válida instalada en este dispositivo.</p>
+      )}
+
+      <label className="field">
+        <span>Renovar o cambiar licencia</span>
+        <textarea
+          rows={3}
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="MYPI1...."
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+      <button className="btn btn--primary btn--block" disabled={!code.trim() || busy} onClick={renew}>
+        {busy ? 'Verificando…' : 'Aplicar licencia'}
+      </button>
+      {msg && <p className={msg.ok ? 'ok-text' : 'error'}>{msg.text}</p>}
+      <p className="muted">La licencia es local de este dispositivo y se verifica sin internet.</p>
+    </section>
   )
 }
 
