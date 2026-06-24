@@ -17,3 +17,7 @@ __pycache__/
 
 # Firebase (cache local del deploy, se regenera)
 .firebase/
+
+# Licencias: la clave PRIVADA jamas se sube al repo (firma las licencias).
+tools/license-private-key.json
+tools/license-public-key.json
