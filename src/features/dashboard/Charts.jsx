@@ -6,7 +6,9 @@
 export function DonutChart({ segments, centerLabel, centerValue, size = 132 }) {
   const data = segments.filter((s) => s.value > 0)
   const total = data.reduce((a, s) => a + s.value, 0)
-  const r = 54
+  // r + strokeWidth/2 debe caber dentro del radio del viewBox (60) o el anillo
+  // se recorta en los bordes. Con stroke 16 (mitad 8) usamos r=50 -> borde 58.
+  const r = 50
   const cx = 60
   const cy = 60
   const C = 2 * Math.PI * r
