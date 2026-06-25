@@ -46,6 +46,22 @@ export const PAYMENT_METHODS = {
   TRANSFER: 'transfer'
 }
 
+// Formas en que el dueño liquida (salda) una deuda interna. Queda registrada
+// en la deuda para que el cuadre/auditoria muestre COMO se resolvio.
+export const DEBT_SETTLE_METHODS = {
+  CASH: 'cash', // el deudor pago en efectivo
+  TRANSFER: 'transfer', // el deudor pago por transferencia
+  PAYROLL: 'payroll', // se descuenta de su pago/nomina
+  WRITEOFF: 'writeoff' // condonada (el dueño no cobra)
+}
+
+export const DEBT_SETTLE_LABELS = {
+  [DEBT_SETTLE_METHODS.CASH]: 'Pagada en efectivo',
+  [DEBT_SETTLE_METHODS.TRANSFER]: 'Pagada por transferencia',
+  [DEBT_SETTLE_METHODS.PAYROLL]: 'Descontada del pago',
+  [DEBT_SETTLE_METHODS.WRITEOFF]: 'Condonada (sin cobro)'
+}
+
 // Tipos de movimiento del libro mayor de inventario.
 export const MOVEMENT_TYPES = {
   PURCHASE_IN: 'purchase_in',

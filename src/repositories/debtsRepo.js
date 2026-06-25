@@ -56,12 +56,16 @@ export const debtsRepo = {
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   },
 
-  // Marca una deuda como saldada (no se borra: queda con fecha y quien la saldo).
-  async settle(id, byUserId) {
+  // Liquida (salda) una deuda: no se borra, queda con fecha, quien la saldo y
+  // COMO se resolvio (efectivo/transferencia/nomina/condonada) + nota opcional.
+  // `settledAt` hace que la sync detecte el cambio (LWW por marca de tiempo).
+  async settle(id, byUserId, { method = null, note = '' } = {}) {
     await db.internalDebts.update(id, {
       settled: true,
       settledAt: now(),
-      settledBy: byUserId
+      settledBy: byUserId,
+      settleMethod: method,
+      settleNote: note.trim()
     })
   }
 }

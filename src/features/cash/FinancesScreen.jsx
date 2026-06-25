@@ -6,7 +6,8 @@ import { cashRepo } from '../../repositories/cashRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { formatMoney, round2 } from '../../lib/currency'
-import { formatDateTime } from '../../lib/dates'
+import { formatDateTime, localDay } from '../../lib/dates'
+import { DEBT_SETTLE_METHODS, DEBT_SETTLE_LABELS } from '../../db/constants'
 
 // Gestion de deudas internas y historial de extracciones (solo dueño).
 export function FinancesScreen() {
@@ -43,6 +44,7 @@ function DebtsTab({ user }) {
   const debts = useLiveQuery(() => debtsRepo.listAll(), [], [])
   const users = useLiveQuery(() => usersRepo.list(), [], [])
   const [showSettled, setShowSettled] = useState(false)
+  const [toSettle, setToSettle] = useState(null) // deuda elegida para liquidar
 
   const userName = useMemo(() => {
     const m = {}
@@ -96,10 +98,17 @@ function DebtsTab({ user }) {
               <span className="muted">
                 {d.qty} u · {formatDateTime(d.createdAt)}
                 {d.settled && ` · saldada ${formatDateTime(d.settledAt)}`}
+                {d.settled && d.settleMethod && ` · ${DEBT_SETTLE_LABELS[d.settleMethod] || d.settleMethod}`}
               </span>
+              {d.settled && d.settleNote && (
+                <>
+                  <br />
+                  <span className="muted">Nota: {d.settleNote}</span>
+                </>
+              )}
             </div>
             {!d.settled && (
-              <button className="btn btn--ghost btn--sm" onClick={() => debtsRepo.settle(d.id, user.id)}>
+              <button className="btn btn--ghost btn--sm" onClick={() => setToSettle(d)}>
                 Saldar
               </button>
             )}
@@ -107,7 +116,63 @@ function DebtsTab({ user }) {
         ))}
         {visible.length === 0 && <p className="muted">No hay deudas {showSettled ? '' : 'pendientes'}.</p>}
       </div>
+
+      {toSettle && (
+        <SettleDebtModal
+          debt={toSettle}
+          debtorName={userName[toSettle.userId] || 'usuario'}
+          onCancel={() => setToSettle(null)}
+          onConfirm={async ({ method, note }) => {
+            await debtsRepo.settle(toSettle.id, user.id, { method, note })
+            setToSettle(null)
+          }}
+        />
+      )}
     </>
+  )
+}
+
+// Modal de liquidacion: el dueño confirma y deja registrado COMO se salda la
+// deuda (efectivo/transferencia/nomina/condonada) + nota opcional. Evita saldar
+// por error de un toque y deja rastro auditable.
+function SettleDebtModal({ debt, debtorName, onCancel, onConfirm }) {
+  const [method, setMethod] = useState(DEBT_SETTLE_METHODS.CASH)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const confirm = async () => {
+    setBusy(true)
+    await onConfirm({ method, note })
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>Liquidar deuda</h3>
+        <div className="kv">
+          <span className="muted">{debtorName}</span>
+          <strong className="total-amount">{formatMoney(debt.valueAtTime)}</strong>
+        </div>
+        <label className="field">
+          <span>¿Cómo se salda?</span>
+          <select value={method} onChange={(e) => setMethod(e.target.value)}>
+            {Object.entries(DEBT_SETTLE_LABELS).map(([val, label]) => (
+              <option key={val} value={val}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Nota (opcional)</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej: cobrado el 25/06" />
+        </label>
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onCancel} disabled={busy}>Cancelar</button>
+          <button className="btn btn--primary" onClick={confirm} disabled={busy}>
+            {busy ? 'Saldando…' : 'Confirmar liquidación'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -118,7 +183,7 @@ function WithdrawalsTab() {
 
   const filtered = useMemo(() => {
     return all.filter((w) => {
-      const day = (w.createdAt || '').slice(0, 10)
+      const day = w.createdAt ? localDay(w.createdAt) : ''
       if (from && day < from) return false
       if (to && day > to) return false
       return true
