@@ -1,6 +1,7 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
+import { round2 } from '../lib/currency'
 import { MOVEMENT_TYPES } from '../db/constants'
 
 // Ventas de mostrador. Cada venta congela el precio y el costo de cada linea
@@ -24,11 +25,14 @@ export const salesRepo = {
     transferCurrency = null,
     transferAmount = 0,
     transferReference = '',
-    transferSms = ''
+    transferSms = '',
+    transferExpected = 0 // lo que se debia cobrar en la moneda de la transferencia
   }) {
     const id = newId()
     const ts = now()
     const isCash = paymentMethod === 'cash'
+    // Diferencia entre lo recibido por transferencia y lo que debia cobrarse.
+    const transferDiff = isCash ? 0 : round2(Number(transferAmount || 0) - Number(transferExpected || 0))
     await db.transaction('rw', db.sales, db.stockMovements, db.products, async () => {
       await db.sales.add({
         id,
@@ -51,6 +55,8 @@ export const salesRepo = {
         transferAmount: isCash ? 0 : transferAmount,
         transferReference: isCash ? '' : transferReference,
         transferSms: isCash ? '' : transferSms,
+        transferExpected: isCash ? 0 : round2(Number(transferExpected || 0)),
+        transferDiff,
         voided: false
       })
       for (const it of items) {

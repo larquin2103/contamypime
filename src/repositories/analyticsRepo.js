@@ -1,20 +1,23 @@
 import { db } from '../db/db'
 import { round2 } from '../lib/currency'
+import { localDay } from '../lib/dates'
 
+// El dia se calcula en hora LOCAL (no UTC) para que "hoy" cuadre con el dia
+// calendario del negocio (ver localDay en lib/dates).
 function inRange(iso, from, to) {
-  const d = (iso || '').slice(0, 10)
+  const d = localDay(iso)
   if (from && d < from) return false
   if (to && d > to) return false
   return true
 }
 
-// Lista de dias 'YYYY-MM-DD' entre from y to (inclusive).
+// Lista de dias 'YYYY-MM-DD' entre from y to (inclusive), en hora local.
 function daysBetween(from, to) {
   const out = []
   const d = new Date(from + 'T00:00:00')
   const end = new Date(to + 'T00:00:00')
   while (d <= end) {
-    out.push(d.toISOString().slice(0, 10))
+    out.push(localDay(d))
     d.setDate(d.getDate() + 1)
   }
   return out
@@ -76,7 +79,7 @@ export const analyticsRepo = {
       const t = Number(s.totalBase || 0)
       if (s.paymentMethod === 'transfer') byMethod.transfer += t
       else byMethod.cash += t
-      const d = (s.createdAt || '').slice(0, 10)
+      const d = localDay(s.createdAt)
       if (d) dayTotals[d] = (dayTotals[d] || 0) + t
     }
     byMethod.cash = round2(byMethod.cash)
@@ -126,6 +129,33 @@ export const analyticsRepo = {
       }
     }
     return out.sort((a, b) => (b.daysSince ?? 1e9) - (a.daysSince ?? 1e9))
+  },
+
+  // Ventas por transferencia cuyo importe recibido NO coincide con lo que se
+  // debia cobrar (transferDiff != 0). Para la alerta del panel del dueño.
+  async transferMismatches({ from = null, to = null } = {}) {
+    const users = await db.users.toArray()
+    const nameOf = Object.fromEntries(users.map((u) => [u.id, u.name]))
+    const sales = await db.sales.toArray()
+    return sales
+      .filter(
+        (s) =>
+          !s.voided &&
+          s.paymentMethod === 'transfer' &&
+          Math.abs(Number(s.transferDiff || 0)) >= 0.01 &&
+          inRange(s.createdAt, from, to)
+      )
+      .map((s) => ({
+        id: s.id,
+        createdAt: s.createdAt,
+        seller: nameOf[s.sellerId] || 'vendedor',
+        currency: s.transferCurrency || 'MN',
+        reference: s.transferReference || '',
+        expected: round2(Number(s.transferExpected || 0)),
+        received: round2(Number(s.transferAmount || 0)),
+        diff: round2(Number(s.transferDiff || 0))
+      }))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   },
 
   // Productos en o por debajo de su stock minimo (o agotados).

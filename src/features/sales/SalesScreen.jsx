@@ -106,6 +106,9 @@ export function SalesScreen() {
   const totalTransfer =
     transferCurrency === baseCurrency ? totalBase : baseToForeign(totalBase, transferRate)
   const transferNum = transferAmount === '' ? totalTransfer : Number(transferAmount) || 0
+  // Diferencia entre lo recibido por transferencia y lo que se debe cobrar.
+  const transferDiff = round2(transferNum - totalTransfer)
+  const transferMismatch = payMethod === PAYMENT_METHODS.TRANSFER && Math.abs(transferDiff) >= 0.01
 
   const isCash = payMethod === PAYMENT_METHODS.CASH
   const canCharge =
@@ -169,6 +172,7 @@ export function SalesScreen() {
         transferAmount: round2(transferNum),
         transferReference: transferRef,
         transferSms: sms,
+        transferExpected: round2(totalTransfer),
         rate: transferCurrency === baseCurrency ? null : transferRate
       })
       setLastSale({ method: 'transfer', transferCurrency, transferRef })
@@ -345,6 +349,16 @@ export function SalesScreen() {
                 A cobrar: <strong>{formatMoney(totalTransfer, transferCurrency)}</strong>
                 {transferCurrency !== baseCurrency && ` (tasa ${transferRate})`}
               </p>
+
+              {transferMismatch && (
+                <div className={`transfer-warn ${transferDiff < 0 ? 'transfer-warn--neg' : 'transfer-warn--pos'}`}>
+                  ⚠️ El monto recibido <strong>{formatMoney(transferNum, transferCurrency)}</strong> no coincide
+                  con lo que debes cobrar <strong>{formatMoney(totalTransfer, transferCurrency)}</strong>.
+                  <br />
+                  Diferencia: <strong>{formatMoney(transferDiff, transferCurrency)}</strong>
+                  {transferDiff < 0 ? ' (falta)' : ' (de más)'}. Quedará registrada para el dueño.
+                </div>
+              )}
 
               <label className="field">
                 <span>Pega el SMS de confirmacion</span>

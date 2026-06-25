@@ -737,26 +737,48 @@ input[type='file'] {
   flex-direction: column;
   gap: 10px;
 }
+/* Linea del carrito: cuadricula de 2 filas para que en movil el stepper quede
+   DEBAJO y nunca se encime con la descripcion del producto. */
 .cart-line {
-  display: flex;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "tile info total"
+    "tile stepper stepper";
+  column-gap: 10px;
+  row-gap: 8px;
   align-items: center;
-  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-soft);
 }
+.cart-line:last-child { border-bottom: none; padding-bottom: 0; }
+.cart-line__tile { grid-area: tile; align-self: start; }
 .cart-line__info {
+  grid-area: info;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  flex: 1;
   min-width: 0;
+}
+.cart-line__info strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cart-line__info .muted {
   font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cart-line__total {
+  grid-area: total;
   font-weight: 700;
-  color: var(--primary-600);
+  color: var(--accent-light);
   white-space: nowrap;
+  align-self: start;
 }
+.cart-line .qty-ctrl { grid-area: stepper; justify-content: flex-start; }
 .warn-text {
   color: var(--warn);
 }
@@ -766,18 +788,18 @@ input[type='file'] {
   gap: 4px;
 }
 .qty-ctrl button {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
   border: 1px solid var(--surface-2);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   cursor: pointer;
 }
 .qty-ctrl input {
-  width: 52px;
-  padding: 6px;
+  width: 46px;
+  padding: 5px;
   text-align: center;
 }
 .total-row {
@@ -1734,6 +1756,25 @@ input[type='file'] {
   border-color: rgba(43, 189, 110, 0.38);
   color: var(--accent-light);
   box-shadow: none;
+}
+
+/* Aviso de transferencia con diferencia (no bloquea el cobro) */
+.transfer-warn {
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+.transfer-warn--neg {
+  background: rgba(252, 123, 123, 0.14);
+  border: 1px solid rgba(252, 123, 123, 0.4);
+  color: #fca5a5;
+}
+.transfer-warn--pos {
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: var(--warn);
 }
 
 /* Pill "En curso" del turno activo */

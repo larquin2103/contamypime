@@ -6,36 +6,38 @@ import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { formatMoney } from '../../lib/currency'
+import { formatDateTime, localDay } from '../../lib/dates'
 import { DonutChart, TrendChart } from './Charts'
 
+// Rangos calculados en dia LOCAL (no UTC) para que "Hoy/7/30" cuadren con el
+// dia calendario del negocio (ver lib/dates.localDay).
 function rangeFor(period) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDay()
   if (period === 'today') return { from: today, to: today }
   if (period === '7') {
     const d = new Date()
     d.setDate(d.getDate() - 6)
-    return { from: d.toISOString().slice(0, 10), to: today }
+    return { from: localDay(d), to: today }
   }
   if (period === '30') {
     const d = new Date()
     d.setDate(d.getDate() - 29)
-    return { from: d.toISOString().slice(0, 10), to: today }
+    return { from: localDay(d), to: today }
   }
   return { from: null, to: null } // todo
 }
 
 // Periodo inmediatamente anterior, del mismo largo, para comparar (vs anterior).
 function prevRangeFor(period) {
-  const iso = (d) => d.toISOString().slice(0, 10)
   if (period === 'today') {
     const d = new Date(); d.setDate(d.getDate() - 1)
-    return { from: iso(d), to: iso(d) }
+    return { from: localDay(d), to: localDay(d) }
   }
   if (period === '7' || period === '30') {
     const len = period === '7' ? 7 : 30
     const to = new Date(); to.setDate(to.getDate() - len)
     const from = new Date(); from.setDate(from.getDate() - (len * 2 - 1))
-    return { from: iso(from), to: iso(to) }
+    return { from: localDay(from), to: localDay(to) }
   }
   return { from: null, to: null } // 'all' no compara
 }
@@ -77,6 +79,7 @@ export function DashboardScreen() {
   const prev = useLiveQuery(() => analyticsRepo.report(prevRange), [prevRange.from, prevRange.to])
   const lowRot = useLiveQuery(() => analyticsRepo.lowRotation({ days: rotDays }), [rotDays], [])
   const restock = useLiveQuery(() => analyticsRepo.restock(), [], [])
+  const transferDiffs = useLiveQuery(() => analyticsRepo.transferMismatches(range), [range.from, range.to], [])
 
   if (!isOwner) {
     return (
@@ -179,6 +182,26 @@ export function DashboardScreen() {
 
       {tab === 'alerts' && (
         <>
+          <h3 className="section-title">Transferencias con diferencia</h3>
+          <div className="list">
+            {transferDiffs.map((t) => (
+              <div key={t.id} className="list-item">
+                <div>
+                  <strong>{t.seller} · {formatDateTime(t.createdAt)}</strong>
+                  <br />
+                  <span className="muted">
+                    Op. {t.reference || '—'} · esperado {m(t.expected)} · recibido {m(t.received)}
+                  </span>
+                  <br />
+                  <span className={t.diff < 0 ? 'error' : 'warn-text'}>
+                    Diferencia {m(t.diff)} {t.diff < 0 ? '(faltó)' : '(de más)'}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {transferDiffs.length === 0 && <p className="muted">Sin diferencias en transferencias.</p>}
+          </div>
+
           <h3 className="section-title">Reabastecimiento</h3>
           <div className="list">
             {restock.map((p) => (

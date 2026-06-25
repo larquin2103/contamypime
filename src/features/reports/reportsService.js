@@ -1,10 +1,11 @@
 import { db } from '../../db/db'
-import { formatDateTime } from '../../lib/dates'
+import { formatDateTime, localDay } from '../../lib/dates'
 import { round2 } from '../../lib/currency'
 import { SHIFT_STATUS } from '../../db/constants'
 
+// Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
-  const d = (iso || '').slice(0, 10)
+  const d = localDay(iso)
   if (from && d < from) return false
   if (to && d > to) return false
   return true
@@ -24,19 +25,29 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-  const rows = sales.map((s) => [
-    formatDateTime(s.createdAt),
-    names[s.sellerId] || 'vendedor',
-    s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo',
-    s.paymentMethod === 'transfer' ? s.transferReference || '' : '',
-    round2(s.totalBase)
-  ])
+  const rows = sales.map((s) => {
+    const isTransfer = s.paymentMethod === 'transfer'
+    // Para transferencias: esperado, recibido y diferencia (si la hay).
+    const expected = isTransfer ? round2(Number(s.transferExpected ?? s.totalBase ?? 0)) : ''
+    const received = isTransfer ? round2(Number(s.transferAmount || 0)) : ''
+    const diff = isTransfer ? round2(Number(s.transferDiff || 0)) : ''
+    return [
+      formatDateTime(s.createdAt),
+      names[s.sellerId] || 'vendedor',
+      isTransfer ? 'Transferencia' : 'Efectivo',
+      isTransfer ? s.transferReference || '' : '',
+      round2(s.totalBase),
+      expected,
+      received,
+      diff
+    ]
+  })
   const total = round2(sales.reduce((a, s) => a + Number(s.totalBase || 0), 0))
-  rows.push(['', '', '', 'TOTAL', total])
+  rows.push(['', '', '', 'TOTAL', total, '', '', ''])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Vendedor', 'Metodo', 'Referencia', 'Total'],
+    head: ['Fecha', 'Vendedor', 'Metodo', 'No. operacion', 'Total', 'Esperado', 'Recibido', 'Diferencia'],
     rows,
     filename: 'ventas'
   }
