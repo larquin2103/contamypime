@@ -61,7 +61,21 @@ export const usersRepo = {
 
   async getOwner() {
     const all = await db.users.toArray()
-    return all.find((u) => u.role === ROLES.OWNER) || null
+    // Preferir el dueño ACTIVO: tras el alta por sync pueden quedar duplicados
+    // y uno desactivado; si devolvieramos el inactivo, su PIN no autorizaria.
+    return all.find((u) => u.role === ROLES.OWNER && u.active)
+      || all.find((u) => u.role === ROLES.OWNER)
+      || null
+  },
+
+  // Autorizacion del dueño: comprueba el PIN contra TODOS los dueños activos y
+  // devuelve el que coincida (o null). Robusto ante dueños duplicados.
+  async verifyOwnerPin(pin) {
+    const owners = (await db.users.toArray()).filter((u) => u.role === ROLES.OWNER && u.active)
+    for (const o of owners) {
+      if (await verifyPin(pin, o.pinSalt, o.pinHash)) return o
+    }
+    return null
   },
 
   // --- Codigo de recuperacion (solo para el dueño) ---

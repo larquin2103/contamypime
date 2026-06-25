@@ -12,10 +12,10 @@ export function OwnerAuthModal({ onAuthorized, onCancel }) {
   const verify = async () => {
     setBusy(true)
     setError('')
-    const owner = await usersRepo.getOwner()
-    const ok = owner ? await usersRepo.verifyLogin(owner.id, pin) : null
+    // Comprueba el PIN contra cualquier dueño activo (cubre duplicados).
+    const owner = await usersRepo.verifyOwnerPin(pin)
     setBusy(false)
-    if (ok) {
+    if (owner) {
       onAuthorized(owner)
     } else {
       setError('PIN del dueño incorrecto')
