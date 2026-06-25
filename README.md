@@ -3,14 +3,19 @@
 Sistema de gestión para una MYPIME cubana (comercio minorista con varios vendedores en turnos).
 PWA instalable en Android desde Chrome, **100% funcional offline** (todos los datos en IndexedDB).
 
-> Estado actual: **Fase 1 — Núcleo Operativo**, en construcción por bloques.
+> Estado actual: **Fases 1–5 completas** (núcleo, caja/traspaso, conteo/auditoría/reportes,
+> sincronización Firebase y seguridad por licencias). Multi-punto de venta diferido.
 
 ## Stack
 
-- **Frontend:** React + Vite, PWA (`vite-plugin-pwa`)
-- **Base de datos local:** IndexedDB vía [Dexie](https://dexie.org/)
-- **Sincronización (Fase 4, no implementada):** RxDB + Firestore. El modelo de datos ya
-  está pensado para migrar limpio (claves UUID string, append-only, sin borrado físico).
+- **Frontend:** React 18 + Vite 6, PWA (`vite-plugin-pwa`, `autoUpdate`). Tema oscuro
+  navy/verde y tipografía **Manrope** (`@fontsource/manrope`, empaquetada, offline). Iconos
+  **Lucide** (`lucide-react`).
+- **Base de datos local:** IndexedDB vía [Dexie](https://dexie.org/) + `dexie-react-hooks`.
+- **Sincronización (Fase 4):** **Firebase** Auth (email/contraseña) + Firestore con cache
+  offline persistente. Capa de sync propia y ligera sobre Dexie (no se migró a RxDB).
+- **Seguridad (Fase 5):** licencias de activación firmadas (ECDSA P-256, WebCrypto), verificadas
+  **sin conexión**. El modelo es UUID string, append-only, sin borrado físico.
 
 ## Arranque
 
@@ -103,7 +108,7 @@ Colecciones en IndexedDB (PK = UUID string en todas):
 - [x] **Bloque 20** — Exportación PDF y Excel (ventas, cierres, inventario)
 - [ ] **Bloque 19** — Multi-punto de venta *(diferido: para cuando haya más de un punto)*
 
-## Plan de implementación (Fase 4) — en curso
+## Plan de implementación (Fase 4) — ✅ COMPLETA
 
 Sincronización multi-dispositivo con Firebase/Firestore, **offline-first**: cada vendedor
 opera en su móvil sin conexión y, al haber internet, los dispositivos se sincronizan solos.
@@ -127,5 +132,55 @@ protegido por reglas. Encaja en el plan **Spark (gratis)**.
 - [x] **Bloque 24** — Bajada en tiempo real (pull) + recálculo de stock desde el libro mayor
 - [x] **Bloque 25** — Indicador de estado de sync + alta de dispositivo desde la nube
 - [x] **Bloque 26** — Reglas de seguridad por `businessId`, índices y manejo de conflictos
+
+## Plan de implementación (Fase 5) — ✅ COMPLETA (Seguridad y licencias)
+
+Candado de activación para vender la app a varios puntos de venta y poder emitir **licencias
+temporales**. Una licencia es un texto firmado con la **clave privada** del desarrollador
+(que nunca viaja ni se sube al repo); la app solo lleva la **clave pública** para verificar,
+**sin conexión**. Imposible de falsificar sin la clave privada.
+
+- [x] **Bloque 27** — Núcleo criptográfico (`src/lib/license.js`, ECDSA P-256 + SHA-256) + generador privado (`tools/gen-license.mjs`)
+- [x] **Bloque 28** — Compuerta de activación en el router: sin licencia válida no se crea dueño ni se entra (`ActivationScreen`)
+- [x] **Bloque 29** — Vigencia + periodo de gracia + **anti-trampa de reloj** (marca de agua de fecha) + aviso "por vencer" en la cabecera
+- [x] **Bloque 30** — Estado y **renovación** de licencia desde Ajustes (negocio, plan, días restantes)
+- [x] **Bloque 31** — Licencia ligada a la nube + **límite de dispositivos** (`maxDispositivos`), gestión desde Sincronización
+
+### Estilo y correcciones recientes
+
+- Rediseño profesional (tema navy/verde, Manrope, iconos Lucide) en Home, Vender (POS) y Turno activo.
+- Carrito del POS: cuadrícula de 2 filas (el stepper ya no se encima con la descripción en móvil).
+- Transferencia: extrae importe + nº de transacción y **avisa si el monto del SMS no coincide**
+  con lo cobrado; la diferencia se ve en el panel del dueño y en el reporte de ventas.
+- Fechas en **hora local** del negocio (analytics/reportes/panel) → "Hoy/7/30 días" cuadran bien.
+- Autorización del dueño robusta ante dueños duplicados (verifica el PIN contra cualquier dueño activo).
+
+## Licencias de activación (uso del dueño/desarrollador)
+
+El generador es **privado**: vive solo en tu PC. La **clave privada** (`tools/license-private-key.json`)
+firma las licencias y **nunca** se sube al repo (está en `.gitignore`).
+
+```bash
+# 1) Una sola vez: genera TU par de claves (privada + pública)
+node tools/gen-license.mjs keygen
+#    -> escribe tools/license-private-key.json (NO subir, guárdala como oro)
+#    -> imprime tu clave pública: pégala en src/lib/license.js (PUBLIC_KEY_JWK) y commitea
+
+# 2) Emitir licencias para cada punto de venta
+node tools/gen-license.mjs --negocio "Bodega Luis" --dias 30 --plan mensual
+node tools/gen-license.mjs --negocio "Tienda Ana" --plan perpetua          # sin caducidad
+node tools/gen-license.mjs --negocio "Kiosko X" --dias 365 --maxdisp 3      # con límite de dispositivos
+```
+
+Flags: `--negocio "<nombre>"` (obligatorio) · `--dias N` (vigencia; omitir = 30 días, o sin
+caducidad si `--plan perpetua`) · `--plan demo|mensual|anual|perpetua` · `--maxdisp N` (límite
+de dispositivos) · `--key <ruta>` (otra ruta de la clave privada).
+
+El comando imprime el **código `MYPI1...`**: envíalo al cliente. En la app, pantalla de
+**Activación** → pega el código → listo (cada dispositivo se activa una vez; funciona offline).
+La renovación se hace pegando un código nuevo en **Ajustes → Licencia**.
+
+> ⚠️ La clave pública embebida en el repo debe ser **la tuya** (paso 1). Si despliegas con una
+> clave que no corresponde a tu clave privada, ninguna licencia que emitas abrirá la app.
 
 La app ya está preparada para instalarse como PWA (ver `DEPLOY.md`).
