@@ -21,9 +21,7 @@ const IMPORT_ALGO = { name: 'ECDSA', namedCurve: 'P-256' }
 // Clave publica del emisor (JWK). NO es secreta.
 // Para produccion, genera tu propio par con `node tools/gen-license.mjs keygen`
 // y reemplaza este objeto por el que imprime el comando.
-export const PUBLIC_KEY_JWK = {
-  "key_ops":["verify"],"ext":true,"kty":"EC","x":"6KnS_4aMxp_PCns6qDJvpyH9Xs76CDJSFfOAjgRGjW4","y":"zm322vFkZWr0SL1IRlgohTEiABIY4Ptxq69vs3aLX58","crv":"P-256"
-}
+export const PUBLIC_KEY_JWK = {"key_ops":["verify"],"ext":true,"kty":"EC","x":"E-QYbUui_KBbUFWAzcfMYXJX3dtE7uqBtcWIdl_z7Rw","y":"XxQ1kH5vbz5Lf0-4C2Waqf26x53PUFDqYOwbL5NsH6k","crv":"P-256"}
 
 const enc = new TextEncoder()
 const dec = new TextDecoder()
