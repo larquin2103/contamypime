@@ -111,28 +111,64 @@ export async function buildShiftsReport({ from = null, to = null } = {}) {
   }
 }
 
-// Ventas por area de venta (Fase 6 - Bloque 19): cuanto se vendio y gano en
-// cada area + detalle de ventas cruzadas (sustitucion) por vendedor.
+// Ventas por area de venta (Fase 6 - Bloque 19): cuanto vendio y gano cada
+// VENDEDOR en cada area (quien hizo el turno en esa area), con subtotal por
+// area, y el detalle de ventas cruzadas (sustitucion) por vendedor.
 export async function buildAreaReport({ from = null, to = null } = {}) {
-  const rep = await analyticsRepo.report({ from, to })
-  const rows = (rep.byArea || []).map((r) => [
-    areaLabel(r.area),
-    r.qty,
-    round2(r.revenue),
-    round2(r.profit)
-  ])
-  rows.push(['TOTAL', '', round2(rep.revenue), round2(rep.profit)])
-  // Bloque de ventas cruzadas (productos de otra area cobrados por un vendedor).
-  rows.push(['', '', '', ''])
-  rows.push(['VENTAS CRUZADAS (sustitución)', 'Cant', 'Importe', ''])
-  for (const c of rep.crossArea?.bySeller || []) {
-    rows.push([c.seller, c.qty, round2(c.revenue), ''])
+  const names = await userMap()
+  const sales = (await db.sales.toArray())
+    .filter((s) => !s.voided && inRange(s.createdAt, from, to))
+
+  const saleProfit = (s) =>
+    (s.items || []).reduce(
+      (a, it) => a + (Number(it.lineTotal ?? it.unitPrice * it.qty) - Number((it.unitCost || 0) * it.qty)),
+      0
+    )
+
+  // Agrupa por area del turno (donde se cobro) y, dentro, por vendedor.
+  const byArea = {}
+  let gRevenue = 0
+  let gProfit = 0
+  let gCount = 0
+  for (const s of sales) {
+    const area = String(s.area || '')
+    const a = byArea[area] || (byArea[area] = { area, sellers: {}, revenue: 0, profit: 0, count: 0 })
+    const sid = s.sellerId
+    const e = a.sellers[sid] || (a.sellers[sid] = { seller: names[sid] || 'vendedor', revenue: 0, profit: 0, count: 0 })
+    const rev = Number(s.totalBase || 0)
+    const prof = saleProfit(s)
+    e.revenue += rev; e.profit += prof; e.count += 1
+    a.revenue += rev; a.profit += prof; a.count += 1
+    gRevenue += rev; gProfit += prof; gCount += 1
   }
-  if ((rep.crossArea?.count ?? 0) === 0) rows.push(['Sin ventas cruzadas', '', '', ''])
+
+  const rows = []
+  const areasSorted = Object.values(byArea).sort((x, y) => y.revenue - x.revenue)
+  for (const a of areasSorted) {
+    const sellers = Object.values(a.sellers).sort((x, y) => y.revenue - x.revenue)
+    for (const e of sellers) {
+      rows.push([areaLabel(a.area), e.seller, e.count, round2(e.revenue), round2(e.profit)])
+    }
+    // Subtotal del area (si tiene mas de un vendedor, ayuda a leerlo).
+    if (sellers.length > 1) {
+      rows.push([areaLabel(a.area), 'Subtotal área', a.count, round2(a.revenue), round2(a.profit)])
+    }
+  }
+  rows.push(['TOTAL', '', gCount, round2(gRevenue), round2(gProfit)])
+
+  // Bloque de ventas cruzadas (productos de OTRA area cobrados por un vendedor).
+  const rep = await analyticsRepo.report({ from, to })
+  rows.push(['', '', '', '', ''])
+  rows.push(['VENTAS CRUZADAS (sustitución)', 'Vendedor', 'Cant', 'Importe', ''])
+  for (const c of rep.crossArea?.bySeller || []) {
+    rows.push(['↔ de otras áreas', c.seller, c.qty, round2(c.revenue), ''])
+  }
+  if ((rep.crossArea?.count ?? 0) === 0) rows.push(['Sin ventas cruzadas', '', '', '', ''])
+
   return {
     title: 'Ventas por área',
     subtitle: rangeLabel(from, to),
-    head: ['Área', 'Cantidad', 'Ingreso', 'Ganancia'],
+    head: ['Área', 'Vendedor', 'Ventas', 'Ingreso', 'Ganancia'],
     rows,
     filename: 'areas'
   }
