@@ -4,7 +4,6 @@ import { usersRepo } from '../repositories/usersRepo'
 import { useAuth } from './providers/AuthProvider'
 import { useLicense } from './providers/LicenseProvider'
 import { Layout } from '../components/Layout'
-import { LandingPage } from '../landing/pages/LandingPage'
 import { ActivationScreen } from '../features/license/ActivationScreen'
 import { Onboarding } from '../features/auth/Onboarding'
 import { Login } from '../features/auth/Login'
@@ -28,7 +27,7 @@ import { UsersAdmin } from '../features/auth/UsersAdmin'
 
 // Decide que mostrar segun el estado:
 //  - sin licencia valida   -> Activacion (compuerta: ni se crea dueño ni se entra)
-//  - sin usuarios          -> Landing page (promoción) con opción de comenzar
+//  - sin usuarios          -> Onboarding (crear dueño)
 //  - usuarios pero sin sesion -> Login
 //  - con sesion            -> app (Layout + rutas)
 export function AppRouter() {
@@ -41,7 +40,7 @@ export function AppRouter() {
   }
   // Compuerta de activacion: sin licencia firmada y vigente, la app no abre.
   if (!license.unlocked) return <ActivationScreen />
-  if (userCount === 0) return <Routes><Route path="*" element={<LandingPage />} /></Routes>
+  if (userCount === 0) return <Onboarding />
   if (!user) return <Login />
 
   return (
