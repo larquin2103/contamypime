@@ -77,9 +77,27 @@ Importaciones pesadas (xlsx/jspdf/firebase) siempre con `import()` dinámico.
 - **Vendedor (SELLER)**: solo **ventas + extracciones de caja + deuda interna**, estas dos
   últimas **con autorización del dueño** (`OwnerAuthModal`). **NO** hace entradas, NO cambia
   precios, NO ve costos, NO crea usuarios.
-- **Regla de oro:** solo el vendedor con **turno activo** puede vender (ni el dueño sin turno).
+- **Regla de oro:** solo el vendedor con **su turno abierto** puede vender (ni el dueño sin turno).
+  Desde el Bloque 19, **varios vendedores pueden tener turno a la vez** (uno por área); el turno
+  es por vendedor (`shiftsRepo.getActiveFor(sellerId)`), no global.
 - **Recuperación de PIN** del dueño mediante **código de recuperación** (hash) que se genera
   en el onboarding y se puede regenerar en Ajustes.
+
+## Áreas de venta (Fase 6 — Bloque 19)
+
+Un punto de venta puede dividirse en **áreas** (ej: Víveres, Carnicería), cada una con su
+**caja y cuadre propios**. Diseño (validado con el dueño):
+- **Turno por vendedor:** cada vendedor abre su turno eligiendo un área (lista fija definida por
+  el dueño en Ajustes → clave de config `areas`). Varios turnos abiertos a la vez = normal.
+  La caja inicial se hereda del **último cierre de la misma área** (`lastClosedCash(area)`).
+- **Catálogo global, cobro por área:** cada producto tiene un campo `area` (índice en `products`,
+  Dexie v4). Todos los vendedores ven todo el catálogo; lo que venden entra en **su** caja.
+- **Ventas cruzadas (sustitución):** si un vendedor cobra un producto de otra área, la venta se
+  marca (`sale.hasCrossArea`, `item.area` snapshot por línea). El dueño la ve en el panel
+  (pestaña *Áreas*) y en todos los reportes (Ventas, Cierres, Inventario, *Ventas por área*).
+- **Sin áreas configuradas:** la app opera como un solo punto (comportamiento clásico).
+- **Degradación de licencia:** quitar un área de la lista **no borra** productos ni ventas
+  (append-only); solo deja de ofrecerse para nuevos turnos.
 
 ## Modelo de datos (Dexie)
 
@@ -88,6 +106,8 @@ Versiones en `src/db/db.js`:
   shifts, sales, stockMovements, purchases, cashMovements, internalDebts, auditEvents`.
 - **v2**: `counts` (conteo físico).
 - **v3**: `syncState` (cursores de sincronización `push:<colección>`).
+- **v4**: índice `area` en `products` (áreas de venta, Bloque 19). `shifts.area`, `sales.area`,
+  `sales.hasCrossArea` e `items[].area` son campos nuevos (no requieren índice).
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`.
@@ -105,8 +125,11 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
 - **Fase 3 — Conteo físico + auditoría + reportes:** ✅ COMPLETA salvo multi-punto:
   - 16 conteo físico · 17 panel del dueño/analítica · 18 auditoría inmutable ·
     20 export PDF/Excel.
-  - **19 Multi-punto de venta: DIFERIDO** (para cuando haya más de un punto).
+  - **19 Multi-punto FÍSICO: DIFERIDO** (varios puntos de venta independientes; para Premium).
 - **Fase 4 — Sincronización Firebase:** ✅ COMPLETA (bloques 21–26). Ver abajo.
+- **Fase 6 — Áreas de venta dentro de un punto:** ✅ COMPLETA (Bloque 19, ver sección "Áreas de
+  venta"). Turno por vendedor, caja/cuadre por área, catálogo global con cobro por área y
+  ventas cruzadas auditadas. (Distinto del multi-punto físico, que sigue diferido.)
 
 ## Fase 4 — Sincronización (cómo funciona)
 

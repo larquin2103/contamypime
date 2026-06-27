@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
-import { UNITS, UNIT_LABELS } from '../../db/constants'
+import { configRepo } from '../../repositories/configRepo'
+import { UNITS, UNIT_LABELS, NO_AREA_LABEL } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
 
 // Alta / edicion de producto. Solo dueño (la creacion desde entrada de
@@ -8,9 +10,11 @@ import { useAuth } from '../../app/providers/AuthProvider'
 export function ProductForm({ product, categories, onClose, onCreated, hideOpeningStock = false }) {
   const { user } = useAuth()
   const editing = !!product
+  const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const [code, setCode] = useState(product?.code ?? '')
   const [name, setName] = useState(product?.name ?? '')
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
+  const [area, setArea] = useState(product?.area ?? '')
   const [unit, setUnit] = useState(product?.unit ?? UNITS[0])
   const [price, setPrice] = useState(product?.price ?? '')
   const [cost, setCost] = useState(product?.cost ?? '')
@@ -36,13 +40,14 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
     try {
       if (editing) {
         // El precio se cambia aparte para que quede en el historial.
-        await productsRepo.update(product.id, { code, name, categoryId, unit, cost, minStock: Number(minStock) || 0 })
+        await productsRepo.update(product.id, { code, name, categoryId, area, unit, cost, minStock: Number(minStock) || 0 })
         await productsRepo.changePrice(product.id, price, { userId: user.id })
       } else {
         const newProductId = await productsRepo.create({
           code,
           name,
           categoryId,
+          area,
           unit,
           price,
           cost,
@@ -97,6 +102,18 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
             ))}
           </select>
         </label>
+
+        {areas.length > 0 && (
+          <label className="field">
+            <span>Área de venta</span>
+            <select value={area} onChange={(e) => setArea(e.target.value)}>
+              <option value="">— {NO_AREA_LABEL} (todas) —</option>
+              {areas.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <div className="form-row">
           <label className="field">

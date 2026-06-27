@@ -2,12 +2,15 @@ import { normalize } from '../../lib/search'
 import { UNITS } from '../../db/constants'
 import { productsRepo } from '../../repositories/productsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
+import { configRepo } from '../../repositories/configRepo'
 
-// Columnas de la plantilla (orden exacto del plan maestro + existencia inicial).
+// Columnas de la plantilla (orden exacto del plan maestro + existencia inicial
+// y area de venta, para que cada producto entre al inventario de su area).
 export const TEMPLATE_HEADERS = [
   'Nombre',
   'Codigo',
   'Categoria',
+  'Area',
   'Unidad',
   'Precio venta',
   'Costo',
@@ -15,8 +18,8 @@ export const TEMPLATE_HEADERS = [
 ]
 
 const TEMPLATE_EXAMPLE = [
-  ['Aceite vegetal 1L', 'AV001', 'Aceites', 'u', 2.5, 1.8, 30],
-  ['Arroz 1kg', 'AR001', 'Granos', 'kg', 1.2, 0.85, 50]
+  ['Aceite vegetal 1L', 'AV001', 'Aceites', 'Viveres', 'u', 2.5, 1.8, 30],
+  ['Bistec de res', 'CR001', 'Carnes', 'Carniceria', 'kg', 5.0, 3.5, 20]
 ]
 
 // xlsx se carga bajo demanda (code-splitting): solo pesa cuando se importa.
@@ -71,6 +74,7 @@ function extractRow(obj) {
     name: String(get(['nombre', 'producto', 'descripcion'])).trim(),
     code: String(get(['codigo', 'code', 'sku'])).trim(),
     category: String(get(['categoria', 'category', 'rubro'])).trim(),
+    area: String(get(['area', 'zona', 'seccion', 'departamento'])).trim(),
     unit: parseUnit(get(['unidad', 'unit', 'um', 'u/m', 'medida'])),
     price: parseNum(get(['precio venta', 'precio', 'precio de venta', 'pvp', 'venta'])),
     cost: parseNum(get(['costo', 'coste', 'cost'])) ?? 0,
@@ -134,6 +138,13 @@ export async function commitImport(okRows, { userId }) {
   const catByName = {}
   for (const c of cats) catByName[normalize(c.name)] = c.id
 
+  // Areas existentes: si en el archivo aparece un area nueva, se da de alta en
+  // la config (igual que las categorias) para que el producto entre a su area.
+  const areas = await configRepo.getAreas()
+  const areaByKey = {}
+  for (const a of areas) areaByKey[normalize(a)] = a
+  let areasChanged = false
+
   let created = 0
   for (const r of okRows) {
     let categoryId = null
@@ -147,10 +158,22 @@ export async function commitImport(okRows, { userId }) {
         categoryId = catByName[key]
       }
     }
+    // Resuelve el area al nombre canonico ya configurado; si es nueva, la agrega.
+    let area = ''
+    if (r.draft.area) {
+      const key = normalize(r.draft.area)
+      if (!areaByKey[key]) {
+        areaByKey[key] = r.draft.area
+        areas.push(r.draft.area)
+        areasChanged = true
+      }
+      area = areaByKey[key]
+    }
     await productsRepo.create({
       code: r.draft.code,
       name: r.draft.name,
       categoryId,
+      area,
       unit: r.draft.unit,
       price: r.draft.price,
       cost: r.draft.cost,
@@ -159,5 +182,6 @@ export async function commitImport(okRows, { userId }) {
     })
     created++
   }
+  if (areasChanged) await configRepo.setAreas(areas)
   return created
 }

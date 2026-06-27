@@ -12,6 +12,7 @@ export const salesRepo = {
   async create({
     shiftId,
     sellerId,
+    area = '', // area del turno donde se cobro la venta
     items,
     totalBase,
     paymentMethod = 'cash',
@@ -33,13 +34,22 @@ export const salesRepo = {
     const isCash = paymentMethod === 'cash'
     // Diferencia entre lo recibido por transferencia y lo que debia cobrarse.
     const transferDiff = isCash ? 0 : round2(Number(transferAmount || 0) - Number(transferExpected || 0))
+    const shiftArea = String(area || '').trim()
+    // Venta cruzada: incluye al menos una linea de un area distinta a la del
+    // turno (un vendedor cubriendo/sustituyendo otra area). Cada linea guarda su
+    // propia area (snapshot) para el detalle en reportes.
+    const hasCrossArea = (items || []).some(
+      (it) => String(it.area || '').trim() && String(it.area || '').trim() !== shiftArea
+    )
     await db.transaction('rw', db.sales, db.stockMovements, db.products, async () => {
       await db.sales.add({
         id,
         shiftId,
         sellerId,
+        area: shiftArea,
+        hasCrossArea,
         createdAt: ts,
-        items, // [{ productId, name, unit, qty, unitPrice, unitCost, lineTotal }]
+        items, // [{ productId, name, unit, qty, unitPrice, unitCost, lineTotal, area }]
         totalBase,
         paymentMethod,
         // Contrato con shiftsRepo.getSummary: solo el efectivo entra a caja.

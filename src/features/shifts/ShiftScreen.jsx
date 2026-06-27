@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft, Receipt, Wallet, LogOut } from 'lucide-react'
@@ -7,7 +7,6 @@ import { configRepo } from '../../repositories/configRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
-import { OtherShiftBlocked } from './OtherShiftBlocked'
 import { CashInputs } from '../../components/CashInputs'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 import { DenominationCounter, totalsFromCounts } from '../../components/DenominationCounter'
@@ -20,11 +19,13 @@ import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { buildCloseReport, openWhatsapp } from '../../lib/whatsapp'
 
 export function ShiftScreen() {
-  const { activeShift, loading, isMine } = useShift()
+  const { activeShift, loading } = useShift()
   const { isOwner } = useAuth()
   // El resultado del cierre vive aqui para que sobreviva a que el turno
   // pase a "cerrado" (si no, la pantalla saltaria a "Abrir turno").
   const [closeResult, setCloseResult] = useState(null)
+  // Cierre de un turno AJENO por el dueño (se elige desde la lista de abajo).
+  const [foreignClose, setForeignClose] = useState(null)
 
   if (closeResult) {
     return <CloseResult result={closeResult} onDone={() => setCloseResult(null)} />
@@ -32,43 +33,95 @@ export function ShiftScreen() {
   if (loading) {
     return <div className="screen"><p className="muted">Cargando…</p></div>
   }
-  if (!activeShift) return <OpenShiftForm />
-  if (isMine) return <ActiveShiftPanel shift={activeShift} onClosed={setCloseResult} />
-  // Turno de otro vendedor: el dueño puede cerrarlo (p.ej. quedo abierto); el
-  // resto solo ve el bloqueo.
-  if (isOwner) return <ForeignShiftOwner shift={activeShift} onClosed={setCloseResult} />
-  return <OtherShiftBlocked shift={activeShift} />
+  if (foreignClose) {
+    return (
+      <CloseShiftPanel
+        shift={foreignClose}
+        forcedByOwner
+        onCancel={() => setForeignClose(null)}
+        onClosed={(res) => { setForeignClose(null); setCloseResult(res) }}
+      />
+    )
+  }
+
+  // El provider entrega SIEMPRE el turno propio del usuario actual. El dueño,
+  // ademas, ve y puede cerrar los turnos abiertos de otras areas/vendedores.
+  return (
+    <>
+      {activeShift
+        ? <ActiveShiftPanel shift={activeShift} onClosed={setCloseResult} />
+        : <OpenShiftForm />}
+      {isOwner && (
+        <OtherOpenShifts excludeId={activeShift?.id} onClose={setForeignClose} />
+      )}
+    </>
+  )
+}
+
+// Lista (solo dueño) de turnos abiertos de OTROS vendedores/areas, con opcion
+// de cerrar cada uno (cuadre forzado). Reemplaza el flujo de "turno ajeno"
+// anterior, ahora que varios turnos pueden estar abiertos a la vez.
+function OtherOpenShifts({ excludeId, onClose }) {
+  const open = useLiveQuery(() => shiftsRepo.listOpen(), [], [])
+  const users = useLiveQuery(() => usersRepo.list(), [], [])
+  const others = (open || []).filter((s) => s.id !== excludeId)
+  if (others.length === 0) return null
+  const nameOf = (id) => users.find((u) => u.id === id)?.name || 'vendedor'
+  return (
+    <div className="screen">
+      <h3>Otros turnos abiertos</h3>
+      <p className="muted">Turnos activos de otras áreas/vendedores. Puedes cerrarlos haciendo el cuadre.</p>
+      {others.map((s) => (
+        <section key={s.id} className="card">
+          <div className="kv"><span className="muted">Vendedor</span><strong>{nameOf(s.sellerId)}</strong></div>
+          {s.area && <div className="kv"><span className="muted">Área</span><strong>{s.area}</strong></div>}
+          <div className="kv"><span className="muted">Abierto</span><strong>{formatDateTime(s.openedAt)}</strong></div>
+          <button
+            className="btn btn--block"
+            onClick={() => onClose({ ...s, sellerName: nameOf(s.sellerId) })}
+          >
+            Cerrar turno de {nameOf(s.sellerId)}
+          </button>
+        </section>
+      ))}
+    </div>
+  )
 }
 
 // ---- Abrir turno ----
 function OpenShiftForm() {
   const { user } = useAuth()
-  // Caja a heredar: primero un traspaso explicito por archivo (config local);
-  // si no, el fondo del ultimo turno cerrado (que SI sincroniza entre equipos).
-  const inherited = useLiveQuery(async () => {
-    const local = await configRepo.get('inheritedOpeningCash', null)
-    if (local && Object.keys(local).length) return local
-    return shiftsRepo.lastClosedCash()
-  }, [], undefined)
+  const areas = useLiveQuery(() => configRepo.getAreas(), [], undefined)
+  const [area, setArea] = useState('')
   const [openingCash, setOpeningCash] = useState({})
-  const [point, setPoint] = useState('Principal')
   const [usedInherited, setUsedInherited] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  // Prefill con la caja heredada (una sola vez).
-  if (inherited && !usedInherited && Object.keys(openingCash).length === 0 && Object.keys(inherited).length) {
-    setOpeningCash(Object.fromEntries(CASH_CURRENCIES.map((c) => [c, String(inherited[c] ?? '')])))
-    setUsedInherited(true)
-  }
+  // Caja a heredar: primero un traspaso explicito por archivo (config local);
+  // si no, el fondo del ultimo turno cerrado DE LA MISMA AREA (no se cruzan).
+  const inherited = useLiveQuery(async () => {
+    const local = await configRepo.get('inheritedOpeningCash', null)
+    if (local && Object.keys(local).length) return local
+    return shiftsRepo.lastClosedCash(area || '')
+  }, [area], undefined)
+
+  // Prefill con la caja heredada; se reaplica si cambia el area (otra caja).
+  useEffect(() => {
+    if (inherited === undefined) return
+    const has = !!(inherited && Object.keys(inherited).length)
+    setOpeningCash(Object.fromEntries(CASH_CURRENCIES.map((c) => [c, String(inherited?.[c] ?? '')])))
+    setUsedInherited(has)
+  }, [inherited])
 
   const open = async () => {
     setError('')
+    if (areas && areas.length > 0 && !area) return setError('Selecciona el área de tu turno')
     setBusy(true)
     try {
       const cash = {}
       for (const c of CASH_CURRENCIES) cash[c] = Number(openingCash[c]) || 0
-      await shiftsRepo.open({ sellerId: user.id, openingCash: cash, point })
+      await shiftsRepo.open({ sellerId: user.id, openingCash: cash, area })
       await configRepo.set('inheritedOpeningCash', {}) // consumida
     } catch (e) {
       setError(e.message)
@@ -81,13 +134,18 @@ function OpenShiftForm() {
       <h2>Abrir turno</h2>
       <section className="card">
         <p className="muted">Inicias turno como <strong>{user.name}</strong>.</p>
-        {usedInherited && (
-          <p className="muted">💡 Fondo prellenado con la caja del turno recibido.</p>
+        {areas && areas.length > 0 && (
+          <label className="field">
+            <span>Área</span>
+            <select value={area} onChange={(e) => setArea(e.target.value)}>
+              <option value="">— Elige tu área —</option>
+              {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
         )}
-        <label className="field">
-          <span>Punto de venta</span>
-          <input value={point} onChange={(e) => setPoint(e.target.value)} />
-        </label>
+        {usedInherited && (
+          <p className="muted">💡 Fondo prellenado con la caja del último cierre{area ? ` de ${area}` : ''}.</p>
+        )}
         <CashInputs
           label="Fondo inicial en caja"
           values={openingCash}
@@ -157,8 +215,8 @@ function ActiveShiftPanel({ shift, onClosed }) {
           <strong>{formatDateTime(shift.openedAt)}</strong>
         </div>
         <div className="kv">
-          <span className="muted">Punto</span>
-          <strong>{shift.point}</strong>
+          <span className="muted">{shift.area ? 'Área' : 'Punto'}</span>
+          <strong>{shift.area || shift.point}</strong>
         </div>
       </section>
 
@@ -225,42 +283,6 @@ function Row({ label, data, sign = '', strong = false }) {
         </td>
       ))}
     </tr>
-  )
-}
-
-// ---- Turno de otro vendedor, visto por el dueño (p.ej. quedo abierto) ----
-function ForeignShiftOwner({ shift, onClosed }) {
-  const seller = useLiveQuery(() => usersRepo.get(shift.sellerId), [shift.sellerId])
-  const [closing, setClosing] = useState(false)
-
-  if (closing) {
-    return (
-      <CloseShiftPanel
-        shift={{ ...shift, sellerName: seller?.name }}
-        forcedByOwner
-        onCancel={() => setClosing(false)}
-        onClosed={onClosed}
-      />
-    )
-  }
-
-  return (
-    <div className="screen">
-      <h2>Turno abierto de otro vendedor</h2>
-      <section className="card">
-        <p>
-          Hay un turno abierto por <strong>{seller?.name || 'un vendedor'}</strong> desde{' '}
-          {formatDateTime(shift.openedAt)}.
-        </p>
-        <p className="muted">
-          Si el vendedor salio de la app sin cerrar, sus ventas y movimientos siguen guardados.
-          Como dueño puedes cerrar su turno haciendo el cuadre, o esperar a que el vuelva.
-        </p>
-        <button className="btn btn--primary btn--block" onClick={() => setClosing(true)}>
-          Cerrar turno de {seller?.name || 'vendedor'}
-        </button>
-      </section>
-    </div>
   )
 }
 

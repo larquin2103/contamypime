@@ -76,6 +76,18 @@ export const SHIFT_STATUS = {
   CLOSED: 'closed'
 }
 
+// Areas de venta (Fase 6 - Bloque 19). Un punto de venta puede dividirse en
+// varias areas, cada una con su propia caja/cuadre. La lista la define el dueño
+// en Ajustes (clave de config 'areas'). Un producto sin area asignada se
+// muestra como "General" y cualquier vendedor puede venderlo sin marcarlo como
+// venta cruzada.
+export const NO_AREA = ''
+export const NO_AREA_LABEL = 'General'
+
+export function areaLabel(area) {
+  return area && String(area).trim() ? String(area).trim() : NO_AREA_LABEL
+}
+
 // Estados de un conteo fisico (Fase 3).
 export const COUNT_STATUS = {
   DRAFT: 'draft', // en progreso

@@ -29,12 +29,64 @@ export function Settings() {
       <h2>Ajustes</h2>
       <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
+      <AreasSection />
       <SemaphoreSection />
       <DenominationsSection />
       <WhatsappSection />
       <SecuritySection userId={user.id} />
       <LicenseSection />
     </div>
+  )
+}
+
+// Areas de venta del punto (Fase 6 - Bloque 19). El dueño define la lista; cada
+// vendedor abre su turno en un area, con caja y cuadre propios. Quitar un area
+// de la lista NO borra productos ni ventas (append-only): solo deja de ofrecerse.
+function AreasSection() {
+  const areas = useLiveQuery(() => configRepo.getAreas(), [], undefined)
+  const [draft, setDraft] = useState('')
+  const [saved, setSaved] = useState(false)
+  if (areas === undefined) return null
+
+  const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1200) }
+  const add = async () => {
+    const name = draft.trim()
+    if (!name) return
+    await configRepo.setAreas([...areas, name])
+    setDraft('')
+    flash()
+  }
+  const remove = async (a) => {
+    await configRepo.setAreas(areas.filter((x) => x !== a))
+    flash()
+  }
+
+  return (
+    <section className="card">
+      <h3>Áreas de venta</h3>
+      <p className="muted">
+        Divide tu punto en áreas (ej: Víveres, Carnicería). Cada vendedor abre su turno en un área,
+        con su propia caja y cuadre. Si no defines ninguna, el negocio opera como un solo punto.
+      </p>
+      {areas.length === 0
+        ? <p className="muted">Aún no hay áreas. Agrega la primera abajo.</p>
+        : areas.map((a) => (
+            <div key={a} className="kv">
+              <strong>{a}</strong>
+              <button className="btn btn--ghost btn--sm" onClick={() => remove(a)}>Quitar</button>
+            </div>
+          ))}
+      <label className="field">
+        <span>Nueva área</span>
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Ej: Carnicería" />
+      </label>
+      <button className="btn btn--primary btn--block" onClick={add}>
+        {saved ? 'Guardado ✓' : 'Agregar área'}
+      </button>
+      <p className="muted">
+        Quitar un área no borra sus productos ni sus ventas; solo deja de ofrecerse para nuevos turnos.
+      </p>
+    </section>
   )
 }
 

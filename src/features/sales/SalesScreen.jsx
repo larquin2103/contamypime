@@ -71,6 +71,7 @@ export function SalesScreen() {
           unit: p.unit,
           unitPrice: p.price,
           unitCost: p.cost,
+          area: p.area || '',
           qty: 1,
           stock: p.stock
         }
@@ -94,6 +95,8 @@ export function SalesScreen() {
     () => round2(cart.reduce((a, l) => a + l.unitPrice * l.qty, 0)),
     [cart]
   )
+  // Venta cruzada: el carrito tiene productos de un area distinta a la del turno.
+  const crossArea = cart.some((l) => l.area && l.area !== (activeShift?.area || ''))
   // --- efectivo ---
   const rate = payCurrency === baseCurrency ? 1 : rateOf(payCurrency)
   const totalInCur =
@@ -145,12 +148,14 @@ export function SalesScreen() {
       qty: l.qty,
       unitPrice: l.unitPrice,
       unitCost: l.unitCost,
+      area: l.area || '',
       lineTotal: round2(l.unitPrice * l.qty)
     }))
     if (isCash) {
       await salesRepo.create({
         shiftId: activeShift.id,
         sellerId: user.id,
+        area: activeShift.area || '',
         items,
         totalBase,
         paymentMethod: PAYMENT_METHODS.CASH,
@@ -165,6 +170,7 @@ export function SalesScreen() {
       await salesRepo.create({
         shiftId: activeShift.id,
         sellerId: user.id,
+        area: activeShift.area || '',
         items,
         totalBase,
         paymentMethod: PAYMENT_METHODS.TRANSFER,
@@ -245,7 +251,12 @@ export function SalesScreen() {
               <div key={l.productId} className="cart-line">
                 <span className="cart-line__tile"><Package size={19} strokeWidth={1.9} /></span>
                 <div className="cart-line__info">
-                  <strong>{l.name}</strong>
+                  <strong>
+                    {l.name}
+                    {l.area && l.area !== (activeShift.area || '') && (
+                      <span className="warn-text"> ↔ {l.area}</span>
+                    )}
+                  </strong>
                   <span className="muted">
                     {formatMoney(l.unitPrice, baseCurrency)} × {l.qty} {l.unit}
                     {l.qty > l.stock && <span className="warn-text"> · stock: {l.stock}</span>}
@@ -392,6 +403,13 @@ export function SalesScreen() {
               </div>
               <p className="muted">La transferencia no entra a la caja de efectivo.</p>
             </>
+          )}
+
+          {crossArea && (
+            <p className="muted">
+              ↔ Venta cruzada: incluye productos de otra área. Se cobra en tu caja
+              {activeShift?.area ? ` (${activeShift.area})` : ''} y queda marcada para el dueño.
+            </p>
           )}
 
           <button

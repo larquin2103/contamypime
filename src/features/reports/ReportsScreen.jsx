@@ -1,16 +1,20 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { configRepo } from '../../repositories/configRepo'
 import {
   buildSalesReport,
   buildInventoryReport,
   buildShiftsReport,
+  buildAreaReport,
   exportExcel,
   exportPdf
 } from './reportsService'
 
 export function ReportsScreen() {
   const { isOwner } = useAuth()
+  const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [busy, setBusy] = useState('')
@@ -69,8 +73,10 @@ export function ReportsScreen() {
         <p className="muted">Vacio = todo el historial.</p>
       </section>
 
-      {card('sales', 'Ventas', 'Detalle de ventas por fecha, vendedor y metodo', buildSalesReport, true)}
-      {card('shifts', 'Cierres de turno', 'Cuadre de cada turno cerrado', buildShiftsReport, true)}
+      {card('sales', 'Ventas', 'Detalle de ventas por fecha, vendedor, área y metodo', buildSalesReport, true)}
+      {card('shifts', 'Cierres de turno', 'Cuadre de cada turno cerrado, por área', buildShiftsReport, true)}
+      {areas.length > 0 &&
+        card('area', 'Ventas por área', 'Ingreso y ganancia por área + ventas cruzadas', buildAreaReport, true)}
       {card('inv', 'Inventario actual', 'Existencias, costo, precio y valor del inventario', buildInventoryReport, false)}
     </div>
   )

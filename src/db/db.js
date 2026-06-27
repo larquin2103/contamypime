@@ -41,3 +41,11 @@ db.version(2).stores({
 db.version(3).stores({
   syncState: 'key'
 })
+
+// Fase 6 - Bloque 19: areas de venta dentro de un mismo punto. Cada producto
+// pertenece a un area; el indice `area` permite filtrar/agrupar el catalogo.
+// Los turnos guardan su `area` (caja independiente por area) y las ventas el
+// area en que se cobraron (para detectar ventas "cruzadas" entre areas).
+db.version(4).stores({
+  products: 'id, code, categoryId, active, area, *searchTokens'
+})

@@ -30,7 +30,7 @@ export const productsRepo = {
 
   // Crea producto. Si openingStock > 0, registra el movimiento de apertura
   // (queda trazado en el libro mayor, nunca se inyecta el stock "a mano").
-  async create({ code, name, categoryId, unit, price, cost, minStock = 0, openingStock = 0, userId = null }) {
+  async create({ code, name, categoryId, unit, price, cost, minStock = 0, openingStock = 0, area = '', userId = null }) {
     const id = newId()
     const ts = now()
     await db.products.add({
@@ -39,6 +39,7 @@ export const productsRepo = {
       name: name.trim(),
       searchTokens: buildSearchTokens(name, code),
       categoryId: categoryId || null,
+      area: String(area || '').trim(), // area de venta a la que pertenece
       unit,
       price: Number(price) || 0,
       cost: Number(cost) || 0,
@@ -73,6 +74,7 @@ export const productsRepo = {
     }
     if (fields.price != null) patch.price = Number(fields.price) || 0
     if (fields.cost != null) patch.cost = Number(fields.cost) || 0
+    if (fields.area != null) patch.area = String(fields.area).trim()
     await db.products.update(id, patch)
   },
 

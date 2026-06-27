@@ -1,7 +1,8 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
 import { round2 } from '../../lib/currency'
-import { SHIFT_STATUS } from '../../db/constants'
+import { SHIFT_STATUS, areaLabel } from '../../db/constants'
+import { analyticsRepo } from '../../repositories/analyticsRepo'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
@@ -34,6 +35,8 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
     return [
       formatDateTime(s.createdAt),
       names[s.sellerId] || 'vendedor',
+      areaLabel(s.area),
+      s.hasCrossArea ? 'Sí' : '',
       isTransfer ? 'Transferencia' : 'Efectivo',
       isTransfer ? s.transferReference || '' : '',
       round2(s.totalBase),
@@ -43,11 +46,11 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
     ]
   })
   const total = round2(sales.reduce((a, s) => a + Number(s.totalBase || 0), 0))
-  rows.push(['', '', '', 'TOTAL', total, '', '', ''])
+  rows.push(['', '', '', '', '', 'TOTAL', total, '', '', ''])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Vendedor', 'Metodo', 'No. operacion', 'Total', 'Esperado', 'Recibido', 'Diferencia'],
+    head: ['Fecha', 'Vendedor', 'Área', 'Cruzada', 'Metodo', 'No. operacion', 'Total', 'Esperado', 'Recibido', 'Diferencia'],
     rows,
     filename: 'ventas'
   }
@@ -64,6 +67,7 @@ export async function buildInventoryReport() {
     p.code || '',
     p.name,
     catName[p.categoryId] || 'Sin categoria',
+    areaLabel(p.area),
     p.unit,
     round2(p.stock),
     round2(p.cost),
@@ -71,11 +75,11 @@ export async function buildInventoryReport() {
     round2(p.stock * p.cost)
   ])
   const valorTotal = round2(products.reduce((a, p) => a + p.stock * p.cost, 0))
-  rows.push(['', '', '', '', '', '', 'VALOR INVENTARIO', valorTotal])
+  rows.push(['', '', '', '', '', '', '', 'VALOR INVENTARIO', valorTotal])
   return {
     title: 'Inventario actual',
     subtitle: `Generado ${formatDateTime(new Date().toISOString())}`,
-    head: ['Codigo', 'Producto', 'Categoria', 'Unidad', 'Stock', 'Costo', 'Precio', 'Valor (stock*costo)'],
+    head: ['Codigo', 'Producto', 'Categoria', 'Área', 'Unidad', 'Stock', 'Costo', 'Precio', 'Valor (stock*costo)'],
     rows,
     filename: 'inventario'
   }
@@ -91,6 +95,7 @@ export async function buildShiftsReport({ from = null, to = null } = {}) {
     formatDateTime(s.openedAt),
     formatDateTime(s.closedAt),
     names[s.sellerId] || 'vendedor',
+    areaLabel(s.area),
     round2(s.expectedCash?.MN ?? 0),
     round2(s.declaredCash?.MN ?? 0),
     round2(s.difference?.MN ?? 0),
@@ -100,9 +105,36 @@ export async function buildShiftsReport({ from = null, to = null } = {}) {
   return {
     title: 'Cierres de turno',
     subtitle: rangeLabel(from, to),
-    head: ['Abierto', 'Cerrado', 'Vendedor', 'Esperado MN', 'Declarado MN', 'Diferencia MN', 'Cuadre', 'Notas'],
+    head: ['Abierto', 'Cerrado', 'Vendedor', 'Área', 'Esperado MN', 'Declarado MN', 'Diferencia MN', 'Cuadre', 'Notas'],
     rows,
     filename: 'cierres'
+  }
+}
+
+// Ventas por area de venta (Fase 6 - Bloque 19): cuanto se vendio y gano en
+// cada area + detalle de ventas cruzadas (sustitucion) por vendedor.
+export async function buildAreaReport({ from = null, to = null } = {}) {
+  const rep = await analyticsRepo.report({ from, to })
+  const rows = (rep.byArea || []).map((r) => [
+    areaLabel(r.area),
+    r.qty,
+    round2(r.revenue),
+    round2(r.profit)
+  ])
+  rows.push(['TOTAL', '', round2(rep.revenue), round2(rep.profit)])
+  // Bloque de ventas cruzadas (productos de otra area cobrados por un vendedor).
+  rows.push(['', '', '', ''])
+  rows.push(['VENTAS CRUZADAS (sustitución)', 'Cant', 'Importe', ''])
+  for (const c of rep.crossArea?.bySeller || []) {
+    rows.push([c.seller, c.qty, round2(c.revenue), ''])
+  }
+  if ((rep.crossArea?.count ?? 0) === 0) rows.push(['Sin ventas cruzadas', '', '', ''])
+  return {
+    title: 'Ventas por área',
+    subtitle: rangeLabel(from, to),
+    head: ['Área', 'Cantidad', 'Ingreso', 'Ganancia'],
+    rows,
+    filename: 'areas'
   }
 }
 
@@ -124,10 +156,14 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
     const cobrado = isCash ? Number(s.amountPaid || 0) : Number(s.transferAmount || 0)
     const vuelto = isCash ? Number(s.change || 0) : 0
     const items = s.items || []
+    const shiftArea = String(s.area || '')
     items.forEach((it, i) => {
+      const itArea = String(it.area || '')
+      const cross = itArea && itArea !== shiftArea
       rows.push([
         i === 0 ? formatDateTime(s.createdAt) : '',
         it.name,
+        itArea ? (cross ? `↔ ${itArea}` : itArea) : '',
         it.unit,
         round2(it.qty),
         round2(it.lineTotal ?? it.unitPrice * it.qty),
@@ -138,11 +174,11 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
     })
     total += Number(s.totalBase || 0)
   }
-  rows.push(['', '', '', '', round2(total), 'TOTAL', '', ''])
+  rows.push(['', '', '', '', '', round2(total), 'TOTAL', '', ''])
   return {
     title: 'Ventas del turno',
     subtitle: `${sellerName ? sellerName + ' · ' : ''}Generado ${formatDateTime(new Date().toISOString())}`,
-    head: ['Fecha', 'Producto', 'U/M', 'Cant', 'Importe', 'Metodo', 'Cobrado', 'Vuelto'],
+    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Importe', 'Metodo', 'Cobrado', 'Vuelto'],
     rows,
     filename: 'ventas_turno'
   }

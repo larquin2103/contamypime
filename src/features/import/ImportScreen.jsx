@@ -157,6 +157,7 @@ function Preview({ result, onConfirm, busy }) {
                   {r.draft.code ? `${r.draft.code} · ` : ''}
                   {r.draft.unit || '?'} · {r.draft.price ?? '—'}
                   {r.draft.category ? ` · ${r.draft.category}` : ''}
+                  {r.draft.area ? ` · área: ${r.draft.area}` : ''}
                 </span>
                 {r.status === 'error' && <span className="row-msg">{r.errors.join(' · ')}</span>}
                 {r.status === 'dup' && <span className="row-msg">{r.dupReason}</span>}

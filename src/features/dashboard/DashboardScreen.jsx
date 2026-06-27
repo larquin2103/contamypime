@@ -7,6 +7,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime, localDay } from '../../lib/dates'
+import { areaLabel } from '../../db/constants'
 import { DonutChart, TrendChart } from './Charts'
 
 // Rangos calculados en dia LOCAL (no UTC) para que "Hoy/7/30" cuadren con el
@@ -157,6 +158,9 @@ export function DashboardScreen() {
       <div className="tabs">
         <button className={`tab ${tab === 'top' ? 'is-active' : ''}`} onClick={() => setTab('top')}>Mas vendidos</button>
         <button className={`tab ${tab === 'cat' ? 'is-active' : ''}`} onClick={() => setTab('cat')}>Categorias</button>
+        {(report?.byArea || []).length > 0 && (
+          <button className={`tab ${tab === 'area' ? 'is-active' : ''}`} onClick={() => setTab('area')}>Áreas</button>
+        )}
         <button className={`tab ${tab === 'alerts' ? 'is-active' : ''}`} onClick={() => setTab('alerts')}>Alertas</button>
       </div>
 
@@ -178,6 +182,40 @@ export function DashboardScreen() {
 
       {tab === 'cat' && (
         <CategoryBreakdown rows={report?.byCategory || []} money={m} />
+      )}
+
+      {tab === 'area' && (
+        <>
+          <div className="list">
+            {(report?.byArea || []).map((r) => (
+              <div key={r.area || '__none'} className="rank-row">
+                <div className="rank-row__main">
+                  <strong>{areaLabel(r.area)}</strong>
+                  <span className="muted">{r.qty} vendidos · ganancia {m(r.profit)}</span>
+                </div>
+                <span className="price">{m(r.revenue)}</span>
+              </div>
+            ))}
+            {(report?.byArea || []).length === 0 && <p className="muted">Sin ventas en el periodo.</p>}
+          </div>
+
+          <h3 className="section-title">Ventas cruzadas (sustitución)</h3>
+          <p className="muted">
+            Productos vendidos por un vendedor de otra área. Se cobraron en su caja.
+          </p>
+          <div className="list">
+            {(report?.crossArea?.bySeller || []).map((c) => (
+              <div key={c.sellerId} className="rank-row">
+                <div className="rank-row__main">
+                  <strong>{c.seller}</strong>
+                  <span className="muted">{c.qty} producto(s) de otras áreas</span>
+                </div>
+                <span className="price">{m(c.revenue)}</span>
+              </div>
+            ))}
+            {(report?.crossArea?.count ?? 0) === 0 && <p className="muted">Sin ventas cruzadas en el periodo.</p>}
+          </div>
+        </>
       )}
 
       {tab === 'alerts' && (

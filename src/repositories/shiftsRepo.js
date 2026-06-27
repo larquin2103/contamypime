@@ -14,18 +14,29 @@ function emptyCash() {
 }
 
 export const shiftsRepo = {
-  // Turno abierto actual (Fase 1 = punto unico, a lo sumo uno abierto).
+  // Primer turno abierto (compatibilidad). Con varias areas puede haber varios
+  // turnos abiertos a la vez; para la operacion de un vendedor usar getActiveFor.
   async getActive() {
     const open = await db.shifts.where('status').equals(SHIFT_STATUS.OPEN).toArray()
     return open[0] || null
+  },
+
+  // Turno abierto de UN vendedor concreto (Fase 6 - Bloque 19). Cada vendedor
+  // tiene a lo sumo un turno abierto; varios vendedores pueden estar activos a
+  // la vez en areas distintas del mismo punto.
+  async getActiveFor(sellerId) {
+    if (!sellerId) return null
+    const open = await db.shifts.where('status').equals(SHIFT_STATUS.OPEN).toArray()
+    return open.find((s) => s.sellerId === sellerId) || null
   },
 
   async get(id) {
     return db.shifts.get(id)
   },
 
-  // Todos los turnos abiertos. Normalmente 0 o 1; >1 indica que dos
-  // dispositivos abrieron turno a la vez (sin conexion) y luego sincronizaron.
+  // Todos los turnos abiertos a la vez. Con areas (Fase 6) es normal tener
+  // varios (uno por vendedor/area). Dos turnos del MISMO vendedor indican una
+  // colision de sincronizacion que el dueño debe revisar.
   async listOpen() {
     const open = await db.shifts.where('status').equals(SHIFT_STATUS.OPEN).toArray()
     return open.sort((a, b) => (a.openedAt < b.openedAt ? -1 : 1))
@@ -36,15 +47,18 @@ export const shiftsRepo = {
     return all.sort((a, b) => (a.openedAt < b.openedAt ? 1 : -1))
   },
 
-  async open({ sellerId, openingCash, point = 'Principal' }) {
-    const active = await this.getActive()
-    if (active) throw new Error('Ya hay un turno abierto. Cierralo antes de abrir otro.')
+  async open({ sellerId, openingCash, point = 'Principal', area = '' }) {
+    // Solo se bloquea si ESTE vendedor ya tiene turno abierto. Varios vendedores
+    // pueden estar activos a la vez en areas distintas del mismo punto.
+    const mine = await this.getActiveFor(sellerId)
+    if (mine) throw new Error('Ya tienes un turno abierto. Cierralo antes de abrir otro.')
     const id = newId()
     const ts = now()
     await db.shifts.add({
       id,
       sellerId,
-      point, // multi-punto es Fase 3; en Fase 1 un punto por defecto
+      point, // punto fisico (multi-punto = Fase 6 diferida); por defecto uno
+      area: String(area || '').trim(), // area de venta dentro del punto
       status: SHIFT_STATUS.OPEN,
       openedAt: ts,
       openingCash: { ...emptyCash(), ...openingCash },
@@ -116,9 +130,12 @@ export const shiftsRepo = {
 
   // Efectivo a heredar por el proximo turno: el fondo del ultimo turno cerrado
   // (lo que el dueño dejo en caja). Se deriva de los turnos (que SI sincronizan).
-  async lastClosedCash() {
+  // Con areas, cada area hereda su PROPIA caja: se filtra por `area` para que el
+  // fondo de un area no se cruce con el de otra. `area = null` = sin filtro.
+  async lastClosedCash(area = null) {
     const closed = (await db.shifts.toArray())
-      .filter((s) => s.status === SHIFT_STATUS.CLOSED && s.closedAt)
+      .filter((s) => s.status === SHIFT_STATUS.CLOSED && s.closedAt &&
+        (area == null || String(s.area || '') === String(area || '')))
       .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))
     const last = closed[0]
     if (!last) return null

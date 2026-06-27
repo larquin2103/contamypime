@@ -72,6 +72,49 @@ export const analyticsRepo = {
       .map((e) => ({ ...e, revenue: round2(e.revenue), profit: round2(e.profit) }))
       .sort((a, b) => b.revenue - a.revenue)
 
+    // Por area de venta (Fase 6 - Bloque 19). Se agrupa por el area del PRODUCTO
+    // (snapshot en la linea) y se detectan las ventas "cruzadas": lineas de un
+    // area distinta a la del turno donde se cobraron (sustitucion de vendedor).
+    const users = await db.users.toArray()
+    const nameOf = Object.fromEntries(users.map((u) => [u.id, u.name]))
+    const areaAgg = {}
+    const crossBySeller = {}
+    let crossRevenue = 0
+    let crossCount = 0
+    for (const s of sales) {
+      const shiftArea = String(s.area || '')
+      let saleHasCross = false
+      for (const it of s.items || []) {
+        const itArea = String(it.area || '')
+        const lineRev = Number(it.lineTotal ?? it.unitPrice * it.qty)
+        const lineCost = Number((it.unitCost || 0) * it.qty)
+        const key = itArea || '__none'
+        const e = areaAgg[key] || (areaAgg[key] = { area: itArea, revenue: 0, profit: 0, qty: 0 })
+        e.revenue += lineRev
+        e.profit += lineRev - lineCost
+        e.qty += Number(it.qty)
+        if (itArea && itArea !== shiftArea) {
+          saleHasCross = true
+          crossRevenue += lineRev
+          const cs = crossBySeller[s.sellerId] ||
+            (crossBySeller[s.sellerId] = { sellerId: s.sellerId, seller: nameOf[s.sellerId] || 'vendedor', revenue: 0, qty: 0 })
+          cs.revenue += lineRev
+          cs.qty += Number(it.qty)
+        }
+      }
+      if (saleHasCross) crossCount++
+    }
+    const byArea = Object.values(areaAgg)
+      .map((e) => ({ ...e, revenue: round2(e.revenue), profit: round2(e.profit) }))
+      .sort((a, b) => b.revenue - a.revenue)
+    const crossArea = {
+      revenue: round2(crossRevenue),
+      count: crossCount,
+      bySeller: Object.values(crossBySeller)
+        .map((e) => ({ ...e, revenue: round2(e.revenue) }))
+        .sort((a, b) => b.revenue - a.revenue)
+    }
+
     // Metodos de pago (efectivo vs transferencia) y serie diaria de ingresos.
     const byMethod = { cash: 0, transfer: 0 }
     const dayTotals = {}
@@ -101,6 +144,8 @@ export const analyticsRepo = {
       marginPct,
       byProduct,
       byCategory,
+      byArea,
+      crossArea,
       byMethod,
       daily
     }

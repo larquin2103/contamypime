@@ -33,17 +33,36 @@ function CountNotice({ userId }) {
   )
 }
 
-// Aviso al dueño si hay mas de un turno abierto a la vez.
+// Estado de turnos abiertos para el dueño. Con areas (Fase 6) tener varios
+// turnos a la vez es NORMAL (uno por area/vendedor): se muestra informativo.
+// La anomalia real es que el MISMO vendedor tenga 2+ turnos abiertos (colision
+// de sincronizacion offline): eso si se avisa como advertencia.
 function ConcurrentShiftWarning() {
   const open = useLiveQuery(() => shiftsRepo.listOpen(), [], [])
   const users = useLiveQuery(() => usersRepo.list(), [], [])
-  if (!open || open.length < 2) return null
+  if (!open || open.length === 0) return null
   const nameOf = (id) => users.find((u) => u.id === id)?.name || 'vendedor'
+  const labelOf = (s) => `${nameOf(s.sellerId)}${s.area ? ` (${s.area})` : ''}`
+
+  // Anomalia: un vendedor con mas de un turno abierto.
+  const counts = {}
+  for (const s of open) counts[s.sellerId] = (counts[s.sellerId] || 0) + 1
+  const dup = Object.entries(counts).find(([, n]) => n >= 2)
+  if (dup) {
+    return (
+      <Link to="/shift" className="shift-status shift-status--other">
+        <span>
+          ⚠️ {nameOf(dup[0])} tiene más de un turno abierto. Revisa y cierra el duplicado.
+        </span>
+      </Link>
+    )
+  }
+
+  if (open.length < 2) return null
   return (
     <Link to="/shift" className="shift-status shift-status--other">
       <span>
-        ⚠️ Hay {open.length} turnos abiertos a la vez ({open.map((s) => nameOf(s.sellerId)).join(', ')}).
-        Revisa y cierra el que corresponda.
+        🟢 {open.length} turnos abiertos por área: {open.map(labelOf).join(', ')}.
       </span>
     </Link>
   )
