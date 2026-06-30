@@ -90,7 +90,7 @@ function OtherOpenShifts({ excludeId, onClose }) {
 
 // ---- Abrir turno ----
 function OpenShiftForm() {
-  const { user } = useAuth()
+  const { user, isManager } = useAuth()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], undefined)
   const [area, setArea] = useState('')
   const [openingCash, setOpeningCash] = useState({})
@@ -116,7 +116,10 @@ function OpenShiftForm() {
 
   const open = async () => {
     setError('')
-    if (areas && areas.length > 0 && !area) return setError('Selecciona el área de tu turno')
+    // El vendedor DEBE elegir su área (solo vende lo asignado a ella). El dueño/
+    // administrativo puede dejar el "Almacén central" (sin área) para vender de
+    // todo el inventario, o elegir un área para atenderla.
+    if (!isManager && areas && areas.length > 0 && !area) return setError('Selecciona el área de tu turno')
     setBusy(true)
     try {
       const cash = {}
@@ -136,11 +139,18 @@ function OpenShiftForm() {
         <p className="muted">Inicias turno como <strong>{user.name}</strong>.</p>
         {areas && areas.length > 0 && (
           <label className="field">
-            <span>Área</span>
+            <span>{isManager ? 'Dónde vas a vender' : 'Área'}</span>
             <select value={area} onChange={(e) => setArea(e.target.value)}>
-              <option value="">— Elige tu área —</option>
+              <option value="">
+                {isManager ? '🏬 Almacén central (todo el inventario)' : '— Elige tu área —'}
+              </option>
               {areas.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
+            {isManager && (
+              <span className="muted">
+                Como dueño/administrativo puedes vender desde el <strong>almacén central</strong> o atender un área concreta.
+              </span>
+            )}
           </label>
         )}
         {usedInherited && (

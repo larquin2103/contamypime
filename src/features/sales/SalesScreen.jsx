@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft, Search, Package } from 'lucide-react'
 import { productsRepo } from '../../repositories/productsRepo'
 import { salesRepo } from '../../repositories/salesRepo'
+import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
@@ -18,6 +19,7 @@ export function SalesScreen() {
   const { baseCurrency, rateOf } = useCurrency()
   const navigate = useNavigate()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
+  const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
 
   const [query, setQuery] = useState('')
   const [cart, setCart] = useState([]) // [{ productId, name, unit, unitPrice, unitCost, qty, stock }]
@@ -213,6 +215,16 @@ export function SalesScreen() {
         <h2 className="pos-nav__title">Vender</h2>
         <Link className="pos-nav__action" to="/shift">Turno</Link>
       </div>
+
+      {areas.length > 0 && (
+        <p className="muted" style={{ margin: '0 0 8px' }}>
+          Vendiendo desde:{' '}
+          <strong>{sellArea ? `Área ${sellArea}` : '🏬 Almacén central'}</strong>
+          {sellArea
+            ? ' · solo los productos asignados a tu área.'
+            : ' · todo el inventario del almacén.'}
+        </p>
+      )}
 
       {lastSale && (
         <div className="sale-done" onClick={() => setLastSale(null)}>
