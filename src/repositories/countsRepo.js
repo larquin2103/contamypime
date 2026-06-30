@@ -3,9 +3,17 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { evalSemaphore } from '../lib/semaphore'
-import { COUNT_STATUS } from '../db/constants'
+import { COUNT_STATUS, WAREHOUSE } from '../db/constants'
 import { configRepo } from './configRepo'
 import { stockRepo } from './stockRepo'
+
+// Existencia de un producto en una ubicacion, con respaldo al total cuando es
+// el almacen y aun no hay cache por ubicacion (productos previos a la v5).
+function stockAtLocation(p, location) {
+  const byLoc = p.stockByLocation
+  if (byLoc && byLoc[location] != null) return Number(byLoc[location])
+  return location === WAREHOUSE ? Number(p.stock || 0) : 0
+}
 
 // Conteo fisico interactivo (Fase 3). Snapshot del stock del sistema vs lo
 // contado fisicamente; al aprobar, las diferencias se aplican como ajustes
@@ -44,19 +52,20 @@ export const countsRepo = {
     )
   },
 
-  // Inicia un conteo: toma una foto del stock actual de cada producto activo.
-  async startDraft(userId) {
+  // Inicia un conteo de UNA ubicacion (almacen o un area): toma una foto del
+  // stock de esa ubicacion para cada producto que tiene existencia ahi.
+  async startDraft(userId, location = WAREHOUSE) {
     const existing = await this.getDraft()
     if (existing) return existing.id
     const products = await db.products.toArray()
     const items = products
-      .filter((p) => p.active && Number(p.stock || 0) > 0)
+      .filter((p) => p.active && stockAtLocation(p, location) > 0)
       .map((p) => ({
         productId: p.id,
         name: p.name,
         unit: p.unit,
         categoryId: p.categoryId || null,
-        systemStock: Number(p.stock || 0),
+        systemStock: stockAtLocation(p, location),
         physicalQty: null,
         note: ''
       }))
@@ -64,6 +73,7 @@ export const countsRepo = {
     await db.counts.add({
       id,
       status: COUNT_STATUS.DRAFT,
+      location,
       createdBy: userId,
       createdAt: now(),
       items,
@@ -92,21 +102,26 @@ export const countsRepo = {
     await db.counts.update(id, { items, status: COUNT_STATUS.PENDING, submittedAt: now() })
   },
 
-  // Aprueba: ajusta el stock para que coincida con lo contado fisicamente.
+  // Aprueba: ajusta el stock de la UBICACION contada para que coincida con lo
+  // contado fisicamente. El ajuste se calcula contra la existencia ACTUAL de esa
+  // ubicacion (no contra la foto), para no pisar ventas/salidas posteriores.
   async approve(id, ownerId) {
     const c = await db.counts.get(id)
     if (!c || c.status !== COUNT_STATUS.PENDING) return
+    const loc = c.location || WAREHOUSE
+    const locNote = loc === WAREHOUSE ? 'almacén' : loc
     for (const it of c.items) {
       if (!it.counted) continue
       const p = await db.products.get(it.productId)
       if (!p) continue
-      const delta = round2(Number(it.physicalQty) - Number(p.stock || 0))
+      const delta = round2(Number(it.physicalQty) - stockAtLocation(p, loc))
       if (delta !== 0) {
         await stockRepo.adjust({
           productId: it.productId,
           delta,
-          note: 'Ajuste por conteo fisico',
-          userId: ownerId
+          note: `Ajuste por conteo físico (${locNote})`,
+          userId: ownerId,
+          location: loc
         })
       }
     }

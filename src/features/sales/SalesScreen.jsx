@@ -59,8 +59,14 @@ export function SalesScreen() {
 
   const results = useMemo(() => {
     if (!query.trim()) return []
-    return products.filter((p) => matchesQuery(p, query)).slice(0, 20)
-  }, [products, query])
+    return products
+      .filter((p) => matchesQuery(p, query))
+      // En un área, solo se ofrecen los productos ASIGNADOS a esa área (con
+      // existencia). Sin áreas, se muestra todo el catálogo (modo clásico).
+      .filter((p) => (sellArea ? availOf(p) > 0 : true))
+      .slice(0, 20)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, query, sellArea])
 
   const addToCart = (p) => {
     const avail = availOf(p)

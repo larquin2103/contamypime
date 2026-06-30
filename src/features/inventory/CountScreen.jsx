@@ -4,9 +4,11 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { countsRepo } from '../../repositories/countsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { usersRepo } from '../../repositories/usersRepo'
+import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { formatDateTime } from '../../lib/dates'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
+import { WAREHOUSE, locationLabel } from '../../db/constants'
 
 // Si el vendedor llego aqui desde el asistente de cierre, le permitimos volver
 // a retomar el cierre (sin perder el flujo) tras contar o decidir no contar.
@@ -24,6 +26,8 @@ export function CountScreen() {
   const { user, isOwner } = useAuth()
   const pending = useLiveQuery(() => countsRepo.getPending(), [], undefined)
   const draft = useLiveQuery(() => countsRepo.getDraft(), [], undefined)
+  const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
+  const [countLoc, setCountLoc] = useState(WAREHOUSE)
 
   if (pending === undefined || draft === undefined) {
     return <div className="screen"><p className="muted">Cargando…</p></div>
@@ -53,13 +57,22 @@ export function CountScreen() {
       <section className="card">
         <p className="muted">
           Cuenta el inventario por categorias. Al terminar, el dueño aprueba y se ajustan
-          las existencias.
+          las existencias {areas.length > 0 ? 'de la ubicación elegida' : ''}.
         </p>
+        {areas.length > 0 && (
+          <label className="field">
+            <span>¿Qué vas a contar?</span>
+            <select value={countLoc} onChange={(e) => setCountLoc(e.target.value)}>
+              <option value={WAREHOUSE}>{locationLabel(WAREHOUSE)}</option>
+              {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+        )}
         <button
           className="btn btn--primary btn--block"
-          onClick={() => countsRepo.startDraft(user.id)}
+          onClick={() => countsRepo.startDraft(user.id, countLoc)}
         >
-          Iniciar conteo fisico
+          Iniciar conteo físico
         </button>
       </section>
     </div>
@@ -169,9 +182,10 @@ function CountEditor({ draft }) {
   return (
     <div className="screen">
       <div className="screen__header">
-        <h2>Conteo fisico</h2>
+        <h2>Conteo físico</h2>
         <span className="badge">{counted}/{visible.length}</span>
       </div>
+      <p className="muted">Ubicación: <strong>{locationLabel(draft.location)}</strong></p>
       <CloseReturnBanner />
       <div className="progress">
         <div className="progress__bar" style={{ width: `${progress}%` }} />
@@ -232,6 +246,7 @@ function CountReview({ count, ownerId }) {
         <p className="muted">
           Enviado por <strong>{creator?.name || 'vendedor'}</strong> · {formatDateTime(count.submittedAt)}
         </p>
+        <div className="kv"><span className="muted">Ubicación</span><strong>{locationLabel(count.location)}</strong></div>
         <div className="kv"><span className="muted">Productos contados</span><strong>{counted.length}</strong></div>
         <div className="kv"><span className="muted">Con diferencia</span><strong>{withDiff.length}</strong></div>
       </section>
