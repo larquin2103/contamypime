@@ -4,12 +4,21 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { countsRepo } from '../../repositories/countsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { usersRepo } from '../../repositories/usersRepo'
+import { productsRepo } from '../../repositories/productsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { formatDateTime } from '../../lib/dates'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { WAREHOUSE, locationLabel } from '../../db/constants'
+
+// Existencia de un producto en una ubicacion (espejo de countsRepo) para saber
+// si hay algo que contar en el destino elegido.
+function stockAt(p, location) {
+  const byLoc = p.stockByLocation
+  if (byLoc && byLoc[location] != null) return Number(byLoc[location])
+  return location === WAREHOUSE ? Number(p.stock || 0) : 0
+}
 
 // Si el vendedor llego aqui desde el asistente de cierre, le permitimos volver
 // a retomar el cierre (sin perder el flujo) tras contar o decidir no contar.
@@ -26,9 +35,16 @@ function CloseReturnBanner() {
 export function CountScreen() {
   const { user, isManager } = useAuth()
   const { activeShift } = useShift()
-  const pending = useLiveQuery(() => countsRepo.getPending(), [], undefined)
-  const draft = useLiveQuery(() => countsRepo.getDraft(), [], undefined)
+  // Borrador PROPIO (cada vendedor cuenta su area de forma independiente).
+  const draft = useLiveQuery(() => countsRepo.getDraft(user.id), [user.id], undefined)
+  // Conteo enviado: el mando revisa cualquiera (cola); el vendedor solo el suyo.
+  const pending = useLiveQuery(
+    () => (isManager ? countsRepo.getPending() : countsRepo.getPending(user.id)),
+    [isManager, user.id],
+    undefined
+  )
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
+  const products = useLiveQuery(() => productsRepo.list(), [], [])
   const [countLoc, setCountLoc] = useState(WAREHOUSE)
 
   // El vendedor cuenta SU área (la de su turno); no elige ni ve el almacén.
@@ -38,7 +54,15 @@ export function CountScreen() {
     return <div className="screen"><p className="muted">Cargando…</p></div>
   }
 
-  // Hay un conteo esperando aprobacion: el dueño lo revisa; el resto espera.
+  // 1. Mi borrador en curso: lo sigo contando (tiene prioridad sobre la cola).
+  // Para el vendedor, un borrador de OTRA ubicación (p.ej. del almacén, creado
+  // antes de tener área) está obsoleto: no se muestra; al reiniciar se reconvierte
+  // a su área. El dueño/administrativo retoma cualquier borrador suyo.
+  const draftLoc = draft?.location || WAREHOUSE
+  const draftIsValidHere = draft && (isManager || draftLoc === (sellerArea || WAREHOUSE))
+  if (draftIsValidHere) return <CountEditor draft={draft} />
+
+  // 2. Hay un conteo enviado: el mando lo revisa; el vendedor que lo envió espera.
   if (pending) {
     return isManager ? (
       <CountReview count={pending} ownerId={user.id} />
@@ -46,14 +70,12 @@ export function CountScreen() {
       <div className="screen">
         <h2>Conteo fisico</h2>
         <section className="card">
-          <p>Hay un conteo enviado, esperando la <strong>aprobacion del dueño</strong>.</p>
+          <p>Tu conteo fue enviado y espera la <strong>aprobación del dueño o administrativo</strong>.</p>
         </section>
         <CloseReturnBanner />
       </div>
     )
   }
-
-  if (draft) return <CountEditor draft={draft} />
 
   // Vendedor sin turno abierto: no tiene área que contar.
   if (!isManager && areas.length > 0 && !sellerArea) {
@@ -71,6 +93,8 @@ export function CountScreen() {
 
   // Ubicación a contar: el dueño/administrativo elige; el vendedor cuenta su área.
   const targetLoc = isManager ? countLoc : (sellerArea || WAREHOUSE)
+  // ¿Hay algo que contar en ese destino? (existencia > 0 en esa ubicación)
+  const hasItems = products.some((p) => p.active && stockAt(p, targetLoc) > 0)
 
   return (
     <div className="screen">
@@ -79,8 +103,8 @@ export function CountScreen() {
       <section className="card">
         <p className="muted">
           {isManager
-            ? 'Cuenta el inventario por categorías. Al terminar se ajustan las existencias de la ubicación elegida.'
-            : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño aprueba y se ajustan.`}
+            ? `Vas a contar: ${locationLabel(targetLoc)}. Al terminar se ajustan las existencias de esa ubicación.`
+            : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño o administrativo aprueba y se ajustan.`}
         </p>
         {isManager && areas.length > 0 && (
           <label className="field">
@@ -91,12 +115,20 @@ export function CountScreen() {
             </select>
           </label>
         )}
-        <button
-          className="btn btn--primary btn--block"
-          onClick={() => countsRepo.startDraft(user.id, targetLoc)}
-        >
-          Iniciar conteo físico
-        </button>
+        {!hasItems ? (
+          <p className="muted">
+            {isManager
+              ? `No hay existencias en ${locationLabel(targetLoc)} para contar.`
+              : <>Aún no tienes productos asignados a <strong>{sellerArea || 'tu área'}</strong>. Pídele al dueño o administrativo una <strong>salida del almacén</strong> hacia tu área.</>}
+          </p>
+        ) : (
+          <button
+            className="btn btn--primary btn--block"
+            onClick={() => countsRepo.startDraft(user.id, targetLoc)}
+          >
+            Iniciar conteo físico de {locationLabel(targetLoc)}
+          </button>
+        )}
       </section>
     </div>
   )

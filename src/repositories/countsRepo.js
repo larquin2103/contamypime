@@ -19,14 +19,22 @@ function stockAtLocation(p, location) {
 // contado fisicamente; al aprobar, las diferencias se aplican como ajustes
 // trazados en el libro mayor (nada se borra).
 export const countsRepo = {
-  async getDraft() {
+  // Borrador en curso. Con areas, cada vendedor cuenta SU area; por eso el
+  // borrador se aisla por usuario (si se pasa userId). Asi un vendedor nunca ve
+  // el borrador del almacen del dueño ni el de otra area/vendedor.
+  async getDraft(userId = null) {
     const rows = await db.counts.where('status').equals(COUNT_STATUS.DRAFT).toArray()
-    return rows[0] || null
+    const mine = userId ? rows.filter((r) => r.createdBy === userId) : rows
+    return mine.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] || null
   },
 
-  async getPending() {
+  // Conteo enviado a aprobacion. El dueño/administrativo revisan CUALQUIERA
+  // (cola de supervision); un vendedor solo consulta el SUYO (para saber si ya
+  // se lo aprobaron), pasando su userId.
+  async getPending(userId = null) {
     const rows = await db.counts.where('status').equals(COUNT_STATUS.PENDING).toArray()
-    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] || null
+    const mine = userId ? rows.filter((r) => r.createdBy === userId) : rows
+    return mine.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] || null
   },
 
   async get(id) {
@@ -55,8 +63,6 @@ export const countsRepo = {
   // Inicia un conteo de UNA ubicacion (almacen o un area): toma una foto del
   // stock de esa ubicacion para cada producto que tiene existencia ahi.
   async startDraft(userId, location = WAREHOUSE) {
-    const existing = await this.getDraft()
-    if (existing) return existing.id
     const products = await db.products.toArray()
     const items = products
       .filter((p) => p.active && stockAtLocation(p, location) > 0)
@@ -69,6 +75,16 @@ export const countsRepo = {
         physicalQty: null,
         note: ''
       }))
+    const existing = await this.getDraft(userId)
+    if (existing) {
+      // Mismo destino: se retoma el borrador en curso.
+      if ((existing.location || WAREHOUSE) === location) return existing.id
+      // Borrador de OTRA ubicacion (obsoleto: p.ej. del almacen creado antes de
+      // tener area): se reconvierte a la ubicacion actual con su foto de stock.
+      // No se borra (delete prohibido en la nube): misma fila, nuevo snapshot.
+      await db.counts.update(existing.id, { location, items, note: '', updatedAt: now() })
+      return existing.id
+    }
     const id = newId()
     await db.counts.add({
       id,
