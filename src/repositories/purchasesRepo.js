@@ -2,7 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
-import { MOVEMENT_TYPES } from '../db/constants'
+import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 
 // Entradas de mercancia (compras). Aumentan la existencia y dejan el
 // movimiento en el libro mayor. Tambien actualizan el costo actual del
@@ -32,6 +32,8 @@ export const purchasesRepo = {
         totalBase,
         note
       })
+      // Las entradas de mercancia siempre ingresan al ALMACEN central; desde
+      // ahi se reparten a las areas con salidas (Bloque 20).
       for (const it of normItems) {
         const qty = Math.abs(it.qty)
         await db.stockMovements.add({
@@ -45,12 +47,16 @@ export const purchasesRepo = {
           shiftId,
           userId,
           note: '',
+          location: WAREHOUSE,
           createdAt: ts
         })
         const p = await db.products.get(it.productId)
         if (p) {
+          const byLoc = { ...(p.stockByLocation || {}) }
+          byLoc[WAREHOUSE] = Number(byLoc[WAREHOUSE] || 0) + qty
           await db.products.update(it.productId, {
             stock: Number(p.stock || 0) + qty,
+            stockByLocation: byLoc,
             cost: it.unitCost, // ultimo costo de compra
             updatedAt: ts
           })

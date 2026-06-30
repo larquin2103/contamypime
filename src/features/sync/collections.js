@@ -16,7 +16,8 @@ export const SYNC_COLLECTIONS = [
   { name: 'cashMovements', pk: 'id' },
   { name: 'internalDebts', pk: 'id' },
   { name: 'auditEvents', pk: 'id' },
-  { name: 'counts', pk: 'id' }
+  { name: 'counts', pk: 'id' },
+  { name: 'transfers', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

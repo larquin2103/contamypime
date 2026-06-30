@@ -67,7 +67,11 @@ export const MOVEMENT_TYPES = {
   PURCHASE_IN: 'purchase_in',
   SALE_OUT: 'sale_out',
   INTERNAL_DEBT_OUT: 'internal_debt_out',
-  ADJUSTMENT: 'adjustment'
+  ADJUSTMENT: 'adjustment',
+  // Salida del almacen central hacia un area (Bloque 20). Es un traspaso: el
+  // mismo evento genera un TRANSFER_OUT en el almacen y un TRANSFER_IN en el area.
+  TRANSFER_OUT: 'transfer_out',
+  TRANSFER_IN: 'transfer_in'
 }
 
 // Estados de turno.
@@ -86,6 +90,18 @@ export const NO_AREA_LABEL = 'General'
 
 export function areaLabel(area) {
   return area && String(area).trim() ? String(area).trim() : NO_AREA_LABEL
+}
+
+// Inventario por ubicacion (Bloque 20). Una "ubicacion" del stock es el ALMACEN
+// central o el nombre de un area. El almacen usa un centinela reservado para no
+// chocar con un area que se llamara "Almacen". El stock de cada ubicacion se
+// deriva del libro mayor (cada stockMovement lleva su `location`).
+export const WAREHOUSE = '__almacen'
+export const WAREHOUSE_LABEL = 'Almacén'
+
+export function locationLabel(loc) {
+  if (!loc || loc === WAREHOUSE) return WAREHOUSE_LABEL
+  return String(loc)
 }
 
 // Estados de un conteo fisico (Fase 3).

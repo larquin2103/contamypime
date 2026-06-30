@@ -1,4 +1,5 @@
 import Dexie from 'dexie'
+import { WAREHOUSE } from './constants'
 
 // ---------------------------------------------------------------------------
 // Base de datos local (IndexedDB via Dexie).
@@ -48,4 +49,21 @@ db.version(3).stores({
 // area en que se cobraron (para detectar ventas "cruzadas" entre areas).
 db.version(4).stores({
   products: 'id, code, categoryId, active, area, *searchTokens'
+})
+
+// Bloque 20: inventario por UBICACION (almacen central + cada area). Cada
+// movimiento del libro mayor lleva `location`; el indice compuesto permite
+// sumar el stock de un producto en una ubicacion concreta. `transfers` guarda
+// las salidas almacen->area (append-only). Migracion: todo movimiento previo
+// (sin ubicacion) y el stock actual quedan en el ALMACEN central.
+db.version(5).stores({
+  stockMovements: 'id, productId, type, shiftId, refId, location, [productId+location], createdAt',
+  transfers: 'id, toArea, byUserId, createdAt'
+}).upgrade(async (tx) => {
+  await tx.table('stockMovements').toCollection().modify((m) => {
+    if (m.location == null) m.location = WAREHOUSE
+  })
+  await tx.table('products').toCollection().modify((p) => {
+    if (!p.stockByLocation) p.stockByLocation = { [WAREHOUSE]: Number(p.stock || 0) }
+  })
 })

@@ -2,7 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
-import { MOVEMENT_TYPES } from '../db/constants'
+import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 
 // Deuda interna: retiro de producto sin pago. Descuenta inventario, NO cuenta
 // como ingreso y queda como deuda asociada a un usuario registrado.
@@ -12,6 +12,9 @@ export const debtsRepo = {
     const ts = now()
     const q = Math.abs(Number(qty))
     const valueAtTime = round2(q * (Number(unitValue) || 0))
+    // El producto sale de la ubicacion del turno (su area); sin area, del almacen.
+    const shift = shiftId ? await db.shifts.get(shiftId) : null
+    const loc = (shift?.area || '').trim() || WAREHOUSE
     await db.transaction('rw', db.internalDebts, db.stockMovements, db.products, async () => {
       await db.internalDebts.add({
         id,
@@ -36,11 +39,18 @@ export const debtsRepo = {
         shiftId,
         userId: registeredBy,
         note,
+        location: loc,
         createdAt: ts
       })
       const p = await db.products.get(productId)
       if (p) {
-        await db.products.update(productId, { stock: Number(p.stock || 0) - q, updatedAt: ts })
+        const byLoc = { ...(p.stockByLocation || {}) }
+        byLoc[loc] = Number(byLoc[loc] || 0) - q
+        await db.products.update(productId, {
+          stock: Number(p.stock || 0) - q,
+          stockByLocation: byLoc,
+          updatedAt: ts
+        })
       }
     })
     return id

@@ -1,4 +1,5 @@
 import { db } from '../../db/db'
+import { WAREHOUSE } from '../../db/constants'
 import { LOCAL_CONFIG_KEYS, syncTs } from './collections'
 
 // ---------------------------------------------------------------------------
@@ -40,18 +41,27 @@ export async function mergeIncoming(col, docs) {
   return affected
 }
 
-// Recalcula products.stock como la suma de su libro mayor. NO toca updatedAt
-// (el stock es un valor derivado: cada dispositivo lo deriva igual del mismo
-// libro, asi que no debe re-subirse ni provocar rebote entre dispositivos).
+// Recalcula products.stock (total) y stockByLocation (por ubicacion) como la
+// suma de su libro mayor. NO toca updatedAt (el stock es un valor derivado:
+// cada dispositivo lo deriva igual del mismo libro, asi que no debe re-subirse
+// ni provocar rebote entre dispositivos).
 export async function recomputeStock(productIds) {
   const ids = [...productIds].filter(Boolean)
   if (!ids.length) return
   for (const pid of ids) {
     const movs = await db.stockMovements.where('productId').equals(pid).toArray()
-    const stock = movs.reduce((a, m) => a + Number(m.qty || 0), 0)
+    let total = 0
+    const byLoc = {}
+    for (const m of movs) {
+      const q = Number(m.qty || 0)
+      const loc = m.location || WAREHOUSE
+      total += q
+      byLoc[loc] = Number(byLoc[loc] || 0) + q
+    }
     const p = await db.products.get(pid)
-    if (p && Number(p.stock) !== stock) {
-      await db.products.update(pid, { stock })
+    if (p && (Number(p.stock) !== total ||
+        JSON.stringify(p.stockByLocation || {}) !== JSON.stringify(byLoc))) {
+      await db.products.update(pid, { stock: total, stockByLocation: byLoc })
     }
   }
 }

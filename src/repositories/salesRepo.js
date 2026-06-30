@@ -2,7 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
-import { MOVEMENT_TYPES } from '../db/constants'
+import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 
 // Ventas de mostrador. Cada venta congela el precio y el costo de cada linea
 // (snapshot), por lo que cambiar el precio mas tarde NO altera ventas previas.
@@ -69,6 +69,9 @@ export const salesRepo = {
         transferDiff,
         voided: false
       })
+      // La venta rebaja el stock del AREA donde se cobro (su ubicacion). Sin
+      // areas configuradas, la ubicacion es el almacen (comportamiento clasico).
+      const loc = shiftArea || WAREHOUSE
       for (const it of items) {
         const qty = Math.abs(Number(it.qty))
         await db.stockMovements.add({
@@ -82,12 +85,16 @@ export const salesRepo = {
           shiftId,
           userId: sellerId,
           note: '',
+          location: loc,
           createdAt: ts
         })
         const p = await db.products.get(it.productId)
         if (p) {
+          const byLoc = { ...(p.stockByLocation || {}) }
+          byLoc[loc] = Number(byLoc[loc] || 0) - qty
           await db.products.update(it.productId, {
             stock: Number(p.stock || 0) - qty,
+            stockByLocation: byLoc,
             updatedAt: ts
           })
         }
