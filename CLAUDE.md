@@ -107,6 +107,21 @@ Un punto de venta puede dividirse en **áreas** (ej: Víveres, Carnicería), cad
 - **Degradación de licencia:** quitar un área de la lista **no borra** productos ni ventas
   (append-only); solo deja de ofrecerse para nuevos turnos.
 
+## Almacén con ubicaciones (Fase 6 — Bloque 20)
+
+**Modelo:** un almacén central (`WAREHOUSE = '__almacen'`) distribuye a áreas. Cada
+producto tiene `stockByLocation = { '__almacen': Q1, 'Víveres': Q2, ... }`:
+- **Entradas** (compras) suman al almacén: `stockByLocation[WAREHOUSE] += qty`.
+- **Salidas** (transfers) restan del almacén, suman al área: `WAREHOUSE -= qty`, `area += qty`.
+- **Ventas** desde un área restan de esa área (si hay vendedor con turno de área), o del almacén
+  (si es dueño/admin sin área abierto como "Almacén central").
+- **Conteo físico** por ubicación (dueño elige almacén o área; vendedor cuenta su área
+  automáticamente). **Aislado por usuario:** cada vendedor ve solo SU borrador y pendiente;
+  un borrador obsoleto (p.ej. del almacén, creado antes de tener área) se reconvierte en el
+  destino actual **sin borrarse** (append-only).
+
+**Catálogo + entradas:** coherencia de plantilla (mismo formato, mismo orden de columnas).
+
 ## Modelo de datos (Dexie)
 
 Versiones en `src/db/db.js`:
@@ -116,6 +131,9 @@ Versiones en `src/db/db.js`:
 - **v3**: `syncState` (cursores de sincronización `push:<colección>`).
 - **v4**: índice `area` en `products` (áreas de venta, Bloque 19). `shifts.area`, `sales.area`,
   `sales.hasCrossArea` e `items[].area` son campos nuevos (no requieren índice).
+- **v5**: `transfers` (salidas almacén→área, Bloque 20). `stockMovements` y `products` ganan
+  dimensión `location` (almacén o área). Migración: establece `location = '__almacen'` en
+  movimientos previos, inicializa `stockByLocation` en productos.
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`.
@@ -138,6 +156,10 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
 - **Fase 6 — Áreas de venta dentro de un punto:** ✅ COMPLETA (Bloque 19, ver sección "Áreas de
   venta"). Turno por vendedor, caja/cuadre por área, catálogo global con cobro por área y
   ventas cruzadas auditadas. (Distinto del multi-punto físico, que sigue diferido.)
+- **Bloque 20 — Almacén con ubicaciones:** ✅ COMPLETA (v5 migration, transfers, stock por
+  ubicación, conteo aislado por vendedor, ventas del dueño desde almacén central).
+- **Bloque 20.6 — Rol Administrativo:** ✅ COMPLETA (nuevo rol ADMIN: mando operativo sin
+  identidad del negocio; verifyManagerPin; isManager flag; 16+ pantallas ajustadas).
 
 ## Fase 4 — Sincronización (cómo funciona)
 
