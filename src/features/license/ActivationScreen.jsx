@@ -28,6 +28,8 @@ export function ActivationScreen() {
     if (!res.ok) {
       if (res.status === 'expired') {
         setError('Esa licencia ya caducó. Pide una nueva al proveedor.')
+      } else if (res.status === 'mismatch') {
+        setError(`Error: ${res.detail}. Pide una licencia para el negocio correcto.`)
       } else {
         setError(REASON_MSG[res.reason] || 'El código no es válido.')
       }

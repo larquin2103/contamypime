@@ -120,6 +120,8 @@ function LicenseSection() {
       setMsg({ ok: true, text: 'Licencia aplicada ✓' })
     } else if (res.status === 'expired') {
       setMsg({ ok: false, text: 'Esa licencia ya caducó. Pide una nueva al proveedor.' })
+    } else if (res.status === 'mismatch') {
+      setMsg({ ok: false, text: `Error: ${res.detail}. Pide una licencia para el negocio correcto.` })
     } else {
       setMsg({ ok: false, text: 'El código no es válido. Cópialo completo.' })
     }

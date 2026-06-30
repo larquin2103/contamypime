@@ -7,6 +7,7 @@ const LicenseContext = createContext(null)
 
 const WARN_DAYS = 7   // avisa "por vencer" con esta antelacion
 const GRACE_DAYS = 3  // dias de gracia tras caducar antes del bloqueo total
+const REVALIDATE_INTERVAL = 5 * 60 * 1000  // polling cada 5 minutos para detectar caducidad en vivo
 
 // ---------------------------------------------------------------------------
 // Fase 5 - Bloque 28/29: estado de la licencia a nivel de app.
@@ -31,7 +32,9 @@ export function LicenseProvider({ children }) {
   useEffect(() => {
     if (token === undefined || lastSeen === undefined) return // aun cargando de Dexie
     let alive = true
-    ;(async () => {
+    let pollInterval = null
+
+    const evaluate = async () => {
       const sysToday = today()
       // Fecha efectiva: nunca menor que la mayor fecha ya vista (anti atraso).
       const effective = lastSeen && lastSeen > sysToday ? lastSeen : sysToday
@@ -53,18 +56,43 @@ export function LicenseProvider({ children }) {
       if (!lastSeen || sysToday > lastSeen) {
         await licenseRepo.setLastSeen(sysToday)
       }
+    }
+
+    ;(async () => {
+      await evaluate()
+      // Polling periodico: revalida cada REVALIDATE_INTERVAL para detectar caducidad
+      // en vivo (caso: app abierta durante >24h, pasa medianoche y caduca).
+      // Si el estado baja de unlocked a locked, la compuerta del router reenvia a
+      // ActivationScreen en el siguiente render.
+      pollInterval = setInterval(evaluate, REVALIDATE_INTERVAL)
     })()
-    return () => { alive = false }
+
+    return () => {
+      alive = false
+      if (pollInterval) clearInterval(pollInterval)
+    }
   }, [token, lastSeen])
 
-  // Verifica firma + vigencia (con fecha efectiva) ANTES de guardar/renovar.
+  // Verifica firma + vigencia + que el negocio coincida con el instalado.
+  // Esto previene que alguien edite Dexie para cambiar el token por uno robado
+  // de otro negocio (aunque sea válido, rechazo si payload.negocio != instalado).
   const activate = useCallback(async (raw) => {
     const sysToday = today()
     const ls = await licenseRepo.getLastSeen()
     const effective = ls && ls > sysToday ? ls : sysToday
     const ev = await evaluateLicense(raw, { nowDate: effective, warnDays: WARN_DAYS })
     if (ev.status === 'active' || ev.status === 'expiring') {
+      const installed = await licenseRepo.getBusinessName()
+      // Primera instalacion: aceptar sin validar.
+      // Renovacion: validar que el negocio sea el mismo.
+      if (installed && ev.payload?.negocio !== installed) {
+        return { ok: false, status: 'mismatch', reason: 'negocio', detail: `Esperaba licencia de "${installed}", recibí "${ev.payload?.negocio}"` }
+      }
       await licenseRepo.setToken(raw)
+      // Guardar el nombre del negocio si es nueva instalacion.
+      if (!installed && ev.payload?.negocio) {
+        await licenseRepo.setBusinessName(ev.payload.negocio)
+      }
       return { ok: true, payload: ev.payload }
     }
     return { ok: false, status: ev.status, reason: ev.reason }
