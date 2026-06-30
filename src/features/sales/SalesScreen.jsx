@@ -10,7 +10,7 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney, baseToForeign } from '../../lib/currency'
 import { parseSms } from '../../lib/sms'
-import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS } from '../../db/constants'
+import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, WAREHOUSE } from '../../db/constants'
 
 export function SalesScreen() {
   const { user } = useAuth()
@@ -49,13 +49,22 @@ export function SalesScreen() {
     )
   }
 
+  // Existencia disponible para ESTE vendedor: la de su área (Bloque 20). Sin
+  // áreas configuradas, se vende contra el almacén (comportamiento clásico).
+  const sellArea = activeShift?.area || ''
+  const availOf = (p) =>
+    sellArea
+      ? Number(p.stockByLocation?.[sellArea] || 0)
+      : Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
+
   const results = useMemo(() => {
     if (!query.trim()) return []
     return products.filter((p) => matchesQuery(p, query)).slice(0, 20)
   }, [products, query])
 
   const addToCart = (p) => {
-    if (Number(p.stock) <= 0) return // agotado: no disponible para venta
+    const avail = availOf(p)
+    if (avail <= 0) return // sin existencia en el área: no disponible para venta
     setCart((prev) => {
       const i = prev.findIndex((l) => l.productId === p.id)
       if (i >= 0) {
@@ -73,7 +82,7 @@ export function SalesScreen() {
           unitCost: p.cost,
           area: p.area || '',
           qty: 1,
-          stock: p.stock
+          stock: avail
         }
       ]
     })
@@ -95,8 +104,9 @@ export function SalesScreen() {
     () => round2(cart.reduce((a, l) => a + l.unitPrice * l.qty, 0)),
     [cart]
   )
-  // Venta cruzada: el carrito tiene productos de un area distinta a la del turno.
-  const crossArea = cart.some((l) => l.area && l.area !== (activeShift?.area || ''))
+  // Bloqueo por stock de área (Bloque 20): ninguna línea puede superar lo
+  // disponible en el área del turno. Lo que no se ha sacado del almacén no se vende.
+  const stockOk = cart.every((l) => Number(l.qty) <= Number(l.stock || 0))
   // --- efectivo ---
   const rate = payCurrency === baseCurrency ? 1 : rateOf(payCurrency)
   const totalInCur =
@@ -116,6 +126,7 @@ export function SalesScreen() {
   const isCash = payMethod === PAYMENT_METHODS.CASH
   const canCharge =
     cart.length > 0 &&
+    stockOk &&
     (isCash
       ? paidNum >= totalInCur && (payCurrency === baseCurrency || rate > 0)
       : transferNum > 0 && (transferCurrency === baseCurrency || transferRate > 0))
@@ -219,7 +230,8 @@ export function SalesScreen() {
       {results.length > 0 && (
         <div className="product-list sell-results">
           {results.map((p) => {
-            const out = Number(p.stock) <= 0
+            const avail = availOf(p)
+            const out = avail <= 0
             return (
               <button
                 key={p.id}
@@ -231,7 +243,9 @@ export function SalesScreen() {
                   <strong>{p.name}</strong>
                   <span className="muted">
                     {p.code ? `${p.code} · ` : ''}
-                    {out ? <span className="badge-out">Agotado</span> : `${p.stock} ${p.unit}`}
+                    {out
+                      ? <span className="badge-out">{sellArea ? 'Sin stock en tu área' : 'Agotado'}</span>
+                      : `${avail} ${p.unit}`}
                   </span>
                 </div>
                 <span className="price">{formatMoney(p.price, baseCurrency)}</span>
@@ -251,15 +265,10 @@ export function SalesScreen() {
               <div key={l.productId} className="cart-line">
                 <span className="cart-line__tile"><Package size={19} strokeWidth={1.9} /></span>
                 <div className="cart-line__info">
-                  <strong>
-                    {l.name}
-                    {l.area && l.area !== (activeShift.area || '') && (
-                      <span className="warn-text"> ↔ {l.area}</span>
-                    )}
-                  </strong>
+                  <strong>{l.name}</strong>
                   <span className="muted">
                     {formatMoney(l.unitPrice, baseCurrency)} × {l.qty} {l.unit}
-                    {l.qty > l.stock && <span className="warn-text"> · stock: {l.stock}</span>}
+                    {l.qty > l.stock && <span className="warn-text"> · solo hay {l.stock} en tu área</span>}
                   </span>
                 </div>
                 <div className="qty-ctrl">
@@ -405,10 +414,9 @@ export function SalesScreen() {
             </>
           )}
 
-          {crossArea && (
-            <p className="muted">
-              ↔ Venta cruzada: incluye productos de otra área. Se cobra en tu caja
-              {activeShift?.area ? ` (${activeShift.area})` : ''} y queda marcada para el dueño.
+          {!stockOk && (
+            <p className="error">
+              Hay productos por encima de la existencia de tu área. Ajusta la cantidad o pide una salida del almacén.
             </p>
           )}
 

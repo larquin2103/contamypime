@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
 import { configRepo } from '../../repositories/configRepo'
-import { UNITS, UNIT_LABELS, NO_AREA_LABEL } from '../../db/constants'
+import { UNITS, UNIT_LABELS, NO_AREA_LABEL, WAREHOUSE, locationLabel } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
 
 // Alta / edicion de producto. Solo dueño (la creacion desde entrada de
@@ -105,14 +105,34 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
 
         {areas.length > 0 && (
           <label className="field">
-            <span>Área de venta</span>
+            <span>Área principal (informativa)</span>
             <select value={area} onChange={(e) => setArea(e.target.value)}>
-              <option value="">— {NO_AREA_LABEL} (todas) —</option>
+              <option value="">— {NO_AREA_LABEL} —</option>
               {areas.map((a) => (
                 <option key={a} value={a}>{a}</option>
               ))}
             </select>
           </label>
+        )}
+
+        {editing && product.stockByLocation && (
+          <div className="field">
+            <span>Existencias por ubicación</span>
+            <div className="kv-list">
+              {Object.entries(product.stockByLocation)
+                .filter(([, q]) => Number(q) !== 0)
+                .sort(([a], [b]) => (a === WAREHOUSE ? -1 : b === WAREHOUSE ? 1 : a.localeCompare(b)))
+                .map(([loc, q]) => (
+                  <div key={loc} className="kv">
+                    <span className="muted">{locationLabel(loc)}</span>
+                    <strong>{Number(q)} {product.unit}</strong>
+                  </div>
+                ))}
+              {Object.values(product.stockByLocation).every((q) => Number(q) === 0) && (
+                <p className="muted">Sin existencias.</p>
+              )}
+            </div>
+          </div>
         )}
 
         <div className="form-row">

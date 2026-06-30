@@ -35,12 +35,10 @@ export const salesRepo = {
     // Diferencia entre lo recibido por transferencia y lo que debia cobrarse.
     const transferDiff = isCash ? 0 : round2(Number(transferAmount || 0) - Number(transferExpected || 0))
     const shiftArea = String(area || '').trim()
-    // Venta cruzada: incluye al menos una linea de un area distinta a la del
-    // turno (un vendedor cubriendo/sustituyendo otra area). Cada linea guarda su
-    // propia area (snapshot) para el detalle en reportes.
-    const hasCrossArea = (items || []).some(
-      (it) => String(it.area || '').trim() && String(it.area || '').trim() !== shiftArea
-    )
+    // Bloque 20: con stock por area, un vendedor solo vende lo asignado a SU
+    // area; la "venta cruzada" queda retirada (hasCrossArea solo como dato
+    // historico de ventas previas). El area del producto se guarda informativa.
+    const hasCrossArea = false
     await db.transaction('rw', db.sales, db.stockMovements, db.products, async () => {
       await db.sales.add({
         id,

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
@@ -11,6 +11,7 @@ import { useShift } from '../../app/providers/ShiftProvider'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { countsRepo } from '../../repositories/countsRepo'
+import { configRepo } from '../../repositories/configRepo'
 import { FOREIGN_CURRENCIES, ROLE_LABELS, COUNT_STATUS } from '../../db/constants'
 
 // Aviso al vendedor cuando el dueño resuelve su conteo fisico (aprobado/rechazado).
@@ -132,6 +133,7 @@ function RatesCard() {
 
 export function Home() {
   const { user, isOwner } = useAuth()
+  const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const initial = (user.name || '?').trim().charAt(0).toUpperCase()
 
   return (
@@ -183,7 +185,10 @@ export function Home() {
       {isOwner ? (
         <>
           <Section label="Inventario">
-            <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Registrar compras" />
+            <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Al almacén central" />
+            {areas.length > 0 && (
+              <ActionCard to="/transfer" icon={Send} title="Salida a área" sub="Del almacén al piso" />
+            )}
             <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
           </Section>
           <Section label="Operación">

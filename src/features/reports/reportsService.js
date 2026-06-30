@@ -1,8 +1,9 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
 import { round2 } from '../../lib/currency'
-import { SHIFT_STATUS, areaLabel } from '../../db/constants'
+import { SHIFT_STATUS, areaLabel, WAREHOUSE, WAREHOUSE_LABEL } from '../../db/constants'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
+import { configRepo } from '../../repositories/configRepo'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
@@ -60,28 +61,68 @@ export async function buildInventoryReport() {
   const cats = await db.categories.toArray()
   const catName = {}
   for (const c of cats) catName[c.id] = c.name
+  const areas = await configRepo.getAreas()
   const products = (await db.products.toArray())
     .filter((p) => p.active)
     .sort((a, b) => a.name.localeCompare(b.name))
+
+  // Columnas dinamicas: existencia en el almacen + en cada area configurada.
+  const locCols = [WAREHOUSE, ...areas]
+  const stockAt = (p, loc) => round2(Number(p.stockByLocation?.[loc] || 0))
+
   const rows = products.map((p) => [
     p.code || '',
     p.name,
     catName[p.categoryId] || 'Sin categoria',
-    areaLabel(p.area),
     p.unit,
+    ...locCols.map((loc) => stockAt(p, loc)),
     round2(p.stock),
     round2(p.cost),
     round2(p.price),
     round2(p.stock * p.cost)
   ])
   const valorTotal = round2(products.reduce((a, p) => a + p.stock * p.cost, 0))
-  rows.push(['', '', '', '', '', '', '', 'VALOR INVENTARIO', valorTotal])
+  const tail = new Array(4 + locCols.length).fill('')
+  rows.push([...tail, '', 'VALOR INVENTARIO', valorTotal])
   return {
-    title: 'Inventario actual',
+    title: 'Inventario por ubicación',
     subtitle: `Generado ${formatDateTime(new Date().toISOString())}`,
-    head: ['Codigo', 'Producto', 'Categoria', 'Área', 'Unidad', 'Stock', 'Costo', 'Precio', 'Valor (stock*costo)'],
+    head: [
+      'Codigo', 'Producto', 'Categoria', 'Unidad',
+      WAREHOUSE_LABEL, ...areas.map((a) => areaLabel(a)),
+      'Total', 'Costo', 'Precio', 'Valor (total*costo)'
+    ],
     rows,
     filename: 'inventario'
+  }
+}
+
+// Salidas del almacen hacia las areas (trazabilidad append-only, Bloque 20).
+export async function buildTransfersReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const transfers = (await db.transfers.toArray())
+    .filter((t) => inRange(t.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const rows = []
+  for (const t of transfers) {
+    for (const it of t.items || []) {
+      rows.push([
+        formatDateTime(t.createdAt),
+        t.toArea,
+        it.name,
+        round2(it.qty),
+        it.unit || '',
+        names[t.byUserId] || 'dueño'
+      ])
+    }
+  }
+  if (rows.length === 0) rows.push(['Sin salidas en el periodo', '', '', '', '', ''])
+  return {
+    title: 'Salidas almacén → área',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Área destino', 'Producto', 'Cantidad', 'U/M', 'Registró'],
+    rows,
+    filename: 'salidas_almacen'
   }
 }
 

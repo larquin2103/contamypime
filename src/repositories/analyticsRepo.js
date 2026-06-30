@@ -72,9 +72,9 @@ export const analyticsRepo = {
       .map((e) => ({ ...e, revenue: round2(e.revenue), profit: round2(e.profit) }))
       .sort((a, b) => b.revenue - a.revenue)
 
-    // Por area de venta (Fase 6 - Bloque 19). Se agrupa por el area del PRODUCTO
-    // (snapshot en la linea) y se detectan las ventas "cruzadas": lineas de un
-    // area distinta a la del turno donde se cobraron (sustitucion de vendedor).
+    // Por area de venta (Bloque 20). Se agrupa por el AREA DONDE SE COBRO la
+    // venta (s.area), que es donde rebaja el stock. Las "ventas cruzadas" quedan
+    // retiradas: solo se cuentan las ventas previas marcadas (dato historico).
     const users = await db.users.toArray()
     const nameOf = Object.fromEntries(users.map((u) => [u.id, u.name]))
     const areaAgg = {}
@@ -82,27 +82,27 @@ export const analyticsRepo = {
     let crossRevenue = 0
     let crossCount = 0
     for (const s of sales) {
-      const shiftArea = String(s.area || '')
-      let saleHasCross = false
+      const saleArea = String(s.area || '')
+      const key = saleArea || '__none'
+      const e = areaAgg[key] || (areaAgg[key] = { area: saleArea, revenue: 0, profit: 0, qty: 0 })
+      let saleRev = 0
       for (const it of s.items || []) {
-        const itArea = String(it.area || '')
         const lineRev = Number(it.lineTotal ?? it.unitPrice * it.qty)
         const lineCost = Number((it.unitCost || 0) * it.qty)
-        const key = itArea || '__none'
-        const e = areaAgg[key] || (areaAgg[key] = { area: itArea, revenue: 0, profit: 0, qty: 0 })
         e.revenue += lineRev
         e.profit += lineRev - lineCost
         e.qty += Number(it.qty)
-        if (itArea && itArea !== shiftArea) {
-          saleHasCross = true
-          crossRevenue += lineRev
-          const cs = crossBySeller[s.sellerId] ||
-            (crossBySeller[s.sellerId] = { sellerId: s.sellerId, seller: nameOf[s.sellerId] || 'vendedor', revenue: 0, qty: 0 })
-          cs.revenue += lineRev
-          cs.qty += Number(it.qty)
-        }
+        saleRev += lineRev
       }
-      if (saleHasCross) crossCount++
+      // Solo ventas previas explicitamente marcadas como cruzadas (legado).
+      if (s.hasCrossArea) {
+        crossCount++
+        crossRevenue += saleRev
+        const cs = crossBySeller[s.sellerId] ||
+          (crossBySeller[s.sellerId] = { sellerId: s.sellerId, seller: nameOf[s.sellerId] || 'vendedor', revenue: 0, qty: 0 })
+        cs.revenue += saleRev
+        cs.qty += 1
+      }
     }
     const byArea = Object.values(areaAgg)
       .map((e) => ({ ...e, revenue: round2(e.revenue), profit: round2(e.profit) }))
