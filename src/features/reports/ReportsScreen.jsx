@@ -8,6 +8,7 @@ import {
   buildInventoryReport,
   buildShiftsReport,
   buildAreaReport,
+  buildEntriesReport,
   buildTransfersReport,
   exportExcel,
   exportPdf
@@ -76,6 +77,7 @@ export function ReportsScreen() {
 
       {card('sales', 'Ventas', 'Detalle de ventas por fecha, vendedor, área y metodo', buildSalesReport, true)}
       {card('shifts', 'Cierres de turno', 'Cuadre de cada turno cerrado, por área', buildShiftsReport, true)}
+      {card('entries', 'Entradas al almacén', 'Compras ingresadas al almacén central', buildEntriesReport, true)}
       {areas.length > 0 &&
         card('area', 'Ventas por área', 'Ingreso y ganancia por área y vendedor', buildAreaReport, true)}
       {areas.length > 0 &&

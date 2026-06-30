@@ -97,6 +97,40 @@ export async function buildInventoryReport() {
   }
 }
 
+// Entradas de mercancia al almacen central (compras).
+export async function buildEntriesReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const purchases = (await db.purchases.toArray())
+    .filter((p) => inRange(p.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const rows = []
+  let total = 0
+  for (const pu of purchases) {
+    for (const it of pu.items || []) {
+      rows.push([
+        formatDateTime(pu.createdAt),
+        it.name,
+        round2(it.qty),
+        it.unit || '',
+        round2(it.unitCost || 0),
+        round2(it.lineTotal ?? Number(it.qty) * Number(it.unitCost || 0)),
+        pu.supplier || '',
+        names[pu.userId] || 'dueño'
+      ])
+    }
+    total += Number(pu.totalBase || 0)
+  }
+  if (rows.length === 0) rows.push(['Sin entradas en el periodo', '', '', '', '', '', '', ''])
+  else rows.push(['', '', '', '', '', round2(total), 'TOTAL', ''])
+  return {
+    title: 'Entradas al almacén',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Producto', 'Cantidad', 'U/M', 'Costo unit', 'Total', 'Proveedor', 'Registró'],
+    rows,
+    filename: 'entradas'
+  }
+}
+
 // Salidas del almacen hacia las areas (trazabilidad append-only, Bloque 20).
 export async function buildTransfersReport({ from = null, to = null } = {}) {
   const names = await userMap()

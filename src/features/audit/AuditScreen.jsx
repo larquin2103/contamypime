@@ -11,13 +11,15 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { SHIFT_STATUS } from '../../db/constants'
+import { SHIFT_STATUS, locationLabel } from '../../db/constants'
 
 const MOVE_LABEL = {
-  purchase_in: 'Entrada',
+  purchase_in: 'Entrada (almacén)',
   sale_out: 'Venta',
   internal_debt_out: 'Deuda interna',
-  adjustment: 'Ajuste'
+  adjustment: 'Ajuste',
+  transfer_out: 'Salida a área',
+  transfer_in: 'Entrada a área'
 }
 
 const MAX = 200
@@ -138,7 +140,7 @@ export function AuditScreen() {
                 <span className={x.qty >= 0 ? 'ok-text' : 'warn-text'}>{x.qty > 0 ? '+' : ''}{x.qty}</span>
               </div>
               <span className="muted">
-                {formatDateTime(x.createdAt)} · {userName[x.userId] || '—'}{x.note ? ` · ${x.note}` : ''}
+                {formatDateTime(x.createdAt)} · {locationLabel(x.location)} · {userName[x.userId] || '—'}{x.note ? ` · ${x.note}` : ''}
               </span>
             </div>
           ))}

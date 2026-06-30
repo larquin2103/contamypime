@@ -6,6 +6,7 @@ import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useShift } from '../../app/providers/ShiftProvider'
 import { formatDateTime } from '../../lib/dates'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { WAREHOUSE, locationLabel } from '../../db/constants'
@@ -24,10 +25,14 @@ function CloseReturnBanner() {
 
 export function CountScreen() {
   const { user, isOwner } = useAuth()
+  const { activeShift } = useShift()
   const pending = useLiveQuery(() => countsRepo.getPending(), [], undefined)
   const draft = useLiveQuery(() => countsRepo.getDraft(), [], undefined)
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const [countLoc, setCountLoc] = useState(WAREHOUSE)
+
+  // El vendedor cuenta SU área (la de su turno); no elige ni ve el almacén.
+  const sellerArea = activeShift?.area || ''
 
   if (pending === undefined || draft === undefined) {
     return <div className="screen"><p className="muted">Cargando…</p></div>
@@ -50,16 +55,34 @@ export function CountScreen() {
 
   if (draft) return <CountEditor draft={draft} />
 
+  // Vendedor sin turno abierto: no tiene área que contar.
+  if (!isOwner && areas.length > 0 && !sellerArea) {
+    return (
+      <div className="screen">
+        <h2>Conteo físico</h2>
+        <CloseReturnBanner />
+        <section className="card">
+          <p>Para contar tu área necesitas tener <strong>tu turno abierto</strong>.</p>
+          <Link className="btn btn--primary btn--block" to="/shift">Ir a Turno</Link>
+        </section>
+      </div>
+    )
+  }
+
+  // Ubicación a contar: el dueño elige; el vendedor cuenta su área.
+  const targetLoc = isOwner ? countLoc : (sellerArea || WAREHOUSE)
+
   return (
     <div className="screen">
-      <h2>Conteo fisico</h2>
+      <h2>Conteo físico</h2>
       <CloseReturnBanner />
       <section className="card">
         <p className="muted">
-          Cuenta el inventario por categorias. Al terminar, el dueño aprueba y se ajustan
-          las existencias {areas.length > 0 ? 'de la ubicación elegida' : ''}.
+          {isOwner
+            ? 'Cuenta el inventario por categorías. Al terminar se ajustan las existencias de la ubicación elegida.'
+            : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño aprueba y se ajustan.`}
         </p>
-        {areas.length > 0 && (
+        {isOwner && areas.length > 0 && (
           <label className="field">
             <span>¿Qué vas a contar?</span>
             <select value={countLoc} onChange={(e) => setCountLoc(e.target.value)}>
@@ -70,7 +93,7 @@ export function CountScreen() {
         )}
         <button
           className="btn btn--primary btn--block"
-          onClick={() => countsRepo.startDraft(user.id, countLoc)}
+          onClick={() => countsRepo.startDraft(user.id, targetLoc)}
         >
           Iniciar conteo físico
         </button>

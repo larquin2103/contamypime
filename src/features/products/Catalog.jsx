@@ -3,7 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
 import { productsRepo } from '../../repositories/productsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
+import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { matchesQuery } from '../../lib/search'
 import { formatMoney } from '../../lib/currency'
@@ -14,14 +16,23 @@ const MAX_RENDER = 200 // evita pintar 400+ filas de golpe en gama media
 
 export function Catalog() {
   const { isOwner } = useAuth()
+  const { activeShift } = useShift()
   const { baseCurrency } = useCurrency()
   const products = useLiveQuery(() => productsRepo.list(), [], [])
   const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
+  const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
 
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState(null) // producto en edicion
   const [creating, setCreating] = useState(false)
   const [showCategories, setShowCategories] = useState(false)
+
+  // El vendedor solo ve los productos ASIGNADOS a su área (no el almacén). El
+  // dueño ve todo el catálogo. Modo área activo solo si hay áreas configuradas.
+  const sellArea = activeShift?.area || ''
+  const areaMode = !isOwner && areas.length > 0
+  // Existencia a mostrar: en modo área, la del área; si no, el total.
+  const stockShown = (p) => (areaMode ? Number(p.stockByLocation?.[sellArea] || 0) : Number(p.stock || 0))
 
   const categoryName = useMemo(() => {
     const map = {}
@@ -30,13 +41,29 @@ export function Catalog() {
   }, [categories])
 
   const filtered = useMemo(() => {
-    const active = products.filter((p) => p.active)
+    let active = products.filter((p) => p.active)
+    // En modo área, solo productos con existencia asignada a esa área.
+    if (areaMode && sellArea) active = active.filter((p) => Number(p.stockByLocation?.[sellArea] || 0) > 0)
     const result = active.filter((p) => matchesQuery(p, query))
     result.sort((a, b) => a.name.localeCompare(b.name))
     return result
-  }, [products, query])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, query, areaMode, sellArea])
 
   const shown = filtered.slice(0, MAX_RENDER)
+
+  // Vendedor con áreas pero sin turno abierto: no tiene área que mostrar.
+  if (areaMode && !sellArea) {
+    return (
+      <div className="screen">
+        <h2>Catálogo</h2>
+        <section className="card">
+          <p>Abre tu turno en un área para ver los productos que tienes asignados.</p>
+          <Link className="btn btn--primary btn--block" to="/shift">Ir a Turno</Link>
+        </section>
+      </div>
+    )
+  }
 
   return (
     <div className="screen">
@@ -90,8 +117,8 @@ export function Catalog() {
             </div>
             <div className="product-row__meta">
               <span className="price">{formatMoney(p.price, baseCurrency)}</span>
-              <span className={`stock ${p.stock <= 0 ? 'stock--out' : ''}`}>
-                {p.stock <= 0 ? 'Agotado' : `${p.stock} ${p.unit}`}
+              <span className={`stock ${stockShown(p) <= 0 ? 'stock--out' : ''}`}>
+                {stockShown(p) <= 0 ? 'Agotado' : `${stockShown(p)} ${p.unit}`}
               </span>
             </div>
           </button>
