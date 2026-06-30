@@ -93,8 +93,8 @@ export function HandoffScreen() {
         <div className="cuadre-banner cuadre-banner--green">
           <span className="cuadre-emoji">✅</span>
           <div>
-            <strong>Turno recibido</strong>
-            <p className="muted">Existencias, precios y deudas actualizados. Ya puedes abrir tu turno.</p>
+            <strong>Turno recibido completamente</strong>
+            <p className="muted">Existencias (por ubicación), ventas, movimientos, áreas y deudas sincronizados. Ya puedes abrir tu turno.</p>
           </div>
         </div>
       )}
@@ -109,26 +109,48 @@ export function HandoffScreen() {
 
 function ImportPreview({ snap, busy, onConfirm, onCancel }) {
   const inh = snap.inheritedCash || {}
+  const areas = snap.config?.areas || []
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Revisar turno entrante</h3>
+        <h3>Revisar turno entrante (v{snap.meta?.version || 1})</h3>
         <p className="muted">
           De <strong>{snap.meta?.fromUserName || 'otro vendedor'}</strong> ·{' '}
           {formatDateTime(snap.meta?.exportedAt)}
         </p>
+
+        <h4 className="section-title" style={{ fontSize: '0.9em', marginTop: '12px' }}>Catálogo</h4>
         <div className="kv"><span className="muted">Productos</span><strong>{snap.products?.length || 0}</strong></div>
-        <div className="kv"><span className="muted">Categorias</span><strong>{snap.categories?.length || 0}</strong></div>
+        <div className="kv"><span className="muted">Categorías</span><strong>{snap.categories?.length || 0}</strong></div>
+        {areas.length > 0 && (
+          <div className="kv"><span className="muted">Áreas</span><strong>{areas.join(', ')}</strong></div>
+        )}
+
+        <h4 className="section-title" style={{ fontSize: '0.9em', marginTop: '12px' }}>Historial (Bloque 20)</h4>
+        <div className="kv"><span className="muted">Ventas registradas</span><strong>{snap.sales?.length || 0}</strong></div>
+        <div className="kv"><span className="muted">Movimientos de stock</span><strong>{snap.stockMovements?.length || 0}</strong></div>
+        {snap.transfers && (
+          <div className="kv"><span className="muted">Salidas almacén→área</span><strong>{snap.transfers.length || 0}</strong></div>
+        )}
+        {snap.counts && (
+          <div className="kv"><span className="muted">Conteos físicos</span><strong>{snap.counts.length || 0}</strong></div>
+        )}
+
+        <h4 className="section-title" style={{ fontSize: '0.9em', marginTop: '12px' }}>Finanzas</h4>
         <div className="kv"><span className="muted">Deudas pendientes</span><strong>{snap.pendingDebts?.length || 0}</strong></div>
         <div className="kv">
           <span className="muted">Caja a heredar</span>
           <strong>{Object.entries(inh).map(([c, v]) => formatMoney(v, c)).join(' · ') || '—'}</strong>
         </div>
-        <p className="muted">Se actualizaran existencias, precios, tasas y deudas en este dispositivo.</p>
+
+        <p className="muted" style={{ marginTop: '12px', fontSize: '0.85em' }}>
+          ✅ Se sincronizarán: catálogo (con stock por ubicación), historial completo (ventas, movimientos, conteos),
+          áreas, tasas, deudas y caja. El estado será íntegro en este dispositivo.
+        </p>
         <div className="modal__actions">
           <button className="btn btn--ghost" onClick={onCancel}>Cancelar</button>
           <button className="btn btn--primary" disabled={busy} onClick={onConfirm}>
-            {busy ? 'Aplicando…' : 'Aplicar turno'}
+            {busy ? 'Sincronizando…' : 'Recibir turno'}
           </button>
         </div>
       </div>
