@@ -41,7 +41,7 @@ export function UsersAdmin() {
       <div className="screen__header">
         <h2>Usuarios</h2>
         <button className="btn btn--primary" onClick={() => setShowForm(true)}>
-          + Vendedor
+          + Usuario
         </button>
       </div>
 
@@ -87,9 +87,10 @@ export function UsersAdmin() {
   )
 }
 
-// Solo crea VENDEDORES (el dueño es unico, definido en el onboarding).
+// Crea VENDEDORES o ADMINISTRATIVOS (el dueño es unico, definido en el onboarding).
 function NewUserForm({ onClose }) {
   const [name, setName] = useState('')
+  const [role, setRole] = useState(ROLES.SELLER)
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -100,7 +101,7 @@ function NewUserForm({ onClose }) {
     if (pin.length < 4) return setError('El PIN debe tener al menos 4 digitos')
     setBusy(true)
     try {
-      await usersRepo.create({ name, role: ROLES.SELLER, pin })
+      await usersRepo.create({ name, role, pin })
       onClose()
     } catch (e) {
       setError('Error: ' + e.message)
@@ -111,11 +112,25 @@ function NewUserForm({ onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Nuevo vendedor</h3>
+        <h3>Nuevo usuario</h3>
         <label className="field">
           <span>Nombre</span>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
         </label>
+        <label className="field">
+          <span>Rol</span>
+          <select value={role} onChange={(e) => setRole(e.target.value)}>
+            <option value={ROLES.SELLER}>{ROLE_LABELS[ROLES.SELLER]}</option>
+            <option value={ROLES.ADMIN}>{ROLE_LABELS[ROLES.ADMIN]}</option>
+          </select>
+        </label>
+        {role === ROLES.ADMIN && (
+          <p className="muted">
+            El administrativo opera como el dueño en inventario y supervisión (entradas,
+            salidas, autorizar al vendedor, forzar cierres, aprobar conteos) y ve reportes y
+            costos. No gestiona usuarios, licencia ni sincronización.
+          </p>
+        )}
         <p className="field-label">PIN (4 a 6 digitos)</p>
         <PinInput value={pin} onChange={setPin} />
         {error && <p className="error">{error}</p>}

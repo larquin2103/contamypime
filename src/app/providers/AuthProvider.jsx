@@ -30,11 +30,19 @@ export function AuthProvider({ children }) {
     sessionStorage.removeItem(STORAGE_KEY)
   }, [])
 
+  const isOwner = user?.role === ROLES.OWNER
+  const isAdmin = user?.role === ROLES.ADMIN
+
   const value = {
     user,
     login,
     logout,
-    isOwner: user?.role === ROLES.OWNER
+    isOwner,
+    isAdmin,
+    // "Mando": dueño O administrativo. Habilita inventario, supervision y la
+    // visibilidad financiera. Lo exclusivo del dueño (usuarios, licencia, nube)
+    // se sigue comprobando con isOwner.
+    isManager: isOwner || isAdmin
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

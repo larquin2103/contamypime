@@ -20,7 +20,7 @@ import { buildCloseReport, openWhatsapp } from '../../lib/whatsapp'
 
 export function ShiftScreen() {
   const { activeShift, loading } = useShift()
-  const { isOwner } = useAuth()
+  const { isManager } = useAuth()
   // El resultado del cierre vive aqui para que sobreviva a que el turno
   // pase a "cerrado" (si no, la pantalla saltaria a "Abrir turno").
   const [closeResult, setCloseResult] = useState(null)
@@ -51,7 +51,7 @@ export function ShiftScreen() {
       {activeShift
         ? <ActiveShiftPanel shift={activeShift} onClosed={setCloseResult} />
         : <OpenShiftForm />}
-      {isOwner && (
+      {isManager && (
         <OtherOpenShifts excludeId={activeShift?.id} onClose={setForeignClose} />
       )}
     </>
@@ -165,7 +165,7 @@ function OpenShiftForm() {
 
 // ---- Turno activo (mio) ----
 function ActiveShiftPanel({ shift, onClosed }) {
-  const { isOwner } = useAuth()
+  const { isManager } = useAuth()
   const navigate = useNavigate()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   // Retoma el cierre si el vendedor fue al conteo y volvio (flujo no se pierde).
@@ -198,7 +198,7 @@ function ActiveShiftPanel({ shift, onClosed }) {
       <Link className="btn btn--block" to="/cash">
         <Wallet size={18} strokeWidth={1.9} /> Caja y deudas
       </Link>
-      {isOwner && (
+      {isManager && (
         <>
           <Link className="btn btn--block" to="/entry">
             📥 Entrada de mercancia
@@ -290,7 +290,7 @@ function Row({ label, data, sign = '', strong = false }) {
 const CLOSE_STEPS = ['Conteo', 'Ventas', 'Cuadre', 'Fondo', 'Cerrar']
 
 function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
-  const { user, isOwner } = useAuth()
+  const { user, isManager } = useAuth()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   const denominations = useLiveQuery(() => configRepo.getDenominations(), [], null)
   // Paso persistido: si el vendedor va al conteo y vuelve, retoma donde estaba.
@@ -323,7 +323,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
   const fondo = floatCash ?? Object.fromEntries(CASH_CURRENCIES.map((c) => [c, String(declared[c] ?? 0)]))
   const retiro = {}
   for (const c of CASH_CURRENCIES) retiro[c] = round2(Math.max(0, (declared[c] || 0) - (Number(fondo[c]) || 0)))
-  const canEditFloat = isOwner || floatUnlocked
+  const canEditFloat = isManager || floatUnlocked
   const retiroTotal = CASH_CURRENCIES.reduce((a, c) => a + retiro[c], 0)
 
   const goToFloat = () => {

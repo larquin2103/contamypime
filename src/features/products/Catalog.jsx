@@ -15,7 +15,7 @@ import { CategoryManager } from './CategoryManager'
 const MAX_RENDER = 200 // evita pintar 400+ filas de golpe en gama media
 
 export function Catalog() {
-  const { isOwner } = useAuth()
+  const { isManager } = useAuth()
   const { activeShift } = useShift()
   const { baseCurrency } = useCurrency()
   const products = useLiveQuery(() => productsRepo.list(), [], [])
@@ -28,9 +28,9 @@ export function Catalog() {
   const [showCategories, setShowCategories] = useState(false)
 
   // El vendedor solo ve los productos ASIGNADOS a su área (no el almacén). El
-  // dueño ve todo el catálogo. Modo área activo solo si hay áreas configuradas.
+  // dueño y el administrativo ven todo el catálogo. Modo área solo si hay áreas.
   const sellArea = activeShift?.area || ''
-  const areaMode = !isOwner && areas.length > 0
+  const areaMode = !isManager && areas.length > 0
   // Existencia a mostrar: en modo área, la del área; si no, el total.
   const stockShown = (p) => (areaMode ? Number(p.stockByLocation?.[sellArea] || 0) : Number(p.stock || 0))
 
@@ -69,7 +69,7 @@ export function Catalog() {
     <div className="screen">
       <div className="screen__header">
         <h2>Catalogo</h2>
-        {isOwner && (
+        {isManager && (
           <div className="header-actions">
             <Link className="btn btn--ghost btn--sm" to="/import">
               ⬆ Importar
@@ -105,8 +105,8 @@ export function Catalog() {
           <button
             key={p.id}
             className="product-row"
-            onClick={() => isOwner && setEditing(p)}
-            disabled={!isOwner}
+            onClick={() => isManager && setEditing(p)}
+            disabled={!isManager}
           >
             <div className="product-row__main">
               <strong>{p.name}</strong>
@@ -128,7 +128,7 @@ export function Catalog() {
           <div className="empty-state">
             {products.length === 0 ? (
               <p className="muted">
-                Catalogo vacio. {isOwner ? 'Añade productos o importa desde Excel.' : ''}
+                Catalogo vacio. {isManager ? 'Añade productos o importa desde Excel.' : ''}
               </p>
             ) : (
               <p className="muted">Sin resultados para “{query}”.</p>

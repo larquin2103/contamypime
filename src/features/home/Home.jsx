@@ -132,7 +132,7 @@ function RatesCard() {
 }
 
 export function Home() {
-  const { user, isOwner } = useAuth()
+  const { user, isOwner, isManager } = useAuth()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const initial = (user.name || '?').trim().charAt(0).toUpperCase()
 
@@ -150,13 +150,13 @@ export function Home() {
       </header>
 
       <CountNotice userId={user.id} />
-      {isOwner && <ConcurrentShiftWarning />}
+      {isManager && <ConcurrentShiftWarning />}
 
       <ShiftBanner />
 
       {/* Destacados */}
       <div className="home-highlights">
-        {isOwner && (
+        {isManager && (
           <Link to="/dashboard" className="highlight highlight--accent">
             <span className="highlight__tile highlight__tile--accent">
               <LayoutDashboard size={23} strokeWidth={1.9} />
@@ -180,9 +180,9 @@ export function Home() {
         </Link>
       </div>
 
-      {!isOwner && <RatesCard />}
+      {!isManager && <RatesCard />}
 
-      {isOwner ? (
+      {isManager ? (
         <>
           <Section label="Inventario">
             <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Al almacén central" />
@@ -199,11 +199,13 @@ export function Home() {
             <ActionCard to="/reports" icon={FileText} title="Reportes" sub="PDF y Excel" />
             <ActionCard to="/audit" icon={ShieldCheck} title="Auditoría" sub="Registro de cambios" />
           </Section>
-          <Section label="Sistema">
-            <ActionCard to="/cloud" icon={RefreshCw} title="Sincronización" sub="Datos en la nube" />
-            <ActionCard to="/users" icon={Users} title="Usuarios" sub="Permisos y roles" />
-            <ActionCard to="/settings" icon={Settings} title="Ajustes" sub="Preferencias" />
-          </Section>
+          {isOwner && (
+            <Section label="Sistema">
+              <ActionCard to="/cloud" icon={RefreshCw} title="Sincronización" sub="Datos en la nube" />
+              <ActionCard to="/users" icon={Users} title="Usuarios" sub="Permisos y roles" />
+              <ActionCard to="/settings" icon={Settings} title="Ajustes" sub="Preferencias" />
+            </Section>
+          )}
         </>
       ) : (
         <Section label="Operación">

@@ -14,7 +14,7 @@ import { ProductForm } from '../products/ProductForm'
 import { parseEntryFile, buildEntryTemplateBlob, ENTRY_TEMPLATE_HEADERS } from '../import/entryImportService'
 
 export function EntryScreen() {
-  const { user, isOwner } = useAuth()
+  const { user, isManager } = useAuth()
   const { activeShift, canSell } = useShift()
   const { baseCurrency } = useCurrency()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
@@ -29,13 +29,13 @@ export function EntryScreen() {
   const [importMsg, setImportMsg] = useState(null) // { added, notFound:[], errors:[] }
   const fileRef = useRef(null)
 
-  // Solo el dueño registra entradas de mercancia (y ve costos).
-  if (!isOwner) {
+  // Dueño o administrativo registran entradas de mercancia (y ven costos).
+  if (!isManager) {
     return (
       <div className="screen">
         <h2>Entrada de mercancia</h2>
         <section className="card">
-          <p>Solo el <strong>dueño</strong> puede registrar entradas de mercancia.</p>
+          <p>Solo el <strong>dueño o un administrativo</strong> puede registrar entradas de mercancia.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>

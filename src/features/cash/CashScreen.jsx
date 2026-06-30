@@ -15,11 +15,11 @@ import { CASH_CURRENCIES } from '../../db/constants'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 
 export function CashScreen() {
-  const { user, isOwner } = useAuth()
+  const { user, isManager } = useAuth()
   const { activeShift, isMine } = useShift()
   const [tab, setTab] = useState('extraccion')
 
-  const allowed = activeShift && (isMine || isOwner)
+  const allowed = activeShift && (isMine || isManager)
   if (!allowed) {
     return (
       <div className="screen">
@@ -51,9 +51,9 @@ export function CashScreen() {
       </div>
 
       {tab === 'extraccion' ? (
-        <WithdrawForm shift={activeShift} user={user} isOwner={isOwner} />
+        <WithdrawForm shift={activeShift} user={user} isManager={isManager} />
       ) : (
-        <DebtForm shift={activeShift} user={user} isOwner={isOwner} />
+        <DebtForm shift={activeShift} user={user} isManager={isManager} />
       )}
 
       <Movements shiftId={activeShift.id} />
@@ -61,7 +61,7 @@ export function CashScreen() {
   )
 }
 
-function WithdrawForm({ shift, user, isOwner }) {
+function WithdrawForm({ shift, user, isManager }) {
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState(CASH_CURRENCIES[0])
   const [reason, setReason] = useState('')
@@ -91,8 +91,8 @@ function WithdrawForm({ shift, user, isOwner }) {
 
   const submit = () => {
     if (!valid) return
-    if (isOwner) doWithdraw(user.name)
-    else setAskAuth(true) // el vendedor necesita autorizacion del dueño
+    if (isManager) doWithdraw(user.name)
+    else setAskAuth(true) // el vendedor necesita autorizacion de un mando
   }
 
   return (
@@ -115,7 +115,7 @@ function WithdrawForm({ shift, user, isOwner }) {
         <span>Motivo</span>
         <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: pago a proveedor" />
       </label>
-      {!isOwner && <p className="muted">Requiere autorizacion del dueño (PIN) al confirmar.</p>}
+      {!isManager && <p className="muted">Requiere autorizacion del dueño o administrativo (PIN) al confirmar.</p>}
       {saved && <p className="ok-text">✓ Extraccion registrada</p>}
       <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
         {busy ? 'Registrando…' : 'Registrar extraccion'}
@@ -127,7 +127,7 @@ function WithdrawForm({ shift, user, isOwner }) {
   )
 }
 
-function DebtForm({ shift, user, isOwner }) {
+function DebtForm({ shift, user, isManager }) {
   const { baseCurrency } = useCurrency()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const users = useLiveQuery(() => usersRepo.listActive(), [], [])
@@ -173,7 +173,7 @@ function DebtForm({ shift, user, isOwner }) {
 
   const submit = () => {
     if (!valid) return
-    if (isOwner) doCreate(user.name)
+    if (isManager) doCreate(user.name)
     else setAskAuth(true)
   }
 
@@ -230,7 +230,7 @@ function DebtForm({ shift, user, isOwner }) {
             <span>Nota (opcional)</span>
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
-          {!isOwner && <p className="muted">Requiere autorizacion del dueño (PIN) al confirmar.</p>}
+          {!isManager && <p className="muted">Requiere autorizacion del dueño o administrativo (PIN) al confirmar.</p>}
           {saved && <p className="ok-text">✓ Deuda registrada</p>}
           <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
             {busy ? 'Registrando…' : 'Registrar deuda'}

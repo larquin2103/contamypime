@@ -68,7 +68,7 @@ function DeltaBadge({ value }) {
 }
 
 export function DashboardScreen() {
-  const { isOwner } = useAuth()
+  const { isManager } = useAuth()
   const { baseCurrency } = useCurrency()
   const [period, setPeriod] = useState('7')
   const [rotDays, setRotDays] = useState(14)
@@ -82,11 +82,11 @@ export function DashboardScreen() {
   const restock = useLiveQuery(() => analyticsRepo.restock(), [], [])
   const transferDiffs = useLiveQuery(() => analyticsRepo.transferMismatches(range), [range.from, range.to], [])
 
-  if (!isOwner) {
+  if (!isManager) {
     return (
       <div className="screen">
         <h2>Panel del dueño</h2>
-        <p className="muted">Solo el dueño puede ver el panel.</p>
+        <p className="muted">Solo el dueño o un administrativo puede ver el panel.</p>
         <Link className="btn btn--primary btn--block" to="/">Volver</Link>
       </div>
     )

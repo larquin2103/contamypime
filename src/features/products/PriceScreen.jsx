@@ -10,7 +10,7 @@ import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 
 export function PriceScreen() {
-  const { user, isOwner } = useAuth()
+  const { user, isManager } = useAuth()
   const { activeShift, canSell } = useShift()
   const { baseCurrency } = useCurrency()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
@@ -18,13 +18,13 @@ export function PriceScreen() {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(null)
 
-  // Solo el dueño cambia precios.
-  if (!isOwner) {
+  // Dueño o administrativo cambian precios.
+  if (!isManager) {
     return (
       <div className="screen">
         <h2>Cambiar precio</h2>
         <section className="card">
-          <p>Solo el <strong>dueño</strong> puede cambiar precios.</p>
+          <p>Solo el <strong>dueño o un administrativo</strong> puede cambiar precios.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>

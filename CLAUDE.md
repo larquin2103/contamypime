@@ -74,9 +74,17 @@ Importaciones pesadas (xlsx/jspdf/firebase) siempre con `import()` dinámico.
 
 - **Login por PIN** (hash PBKDF2 vía WebCrypto, `src/lib/pin.js`). Sesión en `sessionStorage`.
 - **Dueño (OWNER)**: único; hace todo. Etiqueta `ROLE_LABELS.OWNER = 'Dueño'` (con ñ).
+- **Administrativo (ADMIN, Bloque 20.6)**: cargo de confianza que el dueño designa en
+  *Usuarios*. Opera **como otro dueño** en inventario y supervisión: entradas y salidas del
+  almacén, **autoriza** al vendedor (su PIN sirve en `OwnerAuthModal`), fuerza cierres de turno,
+  aprueba conteos físicos, cambia precios/catálogo y **ve la información financiera** (reportes,
+  panel del dueño, auditoría, costos). **NO** gestiona usuarios, **ni** la licencia, **ni** la
+  sincronización (la identidad del negocio sigue siendo del dueño). El flag derivado
+  `isManager = isOwner || isAdmin` (en `AuthProvider`) habilita todo lo de "mando"; lo exclusivo
+  del dueño se sigue comprobando con `isOwner`.
 - **Vendedor (SELLER)**: solo **ventas + extracciones de caja + deuda interna**, estas dos
-  últimas **con autorización del dueño** (`OwnerAuthModal`). **NO** hace entradas, NO cambia
-  precios, NO ve costos, NO crea usuarios.
+  últimas **con autorización del dueño o de un administrativo** (`OwnerAuthModal` →
+  `usersRepo.verifyManagerPin`). **NO** hace entradas, NO cambia precios, NO ve costos, NO crea usuarios.
 - **Regla de oro:** solo el vendedor con **su turno abierto** puede vender (ni el dueño sin turno).
   Desde el Bloque 19, **varios vendedores pueden tener turno a la vez** (uno por área); el turno
   es por vendedor (`shiftsRepo.getActiveFor(sellerId)`), no global.

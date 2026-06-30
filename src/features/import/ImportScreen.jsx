@@ -16,7 +16,7 @@ const STATUS_META = {
 }
 
 export function ImportScreen() {
-  const { user, isOwner } = useAuth()
+  const { user, isManager } = useAuth()
   const navigate = useNavigate()
   const fileRef = useRef(null)
   const [result, setResult] = useState(null) // { rows, summary, fileName }
@@ -24,11 +24,11 @@ export function ImportScreen() {
   const [error, setError] = useState('')
   const [done, setDone] = useState(null) // nro creados
 
-  if (!isOwner) {
+  if (!isManager) {
     return (
       <div className="screen">
         <h2>Importar inventario</h2>
-        <p className="muted">Solo el dueño puede importar el catalogo.</p>
+        <p className="muted">Solo el dueño o un administrativo puede importar el catalogo.</p>
       </div>
     )
   }

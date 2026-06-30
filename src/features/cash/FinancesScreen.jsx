@@ -9,16 +9,16 @@ import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime, localDay } from '../../lib/dates'
 import { DEBT_SETTLE_METHODS, DEBT_SETTLE_LABELS } from '../../db/constants'
 
-// Gestion de deudas internas y historial de extracciones (solo dueño).
+// Gestion de deudas internas y historial de extracciones (dueño o administrativo).
 export function FinancesScreen() {
-  const { user, isOwner } = useAuth()
+  const { user, isManager } = useAuth()
   const [tab, setTab] = useState('deudas')
 
-  if (!isOwner) {
+  if (!isManager) {
     return (
       <div className="screen">
         <h2>Deudas y caja</h2>
-        <p className="muted">Solo el dueño puede ver esta seccion.</p>
+        <p className="muted">Solo el dueño o un administrativo puede ver esta seccion.</p>
         <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
       </div>
     )

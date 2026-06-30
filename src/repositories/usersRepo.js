@@ -78,6 +78,18 @@ export const usersRepo = {
     return null
   },
 
+  // Autorizacion "de mando" (Bloque 20.6): comprueba el PIN contra cualquier
+  // dueño O administrativo activo. Lo usa OwnerAuthModal para que el vendedor
+  // pueda ser autorizado tanto por el dueño como por un administrativo.
+  async verifyManagerPin(pin) {
+    const mgrs = (await db.users.toArray())
+      .filter((u) => (u.role === ROLES.OWNER || u.role === ROLES.ADMIN) && u.active)
+    for (const m of mgrs) {
+      if (await verifyPin(pin, m.pinSalt, m.pinHash)) return m
+    }
+    return null
+  },
+
   // --- Codigo de recuperacion (solo para el dueño) ---
   async setRecoveryCode(id, code) {
     const { hash, salt } = await hashPin(normalizeRecoveryCode(code))

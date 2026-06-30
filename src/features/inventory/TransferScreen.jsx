@@ -8,11 +8,11 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { matchesQuery } from '../../lib/search'
 import { WAREHOUSE } from '../../db/constants'
 
-// Bloque 20.2 - Salida del almacen central hacia un area. Solo el dueño (luego,
-// opcionalmente, un rol administrativo). Resta del almacen y suma al area; el
-// vendedor de esa area solo puede vender lo que aqui se le asigna.
+// Bloque 20.2 - Salida del almacen central hacia un area. La registra el dueño o
+// un administrativo. Resta del almacen y suma al area; el vendedor de esa area
+// solo puede vender lo que aqui se le asigna.
 export function TransferScreen() {
-  const { user, isOwner } = useAuth()
+  const { user, isManager } = useAuth()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
 
@@ -30,12 +30,12 @@ export function TransferScreen() {
     return products.filter((p) => matchesQuery(p, query)).slice(0, 20)
   }, [products, query])
 
-  if (!isOwner) {
+  if (!isManager) {
     return (
       <div className="screen">
         <h2>Salida a área</h2>
         <section className="card">
-          <p>Solo el <strong>dueño</strong> puede sacar mercancía del almacén hacia las áreas.</p>
+          <p>Solo el <strong>dueño o un administrativo</strong> puede sacar mercancía del almacén hacia las áreas.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>

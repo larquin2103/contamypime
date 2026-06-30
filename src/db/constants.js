@@ -2,11 +2,18 @@
 
 export const ROLES = {
   OWNER: 'owner',
+  // Administrativo (Bloque 20.6): cargo de confianza que el dueño designa. Opera
+  // "como otro dueño" en inventario y supervision (entradas/salidas del almacen,
+  // autorizar al vendedor, forzar cierres, aprobar conteos) y ve la informacion
+  // financiera (reportes, panel, auditoria, costos). NO gestiona usuarios, ni la
+  // licencia, ni la sincronizacion: la identidad del negocio sigue siendo del dueño.
+  ADMIN: 'admin',
   SELLER: 'seller'
 }
 
 export const ROLE_LABELS = {
   [ROLES.OWNER]: 'Dueño',
+  [ROLES.ADMIN]: 'Administrativo',
   [ROLES.SELLER]: 'Vendedor'
 }
 

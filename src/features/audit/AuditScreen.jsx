@@ -32,7 +32,7 @@ function inRange(iso, from, to) {
 }
 
 export function AuditScreen() {
-  const { isOwner } = useAuth()
+  const { isManager } = useAuth()
   const { baseCurrency } = useCurrency()
   const [tab, setTab] = useState('shifts')
   const [from, setFrom] = useState('')
@@ -56,11 +56,11 @@ export function AuditScreen() {
     return m
   }, [products])
 
-  if (!isOwner) {
+  if (!isManager) {
     return (
       <div className="screen">
         <h2>Auditoria</h2>
-        <p className="muted">Solo el dueño puede ver la auditoria.</p>
+        <p className="muted">Solo el dueño o un administrativo puede ver la auditoria.</p>
         <Link className="btn btn--primary btn--block" to="/">Volver</Link>
       </div>
     )

@@ -24,7 +24,7 @@ function CloseReturnBanner() {
 }
 
 export function CountScreen() {
-  const { user, isOwner } = useAuth()
+  const { user, isManager } = useAuth()
   const { activeShift } = useShift()
   const pending = useLiveQuery(() => countsRepo.getPending(), [], undefined)
   const draft = useLiveQuery(() => countsRepo.getDraft(), [], undefined)
@@ -40,7 +40,7 @@ export function CountScreen() {
 
   // Hay un conteo esperando aprobacion: el dueño lo revisa; el resto espera.
   if (pending) {
-    return isOwner ? (
+    return isManager ? (
       <CountReview count={pending} ownerId={user.id} />
     ) : (
       <div className="screen">
@@ -56,7 +56,7 @@ export function CountScreen() {
   if (draft) return <CountEditor draft={draft} />
 
   // Vendedor sin turno abierto: no tiene área que contar.
-  if (!isOwner && areas.length > 0 && !sellerArea) {
+  if (!isManager && areas.length > 0 && !sellerArea) {
     return (
       <div className="screen">
         <h2>Conteo físico</h2>
@@ -69,8 +69,8 @@ export function CountScreen() {
     )
   }
 
-  // Ubicación a contar: el dueño elige; el vendedor cuenta su área.
-  const targetLoc = isOwner ? countLoc : (sellerArea || WAREHOUSE)
+  // Ubicación a contar: el dueño/administrativo elige; el vendedor cuenta su área.
+  const targetLoc = isManager ? countLoc : (sellerArea || WAREHOUSE)
 
   return (
     <div className="screen">
@@ -78,11 +78,11 @@ export function CountScreen() {
       <CloseReturnBanner />
       <section className="card">
         <p className="muted">
-          {isOwner
+          {isManager
             ? 'Cuenta el inventario por categorías. Al terminar se ajustan las existencias de la ubicación elegida.'
             : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño aprueba y se ajustan.`}
         </p>
-        {isOwner && areas.length > 0 && (
+        {isManager && areas.length > 0 && (
           <label className="field">
             <span>¿Qué vas a contar?</span>
             <select value={countLoc} onChange={(e) => setCountLoc(e.target.value)}>

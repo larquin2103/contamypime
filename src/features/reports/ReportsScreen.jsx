@@ -15,17 +15,17 @@ import {
 } from './reportsService'
 
 export function ReportsScreen() {
-  const { isOwner } = useAuth()
+  const { isManager } = useAuth()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [busy, setBusy] = useState('')
 
-  if (!isOwner) {
+  if (!isManager) {
     return (
       <div className="screen">
         <h2>Reportes</h2>
-        <p className="muted">Solo el dueño puede exportar reportes.</p>
+        <p className="muted">Solo el dueño o un administrativo puede exportar reportes.</p>
         <Link className="btn btn--primary btn--block" to="/">Volver</Link>
       </div>
     )
