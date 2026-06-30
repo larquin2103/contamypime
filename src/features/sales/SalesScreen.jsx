@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ChevronLeft, Search, Package } from 'lucide-react'
+import { ChevronLeft, Search, Package, Trash2 } from 'lucide-react'
 import { productsRepo } from '../../repositories/productsRepo'
 import { salesRepo } from '../../repositories/salesRepo'
 import { configRepo } from '../../repositories/configRepo'
@@ -300,6 +300,14 @@ export function SalesScreen() {
                   <button onClick={() => setQty(l.productId, round2(l.qty + 1))}>＋</button>
                 </div>
                 <span className="cart-line__total">{formatMoney(l.unitPrice * l.qty, baseCurrency)}</span>
+                <button
+                  className="cart-line__remove"
+                  onClick={() => setQty(l.productId, 0)}
+                  aria-label="Eliminar producto"
+                  title="Quitar del carrito"
+                >
+                  <Trash2 size={18} strokeWidth={1.8} />
+                </button>
               </div>
             ))}
           </div>

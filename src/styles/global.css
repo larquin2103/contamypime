@@ -741,10 +741,10 @@ input[type='file'] {
    DEBAJO y nunca se encime con la descripcion del producto. */
 .cart-line {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto 32px;
   grid-template-areas:
-    "tile info total"
-    "tile stepper stepper";
+    "tile info total remove"
+    "tile stepper stepper remove";
   column-gap: 10px;
   row-gap: 8px;
   align-items: center;
@@ -777,6 +777,24 @@ input[type='file'] {
   color: var(--accent-light);
   white-space: nowrap;
   align-self: start;
+}
+.cart-line__remove {
+  grid-area: remove;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  align-self: start;
+}
+.cart-line__remove:hover {
+  background: rgba(252, 123, 123, 0.1);
+  color: var(--danger);
 }
 .cart-line .qty-ctrl { grid-area: stepper; justify-content: flex-start; }
 .warn-text {
