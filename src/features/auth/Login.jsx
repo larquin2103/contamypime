@@ -4,6 +4,7 @@ import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
 import { ROLE_LABELS, ROLES } from '../../db/constants'
+import { lockRemaining, recordFail, clearFails, formatWait } from '../../lib/lockout'
 
 export function Login() {
   const { login } = useAuth()
@@ -17,10 +18,23 @@ export function Login() {
   const tryLogin = async (nextPin) => {
     setBusy(true)
     setError('')
+    // Bloqueo anti-fuerza-bruta por usuario (de dispositivo). Si esta en espera,
+    // no se intenta verificar.
+    const lockKey = `login_${selected.id}`
+    const waiting = lockRemaining(lockKey)
+    if (waiting > 0) {
+      setError(`Demasiados intentos. Espera ${formatWait(waiting)}.`)
+      setPin('')
+      setBusy(false)
+      return
+    }
     const ok = await login(selected.id, nextPin)
     if (!ok) {
-      setError('PIN incorrecto')
+      const wait = recordFail(lockKey)
+      setError(wait > 0 ? `PIN incorrecto. Espera ${formatWait(wait)}.` : 'PIN incorrecto')
       setPin('')
+    } else {
+      clearFails(lockKey)
     }
     setBusy(false)
   }
@@ -99,8 +113,17 @@ function RecoverPin({ user, onCancel, onDone }) {
 
   const checkCode = async () => {
     setError('')
+    const lockKey = `recover_${user.id}`
+    const waiting = lockRemaining(lockKey)
+    if (waiting > 0) return setError(`Demasiados intentos. Espera ${formatWait(waiting)}.`)
     const ok = await usersRepo.verifyRecovery(user.id, code)
-    if (!ok) return setError('Codigo de recuperacion incorrecto')
+    if (!ok) {
+      const wait = recordFail(lockKey)
+      return setError(
+        wait > 0 ? `Codigo incorrecto. Espera ${formatWait(wait)}.` : 'Codigo de recuperacion incorrecto'
+      )
+    }
+    clearFails(lockKey)
     setStep('pin')
   }
 

@@ -38,10 +38,20 @@ export async function hashPin(pin, saltHex) {
   return { hash, salt: bytesToHex(saltBytes) }
 }
 
+// Comparacion en tiempo constante: no corta al primer caracter distinto, para
+// no filtrar por tiempo cuanto del hash coincide. En este modelo local el
+// riesgo es minimo, pero es higiene barata al comparar secretos.
+function constantTimeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 export async function verifyPin(pin, saltHex, expectedHash) {
   if (!saltHex || !expectedHash) return false
   const { hash } = await hashPin(pin, saltHex)
-  return hash === expectedHash
+  return constantTimeEqual(hash, expectedHash)
 }
 
 // Codigo de recuperacion para el PIN del dueño (offline, sin correo).

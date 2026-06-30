@@ -1,19 +1,47 @@
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import { usersRepo } from '../../repositories/usersRepo'
 import { ROLES } from '../../db/constants'
 
 const AuthContext = createContext(null)
 const STORAGE_KEY = 'mc_session_user'
 
+function readStoredSession() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const raw = sessionStorage.getItem(STORAGE_KEY)
-      return raw ? JSON.parse(raw) : null
-    } catch {
-      return null
-    }
-  })
+  const [user, setUser] = useState(readStoredSession)
+
+  // Revalida la sesion contra Dexie (fuente de verdad). El `role` guardado en
+  // sessionStorage es MANIPULABLE (DevTools): un vendedor podria editarlo a
+  // "owner"/"admin" y desbloquear las pantallas de mando, que solo comprueban
+  // el flag de contexto. Por eso, al arrancar releemos el usuario por id y
+  // tomamos su rol y estado REALES; si no existe o esta inactivo, cerramos la
+  // sesion. Asi el rol no se puede falsear editando el almacenamiento.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const stored = readStoredSession()
+      if (!stored?.id) return
+      const fresh = await usersRepo.get(stored.id)
+      if (!alive) return
+      if (!fresh || !fresh.active) {
+        setUser(null)
+        sessionStorage.removeItem(STORAGE_KEY)
+        return
+      }
+      // Rol y nombre autoritativos desde la BD (corrige cualquier manipulacion).
+      const safe = { id: fresh.id, name: fresh.name, role: fresh.role }
+      setUser(safe)
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(safe))
+    })()
+    return () => { alive = false }
+  }, [])
 
   const login = useCallback(async (userId, pin) => {
     const u = await usersRepo.verifyLogin(userId, pin)
