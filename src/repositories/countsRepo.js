@@ -103,18 +103,31 @@ export const countsRepo = {
   },
 
   // Envia el conteo a aprobacion: calcula diferencia y semaforo por producto.
+  // IMPORTANTE: el stock del sistema se relee AHORA desde el libro mayor (no se usa
+  // la foto tomada al iniciar el borrador), para que la diferencia refleje las
+  // ventas/salidas ocurridas durante el conteo. Asi la diferencia mostrada coincide
+  // con el ajuste que aplica approve() (que tambien usa el stock actual) y no se
+  // generan diferencias fantasma al cerrar el turno.
   async submit(id) {
     const c = await db.counts.get(id)
     if (!c) return
     const cfg = await configRepo.getSemaphoreConfig()
-    const items = c.items.map((it) => {
+    const loc = c.location || WAREHOUSE
+    const items = []
+    for (const it of c.items) {
       const counted = it.physicalQty !== null && it.physicalQty !== ''
-      if (!counted) return { ...it, counted: false, diff: 0, semaphore: null }
+      if (!counted) {
+        items.push({ ...it, counted: false, diff: 0, semaphore: null })
+        continue
+      }
       const phys = Number(it.physicalQty)
-      const diff = round2(phys - it.systemStock)
-      const sem = evalSemaphore(it.systemStock, phys, cfg)
-      return { ...it, physicalQty: phys, counted: true, diff, semaphore: sem.color }
-    })
+      // Stock del sistema EN VIVO al momento de enviar (refleja la ultima venta).
+      const p = await db.products.get(it.productId)
+      const sysNow = p ? stockAtLocation(p, loc) : Number(it.systemStock || 0)
+      const diff = round2(phys - sysNow)
+      const sem = evalSemaphore(sysNow, phys, cfg)
+      items.push({ ...it, systemStock: sysNow, physicalQty: phys, counted: true, diff, semaphore: sem.color })
+    }
     await db.counts.update(id, { items, status: COUNT_STATUS.PENDING, submittedAt: now() })
   },
 

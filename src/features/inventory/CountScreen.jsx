@@ -137,6 +137,9 @@ export function CountScreen() {
 // ---- Contar (borrador) ----
 function CountEditor({ draft }) {
   const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
+  // Productos EN VIVO: para que el "Sistema" mostrado refleje las ventas/salidas
+  // recientes (igual que el catálogo) y no la foto congelada al iniciar el conteo.
+  const liveProducts = useLiveQuery(() => productsRepo.list(), [], [])
   const [items, setItems] = useState(draft.items)
   const [selectedCat, setSelectedCat] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -144,24 +147,41 @@ function CountEditor({ draft }) {
   // Si cambia el borrador en BD (otra pestana), refrescamos.
   useEffect(() => { setItems(draft.items) }, [draft.id])
 
+  // Stock del sistema en vivo por producto, en la ubicación del conteo.
+  const draftLoc = draft.location || WAREHOUSE
+  const liveStock = useMemo(() => {
+    const m = {}
+    for (const p of liveProducts) m[p.id] = stockAt(p, draftLoc)
+    return m
+  }, [liveProducts, draftLoc])
+  // Stock del sistema a usar: el vivo si está disponible; si no, la foto del borrador.
+  const sysOf = (it) => (liveStock[it.productId] != null ? liveStock[it.productId] : Number(it.systemStock || 0))
+
   const catName = useMemo(() => {
     const m = { __none: 'Sin categoria' }
     for (const c of categories) m[c.id] = c.name
     return m
   }, [categories])
 
+  // Un ítem es contable si su sistema EN VIVO es > 0, o si ya tiene un físico
+  // anotado (para no perder lo contado si una venta lo dejó en 0 mientras tanto).
+  const isVisible = (it) =>
+    Number(sysOf(it)) > 0 || (it.physicalQty !== null && it.physicalQty !== '')
+
   const groups = useMemo(() => {
     const g = {}
     items.forEach((it, idx) => {
-      if (Number(it.systemStock) <= 0) return // los agotados no se cuentan
+      if (!isVisible(it)) return // los agotados (en vivo) no se cuentan
       const key = it.categoryId || '__none'
       if (!g[key]) g[key] = []
-      g[key].push({ ...it, idx })
+      // Sobrescribe systemStock con el valor EN VIVO para mostrar y calcular diff.
+      g[key].push({ ...it, idx, systemStock: sysOf(it) })
     })
     return g
-  }, [items])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, liveStock])
 
-  const visible = items.filter((it) => Number(it.systemStock) > 0)
+  const visible = items.filter(isVisible)
   const counted = visible.filter((it) => it.physicalQty !== null && it.physicalQty !== '').length
   const progress = visible.length ? Math.round((counted / visible.length) * 100) : 0
 
