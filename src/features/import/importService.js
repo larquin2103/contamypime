@@ -4,11 +4,14 @@ import { productsRepo } from '../../repositories/productsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { configRepo } from '../../repositories/configRepo'
 
-// Columnas de la plantilla (orden exacto del plan maestro + existencia inicial
-// y area de venta, para que cada producto entre al inventario de su area).
+// Columnas de la plantilla de CATALOGO (crea productos). Mismo orden de
+// identificacion que la plantilla de entradas (Codigo, Nombre) para que sean
+// coherentes. `Area` es el area PRINCIPAL informativa del producto; la
+// `Existencia inicial` ingresa al ALMACEN central (desde ahi se reparte a las
+// areas con "Salida a area").
 export const TEMPLATE_HEADERS = [
-  'Nombre',
   'Codigo',
+  'Nombre',
   'Categoria',
   'Area',
   'Unidad',
@@ -18,8 +21,8 @@ export const TEMPLATE_HEADERS = [
 ]
 
 const TEMPLATE_EXAMPLE = [
-  ['Aceite vegetal 1L', 'AV001', 'Aceites', 'Viveres', 'u', 2.5, 1.8, 30],
-  ['Bistec de res', 'CR001', 'Carnes', 'Carniceria', 'kg', 5.0, 3.5, 20]
+  ['AV001', 'Aceite vegetal 1L', 'Aceites', 'Viveres', 'u', 2.5, 1.8, 30],
+  ['CR001', 'Bistec de res', 'Carnes', 'Carniceria', 'kg', 5.0, 3.5, 20]
 ]
 
 // xlsx se carga bajo demanda (code-splitting): solo pesa cuando se importa.

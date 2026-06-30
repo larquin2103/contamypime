@@ -9,6 +9,7 @@ import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
+import { WAREHOUSE } from '../../db/constants'
 import { ProductForm } from '../products/ProductForm'
 import { parseEntryFile, buildEntryTemplateBlob, ENTRY_TEMPLATE_HEADERS } from '../import/entryImportService'
 
@@ -45,6 +46,13 @@ export function EntryScreen() {
     if (!query.trim()) return []
     return products.filter((p) => matchesQuery(p, query)).slice(0, 20)
   }, [products, query])
+
+  // Existencia ACTUAL en el almacen por producto (la entrada se suma a esto).
+  const warehouseStock = useMemo(() => {
+    const m = {}
+    for (const p of products) m[p.id] = Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
+    return m
+  }, [products])
 
   const addLine = (p) => {
     setLines((prev) => {
@@ -167,6 +175,10 @@ export function EntryScreen() {
 
       <section className="card import-entry-hint">
         <p className="muted">
+          Las entradas ingresan al <strong>almacén central</strong> y se <strong>suman</strong> a la
+          existencia actual (no la reemplazan). Desde el almacén se reparte a las áreas con “Salida a área”.
+        </p>
+        <p className="muted">
           Para cargar muchos productos a la vez, usa <strong>⬆ Importar Excel</strong>.
           Columnas: {ENTRY_TEMPLATE_HEADERS.join(', ')} (coteja por codigo).{' '}
           <button className="link-inline" onClick={downloadTemplate}>Descargar plantilla</button>
@@ -202,7 +214,7 @@ export function EntryScreen() {
             <button key={p.id} className="product-row" onClick={() => addLine(p)}>
               <div className="product-row__main">
                 <strong>{p.name}</strong>
-                <span className="muted">{p.code ? `${p.code} · ` : ''}stock {p.stock} {p.unit}</span>
+                <span className="muted">{p.code ? `${p.code} · ` : ''}almacén {Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)} {p.unit}</span>
               </div>
               <span className="muted">costo {formatMoney(p.cost, baseCurrency)}</span>
             </button>
@@ -222,6 +234,10 @@ export function EntryScreen() {
                   <strong>{l.name}</strong>
                   <button className="link-del" onClick={() => removeLine(l.productId)}>quitar</button>
                 </div>
+                <p className="muted">
+                  Almacén actual: {warehouseStock[l.productId] ?? 0} {l.unit}
+                  {Number(l.qty) > 0 && ` → quedará: ${round2((warehouseStock[l.productId] ?? 0) + Number(l.qty))} ${l.unit}`}
+                </p>
                 <div className="form-row">
                   <label className="field">
                     <span>Cantidad ({l.unit})</span>

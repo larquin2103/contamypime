@@ -9,6 +9,10 @@ import { round2 } from '../../lib/currency'
 // en el catalogo se reportan como "no encontrados" (primero hay que crearlos,
 // p.ej. con Catalogo -> Importar). El registro final lo hace la pantalla de
 // Entrada (mismo flujo de siempre: revisar y "Registrar entrada").
+//
+// La `Cantidad` es lo que ENTRA (se SUMA a la existencia actual del almacen,
+// no la reemplaza); cada entrada ingresa al ALMACEN central. Mismas columnas de
+// identificacion (Codigo, Nombre) que la plantilla de catalogo, para coherencia.
 // ---------------------------------------------------------------------------
 
 export const ENTRY_TEMPLATE_HEADERS = ['Codigo', 'Nombre', 'Cantidad', 'Costo']
