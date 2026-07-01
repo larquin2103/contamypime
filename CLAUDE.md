@@ -49,7 +49,7 @@ src/
 ├── repositories/             # ÚNICA puerta de acceso a datos (1 por colección)
 ├── features/                 # cada función de negocio en su carpeta
 │   ├── auth/ settings/ home/ products/ import/ shifts/ sales/
-│   ├── inventory/ cash/ handoff/ dashboard/ audit/ reports/ sync/
+│   ├── inventory/ cash/ handoff/ dashboard/ audit/ reports/ sync/ help/
 ├── components/               # UI compartida (PinInput, Layout, CashInputs, ...)
 ├── lib/                      # utilidades puras (ids, pin, currency, dates, search, firebase)
 └── styles/global.css         # estilos globales (tema oscuro, clases .card .btn .field ...)

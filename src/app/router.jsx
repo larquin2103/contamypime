@@ -25,6 +25,7 @@ import { ReportsScreen } from '../features/reports/ReportsScreen'
 import { CloudScreen } from '../features/sync/CloudScreen'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
+import { HelpScreen } from '../features/help/HelpScreen'
 
 // Decide que mostrar segun el estado:
 //  - sin licencia valida   -> Activacion (compuerta: ni se crea dueño ni se entra)
@@ -65,6 +66,7 @@ export function AppRouter() {
         <Route path="/cloud" element={<CloudScreen />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
+        <Route path="/help" element={<HelpScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

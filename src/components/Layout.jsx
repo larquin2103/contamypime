@@ -1,5 +1,5 @@
-import { NavLink } from 'react-router-dom'
-import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut } from 'lucide-react'
+import { NavLink, Link } from 'react-router-dom'
+import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, HelpCircle } from 'lucide-react'
 import { useAuth } from '../app/providers/AuthProvider'
 import { useShift } from '../app/providers/ShiftProvider'
 import { useSync } from '../app/providers/SyncProvider'
@@ -62,6 +62,9 @@ export function Layout({ children }) {
         <span className="brand brand--sm">MypiCuadre</span>
         <div className="app-header__right">
           <SyncBadge />
+          <Link className="btn btn--ghost btn--sm app-header__help" to="/help" aria-label="Ayuda" title="Ayuda">
+            <HelpCircle size={16} strokeWidth={2} /> Ayuda
+          </Link>
           <button className="btn btn--ghost btn--sm app-header__exit" onClick={logout}>
             <LogOut size={16} strokeWidth={2} /> Salir
           </button>

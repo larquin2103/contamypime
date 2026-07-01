@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
@@ -198,6 +198,7 @@ export function Home() {
           <Section label="Gestión">
             <ActionCard to="/reports" icon={FileText} title="Reportes" sub="PDF y Excel" />
             <ActionCard to="/audit" icon={ShieldCheck} title="Auditoría" sub="Registro de cambios" />
+            <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar la app" />
           </Section>
           {isOwner && (
             <Section label="Sistema">
@@ -211,6 +212,7 @@ export function Home() {
         <Section label="Operación">
           <ActionCard to="/handoff" icon={ArrowLeftRight} title="Traspaso de turno" sub="Entregar la caja" />
           <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
+          <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo vender y cerrar" />
         </Section>
       )}
     </div>

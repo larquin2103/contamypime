@@ -867,6 +867,89 @@ input[type='file'] {
   font-size: 0.85rem;
 }
 
+/* ----- Ayuda ----- */
+.app-header__help {
+  gap: 4px;
+}
+.help-section {
+  margin-bottom: 16px;
+}
+.help-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  width: 100%;
+}
+.help-item__emoji {
+  font-size: 1.4rem;
+  flex: 0 0 auto;
+}
+.help-item__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.help-item__text .muted {
+  font-size: 0.82rem;
+}
+.help-item__chev {
+  color: var(--text-faint);
+  font-size: 1.3rem;
+  flex: 0 0 auto;
+}
+.help-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--accent-light);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 6px 0;
+  margin-bottom: 4px;
+}
+.help-article__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.15rem;
+  margin-bottom: 10px;
+}
+.help-emoji {
+  font-size: 1.3rem;
+}
+.help-p {
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.help-steps {
+  margin: 0 0 12px;
+  padding-left: 22px;
+  line-height: 1.5;
+}
+.help-steps li {
+  margin-bottom: 6px;
+}
+.help-callout {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0 0 12px;
+  line-height: 1.45;
+  font-size: 0.92rem;
+}
+.help-callout--tip {
+  background: rgba(43, 189, 110, 0.1);
+  border: 1px solid rgba(43, 189, 110, 0.3);
+}
+.help-callout--warn {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
 /* Checklist de salida a un area: catalogo del almacen con checkbox por producto,
    agrupado por categoria, para marcar varios a la vez. */
 /* Resumen del turno en el traspaso (ventas + fondo a heredar). */
