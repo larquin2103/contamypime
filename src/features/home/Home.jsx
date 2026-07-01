@@ -13,6 +13,8 @@ import { usersRepo } from '../../repositories/usersRepo'
 import { countsRepo } from '../../repositories/countsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { FOREIGN_CURRENCIES, ROLE_LABELS, COUNT_STATUS } from '../../db/constants'
+import { StartChecklist } from '../help/StartChecklist'
+import { WelcomeModal } from '../help/WelcomeModal'
 
 // Aviso al vendedor cuando el dueño resuelve su conteo fisico (aprobado/rechazado).
 function CountNotice({ userId }) {
@@ -149,10 +151,13 @@ export function Home() {
         </div>
       </header>
 
+      {isManager && <WelcomeModal />}
       <CountNotice userId={user.id} />
       {isManager && <ConcurrentShiftWarning />}
 
       <ShiftBanner />
+
+      {isManager && <StartChecklist />}
 
       {/* Destacados */}
       <div className="home-highlights">

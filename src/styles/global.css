@@ -867,6 +867,78 @@ input[type='file'] {
   font-size: 0.85rem;
 }
 
+/* ----- Guía de inicio (checklist) ----- */
+.start-guide__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.start-steps {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+}
+.start-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+}
+.start-step__mark {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-accent);
+}
+.start-step.is-done .start-step__mark {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.start-step__label {
+  color: var(--text);
+}
+.start-step.is-done .start-step__label {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.start-step__label--link {
+  color: var(--accent-light);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+/* ----- Bienvenida (primer arranque) ----- */
+.welcome-modal { text-align: left; }
+.welcome-badge {
+  background: rgba(43, 189, 110, 0.12);
+  border: 1px solid rgba(43, 189, 110, 0.3);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  font-size: 0.92rem;
+}
+.welcome-lead {
+  font-weight: 700;
+  margin: 12px 0 6px;
+}
+.welcome-steps {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  line-height: 1.55;
+}
+.welcome-steps li { margin-bottom: 6px; }
+.welcome-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
 /* ----- Ayuda ----- */
 .app-header__help {
   gap: 4px;

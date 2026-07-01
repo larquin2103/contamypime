@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Download } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { HELP_ARTICLES, HELP_SECTIONS } from './helpContent'
+import { downloadHelpPdf } from './helpPdf'
 
 // Pantalla de Ayuda (Fase B). Índice de temas + lectura de cada artículo, todo
 // offline. El dueño/administrativo ve el recorrido completo (incluida la guía del
@@ -11,6 +12,16 @@ export function HelpScreen() {
   const { isManager } = useAuth()
   const navigate = useNavigate()
   const [openId, setOpenId] = useState(null)
+  const [pdfBusy, setPdfBusy] = useState(false)
+
+  const downloadPdf = async () => {
+    setPdfBusy(true)
+    try {
+      await downloadHelpPdf({ isManager })
+    } finally {
+      setPdfBusy(false)
+    }
+  }
 
   // Artículos visibles según el rol.
   const visible = useMemo(
@@ -54,6 +65,10 @@ export function HelpScreen() {
           ? 'Guía paso a paso para poner tu negocio a andar. Toca un tema para leerlo.'
           : 'Guía rápida para vender y cerrar tu turno. Toca un tema para leerlo.'}
       </p>
+
+      <button className="btn btn--ghost btn--block" disabled={pdfBusy} onClick={downloadPdf}>
+        <Download size={16} strokeWidth={2} /> {pdfBusy ? 'Generando…' : 'Descargar guía (PDF)'}
+      </button>
 
       {sections.map((s) => (
         <section key={s.label} className="help-section">
