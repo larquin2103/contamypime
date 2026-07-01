@@ -187,7 +187,7 @@ export function Home() {
           <Section label="Inventario">
             <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Al almacén central" />
             {areas.length > 0 && (
-              <ActionCard to="/transfer" icon={Send} title="Salida a áreas" sub="Reaprovisiona varias a la vez" />
+              <ActionCard to="/transfer" icon={Send} title="Salida a áreas" sub="Marca productos y envía por área" />
             )}
             <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
           </Section>

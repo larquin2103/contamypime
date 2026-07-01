@@ -867,31 +867,49 @@ input[type='file'] {
   font-size: 0.85rem;
 }
 
-/* Cuadricula de reparto (salida por lote a varias areas). Una celda por area
-   con su input de cantidad; se adapta al ancho (movil: 2 columnas). */
-.transfer-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
+/* Checklist de salida a un area: catalogo del almacen con checkbox por producto,
+   agrupado por categoria, para marcar varios a la vez. */
+.check-group {
+  margin-top: 10px;
 }
-.transfer-grid__cell {
+.check-group__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin: 6px 0 4px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.check-row.is-checked {
+  border-color: var(--primary);
+  background: rgba(43, 189, 110, 0.08);
+}
+.check-row input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: var(--primary);
+}
+.check-row__main {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 1px;
+  min-width: 0;
 }
-.transfer-grid__cell span {
-  font-size: 0.78rem;
-  color: var(--muted);
+.check-row__main strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.transfer-grid__cell input {
-  width: 100%;
-}
-.transfer-grid__foot {
-  margin-top: 8px;
-  font-size: 0.82rem;
 }
 
 /* ----- Tabs ----- */
