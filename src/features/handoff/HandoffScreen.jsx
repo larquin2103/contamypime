@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useShift } from '../../app/providers/ShiftProvider'
+import { shiftsRepo } from '../../repositories/shiftsRepo'
 import {
   buildSnapshot,
   snapshotToBlob,
@@ -12,17 +15,33 @@ import { shareFile } from '../../lib/whatsapp'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 
+// Muestra un objeto de caja por moneda ({ MN: 100, USD: 5 }) en una línea.
+function cashLine(obj) {
+  const parts = Object.entries(obj || {})
+    .filter(([, v]) => Number(v) !== 0)
+    .map(([c, v]) => formatMoney(v, c))
+  return parts.length ? parts.join(' · ') : '—'
+}
+
 export function HandoffScreen() {
   const { user } = useAuth()
+  const { activeShift } = useShift()
   const fileRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [preview, setPreview] = useState(null) // snapshot entrante
   const [applied, setApplied] = useState(false)
 
+  // Resumen de caja/ventas del turno propio (para mostrar antes de entregar).
+  const summary = useLiveQuery(
+    () => (activeShift ? shiftsRepo.getSummary(activeShift.id) : null),
+    [activeShift?.id],
+    null
+  )
+
   const doExport = async () => {
     setBusy(true)
-    const snap = await buildSnapshot(user.name)
+    const snap = await buildSnapshot(user, activeShift)
     const blob = snapshotToBlob(snap)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -36,7 +55,7 @@ export function HandoffScreen() {
   }
 
   const doShare = async () => {
-    const snap = await buildSnapshot(user.name)
+    const snap = await buildSnapshot(user, activeShift)
     const blob = snapshotToBlob(snap)
     const ok = await shareFile(blob, snapshotFileName(user.name), 'Turno de MypiCuadre')
     if (!ok) {
@@ -74,7 +93,26 @@ export function HandoffScreen() {
 
       <section className="card">
         <h3>Entregar mi turno</h3>
-        <p className="muted">Genera un archivo con existencias, precios, caja y deudas.</p>
+        <p className="muted">Genera un archivo con existencias, precios, caja, ventas y deudas.</p>
+
+        {/* Resumen del turno que se entrega: ventas y fondo a heredar por el próximo. */}
+        {summary && (
+          <div className="handoff-summary">
+            {activeShift?.area && (
+              <div className="kv"><span className="muted">Área</span><strong>{activeShift.area}</strong></div>
+            )}
+            <div className="kv"><span className="muted">Ventas (efectivo)</span><strong>{cashLine(summary.salesCash)}</strong></div>
+            {Object.keys(summary.transfersByCur || {}).length > 0 && (
+              <div className="kv"><span className="muted">Ventas (transferencia)</span><strong>{cashLine(summary.transfersByCur)}</strong></div>
+            )}
+            <div className="kv"><span className="muted">N.º de ventas</span><strong>{summary.salesCount}</strong></div>
+            <div className="kv">
+              <span className="muted">Fondo de caja a heredar</span>
+              <strong>{cashLine(summary.expectedCash)}</strong>
+            </div>
+          </div>
+        )}
+
         <button className="btn btn--primary btn--block" disabled={busy} onClick={doShare}>
           📲 Compartir por WhatsApp
         </button>
@@ -110,6 +148,7 @@ export function HandoffScreen() {
 function ImportPreview({ snap, busy, onConfirm, onCancel }) {
   const inh = snap.inheritedCash || {}
   const areas = snap.config?.areas || []
+  const ss = snap.shiftSummary || null
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -136,16 +175,28 @@ function ImportPreview({ snap, busy, onConfirm, onCancel }) {
           <div className="kv"><span className="muted">Conteos físicos</span><strong>{snap.counts.length || 0}</strong></div>
         )}
 
-        <h4 className="section-title" style={{ fontSize: '0.9em', marginTop: '12px' }}>Finanzas</h4>
+        <h4 className="section-title" style={{ fontSize: '0.9em', marginTop: '12px' }}>Caja y ventas del turno</h4>
+        {ss ? (
+          <>
+            {ss.area && <div className="kv"><span className="muted">Área del turno</span><strong>{ss.area}</strong></div>}
+            <div className="kv"><span className="muted">Ventas (efectivo)</span><strong>{cashLine(ss.salesCash)}</strong></div>
+            {ss.transfersByCur && Object.keys(ss.transfersByCur).length > 0 && (
+              <div className="kv"><span className="muted">Ventas (transferencia)</span><strong>{cashLine(ss.transfersByCur)}</strong></div>
+            )}
+            <div className="kv"><span className="muted">N.º de ventas</span><strong>{ss.salesCount ?? 0}</strong></div>
+          </>
+        ) : (
+          <p className="muted">Sin turno abierto de referencia en el archivo.</p>
+        )}
         <div className="kv"><span className="muted">Deudas pendientes</span><strong>{snap.pendingDebts?.length || 0}</strong></div>
         <div className="kv">
-          <span className="muted">Caja a heredar</span>
-          <strong>{Object.entries(inh).map(([c, v]) => formatMoney(v, c)).join(' · ') || '—'}</strong>
+          <span className="muted">Fondo de caja a heredar</span>
+          <strong>{cashLine(inh)}</strong>
         </div>
 
         <p className="muted" style={{ marginTop: '12px', fontSize: '0.85em' }}>
           ✅ Se sincronizarán: catálogo (con stock por ubicación), historial completo (ventas, movimientos, conteos),
-          áreas, tasas, deudas y caja. El estado será íntegro en este dispositivo.
+          áreas, tasas, deudas y el fondo de caja a heredar. El estado será íntegro en este dispositivo.
         </p>
         <div className="modal__actions">
           <button className="btn btn--ghost" onClick={onCancel}>Cancelar</button>

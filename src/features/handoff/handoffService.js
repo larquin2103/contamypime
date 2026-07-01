@@ -1,7 +1,9 @@
 import { db } from '../../db/db'
 import { now } from '../../lib/dates'
+import { round2 } from '../../lib/currency'
 import { configRepo } from '../../repositories/configRepo'
 import { ratesRepo } from '../../repositories/ratesRepo'
+import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { SHIFT_STATUS } from '../../db/constants'
 
 const APP_TAG = 'mypicuadre'
@@ -9,9 +11,17 @@ const SNAPSHOT_VERSION = 2  // v2: incluye areas, sales, movements, transfers, c
 
 // Arma el "estado completo del negocio" para traspasarlo a otro vendedor offline.
 // Incluye: existencias (por ubicación), precios, tasas, config, áreas, historial de
-// ventas/movimientos/transferencias, conteos físicos, deudas pendientes y caja a heredar.
-// Así el vendedor siguiente tiene el estado ÍNTEGRO sin perder trazabilidad.
-export async function buildSnapshot(fromUserName) {
+// ventas/movimientos/transferencias, conteos físicos, deudas pendientes, caja a heredar
+// y el resumen de caja/ventas del turno que se entrega. Así el vendedor siguiente tiene
+// el estado ÍNTEGRO sin perder trazabilidad.
+//
+// `fromUser` puede ser el objeto usuario ({ id, name }) o solo el nombre (compat).
+// `activeShift` es el turno abierto del que entrega (si lo hay); permite calcular el
+// fondo a heredar y las ventas de ESE turno/área con exactitud.
+export async function buildSnapshot(fromUser, activeShift = null) {
+  const fromUserName = typeof fromUser === 'string' ? fromUser : (fromUser?.name || '')
+  const fromUserId = typeof fromUser === 'string' ? null : (fromUser?.id || null)
+
   const [baseCurrency, semaphore, denominations, areas] = await Promise.all([
     configRepo.getBaseCurrency(),
     configRepo.getSemaphoreConfig(),
@@ -39,16 +49,65 @@ export async function buildSnapshot(fromUserName) {
   const allDebts = await db.internalDebts.toArray()
   const pendingDebts = allDebts.filter((d) => !d.settled)
 
-  // Turno actual: es contexto para el siguiente vendedor (quién cierra, cuándo, de qué área).
+  // Turno de CONTEXTO: el que entrega su turno. Prioridad:
+  //  1) el turno abierto pasado por la pantalla (el del usuario actual),
+  //  2) el turno abierto de ese usuario en la BD,
+  //  3) como respaldo, el último turno cerrado.
   const shifts = await db.shifts.toArray()
-  const currentShift = shifts
+  const openShifts = shifts
     .filter((s) => s.status === SHIFT_STATUS.OPEN)
-    .sort((a, b) => (a.openedAt < b.openedAt ? 1 : -1))[0] || null
+    .sort((a, b) => (a.openedAt < b.openedAt ? 1 : -1))
+  let ctxShift = activeShift || null
+  if (!ctxShift && fromUserId) ctxShift = openShifts.find((s) => s.sellerId === fromUserId) || null
+  if (!ctxShift) {
+    ctxShift = shifts
+      .filter((s) => s.status === SHIFT_STATUS.CLOSED && s.closedAt)
+      .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))[0] || null
+  }
+  // El turno que viaja como contexto para el siguiente vendedor.
+  const currentShift = ctxShift || openShifts[0] || null
+  const ctxArea = ctxShift?.area || ''
 
-  const lastClosed = shifts
-    .filter((s) => s.status === SHIFT_STATUS.CLOSED)
-    .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))[0]
-  const inheritedCash = lastClosed?.declaredCash || {}
+  // Resumen de caja/ventas del turno de contexto (efectivo de ventas, transferencias,
+  // extracciones, caja esperada). Es la "cantidad de dinero en ventas" que pediste.
+  let shiftSummary = null
+  // Fondo de caja a heredar por el próximo turno (POR ÁREA):
+  //  - turno abierto  -> el efectivo REAL en caja ahora (apertura + ventas - extracciones)
+  //  - turno cerrado  -> el fondo que se dejó (closingFloat), no el declarado total.
+  let inheritedCash = {}
+  if (ctxShift) {
+    const sum = await shiftsRepo.getSummary(ctxShift.id)
+    if (sum) {
+      shiftSummary = {
+        shiftId: ctxShift.id,
+        area: ctxArea,
+        status: ctxShift.status,
+        openingCash: ctxShift.openingCash || {},
+        salesCash: sum.salesCash,            // efectivo de ventas que entró a caja
+        transfersByCur: sum.transfersByCur,  // cobrado por transferencia (no entra a caja)
+        withdrawalsByCur: sum.withdrawalsByCur,
+        expectedCash: sum.expectedCash,      // efectivo que debería haber en caja
+        salesCount: sum.salesCount,
+        transfersCount: sum.transfersCount,
+        internalDebtTotal: sum.internalDebtTotal
+      }
+      inheritedCash =
+        ctxShift.status === SHIFT_STATUS.OPEN
+          ? sum.expectedCash
+          : (ctxShift.closingFloat || ctxShift.declaredCash || sum.expectedCash)
+    }
+  }
+  // Respaldo por área si no hubo turno de contexto (usa el último cierre del área).
+  if (!inheritedCash || Object.keys(inheritedCash).length === 0) {
+    inheritedCash = (await shiftsRepo.lastClosedCash(ctxArea || null)) || {}
+  }
+  // Normaliza a números redondeados (evita arrastrar strings/decimales sucios).
+  const cleanCash = (obj) => {
+    const o = {}
+    for (const [k, v] of Object.entries(obj || {})) o[k] = round2(Number(v) || 0)
+    return o
+  }
+  inheritedCash = cleanCash(inheritedCash)
 
   return {
     meta: { app: APP_TAG, version: SNAPSHOT_VERSION, exportedAt: now(), fromUserName },
@@ -62,9 +121,10 @@ export async function buildSnapshot(fromUserName) {
     stockMovements,
     transfers,
     counts,
-    // Contexto del turno actual.
+    // Contexto del turno actual + resumen de caja/ventas.
     currentShift,
-    // Deudas y caja heredada.
+    shiftSummary,
+    // Deudas y caja heredada (fondo a heredar, por área).
     pendingDebts,
     inheritedCash
   }

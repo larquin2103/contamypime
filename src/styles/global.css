@@ -869,6 +869,15 @@ input[type='file'] {
 
 /* Checklist de salida a un area: catalogo del almacen con checkbox por producto,
    agrupado por categoria, para marcar varios a la vez. */
+/* Resumen del turno en el traspaso (ventas + fondo a heredar). */
+.handoff-summary {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 4px 0 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
 .check-group {
   margin-top: 10px;
 }
