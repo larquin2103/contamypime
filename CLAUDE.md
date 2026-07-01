@@ -113,6 +113,11 @@ Un punto de venta puede dividirse en **áreas** (ej: Víveres, Carnicería), cad
 producto tiene `stockByLocation = { '__almacen': Q1, 'Víveres': Q2, ... }`:
 - **Entradas** (compras) suman al almacén: `stockByLocation[WAREHOUSE] += qty`.
 - **Salidas** (transfers) restan del almacén, suman al área: `WAREHOUSE -= qty`, `area += qty`.
+  La pantalla `TransferScreen` es una **salida por lote**: cada producto se elige una vez y se
+  reparte a **todas las áreas a la vez** (una columna por área). `transfersRepo.createBatch`
+  valida que la suma repartida de cada producto no supere el almacén y genera **un transfer por
+  área** (el historial/reportes por área no cambian), todo en una transacción atómica. La rebaja
+  unitaria del almacén es idéntica a `transfersRepo.create` (que se conserva).
 - **Ventas** desde un área restan de esa área (si hay vendedor con turno de área), o del almacén
   (si es dueño/admin sin área abierto como "Almacén central").
 - **Conteo físico** por ubicación (dueño elige almacén o área; vendedor cuenta su área

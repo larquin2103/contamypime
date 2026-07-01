@@ -867,6 +867,33 @@ input[type='file'] {
   font-size: 0.85rem;
 }
 
+/* Cuadricula de reparto (salida por lote a varias areas). Una celda por area
+   con su input de cantidad; se adapta al ancho (movil: 2 columnas). */
+.transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.transfer-grid__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.transfer-grid__cell span {
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.transfer-grid__cell input {
+  width: 100%;
+}
+.transfer-grid__foot {
+  margin-top: 8px;
+  font-size: 0.82rem;
+}
+
 /* ----- Tabs ----- */
 .tabs {
   display: flex;
