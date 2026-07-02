@@ -109,5 +109,9 @@ export const salesRepo = {
   async listAll() {
     const rows = await db.sales.toArray()
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  async count() {
+    return db.sales.count()
   }
 }

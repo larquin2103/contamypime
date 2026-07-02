@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { configRepo } from '../../repositories/configRepo'
 import { ratesRepo } from '../../repositories/ratesRepo'
@@ -10,6 +11,7 @@ import { FOREIGN_CURRENCIES, CASH_CURRENCIES, DEFAULT_SEMAPHORE_CONFIG } from '.
 import { formatMoney, baseToForeign } from '../../lib/currency'
 import { genRecoveryCode } from '../../lib/pin'
 import { formatDateTime } from '../../lib/dates'
+import { getStorageInfo } from '../../lib/storage'
 
 export function Settings() {
   const { user, isOwner } = useAuth()
@@ -33,6 +35,7 @@ export function Settings() {
       <SemaphoreSection />
       <DenominationsSection />
       <WhatsappSection />
+      <BackupLinkSection />
       <SecuritySection userId={user.id} />
       <LicenseSection />
     </div>
@@ -255,6 +258,31 @@ function DenominationsSection() {
       <button className="btn btn--primary btn--block" onClick={save}>
         {saved ? 'Guardado ✓' : 'Guardar denominaciones'}
       </button>
+    </section>
+  )
+}
+
+// Bloque 32 - Acceso al respaldo y estado de la proteccion del almacenamiento.
+// La gestion completa (hacer/restaurar respaldo) vive en su propia pantalla.
+function BackupLinkSection() {
+  const lastBackupAt = useLiveQuery(() => configRepo.get('lastBackupAt', null), [], undefined)
+  const [persisted, setPersisted] = useState(null)
+  useEffect(() => { getStorageInfo().then((i) => setPersisted(i.persisted)) }, [])
+
+  return (
+    <section className="card">
+      <h3>Respaldo de datos</h3>
+      <div className="kv">
+        <span className="muted">Almacenamiento protegido</span>
+        <strong className={persisted ? 'ok-text' : persisted === false ? 'warn-text' : 'muted'}>
+          {persisted ? '✅ Sí' : persisted === false ? '⚠️ No' : '—'}
+        </strong>
+      </div>
+      <div className="kv">
+        <span className="muted">Último respaldo</span>
+        <strong>{lastBackupAt ? formatDateTime(lastBackupAt) : 'Nunca'}</strong>
+      </div>
+      <Link className="btn btn--primary btn--block" to="/backup">Hacer o restaurar respaldo</Link>
     </section>
   )
 }

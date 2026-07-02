@@ -32,7 +32,10 @@ export const LOCAL_CONFIG_KEYS = new Set([
   'licenseToken',
   'licenseLastSeen',
   // Id estable de este dispositivo (registro/limite de dispositivos): local.
-  'deviceId'
+  'deviceId',
+  // Fechas de respaldo/restauracion (Bloque 32): cada dispositivo lleva las suyas.
+  'lastBackupAt',
+  'lastRestoreAt'
 ])
 
 // Campos de marca de tiempo, de mas reciente a base. La "marca de sync" de un

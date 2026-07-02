@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
@@ -15,6 +15,7 @@ import { configRepo } from '../../repositories/configRepo'
 import { FOREIGN_CURRENCIES, ROLE_LABELS, COUNT_STATUS } from '../../db/constants'
 import { StartChecklist } from '../help/StartChecklist'
 import { WelcomeModal } from '../help/WelcomeModal'
+import { BackupReminder } from '../backup/BackupReminder'
 
 // Aviso al vendedor cuando el dueño resuelve su conteo fisico (aprobado/rechazado).
 function CountNotice({ userId }) {
@@ -154,6 +155,7 @@ export function Home() {
       {isManager && <WelcomeModal />}
       <CountNotice userId={user.id} />
       {isManager && <ConcurrentShiftWarning />}
+      {isOwner && <BackupReminder />}
 
       <ShiftBanner />
 
@@ -208,6 +210,7 @@ export function Home() {
           {isOwner && (
             <Section label="Sistema">
               <ActionCard to="/cloud" icon={RefreshCw} title="Sincronización" sub="Datos en la nube" />
+              <ActionCard to="/backup" icon={Save} title="Respaldo" sub="Copia de seguridad" />
               <ActionCard to="/users" icon={Users} title="Usuarios" sub="Permisos y roles" />
               <ActionCard to="/settings" icon={Settings} title="Ajustes" sub="Preferencias" />
             </Section>

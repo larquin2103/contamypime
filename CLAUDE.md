@@ -164,6 +164,10 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   ubicación, conteo aislado por vendedor, ventas del dueño desde almacén central).
 - **Bloque 20.6 — Rol Administrativo:** ✅ COMPLETA (nuevo rol ADMIN: mando operativo sin
   identidad del negocio; verifyManagerPin; isManager flag; 16+ pantallas ajustadas).
+- **Fase 7 — Robustez y calidad profesional:** EN CURSO (plan completo en `docs/FASE7.md`).
+  Bloque 32 ✅ (protección del dato local: `storage.persist()` al arranque, respaldo y
+  restauración completa de la BD en `/backup` — `features/backup/` —, recordatorio de
+  respaldo en el Home del dueño). Bloques 33–39 pendientes.
 
 ## Fase 4 — Sincronización (cómo funciona)
 
