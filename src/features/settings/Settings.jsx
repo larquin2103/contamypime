@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { configRepo } from '../../repositories/configRepo'
 import { ratesRepo } from '../../repositories/ratesRepo'
 import { usersRepo } from '../../repositories/usersRepo'
+import { errorsRepo } from '../../repositories/errorsRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -36,6 +37,7 @@ export function Settings() {
       <DenominationsSection />
       <WhatsappSection />
       <BackupLinkSection />
+      <ErrorLogLinkSection />
       <SecuritySection userId={user.id} />
       <LicenseSection />
     </div>
@@ -283,6 +285,21 @@ function BackupLinkSection() {
         <strong>{lastBackupAt ? formatDateTime(lastBackupAt) : 'Nunca'}</strong>
       </div>
       <Link className="btn btn--primary btn--block" to="/backup">Hacer o restaurar respaldo</Link>
+    </section>
+  )
+}
+
+// Bloque 33 - Acceso al registro local de errores (diagnostico).
+function ErrorLogLinkSection() {
+  const count = useLiveQuery(() => errorsRepo.count(), [], 0)
+  return (
+    <section className="card">
+      <h3>Registro de errores</h3>
+      <div className="kv">
+        <span className="muted">Errores registrados</span>
+        <strong className={count > 0 ? 'warn-text' : 'ok-text'}>{count}</strong>
+      </div>
+      <Link className="btn btn--block" to="/errors">Ver registro</Link>
     </section>
   )
 }

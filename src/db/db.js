@@ -67,3 +67,9 @@ db.version(5).stores({
     if (!p.stockByLocation) p.stockByLocation = { [WAREHOUSE]: Number(p.stock || 0) }
   })
 })
+
+// Fase 7 - Bloque 33: registro local de errores (diagnostico). Es LOCAL de
+// cada dispositivo: no se sincroniza a la nube ni viaja en respaldos de turno.
+db.version(6).stores({
+  errorLog: 'id, createdAt'
+})

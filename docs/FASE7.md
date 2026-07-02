@@ -104,4 +104,7 @@ bloque es independiente y se puede intercalar con otras prioridades.
 
 - Bloque 32: ✅ COMPLETA (persistencia de almacenamiento, respaldo/restauración completa
   en `/backup`, recordatorio en el Home del dueño).
-- Bloques 33–39: pendientes.
+- Bloque 33: ✅ COMPLETA (ErrorBoundary global, tabla `errorLog` Dexie v6 con captura de
+  `window.onerror`/`unhandledrejection`/errores de render, pantalla `/errors` con
+  compartir por WhatsApp; enlace y contador en Ajustes).
+- Bloques 34–39: pendientes.

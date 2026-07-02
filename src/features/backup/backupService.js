@@ -37,6 +37,7 @@ const DEVICE_ONLY_KEYS = new Set([
 export async function buildBackup(fromUser) {
   const tables = {}
   for (const table of db.tables) {
+    if (table.name === 'errorLog') continue // diagnostico local: no viaja
     let rows = await table.toArray()
     if (table.name === 'config') rows = rows.filter((r) => !DEVICE_ONLY_KEYS.has(r.key))
     tables[table.name] = rows
@@ -100,6 +101,7 @@ export async function applyBackup(backup) {
 
   await db.transaction('rw', db.tables, async () => {
     for (const table of db.tables) {
+      if (table.name === 'errorLog') continue // diagnostico local: no se restaura
       let rows = backup.tables[table.name]
       if (!Array.isArray(rows) || rows.length === 0) continue
       if (table.name === 'config') {

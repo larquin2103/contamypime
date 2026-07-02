@@ -138,6 +138,8 @@ Versiones en `src/db/db.js`:
 - **v5**: `transfers` (salidas almacén→área, Bloque 20). `stockMovements` y `products` ganan
   dimensión `location` (almacén o área). Migración: establece `location = '__almacen'` en
   movimientos previos, inicializa `stockByLocation` en productos.
+- **v6**: `errorLog` (registro local de errores, Bloque 33). LOCAL del dispositivo: no se
+  sincroniza a la nube ni viaja en respaldos; se poda a las 200 entradas más recientes.
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`.
@@ -167,7 +169,9 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
 - **Fase 7 — Robustez y calidad profesional:** EN CURSO (plan completo en `docs/FASE7.md`).
   Bloque 32 ✅ (protección del dato local: `storage.persist()` al arranque, respaldo y
   restauración completa de la BD en `/backup` — `features/backup/` —, recordatorio de
-  respaldo en el Home del dueño). Bloques 33–39 pendientes.
+  respaldo en el Home del dueño). Bloque 33 ✅ (resiliencia: ErrorBoundary global,
+  registro local de errores en `errorLog` — Dexie v6, local, no sincroniza ni viaja en
+  respaldos — y pantalla `/errors` para verlo/compartirlo). Bloques 34–39 pendientes.
 
 ## Fase 4 — Sincronización (cómo funciona)
 

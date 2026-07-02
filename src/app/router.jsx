@@ -24,6 +24,7 @@ import { AuditScreen } from '../features/audit/AuditScreen'
 import { ReportsScreen } from '../features/reports/ReportsScreen'
 import { CloudScreen } from '../features/sync/CloudScreen'
 import { BackupScreen } from '../features/backup/BackupScreen'
+import { ErrorLogScreen } from '../features/errors/ErrorLogScreen'
 import { Settings } from '../features/settings/Settings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 import { HelpScreen } from '../features/help/HelpScreen'
@@ -66,6 +67,7 @@ export function AppRouter() {
         <Route path="/reports" element={<ReportsScreen />} />
         <Route path="/cloud" element={<CloudScreen />} />
         <Route path="/backup" element={<BackupScreen />} />
+        <Route path="/errors" element={<ErrorLogScreen />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="/help" element={<HelpScreen />} />
