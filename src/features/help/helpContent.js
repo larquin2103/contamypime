@@ -1,6 +1,7 @@
 // Material de ayuda de MypiCuadre (Fase A). Contenido como DATOS editables para
 // poder retocar los textos sin tocar la interfaz. Cada artículo:
-//   { id, section, audience, icon, title, teaser, body:[bloques] }
+//   { id, section, audience, title, teaser, body:[bloques] }
+// El icono de cada artículo vive en HelpScreen (ARTICLE_ICONS, lucide por id).
 // Bloques soportados por HelpScreen: { p } párrafo · { steps:[...] } pasos
 //   numerados · { tip } consejo (verde) · { warn } aviso (amarillo).
 //
@@ -22,7 +23,6 @@ export const HELP_ARTICLES = [
     id: 'que-es',
     section: 'Primeros pasos',
     audience: 'owner',
-    icon: '📱',
     title: 'Qué es MypiCuadre y cómo funciona sin internet',
     teaser: 'La app vive en tu teléfono; no necesita conexión para operar.',
     body: [
@@ -35,7 +35,6 @@ export const HELP_ARTICLES = [
     id: 'activar-licencia',
     section: 'Primeros pasos',
     audience: 'owner',
-    icon: '🔑',
     title: 'Activar tu licencia',
     teaser: 'Pega el código que te dieron; se verifica sin internet.',
     body: [
@@ -52,7 +51,6 @@ export const HELP_ARTICLES = [
     id: 'crear-dueno',
     section: 'Primeros pasos',
     audience: 'owner',
-    icon: '🧑‍💼',
     title: 'Crear tu PIN y guardar el código de recuperación',
     teaser: 'Tu PIN es tu llave. El código de recuperación te salva si lo olvidas.',
     body: [
@@ -70,7 +68,6 @@ export const HELP_ARTICLES = [
     id: 'monedas-tasas',
     section: 'Primeros pasos',
     audience: 'owner',
-    icon: '💱',
     title: 'Configurar moneda y tasas de cambio',
     teaser: 'Define cuánta MN vale cada moneda. Se edita sin internet.',
     body: [
@@ -87,7 +84,6 @@ export const HELP_ARTICLES = [
     id: 'cargar-productos',
     section: 'Primeros pasos',
     audience: 'owner',
-    icon: '📦',
     title: 'Cargar tus productos',
     teaser: 'Agrégalos uno a uno o impórtalos desde Excel.',
     body: [
@@ -104,7 +100,6 @@ export const HELP_ARTICLES = [
     id: 'abrir-turno',
     section: 'Uso diario',
     audience: 'owner',
-    icon: '📖',
     title: 'Abrir el turno',
     teaser: 'Regla de oro: solo con el turno abierto se puede vender.',
     body: [
@@ -121,7 +116,6 @@ export const HELP_ARTICLES = [
     id: 'vender',
     section: 'Uso diario',
     audience: 'owner',
-    icon: '🛒',
     title: 'Vender (efectivo y transferencia)',
     teaser: 'Busca el producto, arma el carrito y cobra.',
     body: [
@@ -139,7 +133,6 @@ export const HELP_ARTICLES = [
     id: 'cerrar-cuadre',
     section: 'Uso diario',
     audience: 'owner',
-    icon: '🧮',
     title: 'Cerrar el turno (el cuadre)',
     teaser: 'Cuenta la caja y la app te dice si cuadra con un semáforo.',
     body: [
@@ -156,7 +149,6 @@ export const HELP_ARTICLES = [
     id: 'semaforo',
     section: 'Uso diario',
     audience: 'owner',
-    icon: '🚦',
     title: 'Entender el semáforo del cuadre',
     teaser: '🟢 cuadra · 🟡 diferencia menor · 🔴 diferencia crítica.',
     body: [
@@ -174,7 +166,6 @@ export const HELP_ARTICLES = [
     id: 'areas',
     section: 'Gestión y avanzado',
     audience: 'owner',
-    icon: '🏬',
     title: 'Áreas de venta (opcional)',
     teaser: 'Divide el punto en áreas, cada una con su caja y cuadre.',
     body: [
@@ -191,7 +182,6 @@ export const HELP_ARTICLES = [
     id: 'almacen-salida',
     section: 'Gestión y avanzado',
     audience: 'owner',
-    icon: '🚚',
     title: 'Almacén y salida a las áreas',
     teaser: 'La mercancía entra al almacén y de ahí se reparte a cada área.',
     body: [
@@ -209,7 +199,6 @@ export const HELP_ARTICLES = [
     id: 'conteo-fisico',
     section: 'Gestión y avanzado',
     audience: 'owner',
-    icon: '📋',
     title: 'Conteo físico',
     teaser: 'Cuenta lo que hay de verdad y ajusta las existencias.',
     body: [
@@ -226,7 +215,6 @@ export const HELP_ARTICLES = [
     id: 'reportes-panel',
     section: 'Gestión y avanzado',
     audience: 'owner',
-    icon: '📊',
     title: 'Reportes y panel del dueño',
     teaser: 'Mira ventas, caja y alertas; exporta a PDF o Excel.',
     body: [
@@ -242,7 +230,6 @@ export const HELP_ARTICLES = [
     id: 'traspaso',
     section: 'Gestión y avanzado',
     audience: 'owner',
-    icon: '🔄',
     title: 'Traspaso de turno sin internet',
     teaser: 'Pasa el estado del negocio a otro teléfono con un archivo.',
     body: [
@@ -259,7 +246,6 @@ export const HELP_ARTICLES = [
     id: 'roles',
     section: 'Gestión y avanzado',
     audience: 'owner',
-    icon: '👥',
     title: 'Roles: Dueño, Administrativo y Vendedor',
     teaser: 'Cada rol ve y hace solo lo que le corresponde.',
     body: [
@@ -273,7 +259,6 @@ export const HELP_ARTICLES = [
     id: 'licencia-vence',
     section: 'Gestión y avanzado',
     audience: 'owner',
-    icon: '⏳',
     title: 'Renovar la licencia cuando vence',
     teaser: 'Pega la licencia nueva en Ajustes; sigues sin perder datos.',
     body: [
@@ -290,7 +275,6 @@ export const HELP_ARTICLES = [
     id: 'v-entrar',
     section: 'Guía para el vendedor',
     audience: 'seller',
-    icon: '🔓',
     title: 'Entrar con tu PIN',
     teaser: 'Cada vendedor entra con su propio PIN.',
     body: [
@@ -305,7 +289,6 @@ export const HELP_ARTICLES = [
     id: 'v-turno',
     section: 'Guía para el vendedor',
     audience: 'seller',
-    icon: '📖',
     title: 'Abrir tu turno',
     teaser: 'Sin turno abierto no puedes vender.',
     body: [
@@ -320,7 +303,6 @@ export const HELP_ARTICLES = [
     id: 'v-vender',
     section: 'Guía para el vendedor',
     audience: 'seller',
-    icon: '🛒',
     title: 'Vender',
     teaser: 'Busca, agrega al carrito y cobra.',
     body: [
@@ -336,7 +318,6 @@ export const HELP_ARTICLES = [
     id: 'v-cerrar',
     section: 'Guía para el vendedor',
     audience: 'seller',
-    icon: '🧮',
     title: 'Cerrar tu turno',
     teaser: 'Cuenta tu caja al terminar.',
     body: [

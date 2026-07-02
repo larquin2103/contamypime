@@ -1,9 +1,38 @@
 import { useMemo, useState } from 'react'
-import { ChevronLeft, Download } from 'lucide-react'
+import {
+  ArrowLeftRight, BarChart3, BookOpen, Calculator, ChevronLeft, ChevronRight,
+  ClipboardList, Coins, Download, Gauge, HelpCircle, Hourglass, KeyRound,
+  Lightbulb, LockOpen, Package, ShoppingCart, Smartphone, Store, TriangleAlert,
+  Truck, UserCog, Users,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { HELP_ARTICLES, HELP_SECTIONS } from './helpContent'
 import { downloadHelpPdf } from './helpPdf'
+
+// Icono lucide de cada artículo (mismos iconos que el Home para los mismos conceptos).
+const ARTICLE_ICONS = {
+  'que-es': Smartphone,
+  'activar-licencia': KeyRound,
+  'crear-dueno': UserCog,
+  'monedas-tasas': Coins,
+  'cargar-productos': Package,
+  'abrir-turno': BookOpen,
+  vender: ShoppingCart,
+  'cerrar-cuadre': Calculator,
+  semaforo: Gauge,
+  areas: Store,
+  'almacen-salida': Truck,
+  'conteo-fisico': ClipboardList,
+  'reportes-panel': BarChart3,
+  traspaso: ArrowLeftRight,
+  roles: Users,
+  'licencia-vence': Hourglass,
+  'v-entrar': LockOpen,
+  'v-turno': BookOpen,
+  'v-vender': ShoppingCart,
+  'v-cerrar': Calculator,
+}
 
 // Pantalla de Ayuda (Fase B). Índice de temas + lectura de cada artículo, todo
 // offline. El dueño/administrativo ve el recorrido completo (incluida la guía del
@@ -35,10 +64,13 @@ export function HelpScreen() {
   if (article) {
     return (
       <div className="screen">
-        <button className="pos-nav__back help-back" onClick={() => setOpenId(null)} aria-label="Volver al índice">
-          <ChevronLeft size={20} strokeWidth={2} /> Temas
-        </button>
-        <h2 className="help-article__title"><span className="help-emoji">{article.icon}</span> {article.title}</h2>
+        <div className="pos-nav">
+          <button className="pos-nav__back" onClick={() => setOpenId(null)} aria-label="Volver al índice">
+            <ChevronLeft size={20} strokeWidth={2} />
+          </button>
+          <h2 className="pos-nav__title">{article.title}</h2>
+          <span className="pos-nav__action" />
+        </div>
         <section className="card help-article">
           {article.body.map((block, i) => <HelpBlock key={i} block={block} />)}
         </section>
@@ -72,18 +104,23 @@ export function HelpScreen() {
 
       {sections.map((s) => (
         <section key={s.label} className="help-section">
-          <h3 className="home-section__label">{s.label}</h3>
+          <h3 className="section-label">{s.label}</h3>
           <div className="list">
-            {s.items.map((a) => (
-              <button key={a.id} className="list-item help-item" onClick={() => setOpenId(a.id)}>
-                <span className="help-item__emoji">{a.icon}</span>
-                <span className="help-item__text">
-                  <strong>{a.title}</strong>
-                  <span className="muted">{a.teaser}</span>
-                </span>
-                <span className="help-item__chev">›</span>
-              </button>
-            ))}
+            {s.items.map((a) => {
+              const Icon = ARTICLE_ICONS[a.id] || HelpCircle
+              return (
+                <button key={a.id} className="list-item help-item" onClick={() => setOpenId(a.id)}>
+                  <span className="help-item__tile">
+                    <Icon size={20} strokeWidth={1.9} />
+                  </span>
+                  <span className="help-item__text">
+                    <strong>{a.title}</strong>
+                    <span className="muted">{a.teaser}</span>
+                  </span>
+                  <ChevronRight size={18} className="help-item__chev" />
+                </button>
+              )
+            })}
           </div>
         </section>
       ))}
@@ -101,7 +138,21 @@ function HelpBlock({ block }) {
       </ol>
     )
   }
-  if (block.tip) return <p className="help-callout help-callout--tip">💡 {block.tip}</p>
-  if (block.warn) return <p className="help-callout help-callout--warn">⚠️ {block.warn}</p>
+  if (block.tip) {
+    return (
+      <p className="help-callout help-callout--tip">
+        <Lightbulb size={15} className="help-callout__icon" />
+        <span>{block.tip}</span>
+      </p>
+    )
+  }
+  if (block.warn) {
+    return (
+      <p className="help-callout help-callout--warn">
+        <TriangleAlert size={15} className="help-callout__icon" />
+        <span>{block.warn}</span>
+      </p>
+    )
+  }
   return null
 }
