@@ -45,8 +45,8 @@ function prevRangeFor(period) {
 
 const PERIODS = [
   ['today', 'Hoy'],
-  ['7', '7 dias'],
-  ['30', '30 dias'],
+  ['7', '7 días'],
+  ['30', '30 días'],
   ['all', 'Todo']
 ]
 
@@ -157,7 +157,7 @@ export function DashboardScreen() {
 
       <div className="tabs">
         <button className={`tab ${tab === 'top' ? 'is-active' : ''}`} onClick={() => setTab('top')}>Mas vendidos</button>
-        <button className={`tab ${tab === 'cat' ? 'is-active' : ''}`} onClick={() => setTab('cat')}>Categorias</button>
+        <button className={`tab ${tab === 'cat' ? 'is-active' : ''}`} onClick={() => setTab('cat')}>Categorías</button>
         {(report?.byArea || []).length > 0 && (
           <button className={`tab ${tab === 'area' ? 'is-active' : ''}`} onClick={() => setTab('area')}>Áreas</button>
         )}
@@ -257,11 +257,11 @@ export function DashboardScreen() {
           </div>
 
           <div className="screen__header">
-            <h3 className="section-title">Menor rotacion</h3>
+            <h3 className="section-title">Menor rotación</h3>
             <select value={rotDays} onChange={(e) => setRotDays(Number(e.target.value))} className="rot-select">
-              <option value={7}>7+ dias</option>
-              <option value={14}>14+ dias</option>
-              <option value={30}>30+ dias</option>
+              <option value={7}>7+ días</option>
+              <option value={14}>14+ días</option>
+              <option value={30}>30+ días</option>
             </select>
           </div>
           <div className="list">
@@ -271,12 +271,12 @@ export function DashboardScreen() {
                   <strong>{p.name}</strong>
                   <br />
                   <span className="muted">
-                    {p.daysSince === null ? 'Nunca vendido' : `${p.daysSince} dias sin venta`} · stock {p.stock} {p.unit}
+                    {p.daysSince === null ? 'Nunca vendido' : `${p.daysSince} días sin venta`} · stock {p.stock} {p.unit}
                   </span>
                 </div>
               </div>
             ))}
-            {lowRot.length === 0 && <p className="muted">Todo con buena rotacion.</p>}
+            {lowRot.length === 0 && <p className="muted">Todo con buena rotación.</p>}
           </div>
         </>
       )}
@@ -298,7 +298,7 @@ function LegendRow({ color, label, value, total, money }) {
 function CategoryBreakdown({ rows, money }) {
   const cats = useLiveQuery(() => categoriesRepo.list(), [], [])
   const name = useMemo(() => {
-    const map = { __none: 'Sin categoria' }
+    const map = { __none: 'Sin categoría' }
     for (const c of cats) map[c.id] = c.name
     return map
   }, [cats])
@@ -308,7 +308,7 @@ function CategoryBreakdown({ rows, money }) {
       {rows.map((r) => (
         <div key={r.categoryId} className="rank-row">
           <div className="rank-row__main">
-            <strong>{name[r.categoryId] || 'Sin categoria'}</strong>
+            <strong>{name[r.categoryId] || 'Sin categoría'}</strong>
             <span className="muted">{r.qty} vendidos · ganancia {money(r.profit)}</span>
           </div>
           <span className="price">{money(r.revenue)}</span>

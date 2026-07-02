@@ -5,6 +5,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
 import { ROLES, ROLE_LABELS } from '../../db/constants'
 import { formatDateTime } from '../../lib/dates'
+import { useEscapeClose } from '../../lib/useEscapeClose'
 
 // Gestion de usuarios (solo dueño). Los usuarios nunca se borran: se desactivan.
 // Tras sincronizar pueden aparecer duplicados (si se creo un dueño local antes
@@ -94,11 +95,12 @@ function NewUserForm({ onClose }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  useEscapeClose(onClose)
 
   const save = async () => {
     setError('')
     if (!name.trim()) return setError('Escribe un nombre')
-    if (pin.length < 4) return setError('El PIN debe tener al menos 4 digitos')
+    if (pin.length < 4) return setError('El PIN debe tener al menos 4 dígitos')
     setBusy(true)
     try {
       await usersRepo.create({ name, role, pin })
@@ -111,7 +113,7 @@ function NewUserForm({ onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Nuevo usuario" onClick={(e) => e.stopPropagation()}>
         <h3>Nuevo usuario</h3>
         <label className="field">
           <span>Nombre</span>
@@ -131,7 +133,7 @@ function NewUserForm({ onClose }) {
             costos. No gestiona usuarios, licencia ni sincronización.
           </p>
         )}
-        <p className="field-label">PIN (4 a 6 digitos)</p>
+        <p className="field-label">PIN (4 a 6 dígitos)</p>
         <PinInput value={pin} onChange={setPin} />
         {error && <p className="error">{error}</p>}
         <div className="modal__actions">
@@ -152,6 +154,7 @@ function ResetPinForm({ user, onClose }) {
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
+  useEscapeClose(onClose)
 
   const save = async () => {
     if (pin.length < 4) return
@@ -163,7 +166,7 @@ function ResetPinForm({ user, onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={`Resetear PIN de ${user.name}`} onClick={(e) => e.stopPropagation()}>
         <h3>Resetear PIN — {user.name}</h3>
         <p className="muted">Define un nuevo PIN para este usuario.</p>
         <PinInput value={pin} onChange={setPin} />

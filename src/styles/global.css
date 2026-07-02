@@ -28,6 +28,14 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Foco visible al navegar con teclado (no aparece al tocar con el dedo). */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-light);
+  outline-offset: 2px;
+}
+
 html,
 body,
 #root {
@@ -129,7 +137,7 @@ h3 {
   flex: 1;
   text-align: center;
   padding: 10px 4px;
-  color: var(--text-faint);
+  color: var(--text-3);
   text-decoration: none;
   font-size: 1.4rem;
   display: flex;
@@ -138,7 +146,7 @@ h3 {
   gap: 3px;
 }
 .nav-item span {
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 .nav-item.active {
@@ -381,7 +389,7 @@ textarea {
 }
 .badge {
   display: inline-block;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   padding: 3px 8px;
   border-radius: 999px;
   background: var(--primary);
@@ -741,7 +749,7 @@ input[type='file'] {
    DEBAJO y nunca se encime con la descripcion del producto. */
 .cart-line {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto 32px;
+  grid-template-columns: 40px minmax(0, 1fr) auto 44px;
   grid-template-areas:
     "tile info total remove"
     "tile stepper stepper remove";
@@ -783,12 +791,15 @@ input[type='file'] {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Objetivo tactil de 44px: es la accion destructiva del carrito. */
+  min-width: 44px;
+  min-height: 44px;
   background: transparent;
   border: none;
   color: var(--text-faint);
   cursor: pointer;
   padding: 4px;
-  border-radius: 6px;
+  border-radius: 10px;
   transition: all 0.2s ease;
   align-self: start;
 }
@@ -806,8 +817,9 @@ input[type='file'] {
   gap: 4px;
 }
 .qty-ctrl button {
-  width: 32px;
-  height: 32px;
+  /* 44px: objetivo tactil minimo para la accion mas repetida del POS. */
+  width: 44px;
+  height: 44px;
   border-radius: 9px;
   border: 1px solid var(--surface-2);
   background: var(--surface-2);
@@ -816,8 +828,8 @@ input[type='file'] {
   cursor: pointer;
 }
 .qty-ctrl input {
-  width: 46px;
-  padding: 5px;
+  width: 52px;
+  padding: 10px 5px;
   text-align: center;
 }
 .total-row {
@@ -1480,7 +1492,7 @@ input[type='file'] {
   letter-spacing: -0.5px;
 }
 .kpi__delta {
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 .kpi__delta--up { color: var(--ok); }
@@ -1558,7 +1570,7 @@ input[type='file'] {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   color: var(--muted);
   white-space: nowrap;
   flex-shrink: 0;
@@ -1679,7 +1691,7 @@ input[type='file'] {
   color: var(--text);
 }
 .home-badge {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
@@ -1790,11 +1802,11 @@ input[type='file'] {
 .home-section__label {
   margin: 0;
   padding-left: 3px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1.2px;
-  color: var(--text-faint);
+  color: var(--text-3);
 }
 .home-grid {
   display: grid;
@@ -1832,7 +1844,7 @@ input[type='file'] {
   line-height: 1.15;
 }
 .action-card__sub {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.25;
   color: var(--text-3);
@@ -1850,11 +1862,11 @@ input[type='file'] {
 }
 .rate-cell__label {
   display: block;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: var(--text-faint);
+  color: var(--text-3);
 }
 .rate-cell__val { font-size: 17px; font-weight: 800; }
 .rate-cell__val--empty { font-size: 14px; font-weight: 600; font-style: italic; color: var(--text-3); }

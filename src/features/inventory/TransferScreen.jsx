@@ -36,7 +36,7 @@ export function TransferScreen() {
   const warehouseOf = (p) => Number(p.stockByLocation?.[WAREHOUSE] || 0)
 
   const catName = useMemo(() => {
-    const m = { __none: 'Sin categoria' }
+    const m = { __none: 'Sin categoría' }
     for (const c of categories) m[c.id] = c.name
     return m
   }, [categories])
@@ -208,7 +208,7 @@ export function TransferScreen() {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filtrar por nombre o codigo…"
+              placeholder="Filtrar por nombre o código…"
             />
             {Object.keys(groups).length === 0 ? (
               <p className="muted">No hay productos con existencia en el almacén para enviar.</p>

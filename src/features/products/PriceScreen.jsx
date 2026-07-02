@@ -53,7 +53,7 @@ export function PriceScreen() {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar producto (3 letras o codigo)…"
+            placeholder="Buscar producto (3 letras o código)…"
           />
           <div className="product-list">
             {results.map((p) => (
@@ -130,7 +130,7 @@ function PriceEditor({ product, baseCurrency, userId, shiftId, onBack }) {
       <section className="card">
         <h3>Historial de precios</h3>
         {history.length === 0 ? (
-          <p className="muted">Sin cambios registrados todavia.</p>
+          <p className="muted">Sin cambios registrados todavía.</p>
         ) : (
           <div className="list">
             {history.map((h) => (

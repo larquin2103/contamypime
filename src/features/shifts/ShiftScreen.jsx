@@ -15,6 +15,7 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { CASH_CURRENCIES } from '../../db/constants'
 import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
+import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { buildCloseReport, openWhatsapp } from '../../lib/whatsapp'
 
@@ -315,6 +316,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
   const [askOwner, setAskOwner] = useState(false)
   const [busy, setBusy] = useState(false)
   const [warnNoCount, setWarnNoCount] = useState(false)
+  useEscapeClose(() => setWarnNoCount(false))
 
   if (!summary || !denominations) {
     return <div className="screen"><p className="muted">Calculando…</p></div>
@@ -518,7 +520,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
 
       {warnNoCount && (
         <div className="modal-backdrop" onClick={() => setWarnNoCount(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="No contaste el efectivo" onClick={(e) => e.stopPropagation()}>
             <h3>⚠️ No contaste el efectivo</h3>
             <p>
               Se registrara la caja declarada en <strong>0</strong> y quedara una diferencia de{' '}

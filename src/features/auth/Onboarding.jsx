@@ -47,7 +47,7 @@ export function Onboarding() {
   // ocultando el codigo de recuperacion. Se crea al confirmar "Ya lo guarde".
   const submit = () => {
     setError('')
-    if (pin.length < 4) return setError('El PIN debe tener al menos 4 digitos')
+    if (pin.length < 4) return setError('El PIN debe tener al menos 4 dígitos')
     if (pin !== confirm) {
       setConfirm('')
       setStep('confirm')
@@ -73,7 +73,7 @@ export function Onboarding() {
     <div className="screen screen--centered">
       <div className="card auth-card">
         <h1 className="brand">MypiCuadre</h1>
-        <p className="muted">Configuracion inicial — crea la cuenta del dueño</p>
+        <p className="muted">Configuración inicial — crea la cuenta del dueño</p>
 
         {step === 'name' && (
           <>
@@ -117,7 +117,7 @@ export function Onboarding() {
 
         {step === 'pin' && (
           <>
-            <p className="field-label">Crea un PIN (4 a 6 digitos)</p>
+            <p className="field-label">Crea un PIN (4 a 6 dígitos)</p>
             <PinInput value={pin} onChange={setPin} />
             <button
               className="btn btn--primary btn--block"
@@ -145,13 +145,13 @@ export function Onboarding() {
 
         {step === 'recovery' && (
           <>
-            <p className="field-label">Tu codigo de recuperacion</p>
+            <p className="field-label">Tu código de recuperación</p>
             <p className="muted">
-              Guardalo en un lugar seguro. Es la unica forma de recuperar tu PIN si lo olvidas.
+              Guárdalo en un lugar seguro. Es la única forma de recuperar tu PIN si lo olvidas.
             </p>
             <div className="recovery-code">{recovery}</div>
             <button className="btn btn--primary btn--block" onClick={finish}>
-              Ya lo guarde — entrar
+              Ya lo guardé — entrar
             </button>
           </>
         )}

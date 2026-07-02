@@ -40,7 +40,7 @@ export function CashScreen() {
           className={`tab ${tab === 'extraccion' ? 'is-active' : ''}`}
           onClick={() => setTab('extraccion')}
         >
-          Extraccion
+          Extracción
         </button>
         <button
           className={`tab ${tab === 'deuda' ? 'is-active' : ''}`}
@@ -97,7 +97,7 @@ function WithdrawForm({ shift, user, isManager }) {
 
   return (
     <section className="card">
-      <h3>Extraccion de caja</h3>
+      <h3>Extracción de caja</h3>
       <p className="muted">Sale dinero de la caja (no es una venta). Resta del efectivo esperado.</p>
       <div className="form-row">
         <label className="field">
@@ -115,10 +115,10 @@ function WithdrawForm({ shift, user, isManager }) {
         <span>Motivo</span>
         <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: pago a proveedor" />
       </label>
-      {!isManager && <p className="muted">Requiere autorizacion del dueño o administrativo (PIN) al confirmar.</p>}
-      {saved && <p className="ok-text">✓ Extraccion registrada</p>}
+      {!isManager && <p className="muted">Requiere autorización del dueño o administrativo (PIN) al confirmar.</p>}
+      {saved && <p className="ok-text">✓ Extracción registrada</p>}
       <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
-        {busy ? 'Registrando…' : 'Registrar extraccion'}
+        {busy ? 'Registrando…' : 'Registrar extracción'}
       </button>
       {askAuth && (
         <OwnerAuthModal onCancel={() => setAskAuth(false)} onAuthorized={(owner) => doWithdraw(owner.name)} />
@@ -230,7 +230,7 @@ function DebtForm({ shift, user, isManager }) {
             <span>Nota (opcional)</span>
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
-          {!isManager && <p className="muted">Requiere autorizacion del dueño o administrativo (PIN) al confirmar.</p>}
+          {!isManager && <p className="muted">Requiere autorización del dueño o administrativo (PIN) al confirmar.</p>}
           {saved && <p className="ok-text">✓ Deuda registrada</p>}
           <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
             {busy ? 'Registrando…' : 'Registrar deuda'}
@@ -264,7 +264,7 @@ function Movements({ shiftId }) {
         {withdrawals.map((w) => (
           <div key={w.id} className="list-item">
             <div>
-              <strong>Extraccion · {formatMoney(w.amount, w.currency)}</strong>
+              <strong>Extracción · {formatMoney(w.amount, w.currency)}</strong>
               <span className="muted"> · {w.reason}</span>
               <br />
               <span className="muted">Autoriza: {w.authorizedBy} · {formatDateTime(w.createdAt)}</span>

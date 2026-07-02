@@ -120,7 +120,7 @@ function RecoverPin({ user, onCancel, onDone }) {
     if (!ok) {
       const wait = recordFail(lockKey)
       return setError(
-        wait > 0 ? `Codigo incorrecto. Espera ${formatWait(wait)}.` : 'Codigo de recuperacion incorrecto'
+        wait > 0 ? `Código incorrecto. Espera ${formatWait(wait)}.` : 'Código de recuperación incorrecto'
       )
     }
     clearFails(lockKey)
@@ -128,7 +128,7 @@ function RecoverPin({ user, onCancel, onDone }) {
   }
 
   const saveNewPin = async () => {
-    if (newPin.length < 4) return setError('El PIN debe tener al menos 4 digitos')
+    if (newPin.length < 4) return setError('El PIN debe tener al menos 4 dígitos')
     setBusy(true)
     await usersRepo.setPin(user.id, newPin)
     await onDone(newPin) // inicia sesion con el PIN nuevo
@@ -140,7 +140,7 @@ function RecoverPin({ user, onCancel, onDone }) {
       <h2>Recuperar PIN</h2>
       {step === 'code' && (
         <>
-          <p className="field-label">Escribe tu codigo de recuperacion</p>
+          <p className="field-label">Escribe tu código de recuperación</p>
           <input
             autoFocus
             value={code}

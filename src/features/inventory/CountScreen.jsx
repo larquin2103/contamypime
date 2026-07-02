@@ -9,6 +9,7 @@ import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { formatDateTime } from '../../lib/dates'
+import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { WAREHOUSE, locationLabel } from '../../db/constants'
 
@@ -68,7 +69,7 @@ export function CountScreen() {
       <CountReview count={pending} ownerId={user.id} />
     ) : (
       <div className="screen">
-        <h2>Conteo fisico</h2>
+        <h2>Conteo físico</h2>
         <section className="card">
           <p>Tu conteo fue enviado y espera la <strong>aprobación del dueño o administrativo</strong>.</p>
         </section>
@@ -158,7 +159,7 @@ function CountEditor({ draft }) {
   const sysOf = (it) => (liveStock[it.productId] != null ? liveStock[it.productId] : Number(it.systemStock || 0))
 
   const catName = useMemo(() => {
-    const m = { __none: 'Sin categoria' }
+    const m = { __none: 'Sin categoría' }
     for (const c of categories) m[c.id] = c.name
     return m
   }, [categories])
@@ -207,7 +208,7 @@ function CountEditor({ draft }) {
     const list = groups[selectedCat] || []
     return (
       <div className="screen">
-        <button className="link-back" onClick={() => { save(); setSelectedCat(null) }}>← Categorias</button>
+        <button className="link-back" onClick={() => { save(); setSelectedCat(null) }}>← Categorías</button>
         <h2>{catName[selectedCat]}</h2>
         <div className="count-list">
           {list.map((it) => {
@@ -224,7 +225,7 @@ function CountEditor({ draft }) {
                   <input
                     type="number"
                     inputMode="decimal"
-                    placeholder="fisico"
+                    placeholder="físico"
                     value={phys ?? ''}
                     onChange={(e) => setItem(it.idx, { physicalQty: e.target.value })}
                   />
@@ -247,7 +248,7 @@ function CountEditor({ draft }) {
           })}
         </div>
         <button className="btn btn--primary btn--block" onClick={() => { save(); setSelectedCat(null) }}>
-          Guardar categoria
+          Guardar categoría
         </button>
       </div>
     )
@@ -299,6 +300,7 @@ function CountReview({ count, ownerId }) {
   const [busy, setBusy] = useState(false)
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
+  useEscapeClose(() => setRejecting(false))
 
   const counted = count.items.filter((it) => it.counted)
   const withDiff = counted.filter((it) => it.diff !== 0)
@@ -333,7 +335,7 @@ function CountReview({ count, ownerId }) {
           <div key={it.productId} className="count-row">
             <div className="count-row__main">
               <strong>{SEMAPHORE_EMOJI[it.semaphore]} {it.name}</strong>
-              <span className="muted">Sistema {it.systemStock} → Fisico {it.physicalQty} {it.unit}</span>
+              <span className="muted">Sistema {it.systemStock} → Físico {it.physicalQty} {it.unit}</span>
               {it.note && <span className="muted">Nota: {it.note}</span>}
             </div>
             <span className={`count-diff ${it.diff === 0 ? 'ok-text' : 'warn-text'}`}>
@@ -353,7 +355,7 @@ function CountReview({ count, ownerId }) {
 
       {rejecting && (
         <div className="modal-backdrop" onClick={() => setRejecting(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Rechazar conteo" onClick={(e) => e.stopPropagation()}>
             <h3>Rechazar conteo</h3>
             <label className="field">
               <span>Motivo (opcional)</span>

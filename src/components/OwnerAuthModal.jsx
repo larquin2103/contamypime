@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { usersRepo } from '../repositories/usersRepo'
+import { useEscapeClose } from '../lib/useEscapeClose'
 import { PinInput } from './PinInput'
 
 // Pide el PIN de un mando (dueño o administrativo) para autorizar una operacion
@@ -8,6 +9,7 @@ export function OwnerAuthModal({ onAuthorized, onCancel }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  useEscapeClose(onCancel)
 
   const verify = async () => {
     setBusy(true)
@@ -25,9 +27,9 @@ export function OwnerAuthModal({ onAuthorized, onCancel }) {
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Autorizacion</h3>
-        <p className="muted">Esta operacion necesita el PIN del dueño o de un administrativo.</p>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Autorización" onClick={(e) => e.stopPropagation()}>
+        <h3>Autorización</h3>
+        <p className="muted">Esta operación necesita el PIN del dueño o de un administrativo.</p>
         <PinInput value={pin} onChange={setPin} />
         {error && <p className="error">{error}</p>}
         <div className="modal__actions">

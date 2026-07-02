@@ -4,6 +4,7 @@ import { productsRepo } from '../../repositories/productsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { UNITS, UNIT_LABELS, NO_AREA_LABEL, WAREHOUSE, locationLabel } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useEscapeClose } from '../../lib/useEscapeClose'
 
 // Alta / edicion de producto. Solo dueño (la creacion desde entrada de
 // mercancia por el vendedor llega en el Bloque 7).
@@ -22,17 +23,18 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
   const [openingStock, setOpeningStock] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  useEscapeClose(onClose)
 
   const save = async () => {
     setError('')
     if (!name.trim()) return setError('El nombre es obligatorio')
-    if (price === '' || Number(price) < 0) return setError('Indica un precio de venta valido')
+    if (price === '' || Number(price) < 0) return setError('Indica un precio de venta válido')
 
     // Codigo unico (si se indica).
     if (code.trim()) {
       const existing = await productsRepo.getByCode(code)
       if (existing && existing.id !== product?.id) {
-        return setError(`El codigo "${code}" ya existe (${existing.name})`)
+        return setError(`El código "${code}" ya existe (${existing.name})`)
       }
     }
 
@@ -66,7 +68,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={editing ? 'Editar producto' : 'Nuevo producto'} onClick={(e) => e.stopPropagation()}>
         <h3>{editing ? 'Editar producto' : 'Nuevo producto'}</h3>
 
         <label className="field">
@@ -76,7 +78,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
 
         <div className="form-row">
           <label className="field">
-            <span>Codigo</span>
+            <span>Código</span>
             <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Ej: AV001" />
           </label>
           <label className="field">
@@ -92,9 +94,9 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
         </div>
 
         <label className="field">
-          <span>Categoria</span>
+          <span>Categoría</span>
           <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-            <option value="">— Sin categoria —</option>
+            <option value="">— Sin categoría —</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -157,7 +159,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
         </div>
 
         <label className="field">
-          <span>Stock minimo (alerta de reabastecimiento)</span>
+          <span>Stock mínimo (alerta de reabastecimiento)</span>
           <input
             type="number"
             inputMode="decimal"

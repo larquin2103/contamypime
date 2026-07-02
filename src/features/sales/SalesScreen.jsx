@@ -242,7 +242,7 @@ export function SalesScreen() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar producto (3 letras o codigo)…"
+          placeholder="Buscar producto (3 letras o código)…"
         />
       </div>
       {results.length > 0 && (
@@ -407,12 +407,12 @@ export function SalesScreen() {
               )}
 
               <label className="field">
-                <span>Pega el SMS de confirmacion</span>
+                <span>Pega el SMS de confirmación</span>
                 <textarea
                   rows={3}
                   value={sms}
                   onChange={(e) => onSmsChange(e.target.value)}
-                  placeholder="Pega aqui el mensaje del banco…"
+                  placeholder="Pega aquí el mensaje del banco…"
                 />
               </label>
 
@@ -432,7 +432,7 @@ export function SalesScreen() {
                   <input
                     value={transferRef}
                     onChange={(e) => setTransferRef(e.target.value)}
-                    placeholder="No. de operacion"
+                    placeholder="No. de operación"
                   />
                 </label>
               </div>

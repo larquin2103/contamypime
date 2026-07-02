@@ -141,7 +141,7 @@ function Preview({ result, onConfirm, busy }) {
           <span className="chip is-error">{summary.error} con error</span>
         </div>
         <p className="muted">
-          Se importaran solo los {summary.ok} validos. Los duplicados y los que tienen error se
+          Se importarán solo los {summary.ok} válidos. Los duplicados y los que tienen error se
           omiten — corrige el archivo y vuelve a subirlo si quieres incluirlos.
         </p>
       </section>

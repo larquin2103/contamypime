@@ -78,7 +78,7 @@ export function Catalog() {
               🏷️ Precios
             </Link>
             <button className="btn btn--ghost btn--sm" onClick={() => setShowCategories(true)}>
-              Categorias
+              Categorías
             </button>
             <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}>
               + Producto
@@ -92,12 +92,12 @@ export function Catalog() {
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar por nombre (3 letras) o codigo…"
+        placeholder="Buscar por nombre (3 letras) o código…"
       />
 
       <p className="muted result-count">
         {filtered.length} producto{filtered.length === 1 ? '' : 's'}
-        {filtered.length > MAX_RENDER && ` — mostrando ${MAX_RENDER}, refina la busqueda`}
+        {filtered.length > MAX_RENDER && ` — mostrando ${MAX_RENDER}, refina la búsqueda`}
       </p>
 
       <div className="product-list">
@@ -112,7 +112,7 @@ export function Catalog() {
               <strong>{p.name}</strong>
               <span className="muted">
                 {p.code ? `${p.code} · ` : ''}
-                {categoryName[p.categoryId] || 'Sin categoria'}
+                {categoryName[p.categoryId] || 'Sin categoría'}
               </span>
             </div>
             <div className="product-row__meta">

@@ -191,10 +191,10 @@ function WhatsappSection() {
     <section className="card">
       <h3>WhatsApp del dueño</h3>
       <p className="muted">
-        Para recibir el reporte de cierre de cada turno. Incluye el codigo de pais (ej. 53 para Cuba).
+        Para recibir el reporte de cierre de cada turno. Incluye el código de país (ej. 53 para Cuba).
       </p>
       <label className="field">
-        <span>Numero (con codigo de pais)</span>
+        <span>Número (con código de país)</span>
         <input
           inputMode="tel"
           value={value}
@@ -203,7 +203,7 @@ function WhatsappSection() {
         />
       </label>
       <button className="btn btn--primary btn--block" onClick={save}>
-        {saved ? 'Guardado ✓' : 'Guardar numero'}
+        {saved ? 'Guardado ✓' : 'Guardar número'}
       </button>
     </section>
   )
@@ -273,14 +273,14 @@ function SecuritySection({ userId }) {
 
   return (
     <section className="card">
-      <h3>Codigo de recuperacion</h3>
+      <h3>Código de recuperación</h3>
       <p className="muted">
-        Sirve para recuperar tu PIN si lo olvidas. Al regenerarlo, el codigo anterior deja de
-        funcionar. Guardalo en un lugar seguro.
+        Sirve para recuperar tu PIN si lo olvidas. Al regenerarlo, el código anterior deja de
+        funcionar. Guárdalo en un lugar seguro.
       </p>
       {code && <div className="recovery-code">{code}</div>}
       <button className="btn btn--block" disabled={busy} onClick={regenerate}>
-        {busy ? 'Generando…' : code ? 'Regenerar otro' : 'Regenerar codigo'}
+        {busy ? 'Generando…' : code ? 'Regenerar otro' : 'Regenerar código'}
       </button>
     </section>
   )
@@ -394,7 +394,7 @@ function SemaphoreSection() {
 
   return (
     <section className="card">
-      <h3>Semaforo del cuadre</h3>
+      <h3>Semáforo del cuadre</h3>
       <p className="muted">Margen de diferencia tolerado al cerrar turno (% del esperado).</p>
       <label className="field">
         <span>🟢 Cuadra si la diferencia es menor o igual a (%)</span>

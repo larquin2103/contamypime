@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLicense } from '../../app/providers/LicenseProvider'
+import { useEscapeClose } from '../../lib/useEscapeClose'
 
 const STORAGE_KEY = 'welcomeSeen'
 
@@ -10,15 +11,15 @@ const STORAGE_KEY = 'welcomeSeen'
 export function WelcomeModal() {
   const { daysLeft, status } = useLicense()
   const [seen, setSeen] = useState(() => localStorage.getItem(STORAGE_KEY) === '1')
-  if (seen) return null
-
   const close = () => { localStorage.setItem(STORAGE_KEY, '1'); setSeen(true) }
+  useEscapeClose(close)
+  if (seen) return null
   // Días de prueba (si la licencia caduca). Solo se muestra si es un número real.
   const showDays = Number.isFinite(daysLeft) && (status === 'active' || status === 'expiring')
 
   return (
     <div className="modal-backdrop" onClick={close}>
-      <div className="modal welcome-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal welcome-modal" role="dialog" aria-modal="true" aria-label="Bienvenida a MypiCuadre" onClick={(e) => e.stopPropagation()}>
         <h2 className="brand">¡Bienvenido a MypiCuadre!</h2>
         <p className="muted">Tu sistema de ventas y cuadre de caja, funciona sin internet.</p>
 

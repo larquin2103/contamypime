@@ -180,7 +180,7 @@ export function EntryScreen() {
         </p>
         <p className="muted">
           Para cargar muchos productos a la vez, usa <strong>⬆ Importar Excel</strong>.
-          Columnas: {ENTRY_TEMPLATE_HEADERS.join(', ')} (coteja por codigo).{' '}
+          Columnas: {ENTRY_TEMPLATE_HEADERS.join(', ')} (coteja por código).{' '}
           <button className="link-inline" onClick={downloadTemplate}>Descargar plantilla</button>
         </p>
       </section>
@@ -190,8 +190,8 @@ export function EntryScreen() {
           <strong>{importMsg.added} producto(s) agregado(s) a la entrada.</strong>
           {importMsg.notFound.length > 0 && (
             <p className="muted">
-              No encontrados en el catalogo ({importMsg.notFound.length}): {importMsg.notFound.slice(0, 15).join(', ')}
-              {importMsg.notFound.length > 15 ? '…' : ''}. Créalos en el catalogo y vuelve a importar.
+              No encontrados en el catálogo ({importMsg.notFound.length}): {importMsg.notFound.slice(0, 15).join(', ')}
+              {importMsg.notFound.length > 15 ? '…' : ''}. Créalos en el catálogo y vuelve a importar.
             </p>
           )}
           {importMsg.errors.length > 0 && (
@@ -206,7 +206,7 @@ export function EntryScreen() {
         type="search"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Buscar producto (3 letras o codigo)…"
+        placeholder="Buscar producto (3 letras o código)…"
       />
       {results.length > 0 && (
         <div className="product-list sell-results">
