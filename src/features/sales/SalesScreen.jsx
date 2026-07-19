@@ -8,6 +8,8 @@ import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney, baseToForeign } from '../../lib/currency'
 import { parseSms } from '../../lib/sms'
@@ -17,9 +19,14 @@ export function SalesScreen() {
   const { user } = useAuth()
   const { activeShift, canSell } = useShift()
   const { baseCurrency, rateOf } = useCurrency()
+  const { hasModule } = useLicense()
   const navigate = useNavigate()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
+  // Bloque A (modulo mayorista): permiso general del dueño en Ajustes para que
+  // el vendedor venda desde el almacen central sin cerrar su turno.
+  const warehouseAllowed = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], false)
+  const [fromWarehouse, setFromWarehouse] = useState(false)
 
   const [query, setQuery] = useState('')
   const [cart, setCart] = useState([]) // [{ productId, name, unit, unitPrice, unitCost, qty, stock }]
@@ -54,21 +61,42 @@ export function SalesScreen() {
   // Existencia disponible para ESTE vendedor: la de su área (Bloque 20). Sin
   // áreas configuradas, se vende contra el almacén (comportamiento clásico).
   const sellArea = activeShift?.area || ''
-  const availOf = (p) =>
-    sellArea
-      ? Number(p.stockByLocation?.[sellArea] || 0)
-      : Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
+  // Bloque A: el vendedor con área puede alternar el ORIGEN de la mercancía
+  // (su área / almacén central) si la licencia trae el módulo y el dueño lo
+  // permitió en Ajustes. El dinero entra siempre a la caja de SU turno.
+  const canPickSource = !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
+  const sellLoc = sellArea && !(canPickSource && fromWarehouse) ? sellArea : WAREHOUSE
+
+  const availAt = (p, loc) =>
+    loc === WAREHOUSE
+      ? Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
+      : Number(p.stockByLocation?.[loc] || 0)
+  const availOf = (p) => availAt(p, sellLoc)
+
+  // Al cambiar el origen se revalida el carrito contra la nueva ubicación (el
+  // stock por línea y el bloqueo de cantidades siguen siendo veraces).
+  const switchSource = (toWarehouse) => {
+    if (toWarehouse === fromWarehouse) return
+    setFromWarehouse(toWarehouse)
+    const loc = toWarehouse ? WAREHOUSE : sellArea
+    setCart((prev) =>
+      prev.map((l) => {
+        const p = products.find((x) => x.id === l.productId)
+        return { ...l, stock: p ? availAt(p, loc) : 0 }
+      })
+    )
+  }
 
   const results = useMemo(() => {
     if (!query.trim()) return []
     return products
       .filter((p) => matchesQuery(p, query))
-      // En un área, solo se ofrecen los productos ASIGNADOS a esa área (con
-      // existencia). Sin áreas, se muestra todo el catálogo (modo clásico).
+      // Con un área (o vendiendo del almacén como vendedor), solo se ofrece lo
+      // que tiene existencia en el origen. Sin áreas, todo el catálogo (clásico).
       .filter((p) => (sellArea ? availOf(p) > 0 : true))
       .slice(0, 20)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, query, sellArea])
+  }, [products, query, sellArea, sellLoc])
 
   const addToCart = (p) => {
     const avail = availOf(p)
@@ -182,7 +210,8 @@ export function SalesScreen() {
         cashAmount: round2(totalInCur),
         amountPaid: paidNum,
         change,
-        rate: payCurrency === baseCurrency ? null : rate
+        rate: payCurrency === baseCurrency ? null : rate,
+        sourceLocation: sellLoc
       })
       setLastSale({ method: 'cash', change, payCurrency })
     } else {
@@ -198,7 +227,8 @@ export function SalesScreen() {
         transferReference: transferRef,
         transferSms: sms,
         transferExpected: round2(totalTransfer),
-        rate: transferCurrency === baseCurrency ? null : transferRate
+        rate: transferCurrency === baseCurrency ? null : transferRate,
+        sourceLocation: sellLoc
       })
       setLastSale({ method: 'transfer', transferCurrency, transferRef })
     }
@@ -216,13 +246,32 @@ export function SalesScreen() {
         <Link className="pos-nav__action" to="/shift">Turno</Link>
       </div>
 
+      {canPickSource && (
+        <div className="tabs">
+          <button
+            className={`tab ${!fromWarehouse ? 'is-active' : ''}`}
+            onClick={() => switchSource(false)}
+          >
+            Mi área ({sellArea})
+          </button>
+          <button
+            className={`tab ${fromWarehouse ? 'is-active' : ''}`}
+            onClick={() => switchSource(true)}
+          >
+            🏬 Almacén central
+          </button>
+        </div>
+      )}
+
       {areas.length > 0 && (
         <p className="muted" style={{ margin: '0 0 8px' }}>
           Vendiendo desde:{' '}
-          <strong>{sellArea ? `Área ${sellArea}` : '🏬 Almacén central'}</strong>
-          {sellArea
+          <strong>{sellLoc === WAREHOUSE ? '🏬 Almacén central' : `Área ${sellArea}`}</strong>
+          {sellLoc !== WAREHOUSE
             ? ' · solo los productos asignados a tu área.'
-            : ' · todo el inventario del almacén.'}
+            : sellArea
+              ? ' · venta mayorista: rebaja del almacén y cobra en tu caja.'
+              : ' · todo el inventario del almacén.'}
         </p>
       )}
 
@@ -262,7 +311,7 @@ export function SalesScreen() {
                   <span className="muted">
                     {p.code ? `${p.code} · ` : ''}
                     {out
-                      ? <span className="badge-out">{sellArea ? 'Sin stock en tu área' : 'Agotado'}</span>
+                      ? <span className="badge-out">{sellLoc === WAREHOUSE ? 'Agotado' : 'Sin stock en tu área'}</span>
                       : `${avail} ${p.unit}`}
                   </span>
                 </div>
@@ -286,7 +335,11 @@ export function SalesScreen() {
                   <strong>{l.name}</strong>
                   <span className="muted">
                     {formatMoney(l.unitPrice, baseCurrency)} × {l.qty} {l.unit}
-                    {l.qty > l.stock && <span className="warn-text"> · solo hay {l.stock} en tu área</span>}
+                    {l.qty > l.stock && (
+                      <span className="warn-text">
+                        {' '}· solo hay {l.stock} {sellLoc === WAREHOUSE ? 'en el almacén' : 'en tu área'}
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="qty-ctrl">
@@ -442,7 +495,9 @@ export function SalesScreen() {
 
           {!stockOk && (
             <p className="error">
-              Hay productos por encima de la existencia de tu área. Ajusta la cantidad o pide una salida del almacén.
+              {sellLoc === WAREHOUSE
+                ? 'Hay productos por encima de la existencia del almacén. Ajusta las cantidades.'
+                : 'Hay productos por encima de la existencia de tu área. Ajusta la cantidad o pide una salida del almacén.'}
             </p>
           )}
 

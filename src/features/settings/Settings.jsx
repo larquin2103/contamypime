@@ -13,7 +13,7 @@ import { formatMoney, baseToForeign } from '../../lib/currency'
 import { genRecoveryCode } from '../../lib/pin'
 import { formatDateTime } from '../../lib/dates'
 import { getStorageInfo } from '../../lib/storage'
-import { licenseModules, LICENSE_MODULE_LABELS } from '../../lib/license'
+import { licenseModules, LICENSE_MODULES, LICENSE_MODULE_LABELS } from '../../lib/license'
 
 export function Settings() {
   const { user, isOwner } = useAuth()
@@ -34,6 +34,7 @@ export function Settings() {
       <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
       <AreasSection />
+      <WholesaleSection />
       <SemaphoreSection />
       <DenominationsSection />
       <WhatsappSection />
@@ -92,6 +93,36 @@ function AreasSection() {
       <p className="muted">
         Quitar un área no borra sus productos ni sus ventas; solo deja de ofrecerse para nuevos turnos.
       </p>
+    </section>
+  )
+}
+
+// Bloque A (modulo mayorista): permiso general para que el vendedor venda desde
+// el almacen central SIN cerrar su turno. Solo aparece si la licencia trae el
+// modulo; sin el, la app opera exactamente como la version clasica.
+function WholesaleSection() {
+  const { hasModule } = useLicense()
+  const enabled = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], undefined)
+  if (!hasModule(LICENSE_MODULES.WHOLESALE)) return null
+  if (enabled === undefined) return null
+
+  return (
+    <section className="card">
+      <h3>Ventas mayoristas</h3>
+      <p className="muted">
+        Con este permiso, el vendedor puede elegir en la pantalla de venta cobrar productos
+        del <strong>almacén central</strong> sin cerrar su turno. El dinero entra a la caja
+        de su turno y la venta queda marcada con su origen (visible en los reportes).
+      </p>
+      <div className="kv">
+        <span className="muted">Vender desde el almacén central</span>
+        <button
+          className={`btn btn--sm ${enabled ? 'btn--primary' : 'btn--ghost'}`}
+          onClick={() => configRepo.set('sellerWarehouseSale', !enabled)}
+        >
+          {enabled ? 'Activado ✓' : 'Desactivado'}
+        </button>
+      </div>
     </section>
   )
 }

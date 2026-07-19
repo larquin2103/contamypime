@@ -27,7 +27,10 @@ export const salesRepo = {
     transferAmount = 0,
     transferReference = '',
     transferSms = '',
-    transferExpected = 0 // lo que se debia cobrar en la moneda de la transferencia
+    transferExpected = 0, // lo que se debia cobrar en la moneda de la transferencia
+    // Bloque A (modulo mayorista): ubicacion de la que sale la mercancia. Vacio
+    // = comportamiento clasico (el area del turno, o el almacen sin area).
+    sourceLocation = ''
   }) {
     const id = newId()
     const ts = now()
@@ -39,12 +42,17 @@ export const salesRepo = {
     // area; la "venta cruzada" queda retirada (hasCrossArea solo como dato
     // historico de ventas previas). El area del producto se guarda informativa.
     const hasCrossArea = false
+    // La venta rebaja el stock de su ubicacion de ORIGEN: el area del turno por
+    // defecto, o el almacen central si la venta es mayorista (Bloque A). El
+    // dinero entra siempre a la caja del turno, sea cual sea el origen.
+    const loc = String(sourceLocation || '').trim() || shiftArea || WAREHOUSE
     await db.transaction('rw', db.sales, db.stockMovements, db.products, async () => {
       await db.sales.add({
         id,
         shiftId,
         sellerId,
         area: shiftArea,
+        sourceLocation: loc,
         hasCrossArea,
         createdAt: ts,
         items, // [{ productId, name, unit, qty, unitPrice, unitCost, lineTotal, area }]
@@ -67,9 +75,6 @@ export const salesRepo = {
         transferDiff,
         voided: false
       })
-      // La venta rebaja el stock del AREA donde se cobro (su ubicacion). Sin
-      // areas configuradas, la ubicacion es el almacen (comportamiento clasico).
-      const loc = shiftArea || WAREHOUSE
       for (const it of items) {
         const qty = Math.abs(Number(it.qty))
         await db.stockMovements.add({

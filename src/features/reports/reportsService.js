@@ -37,6 +37,9 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
       formatDateTime(s.createdAt),
       names[s.sellerId] || 'vendedor',
       areaLabel(s.area),
+      // Origen de la mercancia (Bloque A): "Almacén" cuando un turno de area
+      // vendio del almacen central (venta mayorista). Vacio = venta normal.
+      s.area && s.sourceLocation === WAREHOUSE ? WAREHOUSE_LABEL : '',
       s.hasCrossArea ? 'Sí' : '',
       isTransfer ? 'Transferencia' : 'Efectivo',
       isTransfer ? s.transferReference || '' : '',
@@ -47,11 +50,11 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
     ]
   })
   const total = round2(sales.reduce((a, s) => a + Number(s.totalBase || 0), 0))
-  rows.push(['', '', '', '', '', 'TOTAL', total, '', '', ''])
+  rows.push(['', '', '', '', '', '', 'TOTAL', total, '', '', ''])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Vendedor', 'Área', 'Cruzada', 'Metodo', 'No. operacion', 'Total', 'Esperado', 'Recibido', 'Diferencia'],
+    head: ['Fecha', 'Vendedor', 'Área', 'Origen', 'Cruzada', 'Metodo', 'No. operacion', 'Total', 'Esperado', 'Recibido', 'Diferencia'],
     rows,
     filename: 'ventas'
   }
