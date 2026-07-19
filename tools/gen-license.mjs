@@ -24,6 +24,8 @@
 //   --dias N    vigencia en dias desde hoy (omitir para licencia sin caducidad)
 //   --plan      demo | mensual | anual | perpetua  (por defecto: mensual)
 //   --maxdisp N limite opcional de dispositivos
+//   --modulos   modulos premium separados por coma (ej: mayorista,cuentas);
+//               omitir para una licencia clasica sin modulos
 //   --key RUTA  ruta de la clave privada (por defecto tools/license-private-key.json)
 // ---------------------------------------------------------------------------
 import { webcrypto as crypto } from 'node:crypto'
@@ -103,7 +105,10 @@ async function mint(args) {
     plan,
     emitida: new Date().toISOString().slice(0, 10),
     expira,
-    ...(args.maxdisp ? { maxDispositivos: Number(args.maxdisp) } : {})
+    ...(args.maxdisp ? { maxDispositivos: Number(args.maxdisp) } : {}),
+    ...(typeof args.modulos === 'string' && args.modulos.trim()
+      ? { modulos: args.modulos.split(',').map((m) => m.trim()).filter(Boolean) }
+      : {})
   }
   const payloadB64 = bytesToB64url(enc.encode(JSON.stringify(payload)))
   const signed = enc.encode(PREFIX + '.' + payloadB64)
@@ -116,6 +121,7 @@ async function mint(args) {
   console.log('   Emitida :', payload.emitida)
   console.log('   Expira  :', payload.expira || 'sin caducidad')
   if (payload.maxDispositivos) console.log('   Disp.   :', payload.maxDispositivos)
+  if (payload.modulos) console.log('   Modulos :', payload.modulos.join(', '))
   console.log('\n--- Codigo de licencia (copialo al cliente) ---\n')
   console.log(token)
   console.log('')

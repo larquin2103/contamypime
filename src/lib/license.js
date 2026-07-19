@@ -18,6 +18,25 @@ const PREFIX = 'MYPI1'
 const VERIFY_ALGO = { name: 'ECDSA', hash: 'SHA-256' }
 const IMPORT_ALGO = { name: 'ECDSA', namedCurve: 'P-256' }
 
+// Modulos opcionales de la licencia (funciones que se venden por separado).
+// Viajan firmados en el payload (`modulos: ['mayorista', ...]`), por lo que no
+// se pueden autoactivar. Una licencia SIN el campo se comporta como siempre:
+// ningun modulo habilitado y la app identica a la version clasica.
+export const LICENSE_MODULES = {
+  WHOLESALE: 'mayorista', // venta desde almacen central + precios por escala
+  ACCOUNTS: 'cuentas' // proveedores/acreedores + cuentas de tesoreria
+}
+
+export const LICENSE_MODULE_LABELS = {
+  mayorista: 'Ventas mayoristas',
+  cuentas: 'Cuentas y proveedores'
+}
+
+// Lista de modulos de un payload (tolerante a licencias viejas sin el campo).
+export function licenseModules(payload) {
+  return Array.isArray(payload?.modulos) ? payload.modulos : []
+}
+
 // Clave publica del emisor (JWK). NO es secreta.
 // Para produccion, genera tu propio par con `node tools/gen-license.mjs keygen`
 // y reemplaza este objeto por el que imprime el comando.

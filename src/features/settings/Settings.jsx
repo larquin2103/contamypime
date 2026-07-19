@@ -13,6 +13,7 @@ import { formatMoney, baseToForeign } from '../../lib/currency'
 import { genRecoveryCode } from '../../lib/pin'
 import { formatDateTime } from '../../lib/dates'
 import { getStorageInfo } from '../../lib/storage'
+import { licenseModules, LICENSE_MODULE_LABELS } from '../../lib/license'
 
 export function Settings() {
   const { user, isOwner } = useAuth()
@@ -142,6 +143,12 @@ function LicenseSection() {
           <div className="kv"><span className="muted">Plan</span><strong>{p.plan}</strong></div>
           <div className="kv"><span className="muted">Estado</span><strong className={st.cls}>{st.label}</strong></div>
           <div className="kv"><span className="muted">Vence</span><strong>{p.expira || 'sin caducidad'}</strong></div>
+          {licenseModules(p).length > 0 && (
+            <div className="kv">
+              <span className="muted">Módulos</span>
+              <strong>{licenseModules(p).map((m) => LICENSE_MODULE_LABELS[m] || m).join(', ')}</strong>
+            </div>
+          )}
           {Number.isFinite(lic.daysLeft) && (
             <div className="kv">
               <span className="muted">Días restantes</span>

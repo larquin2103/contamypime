@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { licenseRepo } from '../../repositories/licenseRepo'
-import { evaluateLicense, today } from '../../lib/license'
+import { evaluateLicense, licenseModules, today } from '../../lib/license'
 
 const LicenseContext = createContext(null)
 
@@ -98,9 +98,16 @@ export function LicenseProvider({ children }) {
     return { ok: false, status: ev.status, reason: ev.reason }
   }, [])
 
+  const unlocked = ['active', 'expiring', 'grace'].includes(state.status)
+  // Modulos opcionales firmados en la licencia (mayorista, cuentas, ...).
+  // Solo cuentan con la licencia desbloqueada; sin el campo -> ninguno.
+  const modules = unlocked ? licenseModules(state.payload) : []
+
   const value = {
     ...state,
-    unlocked: ['active', 'expiring', 'grace'].includes(state.status),
+    unlocked,
+    modules,
+    hasModule: (m) => modules.includes(m),
     warnDays: WARN_DAYS,
     graceDays: GRACE_DAYS,
     activate,
