@@ -271,13 +271,20 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
     const vuelto = isCash ? Number(s.change || 0) : 0
     const items = s.items || []
     const shiftArea = String(s.area || '')
+    // Area de la venta = la del TURNO donde se cobro (no la del producto, que
+    // es solo informativa y suele venir vacia). Si la mercancia salio del
+    // almacen central (venta mayorista, Bloque A), se marca "Almacén".
+    const origin = s.sourceLocation === WAREHOUSE
+      ? (shiftArea ? WAREHOUSE_LABEL : '')
+      : (s.sourceLocation ? String(s.sourceLocation) : shiftArea)
     items.forEach((it, i) => {
       const itArea = String(it.area || '')
-      const cross = itArea && itArea !== shiftArea
+      // Marca historica de venta cruzada (previa al Bloque 20).
+      const cross = !s.sourceLocation && itArea && shiftArea && itArea !== shiftArea
       rows.push([
         i === 0 ? formatDateTime(s.createdAt) : '',
         it.name,
-        itArea ? (cross ? `↔ ${itArea}` : itArea) : '',
+        cross ? `↔ ${itArea}` : origin,
         it.unit,
         round2(it.qty),
         round2(it.lineTotal ?? it.unitPrice * it.qty),
