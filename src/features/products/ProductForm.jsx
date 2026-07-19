@@ -4,6 +4,9 @@ import { productsRepo } from '../../repositories/productsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { UNITS, UNIT_LABELS, NO_AREA_LABEL, WAREHOUSE, locationLabel } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
+import { normalizeTiers } from '../../lib/priceTiers'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 
 // Alta / edicion de producto. Solo dueño (la creacion desde entrada de
@@ -21,9 +24,21 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
   const [cost, setCost] = useState(product?.cost ?? '')
   const [minStock, setMinStock] = useState(product?.minStock ?? '')
   const [openingStock, setOpeningStock] = useState('')
+  // Escalas mayoristas (Bloque B): filas { minQty, price } editables. Solo se
+  // muestran/guardan si la licencia trae el modulo 'mayorista'.
+  const { hasModule } = useLicense()
+  const canTiers = hasModule(LICENSE_MODULES.WHOLESALE)
+  const [tiers, setTiers] = useState(() =>
+    (product?.priceTiers || []).map((t) => ({ minQty: String(t.minQty), price: String(t.price) }))
+  )
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   useEscapeClose(onClose)
+
+  const setTier = (i, field, value) =>
+    setTiers((prev) => prev.map((t, j) => (j === i ? { ...t, [field]: value } : t)))
+  const addTier = () => setTiers((prev) => [...prev, { minQty: '', price: '' }])
+  const removeTier = (i) => setTiers((prev) => prev.filter((_, j) => j !== i))
 
   const save = async () => {
     setError('')
@@ -38,12 +53,20 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
       }
     }
 
+    // Escalas: valida que las filas llenas sean coherentes (cantidad > 1).
+    const filledTiers = tiers.filter((t) => String(t.minQty).trim() !== '' || String(t.price).trim() !== '')
+    const draftTiers = filledTiers.map((t) => ({ minQty: Number(t.minQty), price: Number(t.price) }))
+    if (canTiers && normalizeTiers(draftTiers).length !== filledTiers.length) {
+      return setError('Revisa las escalas: cantidad mínima mayor que 1 y precio válido, sin repetir cantidades')
+    }
+
     setBusy(true)
     try {
       if (editing) {
         // El precio se cambia aparte para que quede en el historial.
         await productsRepo.update(product.id, { code, name, categoryId, area, unit, cost, minStock: Number(minStock) || 0 })
         await productsRepo.changePrice(product.id, price, { userId: user.id })
+        if (canTiers) await productsRepo.changeTiers(product.id, draftTiers, { userId: user.id })
       } else {
         const newProductId = await productsRepo.create({
           code,
@@ -55,6 +78,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
           cost,
           minStock: Number(minStock) || 0,
           openingStock: hideOpeningStock ? 0 : openingStock,
+          priceTiers: canTiers ? draftTiers : [],
           userId: user.id
         })
         if (onCreated) onCreated(newProductId)
@@ -157,6 +181,45 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
             />
           </label>
         </div>
+
+        {canTiers && (
+          <div className="field">
+            <span>Escalas mayoristas (precio por {UNIT_LABELS[unit] || unit} según cantidad)</span>
+            {tiers.length === 0 && (
+              <p className="muted">Sin escalas: siempre rige el precio de venta normal.</p>
+            )}
+            {tiers.map((t, i) => (
+              <div key={i} className="form-row">
+                <label className="field">
+                  <span>Desde (cantidad)</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={t.minQty}
+                    onChange={(e) => setTier(i, 'minQty', e.target.value)}
+                    placeholder="Ej: 20"
+                  />
+                </label>
+                <label className="field">
+                  <span>Precio por unidad</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={t.price}
+                    onChange={(e) => setTier(i, 'price', e.target.value)}
+                    placeholder="Ej: 100"
+                  />
+                </label>
+                <button className="btn btn--ghost btn--sm" onClick={() => removeTier(i)} type="button">
+                  Quitar
+                </button>
+              </div>
+            ))}
+            <button className="btn btn--ghost btn--sm" onClick={addTier} type="button">
+              + Agregar escala
+            </button>
+          </div>
+        )}
 
         <label className="field">
           <span>Stock mínimo (alerta de reabastecimiento)</span>

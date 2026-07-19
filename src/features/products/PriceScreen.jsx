@@ -136,9 +136,13 @@ function PriceEditor({ product, baseCurrency, userId, shiftId, onBack }) {
             {history.map((h) => (
               <div key={h.id} className="price-hist">
                 <div>
-                  <strong>
-                    {formatMoney(h.oldPrice, baseCurrency)} → {formatMoney(h.newPrice, baseCurrency)}
-                  </strong>
+                  {h.kind === 'tiers' ? (
+                    <strong>Escalas mayoristas</strong>
+                  ) : (
+                    <strong>
+                      {formatMoney(h.oldPrice, baseCurrency)} → {formatMoney(h.newPrice, baseCurrency)}
+                    </strong>
+                  )}
                   {h.note && <span className="muted"> · {h.note}</span>}
                 </div>
                 <span className="muted">{formatDateTime(h.createdAt)}</span>

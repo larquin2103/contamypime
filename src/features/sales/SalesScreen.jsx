@@ -10,6 +10,7 @@ import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
+import { normalizeTiers, tierFor, tierPriceFor } from '../../lib/priceTiers'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney, baseToForeign } from '../../lib/currency'
 import { parseSms } from '../../lib/sms'
@@ -116,6 +117,9 @@ export function SalesScreen() {
           unit: p.unit,
           unitPrice: p.price,
           unitCost: p.cost,
+          // Escalas mayoristas (Bloque B): el precio unitario baja solo al
+          // alcanzar la cantidad de cada escala. Sin modulo, no aplican.
+          tiers: hasModule(LICENSE_MODULES.WHOLESALE) ? normalizeTiers(p.priceTiers) : [],
           area: p.area || '',
           qty: 1,
           stock: avail
@@ -136,8 +140,12 @@ export function SalesScreen() {
     )
   }
 
+  // Precio unitario EFECTIVO de una linea: el de la escala mayorista alcanzada
+  // por la cantidad, o el precio normal. Este es el que se congela al cobrar.
+  const priceOf = (l) => tierPriceFor(l.unitPrice, l.tiers, l.qty)
+
   const totalBase = useMemo(
-    () => round2(cart.reduce((a, l) => a + l.unitPrice * l.qty, 0)),
+    () => round2(cart.reduce((a, l) => a + priceOf(l) * l.qty, 0)),
     [cart]
   )
   // Bloqueo por stock de área (Bloque 20): ninguna línea puede superar lo
@@ -188,16 +196,23 @@ export function SalesScreen() {
 
   const charge = async () => {
     setConfirming(true)
-    const items = cart.map((l) => ({
-      productId: l.productId,
-      name: l.name,
-      unit: l.unit,
-      qty: l.qty,
-      unitPrice: l.unitPrice,
-      unitCost: l.unitCost,
-      area: l.area || '',
-      lineTotal: round2(l.unitPrice * l.qty)
-    }))
+    const items = cart.map((l) => {
+      const unitPrice = priceOf(l) // congela el precio de escala si aplico
+      const tier = tierFor(l.tiers, l.qty)
+      return {
+        productId: l.productId,
+        name: l.name,
+        unit: l.unit,
+        qty: l.qty,
+        unitPrice,
+        // Si aplico una escala, se deja constancia del precio normal y del
+        // umbral (auditable en la propia venta, sin tocar el historial).
+        ...(tier ? { basePrice: l.unitPrice, tierMinQty: tier.minQty } : {}),
+        unitCost: l.unitCost,
+        area: l.area || '',
+        lineTotal: round2(unitPrice * l.qty)
+      }
+    })
     if (isCash) {
       await salesRepo.create({
         shiftId: activeShift.id,
@@ -328,13 +343,19 @@ export function SalesScreen() {
           <p className="muted">Busca y toca un producto para agregarlo.</p>
         ) : (
           <div className="cart">
-            {cart.map((l) => (
+            {cart.map((l) => {
+              const effPrice = priceOf(l)
+              const tierApplied = effPrice !== l.unitPrice
+              return (
               <div key={l.productId} className="cart-line">
                 <span className="cart-line__tile"><Package size={19} strokeWidth={1.9} /></span>
                 <div className="cart-line__info">
                   <strong>{l.name}</strong>
                   <span className="muted">
-                    {formatMoney(l.unitPrice, baseCurrency)} × {l.qty} {l.unit}
+                    {formatMoney(effPrice, baseCurrency)} × {l.qty} {l.unit}
+                    {tierApplied && (
+                      <span className="ok-text"> · mayorista (normal {formatMoney(l.unitPrice, baseCurrency)})</span>
+                    )}
                     {l.qty > l.stock && (
                       <span className="warn-text">
                         {' '}· solo hay {l.stock} {sellLoc === WAREHOUSE ? 'en el almacén' : 'en tu área'}
@@ -352,7 +373,7 @@ export function SalesScreen() {
                   />
                   <button onClick={() => setQty(l.productId, round2(l.qty + 1))}>＋</button>
                 </div>
-                <span className="cart-line__total">{formatMoney(l.unitPrice * l.qty, baseCurrency)}</span>
+                <span className="cart-line__total">{formatMoney(effPrice * l.qty, baseCurrency)}</span>
                 <button
                   className="cart-line__remove"
                   onClick={() => setQty(l.productId, 0)}
@@ -362,7 +383,8 @@ export function SalesScreen() {
                   <Trash2 size={18} strokeWidth={1.8} />
                 </button>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </section>

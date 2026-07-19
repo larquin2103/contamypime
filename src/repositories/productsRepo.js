@@ -3,6 +3,7 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { buildSearchTokens } from '../lib/search'
+import { normalizeTiers, tiersEqual, tiersLabel } from '../lib/priceTiers'
 import { stockRepo } from './stockRepo'
 import { MOVEMENT_TYPES } from '../db/constants'
 
@@ -30,7 +31,7 @@ export const productsRepo = {
 
   // Crea producto. Si openingStock > 0, registra el movimiento de apertura
   // (queda trazado en el libro mayor, nunca se inyecta el stock "a mano").
-  async create({ code, name, categoryId, unit, price, cost, minStock = 0, openingStock = 0, area = '', userId = null }) {
+  async create({ code, name, categoryId, unit, price, cost, minStock = 0, openingStock = 0, area = '', priceTiers = [], userId = null }) {
     const id = newId()
     const ts = now()
     await db.products.add({
@@ -42,6 +43,8 @@ export const productsRepo = {
       area: String(area || '').trim(), // area de venta a la que pertenece
       unit,
       price: Number(price) || 0,
+      // Escalas mayoristas (Bloque B): precio por unidad segun cantidad.
+      priceTiers: normalizeTiers(priceTiers),
       cost: Number(cost) || 0,
       stock: 0,
       minStock: Number(minStock) || 0,
@@ -75,6 +78,8 @@ export const productsRepo = {
     if (fields.price != null) patch.price = Number(fields.price) || 0
     if (fields.cost != null) patch.cost = Number(fields.cost) || 0
     if (fields.area != null) patch.area = String(fields.area).trim()
+    // Las escalas se cambian con changeTiers (historial); aqui solo se filtra.
+    delete patch.priceTiers
     await db.products.update(id, patch)
   },
 
@@ -103,6 +108,34 @@ export const productsRepo = {
         createdAt: now()
       })
       await db.products.update(id, { price: np, updatedAt: now() })
+      changed = true
+    })
+    return changed
+  },
+
+  // Cambia las ESCALAS mayoristas y deja el cambio en priceChanges (auditable,
+  // kind: 'tiers'). El precio base no se toca. Devuelve true si hubo cambio.
+  async changeTiers(id, tiers, { userId = null, shiftId = null, note = '' } = {}) {
+    const nt = normalizeTiers(tiers)
+    let changed = false
+    await db.transaction('rw', db.products, db.priceChanges, async () => {
+      const p = await db.products.get(id)
+      if (!p) return
+      if (tiersEqual(p.priceTiers, nt)) return
+      await db.priceChanges.add({
+        id: newId(),
+        productId: id,
+        kind: 'tiers',
+        oldPrice: p.price, // el precio base no cambia (para vistas que lo muestran)
+        newPrice: p.price,
+        oldTiers: normalizeTiers(p.priceTiers),
+        newTiers: nt,
+        userId,
+        shiftId,
+        note: note || (nt.length ? `Escalas: ${tiersLabel(nt)}` : 'Escalas eliminadas'),
+        createdAt: now()
+      })
+      await db.products.update(id, { priceTiers: nt, updatedAt: now() })
       changed = true
     })
     return changed

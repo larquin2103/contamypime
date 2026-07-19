@@ -1,5 +1,6 @@
 import { normalize } from '../../lib/search'
 import { UNITS } from '../../db/constants'
+import { parseTiersText } from '../../lib/priceTiers'
 import { productsRepo } from '../../repositories/productsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { configRepo } from '../../repositories/configRepo'
@@ -8,7 +9,8 @@ import { configRepo } from '../../repositories/configRepo'
 // identificacion que la plantilla de entradas (Codigo, Nombre) para que sean
 // coherentes. `Area` es el area PRINCIPAL informativa del producto; la
 // `Existencia inicial` ingresa al ALMACEN central (desde ahi se reparte a las
-// areas con "Salida a area").
+// areas con "Salida a area"). `Escalas mayorista` (opcional, modulo mayorista):
+// precios por unidad segun cantidad, formato "20:100; 50:60".
 export const TEMPLATE_HEADERS = [
   'Codigo',
   'Nombre',
@@ -17,12 +19,13 @@ export const TEMPLATE_HEADERS = [
   'Unidad',
   'Precio venta',
   'Costo',
-  'Existencia inicial'
+  'Existencia inicial',
+  'Escalas mayorista'
 ]
 
 const TEMPLATE_EXAMPLE = [
-  ['AV001', 'Aceite vegetal 1L', 'Aceites', 'Viveres', 'u', 2.5, 1.8, 30],
-  ['CR001', 'Bistec de res', 'Carnes', 'Carniceria', 'kg', 5.0, 3.5, 20]
+  ['AV001', 'Aceite vegetal 1L', 'Aceites', 'Viveres', 'u', 2.5, 1.8, 30, ''],
+  ['CR001', 'Bistec de res', 'Carnes', 'Carniceria', 'kg', 5.0, 3.5, 20, '20:4.5; 50:4']
 ]
 
 // xlsx se carga bajo demanda (code-splitting): solo pesa cuando se importa.
@@ -81,7 +84,8 @@ function extractRow(obj) {
     unit: parseUnit(get(['unidad', 'unit', 'um', 'u/m', 'medida'])),
     price: parseNum(get(['precio venta', 'precio', 'precio de venta', 'pvp', 'venta'])),
     cost: parseNum(get(['costo', 'coste', 'cost'])) ?? 0,
-    stock: parseNum(get(['existencia inicial', 'existencia', 'stock', 'cantidad', 'inventario'])) ?? 0
+    stock: parseNum(get(['existencia inicial', 'existencia', 'stock', 'cantidad', 'inventario'])) ?? 0,
+    tiersText: String(get(['escalas mayorista', 'escalas', 'mayorista', 'precios mayorista'])).trim()
   }
 }
 
@@ -105,6 +109,10 @@ export async function parseAndValidate(buffer, { existingProducts }) {
     if (!draft.name) errors.push('Falta el nombre')
     if (!draft.unit) errors.push('Unidad invalida (u/kg/caja)')
     if (draft.price == null) errors.push('Precio de venta invalido')
+    // Escalas mayoristas opcionales: "20:100; 50:60" (cantidad:precio).
+    const tiersParsed = parseTiersText(draft.tiersText)
+    if (!tiersParsed.ok) errors.push('Escalas invalidas (formato 20:100; 50:60)')
+    draft.tiers = tiersParsed.tiers
 
     let status = errors.length ? 'error' : 'ok'
     let dupReason = ''
@@ -181,6 +189,7 @@ export async function commitImport(okRows, { userId }) {
       price: r.draft.price,
       cost: r.draft.cost,
       openingStock: r.draft.stock,
+      priceTiers: r.draft.tiers || [],
       userId
     })
     created++

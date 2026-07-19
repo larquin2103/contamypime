@@ -1,5 +1,6 @@
 import { normalize } from '../../lib/search'
 import { round2 } from '../../lib/currency'
+import { parseTiersText } from '../../lib/priceTiers'
 
 // ---------------------------------------------------------------------------
 // Importacion MASIVA de entradas de mercancia desde Excel/CSV.
@@ -15,11 +16,14 @@ import { round2 } from '../../lib/currency'
 // identificacion (Codigo, Nombre) que la plantilla de catalogo, para coherencia.
 // ---------------------------------------------------------------------------
 
-export const ENTRY_TEMPLATE_HEADERS = ['Codigo', 'Nombre', 'Cantidad', 'Costo']
+// `Escalas mayorista` (opcional, modulo mayorista): si la celda trae valor
+// ("20:100; 50:60"), al registrar la entrada se ACTUALIZAN las escalas del
+// producto (con su historial). Vacia = las escalas actuales no se tocan.
+export const ENTRY_TEMPLATE_HEADERS = ['Codigo', 'Nombre', 'Cantidad', 'Costo', 'Escalas mayorista']
 
 const ENTRY_TEMPLATE_EXAMPLE = [
-  ['AV001', 'Aceite vegetal 1L', 10, 1.8],
-  ['AR001', 'Arroz 1kg', 25, 0.85]
+  ['AV001', 'Aceite vegetal 1L', 10, 1.8, ''],
+  ['AR001', 'Arroz 1kg', 25, 0.85, '20:0.8; 50:0.75']
 ]
 
 async function loadXLSX() {
@@ -81,6 +85,7 @@ export async function parseEntryFile(buffer, existingProducts) {
     const name = String(get(['nombre', 'producto', 'descripcion'])).trim()
     const qty = parseNum(get(['cantidad', 'qty', 'existencia', 'stock']))
     const cost = parseNum(get(['costo', 'coste', 'cost']))
+    const tiersText = String(get(['escalas mayorista', 'escalas', 'mayorista', 'precios mayorista'])).trim()
 
     const key = code ? normalize(code) : ''
     const product = key ? byCode.get(key) : name ? byName.get(normalize(name)) : null
@@ -93,12 +98,20 @@ export async function parseEntryFile(buffer, existingProducts) {
       errors.push(`Fila ${lineNo}: cantidad invalida para ${product.name}`)
       return
     }
+    // Escalas opcionales: celda vacia = no tocar; invalida = error de fila.
+    const tiersParsed = parseTiersText(tiersText)
+    if (!tiersParsed.ok) {
+      errors.push(`Fila ${lineNo}: escalas invalidas para ${product.name} (formato 20:100; 50:60)`)
+      return
+    }
+    const tiers = tiersText ? tiersParsed.tiers : null
 
     // Si el mismo producto aparece varias veces, se suman las cantidades.
     const existing = lineByProduct.get(product.id)
     if (existing) {
       existing.qty = round2(existing.qty + qty)
       if (cost != null) existing.unitCost = cost
+      if (tiers) existing.tiers = tiers
       return
     }
     const line = {
@@ -106,7 +119,8 @@ export async function parseEntryFile(buffer, existingProducts) {
       name: product.name,
       unit: product.unit,
       qty,
-      unitCost: cost != null ? cost : product.cost || 0
+      unitCost: cost != null ? cost : product.cost || 0,
+      tiers // null = no cambiar las escalas del producto
     }
     lineByProduct.set(product.id, line)
     lines.push(line)

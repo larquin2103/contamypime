@@ -7,6 +7,9 @@ import { purchasesRepo } from '../../repositories/purchasesRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
+import { tiersLabel } from '../../lib/priceTiers'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { WAREHOUSE } from '../../db/constants'
@@ -17,6 +20,7 @@ export function EntryScreen() {
   const { user, isManager } = useAuth()
   const { activeShift, canSell } = useShift()
   const { baseCurrency } = useCurrency()
+  const { hasModule } = useLicense()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
 
@@ -127,6 +131,19 @@ export function EntryScreen() {
       userId: user.id,
       shiftId: activeShift?.id ?? null
     })
+    // Escalas mayoristas traidas en el Excel de entrada (Bloque B): se
+    // actualizan en el producto con su historial. Solo con el modulo activo.
+    if (hasModule(LICENSE_MODULES.WHOLESALE)) {
+      for (const l of lines) {
+        if (l.tiers) {
+          await productsRepo.changeTiers(l.productId, l.tiers, {
+            userId: user.id,
+            shiftId: activeShift?.id ?? null,
+            note: `Escalas actualizadas en entrada: ${tiersLabel(l.tiers) || 'sin escalas'}`
+          })
+        }
+      }
+    }
     setDone(true)
     setLines([])
     setSupplier('')
@@ -237,6 +254,9 @@ export function EntryScreen() {
                 <p className="muted">
                   Almacén actual: {warehouseStock[l.productId] ?? 0} {l.unit}
                   {Number(l.qty) > 0 && ` → quedará: ${round2((warehouseStock[l.productId] ?? 0) + Number(l.qty))} ${l.unit}`}
+                  {l.tiers && hasModule(LICENSE_MODULES.WHOLESALE) && (
+                    <span className="ok-text"> · escalas nuevas: {tiersLabel(l.tiers) || '(se quitan)'}</span>
+                  )}
                 </p>
                 <div className="form-row">
                   <label className="field">

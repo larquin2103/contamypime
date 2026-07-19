@@ -157,7 +157,8 @@ export function AuditScreen() {
                 <span className="muted">{formatDateTime(p.createdAt)}</span>
               </div>
               <span className="muted">
-                {m(p.oldPrice)} → {m(p.newPrice)} · {userName[p.userId] || '—'}{p.note ? ` · ${p.note}` : ''}
+                {p.kind === 'tiers' ? 'Escalas mayoristas' : `${m(p.oldPrice)} → ${m(p.newPrice)}`}
+                {' '}· {userName[p.userId] || '—'}{p.note ? ` · ${p.note}` : ''}
               </span>
             </div>
           ))}
