@@ -40,6 +40,8 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
       // Origen de la mercancia (Bloque A): "Almacén" cuando un turno de area
       // vendio del almacen central (venta mayorista). Vacio = venta normal.
       s.area && s.sourceLocation === WAREHOUSE ? WAREHOUSE_LABEL : '',
+      // Venta con precio de escala mayorista en alguna linea (Bloque B).
+      (s.items || []).some((it) => it.tierMinQty != null) ? 'Sí' : '',
       s.hasCrossArea ? 'Sí' : '',
       isTransfer ? 'Transferencia' : 'Efectivo',
       isTransfer ? s.transferReference || '' : '',
@@ -50,11 +52,11 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
     ]
   })
   const total = round2(sales.reduce((a, s) => a + Number(s.totalBase || 0), 0))
-  rows.push(['', '', '', '', '', '', 'TOTAL', total, '', '', ''])
+  rows.push(['', '', '', '', '', '', '', 'TOTAL', total, '', '', ''])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Vendedor', 'Área', 'Origen', 'Cruzada', 'Metodo', 'No. operacion', 'Total', 'Esperado', 'Recibido', 'Diferencia'],
+    head: ['Fecha', 'Vendedor', 'Área', 'Origen', 'Mayorista', 'Cruzada', 'Metodo', 'No. operacion', 'Total', 'Esperado', 'Recibido', 'Diferencia'],
     rows,
     filename: 'ventas'
   }
@@ -288,6 +290,8 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
         it.unit,
         round2(it.qty),
         round2(it.lineTotal ?? it.unitPrice * it.qty),
+        // Linea con precio de escala mayorista (Bloque B): umbral aplicado.
+        it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
         i === 0 ? (isCash ? 'Efectivo' : 'Transferencia') : '',
         i === 0 ? round2(cobrado) : '',
         i === 0 ? round2(vuelto) : ''
@@ -295,11 +299,11 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
     })
     total += Number(s.totalBase || 0)
   }
-  rows.push(['', '', '', '', '', round2(total), 'TOTAL', '', ''])
+  rows.push(['', '', '', '', '', round2(total), '', 'TOTAL', '', ''])
   return {
     title: 'Ventas del turno',
     subtitle: `${sellerName ? sellerName + ' · ' : ''}Generado ${formatDateTime(new Date().toISOString())}`,
-    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Importe', 'Metodo', 'Cobrado', 'Vuelto'],
+    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Importe', 'Mayorista', 'Metodo', 'Cobrado', 'Vuelto'],
     rows,
     filename: 'ventas_turno'
   }
