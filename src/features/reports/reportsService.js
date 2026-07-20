@@ -321,6 +321,60 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
   }
 }
 
+// Movimientos de las cuentas de tesoreria (Bloque D, modulo cuentas): todos
+// los creditos y debitos por cuenta, con origen y saldo final de cada una.
+export async function buildAccountsReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const accounts = await db.accounts.toArray()
+  const accName = {}
+  for (const a of accounts) accName[a.id] = a
+  const refLabel = {
+    sale: 'Venta',
+    withdrawal: 'Extracción de caja',
+    partnerPayment: 'Pago/cobro de tercero',
+    manual: 'Ajuste manual'
+  }
+
+  const moves = (await db.accountMovements.toArray())
+    .filter((m) => inRange(m.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+
+  const rows = moves.map((m) => {
+    const acc = accName[m.accountId]
+    const amt = round2(Number(m.amount) || 0)
+    return [
+      formatDateTime(m.createdAt),
+      acc?.name || 'cuenta',
+      m.direction === 'debit' ? 'Débito' : 'Crédito',
+      refLabel[m.refType] || m.refType || '',
+      m.direction === 'credit' ? amt : '',
+      m.direction === 'debit' ? amt : '',
+      acc?.currency || '',
+      names[m.userId] || '',
+      m.note || ''
+    ]
+  })
+
+  // Saldo final de cada cuenta (todo el historial, no solo el rango).
+  const balances = {}
+  for (const m of await db.accountMovements.toArray()) {
+    const sign = m.direction === 'debit' ? -1 : 1
+    balances[m.accountId] = round2((balances[m.accountId] || 0) + sign * Number(m.amount || 0))
+  }
+  rows.push(['', '', '', '', '', '', '', '', ''])
+  for (const a of accounts.filter((x) => x.active)) {
+    rows.push(['', a.name, 'SALDO', '', '', '', a.currency, '', round2(balances[a.id] || 0)])
+  }
+
+  return {
+    title: 'Movimientos de cuentas',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Cuenta', 'Tipo', 'Origen', 'Crédito', 'Débito', 'Moneda', 'Usuario', 'Nota'],
+    rows,
+    filename: 'cuentas'
+  }
+}
+
 // Ventas de UN turno, por linea (para que el vendedor las exporte a PDF):
 // descripcion, unidad, cantidad, importe, metodo, cobrado y vuelto.
 export async function buildShiftSalesReport(shiftId, sellerName = '') {

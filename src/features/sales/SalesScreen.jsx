@@ -276,7 +276,8 @@ export function SalesScreen() {
             reference: p.method === PAYMENT_METHODS.TRANSFER ? p.reference || '' : ''
           }
         }),
-        sourceLocation: sellLoc
+        sourceLocation: sellLoc,
+        creditAccounts: hasModule(LICENSE_MODULES.ACCOUNTS)
       })
       setLastSale({ method: 'mixed', parts: mixParts.length })
     } else if (isCash) {
@@ -292,7 +293,8 @@ export function SalesScreen() {
         amountPaid: paidNum,
         change,
         rate: payCurrency === baseCurrency ? null : rate,
-        sourceLocation: sellLoc
+        sourceLocation: sellLoc,
+        creditAccounts: hasModule(LICENSE_MODULES.ACCOUNTS)
       })
       setLastSale({ method: 'cash', change, payCurrency })
     } else {
@@ -309,7 +311,8 @@ export function SalesScreen() {
         transferSms: sms,
         transferExpected: round2(totalTransfer),
         rate: transferCurrency === baseCurrency ? null : transferRate,
-        sourceLocation: sellLoc
+        sourceLocation: sellLoc,
+        creditAccounts: hasModule(LICENSE_MODULES.ACCOUNTS)
       })
       setLastSale({ method: 'transfer', transferCurrency, transferRef })
     }

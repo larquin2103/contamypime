@@ -18,9 +18,11 @@ export const SYNC_COLLECTIONS = [
   { name: 'auditEvents', pk: 'id' },
   { name: 'counts', pk: 'id' },
   { name: 'transfers', pk: 'id' },
-  // Bloque C (modulo cuentas): terceros y su libro de movimientos.
+  // Bloques C/D (modulo cuentas): terceros y tesoreria con sus libros.
   { name: 'partners', pk: 'id' },
-  { name: 'partnerMovements', pk: 'id' }
+  { name: 'partnerMovements', pk: 'id' },
+  { name: 'accounts', pk: 'id' },
+  { name: 'accountMovements', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

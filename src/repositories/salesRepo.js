@@ -3,6 +3,7 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { MOVEMENT_TYPES, PARTNER_MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
+import { ensureSystemAccount, addAccountMovementRaw } from './accountsRepo'
 
 // Ventas de mostrador. Cada venta congela el precio y el costo de cada linea
 // (snapshot), por lo que cambiar el precio mas tarde NO altera ventas previas.
@@ -35,7 +36,10 @@ export const salesRepo = {
     payments = null,
     // Bloque A (modulo mayorista): ubicacion de la que sale la mercancia. Vacio
     // = comportamiento clasico (el area del turno, o el almacen sin area).
-    sourceLocation = ''
+    sourceLocation = '',
+    // Bloque D (modulo cuentas): acreditar las cuentas de tesoreria en tiempo
+    // real. Lo decide la pantalla segun la licencia; false = camino clasico.
+    creditAccounts = false
   }) {
     const id = newId()
     const ts = now()
@@ -51,7 +55,7 @@ export const salesRepo = {
     // defecto, o el almacen central si la venta es mayorista (Bloque A). El
     // dinero entra siempre a la caja del turno, sea cual sea el origen.
     const loc = String(sourceLocation || '').trim() || shiftArea || WAREHOUSE
-    await db.transaction('rw', db.sales, db.stockMovements, db.products, db.partnerMovements, async () => {
+    await db.transaction('rw', db.sales, db.stockMovements, db.products, db.partnerMovements, db.accounts, db.accountMovements, async () => {
       await db.sales.add({
         id,
         shiftId,
@@ -82,6 +86,32 @@ export const salesRepo = {
         payments: Array.isArray(payments) && payments.length ? payments : null,
         voided: false
       })
+      // Bloque D: acreditar la tesoreria en tiempo real (efectivo a su caja
+      // por moneda, transferencias a su cuenta). En pago mixto, cada parte.
+      if (creditAccounts) {
+        const credit = async (method, currency, amount) => {
+          const amt = Number(amount) || 0
+          if (amt <= 0) return
+          const accId = await ensureSystemAccount(method, currency || 'MN')
+          await addAccountMovementRaw({
+            accountId: accId,
+            direction: 'credit',
+            amount: amt,
+            currency: currency || 'MN',
+            refType: 'sale',
+            refId: id,
+            userId: sellerId,
+            createdAt: ts
+          })
+        }
+        if (Array.isArray(payments) && payments.length) {
+          for (const p of payments) await credit(p.method, p.currency, p.amount)
+        } else if (isCash) {
+          await credit('cash', paymentCurrency, cashAmount)
+        } else {
+          await credit('transfer', transferCurrency, transferAmount)
+        }
+      }
       for (const it of items) {
         const qty = Math.abs(Number(it.qty))
         await db.stockMovements.add({

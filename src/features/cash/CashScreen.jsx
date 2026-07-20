@@ -13,6 +13,8 @@ import { round2, formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { CASH_CURRENCIES } from '../../db/constants'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 
 export function CashScreen() {
   const { user, isManager } = useAuth()
@@ -62,6 +64,7 @@ export function CashScreen() {
 }
 
 function WithdrawForm({ shift, user, isManager }) {
+  const { hasModule } = useLicense()
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState(CASH_CURRENCIES[0])
   const [reason, setReason] = useState('')
@@ -80,7 +83,9 @@ function WithdrawForm({ shift, user, isManager }) {
       amount,
       currency,
       reason,
-      authorizedBy: authName
+      authorizedBy: authName,
+      // Bloque D: con el modulo cuentas, la extraccion debita "Efectivo <cur>".
+      debitAccount: hasModule(LICENSE_MODULES.ACCOUNTS)
     })
     setAmount('')
     setReason('')

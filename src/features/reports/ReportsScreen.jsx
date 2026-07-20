@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { configRepo } from '../../repositories/configRepo'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import {
   buildSalesReport,
   buildSellerSalesReport,
@@ -11,12 +13,14 @@ import {
   buildAreaReport,
   buildEntriesReport,
   buildTransfersReport,
+  buildAccountsReport,
   exportExcel,
   exportPdf
 } from './reportsService'
 
 export function ReportsScreen() {
   const { isManager } = useAuth()
+  const { hasModule } = useLicense()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -85,6 +89,8 @@ export function ReportsScreen() {
       {areas.length > 0 &&
         card('transfers', 'Salidas almacén → área', 'Qué se sacó del almacén a cada área', buildTransfersReport, true)}
       {card('inv', 'Inventario por ubicación', 'Existencias en almacén y en cada área', buildInventoryReport, false)}
+      {hasModule(LICENSE_MODULES.ACCOUNTS) &&
+        card('accounts', 'Movimientos de cuentas', 'Créditos y débitos de la tesorería, con saldos', buildAccountsReport, true)}
     </div>
   )
 }

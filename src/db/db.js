@@ -84,3 +84,13 @@ db.version(7).stores({
   partners: 'id, type, active',
   partnerMovements: 'id, partnerId, type, refId, createdAt'
 })
+
+// Bloque D (modulo 'cuentas'): cuentas de tesoreria del negocio (Efectivo MN,
+// Transferencias MN, Efectivo USD, MLC, ...) y su libro de creditos/debitos
+// (append-only). El saldo se deriva de los movimientos. Las cuentas de sistema
+// usan ids FIJOS (acc_cash_mn, ...) para que dos dispositivos offline creen la
+// MISMA cuenta y la sync no duplique. Migracion aditiva: solo tablas vacias.
+db.version(8).stores({
+  accounts: 'id, active',
+  accountMovements: 'id, accountId, direction, refId, createdAt'
+})

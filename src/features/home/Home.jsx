@@ -211,6 +211,9 @@ export function Home() {
             {hasModule(LICENSE_MODULES.ACCOUNTS) && (
               <ActionCard to="/partners" icon={Handshake} title="Proveedores y terceros" sub="Por pagar y por cobrar" />
             )}
+            {hasModule(LICENSE_MODULES.ACCOUNTS) && (
+              <ActionCard to="/accounts" icon={Wallet} title="Cuentas" sub="Tesorería del negocio" />
+            )}
             <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar la app" />
           </Section>
           {isOwner && (

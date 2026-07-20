@@ -3,6 +3,7 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { MOVEMENT_TYPES, PARTNER_MOVEMENT_TYPES, PARTNER_TYPES, WAREHOUSE } from '../db/constants'
+import { addAccountMovementRaw } from './accountsRepo'
 
 // Terceros del negocio (Bloque C, modulo 'cuentas'): proveedores que dejan
 // mercancia en consignacion y acreedores/terceros a los que se les entrega
@@ -87,8 +88,9 @@ export const partnersRepo = {
     return round2(rows.reduce((a, m) => a + this._sign(m.type) * Number(m.amount || 0), 0))
   },
 
-  // Pago a un proveedor o cobro a un tercero (rebaja la deuda viva). El
-  // enganche con la cuenta de tesoreria (accountId) llega en el Bloque D.
+  // Pago a un proveedor o cobro a un tercero (rebaja la deuda viva). Con
+  // `accountId` (Bloque D, modulo cuentas) ademas mueve la tesoreria en la
+  // misma transaccion: pagar debita la cuenta; cobrar la acredita.
   async addPayment({ partnerId, type, amount, note = '', userId = null, accountId = null }) {
     if (type !== PARTNER_MOVEMENT_TYPES.PAYMENT_OUT && type !== PARTNER_MOVEMENT_TYPES.PAYMENT_IN) {
       throw new Error('Tipo de pago no valido')
@@ -96,18 +98,38 @@ export const partnersRepo = {
     const amt = round2(Number(amount) || 0)
     if (amt <= 0) throw new Error('El monto debe ser mayor que cero')
     const id = newId()
-    await db.partnerMovements.add({
-      id,
-      partnerId,
-      type,
-      amount: amt,
-      currency: 'MN',
-      refType: 'payment',
-      refId: null,
-      accountId,
-      note: String(note || '').trim(),
-      userId,
-      createdAt: now()
+    const ts = now()
+    const cleanNote = String(note || '').trim()
+    await db.transaction('rw', db.partnerMovements, db.partners, db.accounts, db.accountMovements, async () => {
+      await db.partnerMovements.add({
+        id,
+        partnerId,
+        type,
+        amount: amt,
+        currency: 'MN',
+        refType: 'payment',
+        refId: null,
+        accountId,
+        note: cleanNote,
+        userId,
+        createdAt: ts
+      })
+      if (accountId) {
+        const acc = await db.accounts.get(accountId)
+        if (!acc) throw new Error('Cuenta de tesoreria no encontrada')
+        const partner = await db.partners.get(partnerId)
+        await addAccountMovementRaw({
+          accountId,
+          direction: type === PARTNER_MOVEMENT_TYPES.PAYMENT_OUT ? 'debit' : 'credit',
+          amount: amt,
+          currency: acc.currency,
+          refType: 'partnerPayment',
+          refId: id,
+          note: cleanNote || (partner ? partner.name : ''),
+          userId,
+          createdAt: ts
+        })
+      }
     })
     return id
   },

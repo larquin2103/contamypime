@@ -44,10 +44,12 @@ export async function buildSnapshot(fromUser, activeShift = null) {
   const stockMovements = await db.stockMovements.toArray()
   const transfers = await db.transfers.toArray()
   const counts = await db.counts.toArray()
-  // Cuentas de terceros (Bloque C): viajan completas para que el proximo
-  // dispositivo conserve saldos (se derivan de los movimientos).
+  // Cuentas de terceros y tesoreria (Bloques C/D): viajan completas para que
+  // el proximo dispositivo conserve saldos (se derivan de los movimientos).
   const partners = await db.partners.toArray()
   const partnerMovements = await db.partnerMovements.toArray()
+  const accounts = await db.accounts.toArray()
+  const accountMovements = await db.accountMovements.toArray()
 
   // Deudas internas pendientes.
   const allDebts = await db.internalDebts.toArray()
@@ -127,6 +129,8 @@ export async function buildSnapshot(fromUser, activeShift = null) {
     counts,
     partners,
     partnerMovements,
+    accounts,
+    accountMovements,
     // Contexto del turno actual + resumen de caja/ventas.
     currentShift,
     shiftSummary,
@@ -193,6 +197,8 @@ export async function applySnapshot(snap) {
   if (snap.counts?.length) await db.counts.bulkPut(snap.counts)
   if (snap.partners?.length) await db.partners.bulkPut(snap.partners)
   if (snap.partnerMovements?.length) await db.partnerMovements.bulkPut(snap.partnerMovements)
+  if (snap.accounts?.length) await db.accounts.bulkPut(snap.accounts)
+  if (snap.accountMovements?.length) await db.accountMovements.bulkPut(snap.accountMovements)
 
   // Turno que se está cerrando: contexto para auditoría.
   if (snap.currentShift) await db.shifts.put(snap.currentShift)

@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft } from 'lucide-react'
 import { partnersRepo } from '../../repositories/partnersRepo'
+import { accountsRepo } from '../../repositories/accountsRepo'
 import { productsRepo } from '../../repositories/productsRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
@@ -33,6 +34,13 @@ export function PartnersScreen() {
   const balances = useLiveQuery(() => partnersRepo.balances(), [], {})
   const [creating, setCreating] = useState(false)
   const [openId, setOpenId] = useState(null)
+
+  // Bloque D: garantiza las cuentas base de tesoreria (idempotente, ids fijos)
+  // para poder elegir la cuenta al registrar pagos y cobros.
+  const canAccounts = hasModule(LICENSE_MODULES.ACCOUNTS)
+  useEffect(() => {
+    if (canAccounts) accountsRepo.ensureDefaults()
+  }, [canAccounts])
 
   if (!isManager || !hasModule(LICENSE_MODULES.ACCOUNTS)) {
     return (
@@ -259,14 +267,25 @@ function PartnerDetail({ partner, balance, baseCurrency, userId, onBack }) {
   )
 }
 
-// Pago al proveedor / cobro al tercero.
+// Pago al proveedor / cobro al tercero, desde la cuenta de tesoreria elegida.
 function PaymentForm({ partner, balance, baseCurrency, userId, onClose }) {
   const isProvider = partner.type === PARTNER_TYPES.PROVIDER
+  // Cuentas en moneda base (la deuda del tercero se lleva en MN).
+  const accounts = useLiveQuery(async () => {
+    const all = await accountsRepo.list()
+    return all.filter((a) => a.currency === baseCurrency)
+  }, [baseCurrency], [])
+  const [accountId, setAccountId] = useState('')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   useEscapeClose(onClose)
+
+  // Preselecciona "Efectivo MN" en cuanto cargan las cuentas.
+  useEffect(() => {
+    if (!accountId && accounts.length) setAccountId(accounts[0].id)
+  }, [accounts, accountId])
 
   const save = async () => {
     setError('')
@@ -277,7 +296,8 @@ function PaymentForm({ partner, balance, baseCurrency, userId, onClose }) {
         type: isProvider ? PARTNER_MOVEMENT_TYPES.PAYMENT_OUT : PARTNER_MOVEMENT_TYPES.PAYMENT_IN,
         amount,
         note,
-        userId
+        userId,
+        accountId: accountId || null
       })
       onClose()
     } catch (e) {
@@ -302,6 +322,16 @@ function PaymentForm({ partner, balance, baseCurrency, userId, onClose }) {
             placeholder="0"
           />
         </label>
+        {accounts.length > 0 && (
+          <label className="field">
+            <span>{isProvider ? 'Pagar desde la cuenta' : 'Cobrar hacia la cuenta'}</span>
+            <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="field">
           <span>Nota (opcional)</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej: pago parcial en efectivo" />
