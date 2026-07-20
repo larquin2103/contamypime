@@ -1374,6 +1374,41 @@ input[type='file'] {
   gap: 6px;
   flex-wrap: wrap;
 }
+/* Bloque F: turnos agrupados e interactivos en Auditoria */
+.audit-group {
+  margin: 14px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.audit-group > .audit-row__head {
+  padding: 0 2px;
+}
+.audit-row__toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.audit-detail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.audit-detail .kv strong {
+  font-size: 0.8rem;
+  text-align: right;
+}
 .report-actions {
   display: flex;
   gap: 10px;

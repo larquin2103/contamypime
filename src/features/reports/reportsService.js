@@ -259,6 +259,63 @@ function rangeLabel(from, to) {
   return `Periodo: ${from || '...'} a ${to || '...'}`
 }
 
+// Ventas por VENDEDOR con detalle de productos (Bloque E): que vendio cada
+// vendedor, con fecha, producto, cantidad e importe por linea, y subtotal por
+// vendedor. Ordenado por vendedor y fecha.
+export async function buildSellerSalesReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const sales = (await db.sales.toArray())
+    .filter((s) => !s.voided && inRange(s.createdAt, from, to))
+
+  // Agrupa por vendedor; dentro, las ventas en orden cronologico.
+  const bySeller = {}
+  for (const s of sales) {
+    const key = s.sellerId || ''
+    ;(bySeller[key] = bySeller[key] || []).push(s)
+  }
+  const sellers = Object.entries(bySeller)
+    .map(([id, list]) => ({
+      id,
+      name: names[id] || 'vendedor',
+      list: list.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const rows = []
+  let grandTotal = 0
+  for (const sel of sellers) {
+    let subQty = 0
+    let subTotal = 0
+    for (const s of sel.list) {
+      for (const it of s.items || []) {
+        const importe = round2(it.lineTotal ?? it.unitPrice * it.qty)
+        rows.push([
+          sel.name,
+          formatDateTime(s.createdAt),
+          it.name,
+          it.unit,
+          round2(it.qty),
+          importe,
+          it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : ''
+        ])
+        subQty = round2(subQty + Number(it.qty || 0))
+        subTotal = round2(subTotal + importe)
+      }
+    }
+    rows.push([sel.name, '', 'Subtotal vendedor', '', subQty, subTotal, ''])
+    grandTotal = round2(grandTotal + subTotal)
+  }
+  rows.push(['', '', 'TOTAL', '', '', grandTotal, ''])
+
+  return {
+    title: 'Ventas por vendedor',
+    subtitle: rangeLabel(from, to),
+    head: ['Vendedor', 'Fecha', 'Producto', 'U/M', 'Cantidad', 'Importe', 'Mayorista'],
+    rows,
+    filename: 'ventas_vendedor'
+  }
+}
+
 // Ventas de UN turno, por linea (para que el vendedor las exporte a PDF):
 // descripcion, unidad, cantidad, importe, metodo, cobrado y vuelto.
 export async function buildShiftSalesReport(shiftId, sellerName = '') {

@@ -450,6 +450,14 @@ export function SalesScreen() {
                   {formatMoney(change, payCurrency)}
                 </strong>
               </div>
+              {/* Bloque G: al cobrar en divisa, el vuelto tambien en MN segun la
+                  tasa de Ajustes, para poder devolver en cualquiera de las dos. */}
+              {payCurrency !== baseCurrency && change > 0 && rate > 0 && (
+                <p className="muted">
+                  Puedes devolver <strong>{formatMoney(change, payCurrency)}</strong> o su
+                  equivalente <strong>{formatMoney(round2(change * rate), baseCurrency)}</strong> (tasa {rate}).
+                </p>
+              )}
             </>
           ) : (
             <>
