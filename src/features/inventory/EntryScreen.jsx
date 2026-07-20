@@ -10,6 +10,8 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { tiersLabel } from '../../lib/priceTiers'
+import { partnersRepo } from '../../repositories/partnersRepo'
+import { PARTNER_TYPES } from '../../db/constants'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { WAREHOUSE } from '../../db/constants'
@@ -27,6 +29,14 @@ export function EntryScreen() {
   const [query, setQuery] = useState('')
   const [lines, setLines] = useState([]) // [{ productId, name, unit, qty, unitCost }]
   const [supplier, setSupplier] = useState('')
+  // Consignacion (Bloque C, modulo cuentas): proveedor dueño de la mercancia.
+  const canAccounts = hasModule(LICENSE_MODULES.ACCOUNTS)
+  const providers = useLiveQuery(
+    () => (canAccounts ? partnersRepo.listActive(PARTNER_TYPES.PROVIDER) : []),
+    [canAccounts],
+    []
+  )
+  const [consignPartner, setConsignPartner] = useState('')
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
@@ -129,8 +139,19 @@ export function EntryScreen() {
       items: lines,
       supplier,
       userId: user.id,
-      shiftId: activeShift?.id ?? null
+      shiftId: activeShift?.id ?? null,
+      consignmentPartnerId: canAccounts && consignPartner ? consignPartner : null
     })
+    // Consignacion: los productos de la entrada quedan marcados con su
+    // proveedor y el costo acordado (= costo unitario de la linea). Al
+    // venderse, la deuda se acumula sola (cantidad x costo acordado).
+    if (canAccounts && consignPartner) {
+      for (const l of lines) {
+        await productsRepo.update(l.productId, {
+          consignment: { partnerId: consignPartner, unitCost: Number(l.unitCost) || 0 }
+        })
+      }
+    }
     // Escalas mayoristas traidas en el Excel de entrada (Bloque B): se
     // actualizan en el producto con su historial. Solo con el modulo activo.
     if (hasModule(LICENSE_MODULES.WHOLESALE)) {
@@ -147,6 +168,7 @@ export function EntryScreen() {
     setDone(true)
     setLines([])
     setSupplier('')
+    setConsignPartner('')
     setBusy(false)
   }
 
@@ -290,6 +312,23 @@ export function EntryScreen() {
             <span>Proveedor (opcional)</span>
             <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Nombre o referencia" />
           </label>
+          {canAccounts && providers.length > 0 && (
+            <label className="field">
+              <span>Entrada en consignación de</span>
+              <select value={consignPartner} onChange={(e) => setConsignPartner(e.target.value)}>
+                <option value="">— No es consignación —</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {canAccounts && consignPartner && (
+            <p className="muted">
+              La mercancía queda en consignación: al venderse, se acumula sola la deuda con el
+              proveedor (cantidad vendida × costo unitario de esta entrada).
+            </p>
+          )}
           <div className="total-row">
             <span>Total de la compra</span>
             <strong className="total-amount">{formatMoney(total, baseCurrency)}</strong>

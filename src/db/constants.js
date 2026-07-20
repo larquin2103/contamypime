@@ -81,7 +81,35 @@ export const MOVEMENT_TYPES = {
   // Salida del almacen central hacia un area (Bloque 20). Es un traspaso: el
   // mismo evento genera un TRANSFER_OUT en el almacen y un TRANSFER_IN en el area.
   TRANSFER_OUT: 'transfer_out',
-  TRANSFER_IN: 'transfer_in'
+  TRANSFER_IN: 'transfer_in',
+  // Entrega de mercancia del almacen a un TERCERO (Bloque C, modulo cuentas).
+  PARTNER_OUT: 'partner_out'
+}
+
+// Terceros del negocio (Bloque C, modulo 'cuentas').
+export const PARTNER_TYPES = {
+  PROVIDER: 'provider', // proveedor: nos deja mercancia en consignacion
+  CREDITOR: 'creditor' // acreedor/tercero: le entregamos mercancia y nos debe
+}
+
+export const PARTNER_TYPE_LABELS = {
+  provider: 'Proveedor',
+  creditor: 'Tercero (nos debe)'
+}
+
+// Movimientos de la cuenta de un tercero (append-only; el saldo se deriva).
+export const PARTNER_MOVEMENT_TYPES = {
+  CONSIGNMENT_DUE: 'consignment_due', // se vendio consignado -> le debemos al proveedor
+  GOODS_OUT: 'goods_out', // le entregamos mercancia -> el tercero nos debe
+  PAYMENT_OUT: 'payment_out', // le pagamos al proveedor (rebaja la deuda)
+  PAYMENT_IN: 'payment_in' // el tercero nos pago (rebaja lo que nos debe)
+}
+
+export const PARTNER_MOVEMENT_LABELS = {
+  consignment_due: 'Venta consignada',
+  goods_out: 'Entrega de mercancía',
+  payment_out: 'Pago realizado',
+  payment_in: 'Cobro recibido'
 }
 
 // Estados de turno.

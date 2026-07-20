@@ -2,7 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
-import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
+import { MOVEMENT_TYPES, PARTNER_MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 
 // Ventas de mostrador. Cada venta congela el precio y el costo de cada linea
 // (snapshot), por lo que cambiar el precio mas tarde NO altera ventas previas.
@@ -51,7 +51,7 @@ export const salesRepo = {
     // defecto, o el almacen central si la venta es mayorista (Bloque A). El
     // dinero entra siempre a la caja del turno, sea cual sea el origen.
     const loc = String(sourceLocation || '').trim() || shiftArea || WAREHOUSE
-    await db.transaction('rw', db.sales, db.stockMovements, db.products, async () => {
+    await db.transaction('rw', db.sales, db.stockMovements, db.products, db.partnerMovements, async () => {
       await db.sales.add({
         id,
         shiftId,
@@ -107,6 +107,27 @@ export const salesRepo = {
             stockByLocation: byLoc,
             updatedAt: ts
           })
+          // Consignacion (Bloque C, modulo cuentas): si el producto esta en
+          // consignacion, cada venta acumula la deuda con su proveedor
+          // (cantidad x costo acordado) en la misma transaccion. Los productos
+          // sin la marca (todos, sin el modulo) no ejecutan este camino.
+          const consig = p.consignment
+          if (consig?.partnerId && Number(consig.unitCost) > 0) {
+            await db.partnerMovements.add({
+              id: newId(),
+              partnerId: consig.partnerId,
+              type: PARTNER_MOVEMENT_TYPES.CONSIGNMENT_DUE,
+              amount: round2(qty * Number(consig.unitCost)),
+              currency: 'MN',
+              refType: 'sale',
+              refId: id,
+              productId: it.productId,
+              qty,
+              note: `Venta de ${it.name}`,
+              userId: sellerId,
+              createdAt: ts
+            })
+          }
         }
       }
     })

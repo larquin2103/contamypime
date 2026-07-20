@@ -8,7 +8,7 @@ import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 // movimiento en el libro mayor. Tambien actualizan el costo actual del
 // producto al ultimo costo de compra (para el analisis de rentabilidad).
 export const purchasesRepo = {
-  async create({ items, supplier = '', userId, shiftId = null, note = '' }) {
+  async create({ items, supplier = '', userId, shiftId = null, note = '', consignmentPartnerId = null }) {
     const id = newId()
     const ts = now()
     const normItems = items.map((it) => ({
@@ -30,6 +30,9 @@ export const purchasesRepo = {
         supplier: supplier.trim(),
         items: normItems,
         totalBase,
+        // Entrada en consignacion (Bloque C): la mercancia es del proveedor;
+        // la deuda se acumula al VENDERSE (no al entrar). Solo trazabilidad.
+        consignmentPartnerId,
         note
       })
       // Las entradas de mercancia siempre ingresan al ALMACEN central; desde

@@ -20,7 +20,8 @@ const MOVE_LABEL = {
   internal_debt_out: 'Deuda interna',
   adjustment: 'Ajuste',
   transfer_out: 'Salida a área',
-  transfer_in: 'Entrada a área'
+  transfer_in: 'Entrada a área',
+  partner_out: 'Entrega a tercero'
 }
 
 const MAX = 200

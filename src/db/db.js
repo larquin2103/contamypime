@@ -73,3 +73,14 @@ db.version(5).stores({
 db.version(6).stores({
   errorLog: 'id, createdAt'
 })
+
+// Bloque C (modulo 'cuentas'): terceros del negocio — proveedores (nos dejan
+// mercancia en consignacion) y acreedores/terceros (les entregamos mercancia)
+// — con su libro de movimientos append-only. El SALDO nunca se guarda: se
+// deriva de los movimientos (como el stock del libro mayor), para que la
+// sincronizacion offline multi-dispositivo no pise saldos. Migracion aditiva:
+// solo agrega tablas vacias, no toca datos existentes.
+db.version(7).stores({
+  partners: 'id, type, active',
+  partnerMovements: 'id, partnerId, type, refId, createdAt'
+})
