@@ -120,7 +120,14 @@ export const analyticsRepo = {
     const dayTotals = {}
     for (const s of sales) {
       const t = Number(s.totalBase || 0)
-      if (s.paymentMethod === 'transfer') byMethod.transfer += t
+      if (s.paymentMethod === 'mixed' && Array.isArray(s.payments)) {
+        // Pago mixto (Bloque H): cada parte reparte a su metodo (en base).
+        for (const p of s.payments) {
+          const ab = Number(p.amountBase ?? p.amount ?? 0)
+          if (p.method === 'transfer') byMethod.transfer += ab
+          else byMethod.cash += ab
+        }
+      } else if (s.paymentMethod === 'transfer') byMethod.transfer += t
       else byMethod.cash += t
       const d = localDay(s.createdAt)
       if (d) dayTotals[d] = (dayTotals[d] || 0) + t

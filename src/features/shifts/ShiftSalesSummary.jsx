@@ -44,15 +44,19 @@ export function ShiftSalesSummary({ shiftId }) {
         </button>
       </div>
       {active.map((s) => {
-        const isCash = s.paymentMethod !== 'transfer'
-        const cur = isCash ? s.cashCurrency || baseCurrency : s.transferCurrency || 'MN'
-        const cobrado = isCash ? Number(s.amountPaid || 0) : Number(s.transferAmount || 0)
+        const isMixed = s.paymentMethod === 'mixed'
+        const isCash = !isMixed && s.paymentMethod !== 'transfer'
+        const cur = isMixed ? baseCurrency : isCash ? s.cashCurrency || baseCurrency : s.transferCurrency || 'MN'
+        // En pago mixto se cobra el total exacto (los detalles, por partes).
+        const cobrado = isMixed
+          ? Number(s.totalBase || 0)
+          : isCash ? Number(s.amountPaid || 0) : Number(s.transferAmount || 0)
         const vuelto = isCash ? Number(s.change || 0) : 0
         return (
           <div key={s.id} className="sale-card">
             <div className="sale-card__head">
               <span className="muted">{formatDateTime(s.createdAt)}</span>
-              <span className="badge badge--muted">{isCash ? 'Efectivo' : 'Transferencia'}</span>
+              <span className="badge badge--muted">{isMixed ? 'Mixto' : isCash ? 'Efectivo' : 'Transferencia'}</span>
             </div>
             <table className="sale-items">
               <thead>
@@ -78,6 +82,13 @@ export function ShiftSalesSummary({ shiftId }) {
               <span>Cobrado <strong>{formatMoney(cobrado, cur)}</strong></span>
               {isCash && <span>Vuelto <strong>{formatMoney(vuelto, cur)}</strong></span>}
             </div>
+            {isMixed && (
+              <p className="muted">
+                {(s.payments || [])
+                  .map((p) => `${p.method === 'transfer' ? 'Transf.' : 'Efectivo'} ${formatMoney(Number(p.amount) || 0, p.currency)}`)
+                  .join(' + ')}
+              </p>
+            )}
           </div>
         )
       })}

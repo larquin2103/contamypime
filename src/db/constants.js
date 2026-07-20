@@ -50,7 +50,10 @@ export const TRANSFER_CURRENCIES = ['MN', 'MLC']
 // Metodos de pago de una venta.
 export const PAYMENT_METHODS = {
   CASH: 'cash',
-  TRANSFER: 'transfer'
+  TRANSFER: 'transfer',
+  // Bloque H (modulo mayorista): venta cobrada en VARIAS partes (efectivo +
+  // transferencia, o monedas distintas). El detalle viaja en sale.payments[].
+  MIXED: 'mixed'
 }
 
 // Formas en que el dueño liquida (salda) una deuda interna. Queda registrada

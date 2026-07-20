@@ -29,10 +29,15 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   const rows = sales.map((s) => {
     const isTransfer = s.paymentMethod === 'transfer'
+    const isMixed = s.paymentMethod === 'mixed'
     // Para transferencias: esperado, recibido y diferencia (si la hay).
     const expected = isTransfer ? round2(Number(s.transferExpected ?? s.totalBase ?? 0)) : ''
     const received = isTransfer ? round2(Number(s.transferAmount || 0)) : ''
     const diff = isTransfer ? round2(Number(s.transferDiff || 0)) : ''
+    // Referencias: la de la transferencia simple, o las de las partes del mixto.
+    const refs = isMixed
+      ? (s.payments || []).filter((p) => p.method === 'transfer' && p.reference).map((p) => p.reference).join(' / ')
+      : (isTransfer ? s.transferReference || '' : '')
     return [
       formatDateTime(s.createdAt),
       names[s.sellerId] || 'vendedor',
@@ -43,8 +48,8 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
       // Venta con precio de escala mayorista en alguna linea (Bloque B).
       (s.items || []).some((it) => it.tierMinQty != null) ? 'Sí' : '',
       s.hasCrossArea ? 'Sí' : '',
-      isTransfer ? 'Transferencia' : 'Efectivo',
-      isTransfer ? s.transferReference || '' : '',
+      isMixed ? 'Mixto' : isTransfer ? 'Transferencia' : 'Efectivo',
+      refs,
       round2(s.totalBase),
       expected,
       received,
@@ -325,8 +330,12 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
   const rows = []
   let total = 0
   for (const s of sales) {
-    const isCash = s.paymentMethod !== 'transfer'
-    const cobrado = isCash ? Number(s.amountPaid || 0) : Number(s.transferAmount || 0)
+    const isMixed = s.paymentMethod === 'mixed'
+    const isCash = !isMixed && s.paymentMethod !== 'transfer'
+    // En pago mixto se cobra el total exacto (en base); sin vuelto.
+    const cobrado = isMixed
+      ? round2(Number(s.totalBase || 0))
+      : isCash ? Number(s.amountPaid || 0) : Number(s.transferAmount || 0)
     const vuelto = isCash ? Number(s.change || 0) : 0
     const items = s.items || []
     const shiftArea = String(s.area || '')
@@ -349,7 +358,7 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
         round2(it.lineTotal ?? it.unitPrice * it.qty),
         // Linea con precio de escala mayorista (Bloque B): umbral aplicado.
         it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
-        i === 0 ? (isCash ? 'Efectivo' : 'Transferencia') : '',
+        i === 0 ? (isMixed ? 'Mixto' : isCash ? 'Efectivo' : 'Transferencia') : '',
         i === 0 ? round2(cobrado) : '',
         i === 0 ? round2(vuelto) : ''
       ])

@@ -89,7 +89,21 @@ export const shiftsRepo = {
     for (const s of sales) {
       if (s.voided) continue
       salesCount++
-      if (s.paymentMethod === 'transfer') {
+      if (s.paymentMethod === 'mixed' && Array.isArray(s.payments)) {
+        // Pago mixto (Bloque H): cada parte suma a SU metodo y moneda, para
+        // que el cuadre cierre igual que si fueran ventas separadas.
+        let hasTransfer = false
+        for (const p of s.payments) {
+          if (p.method === 'transfer') {
+            hasTransfer = true
+            const cur = p.currency || 'MN'
+            transfersByCur[cur] = round2((transfersByCur[cur] || 0) + Number(p.amount || 0))
+          } else if (salesCash[p.currency] != null) {
+            salesCash[p.currency] += Number(p.amount || 0)
+          }
+        }
+        if (hasTransfer) transfersCount++
+      } else if (s.paymentMethod === 'transfer') {
         // Transferencias: separadas del efectivo, no entran a caja (Fase 2).
         transfersCount++
         const cur = s.transferCurrency || 'MN'

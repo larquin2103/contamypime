@@ -109,7 +109,7 @@ export function AuditScreen() {
           {salesF.map((s) => (
             <div key={s.id} className="audit-row">
               <div className="audit-row__head">
-                <strong>{m(s.totalBase)} · {s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'}</strong>
+                <strong>{m(s.totalBase)} · {s.paymentMethod === 'mixed' ? 'Mixto' : s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'}</strong>
                 <span className="muted">{formatDateTime(s.createdAt)}</span>
               </div>
               <span className="muted">

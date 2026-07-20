@@ -39,6 +39,12 @@ export function SalesScreen() {
   const [transferRef, setTransferRef] = useState('')
   const [sms, setSms] = useState('')
   const [transferAmount, setTransferAmount] = useState('')
+  // Pago mixto (Bloque H): partes ya agregadas + editor de la parte en curso.
+  const [mixParts, setMixParts] = useState([]) // [{ method, currency, amount, reference }]
+  const [partMethod, setPartMethod] = useState(PAYMENT_METHODS.CASH)
+  const [partCurrency, setPartCurrency] = useState(baseCurrency)
+  const [partAmount, setPartAmount] = useState('')
+  const [partRef, setPartRef] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [lastSale, setLastSale] = useState(null)
 
@@ -168,12 +174,44 @@ export function SalesScreen() {
   const transferMismatch = payMethod === PAYMENT_METHODS.TRANSFER && Math.abs(transferDiff) >= 0.01
 
   const isCash = payMethod === PAYMENT_METHODS.CASH
+  const isMixed = payMethod === PAYMENT_METHODS.MIXED
+
+  // --- pago mixto (Bloque H): se cobra en partes con montos EXACTOS ---
+  const canMixed = hasModule(LICENSE_MODULES.WHOLESALE)
+  const partRate = (cur) => (cur === baseCurrency ? 1 : rateOf(cur) || 0)
+  const partBase = (p) => round2((Number(p.amount) || 0) * partRate(p.currency))
+  const mixCovered = round2(mixParts.reduce((a, p) => a + partBase(p), 0))
+  const mixRemaining = round2(totalBase - mixCovered)
+  const mixOk =
+    mixParts.length > 0 &&
+    Math.abs(mixRemaining) <= 0.01 &&
+    mixParts.every((p) => (Number(p.amount) || 0) > 0 && partRate(p.currency) > 0)
+
+  const addMixPart = () => {
+    const amt = Number(partAmount) || 0
+    if (amt <= 0 || partRate(partCurrency) <= 0) return
+    setMixParts((prev) => [
+      ...prev,
+      { method: partMethod, currency: partCurrency, amount: round2(amt), reference: partRef.trim() }
+    ])
+    setPartAmount('')
+    setPartRef('')
+  }
+  // Rellena la parte en curso con lo que falta por cobrar, en su moneda.
+  const fillRemaining = () => {
+    const r = partRate(partCurrency)
+    if (r <= 0 || mixRemaining <= 0) return
+    setPartAmount(String(round2(mixRemaining / r)))
+  }
+
   const canCharge =
     cart.length > 0 &&
     stockOk &&
-    (isCash
-      ? paidNum >= totalInCur && (payCurrency === baseCurrency || rate > 0)
-      : transferNum > 0 && (transferCurrency === baseCurrency || transferRate > 0))
+    (isMixed
+      ? mixOk
+      : isCash
+        ? paidNum >= totalInCur && (payCurrency === baseCurrency || rate > 0)
+        : transferNum > 0 && (transferCurrency === baseCurrency || transferRate > 0))
 
   // Al pegar el SMS, autocompleta monto y referencia.
   const onSmsChange = (text) => {
@@ -192,6 +230,11 @@ export function SalesScreen() {
     setTransferRef('')
     setSms('')
     setTransferAmount('')
+    setMixParts([])
+    setPartMethod(PAYMENT_METHODS.CASH)
+    setPartCurrency(baseCurrency)
+    setPartAmount('')
+    setPartRef('')
   }
 
   const charge = async () => {
@@ -213,7 +256,30 @@ export function SalesScreen() {
         lineTotal: round2(unitPrice * l.qty)
       }
     })
-    if (isCash) {
+    if (isMixed) {
+      // Pago mixto: cada parte con su tasa congelada y su equivalente en base.
+      await salesRepo.create({
+        shiftId: activeShift.id,
+        sellerId: user.id,
+        area: activeShift.area || '',
+        items,
+        totalBase,
+        paymentMethod: PAYMENT_METHODS.MIXED,
+        payments: mixParts.map((p) => {
+          const r = partRate(p.currency)
+          return {
+            method: p.method,
+            currency: p.currency,
+            amount: round2(Number(p.amount) || 0),
+            rate: p.currency === baseCurrency ? null : r,
+            amountBase: partBase(p),
+            reference: p.method === PAYMENT_METHODS.TRANSFER ? p.reference || '' : ''
+          }
+        }),
+        sourceLocation: sellLoc
+      })
+      setLastSale({ method: 'mixed', parts: mixParts.length })
+    } else if (isCash) {
       await salesRepo.create({
         shiftId: activeShift.id,
         sellerId: user.id,
@@ -294,7 +360,9 @@ export function SalesScreen() {
         <div className="sale-done" onClick={() => setLastSale(null)}>
           {lastSale.method === 'cash'
             ? `✅ Venta cobrada · Cambio: ${formatMoney(lastSale.change, lastSale.payCurrency)}`
-            : `✅ Transferencia cobrada · Ref: ${lastSale.transferRef || '—'} (${lastSale.transferCurrency})`}
+            : lastSale.method === 'mixed'
+              ? `✅ Venta cobrada · Pago mixto (${lastSale.parts} parte(s))`
+              : `✅ Transferencia cobrada · Ref: ${lastSale.transferRef || '—'} (${lastSale.transferCurrency})`}
           <span className="muted"> (toca para cerrar)</span>
         </div>
       )}
@@ -404,14 +472,126 @@ export function SalesScreen() {
               Efectivo
             </button>
             <button
-              className={`tab ${!isCash ? 'is-active' : ''}`}
+              className={`tab ${payMethod === PAYMENT_METHODS.TRANSFER ? 'is-active' : ''}`}
               onClick={() => setPayMethod(PAYMENT_METHODS.TRANSFER)}
             >
               Transferencia
             </button>
+            {canMixed && (
+              <button
+                className={`tab ${isMixed ? 'is-active' : ''}`}
+                onClick={() => setPayMethod(PAYMENT_METHODS.MIXED)}
+              >
+                Mixto
+              </button>
+            )}
           </div>
 
-          {isCash ? (
+          {isMixed ? (
+            <>
+              <p className="muted">
+                Cobra la venta en varias partes (efectivo y/o transferencia, en distintas
+                monedas). Los montos son exactos: usa <strong>Completar</strong> para la última parte.
+              </p>
+
+              {mixParts.length > 0 && (
+                <div className="list">
+                  {mixParts.map((p, i) => (
+                    <div key={i} className="kv">
+                      <span className="muted">
+                        {p.method === PAYMENT_METHODS.TRANSFER ? 'Transferencia' : 'Efectivo'} {p.currency}
+                        {p.reference ? ` · ref ${p.reference}` : ''}
+                      </span>
+                      <strong>
+                        {formatMoney(Number(p.amount) || 0, p.currency)}
+                        {p.currency !== baseCurrency && ` (= ${formatMoney(partBase(p), baseCurrency)})`}
+                        <button
+                          className="link-del"
+                          onClick={() => setMixParts((prev) => prev.filter((_, j) => j !== i))}
+                        >
+                          quitar
+                        </button>
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="total-row">
+                <span>{mixRemaining > 0.01 ? 'Falta por cobrar' : mixRemaining < -0.01 ? 'Cobrado de más' : 'Cubierto'}</span>
+                <strong className={`total-amount ${mixRemaining < -0.01 ? 'neg' : ''}`}>
+                  {Math.abs(mixRemaining) <= 0.01 ? '✓' : formatMoney(Math.abs(mixRemaining), baseCurrency)}
+                </strong>
+              </div>
+
+              {Math.abs(mixRemaining) > 0.01 && (
+                <>
+                  <div className="tabs">
+                    <button
+                      className={`tab ${partMethod === PAYMENT_METHODS.CASH ? 'is-active' : ''}`}
+                      onClick={() => { setPartMethod(PAYMENT_METHODS.CASH); setPartCurrency(baseCurrency) }}
+                    >
+                      Efectivo
+                    </button>
+                    <button
+                      className={`tab ${partMethod === PAYMENT_METHODS.TRANSFER ? 'is-active' : ''}`}
+                      onClick={() => { setPartMethod(PAYMENT_METHODS.TRANSFER); setPartCurrency('MN') }}
+                    >
+                      Transferencia
+                    </button>
+                  </div>
+                  <div className="pay-currencies">
+                    {(partMethod === PAYMENT_METHODS.CASH ? CASH_CURRENCIES : TRANSFER_CURRENCIES).map((c) => (
+                      <button
+                        key={c}
+                        className={`btn btn--sm ${partCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
+                        onClick={() => setPartCurrency(c)}
+                        disabled={c !== baseCurrency && !rateOf(c)}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="form-row">
+                    <label className="field">
+                      <span>Monto ({partCurrency})</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={partAmount}
+                        onChange={(e) => setPartAmount(e.target.value)}
+                        placeholder="0"
+                      />
+                    </label>
+                    {partMethod === PAYMENT_METHODS.TRANSFER && (
+                      <label className="field">
+                        <span>Referencia</span>
+                        <input
+                          value={partRef}
+                          onChange={(e) => setPartRef(e.target.value)}
+                          placeholder="No. de operación"
+                        />
+                      </label>
+                    )}
+                  </div>
+                  {partCurrency !== baseCurrency && Number(partAmount) > 0 && partRate(partCurrency) > 0 && (
+                    <p className="muted">
+                      Equivale a <strong>{formatMoney(round2(Number(partAmount) * partRate(partCurrency)), baseCurrency)}</strong> (tasa {partRate(partCurrency)}).
+                    </p>
+                  )}
+                  <div className="report-actions">
+                    <button className="btn" onClick={fillRemaining} disabled={mixRemaining <= 0.01 || partRate(partCurrency) <= 0}>
+                      Completar
+                    </button>
+                    <button className="btn btn--primary" onClick={addMixPart} disabled={!(Number(partAmount) > 0)}>
+                      Agregar pago
+                    </button>
+                  </div>
+                </>
+              )}
+              <p className="muted">Las partes de efectivo entran a la caja por su moneda; las transferencias van aparte. Todo cuadra al cierre.</p>
+            </>
+          ) : isCash ? (
             <>
               <div className="pay-currencies">
                 {CASH_CURRENCIES.map((c) => (

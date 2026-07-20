@@ -28,6 +28,11 @@ export const salesRepo = {
     transferReference = '',
     transferSms = '',
     transferExpected = 0, // lo que se debia cobrar en la moneda de la transferencia
+    // Bloque H (modulo mayorista): pago MIXTO en varias partes. Cada parte:
+    // { method: 'cash'|'transfer', currency, amount, rate, amountBase, reference }.
+    // Con payments, paymentMethod debe ser 'mixed' y los campos clasicos de
+    // efectivo/transferencia quedan en cero (el cuadre suma por las partes).
+    payments = null,
     // Bloque A (modulo mayorista): ubicacion de la que sale la mercancia. Vacio
     // = comportamiento clasico (el area del turno, o el almacen sin area).
     sourceLocation = ''
@@ -73,6 +78,8 @@ export const salesRepo = {
         transferSms: isCash ? '' : transferSms,
         transferExpected: isCash ? 0 : round2(Number(transferExpected || 0)),
         transferDiff,
+        // Partes del pago mixto (o null en ventas de un solo metodo).
+        payments: Array.isArray(payments) && payments.length ? payments : null,
         voided: false
       })
       for (const it of items) {
