@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { productsRepo } from '../../repositories/productsRepo'
 import {
   buildTemplateBlob,
   parseAndValidate,
   commitImport,
-  TEMPLATE_HEADERS
+  templateHeaders
 } from './importService'
 
 const STATUS_META = {
@@ -17,6 +19,8 @@ const STATUS_META = {
 
 export function ImportScreen() {
   const { user, isManager } = useAuth()
+  const { hasModule } = useLicense()
+  const withTiers = hasModule(LICENSE_MODULES.WHOLESALE)
   const navigate = useNavigate()
   const fileRef = useRef(null)
   const [result, setResult] = useState(null) // { rows, summary, fileName }
@@ -34,7 +38,7 @@ export function ImportScreen() {
   }
 
   const downloadTemplate = async () => {
-    const blob = await buildTemplateBlob()
+    const blob = await buildTemplateBlob({ withTiers })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -65,7 +69,7 @@ export function ImportScreen() {
     setBusy(true)
     try {
       const okRows = result.rows.filter((r) => r.status === 'ok')
-      const created = await commitImport(okRows, { userId: user.id })
+      const created = await commitImport(okRows, { userId: user.id, withTiers })
       setDone(created)
       setResult(null)
     } catch (err) {
@@ -102,7 +106,7 @@ export function ImportScreen() {
       <section className="card">
         <h3>1. Descarga la plantilla</h3>
         <p className="muted">
-          Columnas: {TEMPLATE_HEADERS.join(', ')}. Llenala con tu inventario (Excel, lista, cuaderno).
+          Columnas: {templateHeaders(withTiers).join(', ')}. Llenala con tu inventario (Excel, lista, cuaderno).
         </p>
         <button className="btn btn--block" onClick={downloadTemplate}>
           ⬇ Descargar plantilla Excel

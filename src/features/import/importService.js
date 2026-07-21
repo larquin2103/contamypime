@@ -11,6 +11,8 @@ import { configRepo } from '../../repositories/configRepo'
 // `Existencia inicial` ingresa al ALMACEN central (desde ahi se reparte a las
 // areas con "Salida a area"). `Escalas mayorista` (opcional, modulo mayorista):
 // precios por unidad segun cantidad, formato "20:100; 50:60".
+const TIER_HEADER = 'Escalas mayorista'
+
 export const TEMPLATE_HEADERS = [
   'Codigo',
   'Nombre',
@@ -19,13 +21,19 @@ export const TEMPLATE_HEADERS = [
   'Unidad',
   'Precio venta',
   'Costo',
-  'Existencia inicial',
-  'Escalas mayorista'
+  'Existencia inicial'
 ]
 
+// Columnas de la plantilla segun el modulo: la de escalas mayoristas solo se
+// ofrece si la licencia trae el modulo 'mayorista' (asi no se filtra a los
+// clientes en produccion).
+export function templateHeaders(withTiers = false) {
+  return withTiers ? [...TEMPLATE_HEADERS, TIER_HEADER] : TEMPLATE_HEADERS
+}
+
 const TEMPLATE_EXAMPLE = [
-  ['AV001', 'Aceite vegetal 1L', 'Aceites', 'Viveres', 'u', 2.5, 1.8, 30, ''],
-  ['CR001', 'Bistec de res', 'Carnes', 'Carniceria', 'kg', 5.0, 3.5, 20, '20:4.5; 50:4']
+  ['AV001', 'Aceite vegetal 1L', 'Aceites', 'Viveres', 'u', 2.5, 1.8, 30],
+  ['CR001', 'Bistec de res', 'Carnes', 'Carniceria', 'kg', 5.0, 3.5, 20]
 ]
 
 // xlsx se carga bajo demanda (code-splitting): solo pesa cuando se importa.
@@ -34,9 +42,11 @@ async function loadXLSX() {
 }
 
 // --- Plantilla descargable (.xlsx) ---
-export async function buildTemplateBlob() {
+export async function buildTemplateBlob({ withTiers = false } = {}) {
   const XLSX = await loadXLSX()
-  const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_EXAMPLE])
+  const head = templateHeaders(withTiers)
+  const example = TEMPLATE_EXAMPLE.map((r, i) => (withTiers ? [...r, i === 1 ? '20:4.5; 50:4' : ''] : r))
+  const ws = XLSX.utils.aoa_to_sheet([head, ...example])
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Productos')
   const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
@@ -144,7 +154,7 @@ export async function parseAndValidate(buffer, { existingProducts }) {
 
 // Confirma la importacion: crea categorias faltantes y los productos validos
 // (con su existencia inicial trazada en el libro mayor).
-export async function commitImport(okRows, { userId }) {
+export async function commitImport(okRows, { userId, withTiers = false }) {
   const cats = await categoriesRepo.list()
   const catByName = {}
   for (const c of cats) catByName[normalize(c.name)] = c.id
@@ -189,7 +199,7 @@ export async function commitImport(okRows, { userId }) {
       price: r.draft.price,
       cost: r.draft.cost,
       openingStock: r.draft.stock,
-      priceTiers: r.draft.tiers || [],
+      priceTiers: withTiers ? (r.draft.tiers || []) : [],
       userId
     })
     created++

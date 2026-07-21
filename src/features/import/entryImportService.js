@@ -18,21 +18,29 @@ import { parseTiersText } from '../../lib/priceTiers'
 
 // `Escalas mayorista` (opcional, modulo mayorista): si la celda trae valor
 // ("20:100; 50:60"), al registrar la entrada se ACTUALIZAN las escalas del
-// producto (con su historial). Vacia = las escalas actuales no se tocan.
-export const ENTRY_TEMPLATE_HEADERS = ['Codigo', 'Nombre', 'Cantidad', 'Costo', 'Escalas mayorista']
+// producto (con su historial). Solo se ofrece la columna con el modulo activo.
+const ENTRY_TIER_HEADER = 'Escalas mayorista'
+
+export const ENTRY_TEMPLATE_HEADERS = ['Codigo', 'Nombre', 'Cantidad', 'Costo']
+
+export function entryTemplateHeaders(withTiers = false) {
+  return withTiers ? [...ENTRY_TEMPLATE_HEADERS, ENTRY_TIER_HEADER] : ENTRY_TEMPLATE_HEADERS
+}
 
 const ENTRY_TEMPLATE_EXAMPLE = [
-  ['AV001', 'Aceite vegetal 1L', 10, 1.8, ''],
-  ['AR001', 'Arroz 1kg', 25, 0.85, '20:0.8; 50:0.75']
+  ['AV001', 'Aceite vegetal 1L', 10, 1.8],
+  ['AR001', 'Arroz 1kg', 25, 0.85]
 ]
 
 async function loadXLSX() {
   return import('xlsx')
 }
 
-export async function buildEntryTemplateBlob() {
+export async function buildEntryTemplateBlob({ withTiers = false } = {}) {
   const XLSX = await loadXLSX()
-  const ws = XLSX.utils.aoa_to_sheet([ENTRY_TEMPLATE_HEADERS, ...ENTRY_TEMPLATE_EXAMPLE])
+  const head = entryTemplateHeaders(withTiers)
+  const example = ENTRY_TEMPLATE_EXAMPLE.map((r, i) => (withTiers ? [...r, i === 1 ? '20:0.8; 50:0.75' : ''] : r))
+  const ws = XLSX.utils.aoa_to_sheet([head, ...example])
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Entrada')
   const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })

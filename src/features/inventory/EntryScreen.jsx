@@ -16,7 +16,7 @@ import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { WAREHOUSE } from '../../db/constants'
 import { ProductForm } from '../products/ProductForm'
-import { parseEntryFile, buildEntryTemplateBlob, ENTRY_TEMPLATE_HEADERS } from '../import/entryImportService'
+import { parseEntryFile, buildEntryTemplateBlob, entryTemplateHeaders } from '../import/entryImportService'
 
 export function EntryScreen() {
   const { user, isManager } = useAuth()
@@ -84,7 +84,7 @@ export function EntryScreen() {
   // Importacion masiva: lee el Excel, coteja por codigo/nombre y rellena las
   // lineas (sumando si un producto ya estaba). Luego se revisa y se registra.
   const downloadTemplate = async () => {
-    const blob = await buildEntryTemplateBlob()
+    const blob = await buildEntryTemplateBlob({ withTiers: hasModule(LICENSE_MODULES.WHOLESALE) })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -219,7 +219,7 @@ export function EntryScreen() {
         </p>
         <p className="muted">
           Para cargar muchos productos a la vez, usa <strong>⬆ Importar Excel</strong>.
-          Columnas: {ENTRY_TEMPLATE_HEADERS.join(', ')} (coteja por código).{' '}
+          Columnas: {entryTemplateHeaders(hasModule(LICENSE_MODULES.WHOLESALE)).join(', ')} (coteja por código).{' '}
           <button className="link-inline" onClick={downloadTemplate}>Descargar plantilla</button>
         </p>
       </section>
