@@ -102,15 +102,31 @@ export const shiftsRepo = {
             salesCash[p.currency] += Number(p.amount || 0)
           }
         }
+        // Vuelto por sobrepago (se entrega en su moneda; por defecto MN).
+        const mchg = round2(Number(s.change) || 0)
+        const mchgCur = s.changeCurrency || 'MN'
+        if (mchg > 0 && salesCash[mchgCur] != null) salesCash[mchgCur] -= mchg
         if (hasTransfer) transfersCount++
       } else if (s.paymentMethod === 'transfer') {
         // Transferencias: separadas del efectivo, no entran a caja (Fase 2).
         transfersCount++
         const cur = s.transferCurrency || 'MN'
         transfersByCur[cur] = round2((transfersByCur[cur] || 0) + Number(s.transferAmount || 0))
-      } else if (s.cashCurrency && salesCash[s.cashCurrency] != null) {
-        // Efectivo: monto neto que entra a caja (ya sin el cambio).
-        salesCash[s.cashCurrency] += Number(s.cashAmount || 0)
+      } else {
+        // Efectivo. El vuelto puede entregarse en OTRA moneda distinta a la del
+        // cobro (ej: cobro en USD, vuelto en MN): la caja del cobro recibe el
+        // BRUTO y la del vuelto se descuenta. Si el vuelto es en la misma moneda
+        // (caso clasico y ventas antiguas), entra el NETO (cashAmount).
+        const payCur = s.paymentCurrency || s.cashCurrency
+        const chgCur = s.changeCurrency || payCur
+        if (chgCur === payCur) {
+          if (payCur && salesCash[payCur] != null) {
+            salesCash[payCur] += Number(s.cashAmount ?? (Number(s.amountPaid || 0) - Number(s.change || 0)))
+          }
+        } else {
+          if (salesCash[payCur] != null) salesCash[payCur] += Number(s.amountPaid || 0)
+          if (salesCash[chgCur] != null) salesCash[chgCur] -= Number(s.change || 0)
+        }
       }
     }
 

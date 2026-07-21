@@ -12,7 +12,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { normalizeTiers, tierFor, tierPriceFor } from '../../lib/priceTiers'
 import { matchesQuery } from '../../lib/search'
-import { round2, formatMoney, baseToForeign } from '../../lib/currency'
+import { round2, formatMoney, baseToForeign, foreignToBase } from '../../lib/currency'
 import { parseSms } from '../../lib/sms'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, WAREHOUSE } from '../../db/constants'
 
@@ -34,6 +34,9 @@ export function SalesScreen() {
   const [payMethod, setPayMethod] = useState(PAYMENT_METHODS.CASH)
   const [payCurrency, setPayCurrency] = useState(baseCurrency)
   const [paid, setPaid] = useState('')
+  // Moneda en que se entrega el vuelto (Bloque G+): por defecto la base (MN).
+  // Solo se ofrece elegir cuando se cobra en una divisa.
+  const [changeCurrency, setChangeCurrency] = useState(baseCurrency)
   // transferencia
   const [transferCurrency, setTransferCurrency] = useState('MN')
   const [transferRef, setTransferRef] = useState('')
@@ -162,7 +165,16 @@ export function SalesScreen() {
   const totalInCur =
     payCurrency === baseCurrency ? totalBase : baseToForeign(totalBase, rate)
   const paidNum = Number(paid) || 0
-  const change = round2(paidNum - totalInCur)
+  // Valor recibido convertido a MN de forma EXACTA (recibido x tasa). No se
+  // redondea el total a la divisa antes de restar -> el vuelto en MN sale
+  // exacto (ej: 10 USD x 650 - 1500 MN = 5000 MN, no 4998.5).
+  const paidBase = payCurrency === baseCurrency ? paidNum : foreignToBase(paidNum, rate)
+  const changeBase = round2(paidBase - totalBase) // vuelto en MN (exacto)
+  const changeInPay = round2(paidNum - totalInCur) // vuelto en la moneda del cobro
+  // Moneda efectiva del vuelto: si se cobra en MN, siempre MN; si se cobra en
+  // divisa, la que eligio el vendedor (MN por defecto o la propia divisa).
+  const effChangeCur = payCurrency === baseCurrency ? baseCurrency : changeCurrency
+  const changeGiven = effChangeCur === payCurrency ? changeInPay : changeBase
 
   // --- transferencia ---
   const transferRate = transferCurrency === baseCurrency ? 1 : rateOf(transferCurrency)
@@ -182,9 +194,12 @@ export function SalesScreen() {
   const partBase = (p) => round2((Number(p.amount) || 0) * partRate(p.currency))
   const mixCovered = round2(mixParts.reduce((a, p) => a + partBase(p), 0))
   const mixRemaining = round2(totalBase - mixCovered)
+  // Sobrepago en mixto (ej: una parte en USD que redondea por encima, o el
+  // cliente entrega de mas): el exceso es el vuelto, que se devuelve en MN.
+  const mixChange = round2(Math.max(0, mixCovered - totalBase))
   const mixOk =
     mixParts.length > 0 &&
-    Math.abs(mixRemaining) <= 0.01 &&
+    mixCovered >= totalBase - 0.01 &&
     mixParts.every((p) => (Number(p.amount) || 0) > 0 && partRate(p.currency) > 0)
 
   const addMixPart = () => {
@@ -210,7 +225,7 @@ export function SalesScreen() {
     (isMixed
       ? mixOk
       : isCash
-        ? paidNum >= totalInCur && (payCurrency === baseCurrency || rate > 0)
+        ? paidBase >= totalBase - 0.01 && (payCurrency === baseCurrency || rate > 0)
         : transferNum > 0 && (transferCurrency === baseCurrency || transferRate > 0))
 
   // Al pegar el SMS, autocompleta monto y referencia.
@@ -224,6 +239,7 @@ export function SalesScreen() {
   const resetCheckout = () => {
     setCart([])
     setPaid('')
+    setChangeCurrency(baseCurrency)
     setPayMethod(PAYMENT_METHODS.CASH)
     setPayCurrency(baseCurrency)
     setTransferCurrency('MN')
@@ -276,6 +292,8 @@ export function SalesScreen() {
             reference: p.method === PAYMENT_METHODS.TRANSFER ? p.reference || '' : ''
           }
         }),
+        change: mixChange, // vuelto por sobrepago (en MN)
+        changeCurrency: baseCurrency,
         sourceLocation: sellLoc,
         creditAccounts: hasModule(LICENSE_MODULES.ACCOUNTS)
       })
@@ -291,12 +309,14 @@ export function SalesScreen() {
         paymentCurrency: payCurrency,
         cashAmount: round2(totalInCur),
         amountPaid: paidNum,
-        change,
+        change: changeGiven,
+        changeCurrency: effChangeCur,
+        changeRate: effChangeCur === baseCurrency ? null : (rateOf(effChangeCur) || null),
         rate: payCurrency === baseCurrency ? null : rate,
         sourceLocation: sellLoc,
         creditAccounts: hasModule(LICENSE_MODULES.ACCOUNTS)
       })
-      setLastSale({ method: 'cash', change, payCurrency })
+      setLastSale({ method: 'cash', change: changeGiven, payCurrency: effChangeCur })
     } else {
       await salesRepo.create({
         shiftId: activeShift.id,
@@ -521,13 +541,17 @@ export function SalesScreen() {
               )}
 
               <div className="total-row">
-                <span>{mixRemaining > 0.01 ? 'Falta por cobrar' : mixRemaining < -0.01 ? 'Cobrado de más' : 'Cubierto'}</span>
-                <strong className={`total-amount ${mixRemaining < -0.01 ? 'neg' : ''}`}>
-                  {Math.abs(mixRemaining) <= 0.01 ? '✓' : formatMoney(Math.abs(mixRemaining), baseCurrency)}
+                <span>{mixRemaining > 0.01 ? 'Falta por cobrar' : mixChange > 0.01 ? 'Vuelto (MN)' : 'Cubierto'}</span>
+                <strong className="total-amount">
+                  {mixRemaining > 0.01
+                    ? formatMoney(mixRemaining, baseCurrency)
+                    : mixChange > 0.01
+                      ? formatMoney(mixChange, baseCurrency)
+                      : '✓'}
                 </strong>
               </div>
 
-              {Math.abs(mixRemaining) > 0.01 && (
+              {mixRemaining > 0.01 && (
                 <>
                   <div className="tabs">
                     <button
@@ -601,7 +625,7 @@ export function SalesScreen() {
                   <button
                     key={c}
                     className={`btn btn--sm ${payCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
-                    onClick={() => setPayCurrency(c)}
+                    onClick={() => { setPayCurrency(c); setChangeCurrency(baseCurrency) }}
                     disabled={c !== baseCurrency && !rateOf(c)}
                   >
                     {c}
@@ -612,7 +636,7 @@ export function SalesScreen() {
               {payCurrency !== baseCurrency && (
                 <p className="muted">
                   Total en {payCurrency}: <strong>{formatMoney(totalInCur, payCurrency)}</strong>{' '}
-                  (tasa {rate})
+                  (tasa {rate}) · equivale a {formatMoney(totalBase, baseCurrency)}
                 </p>
               )}
 
@@ -629,17 +653,37 @@ export function SalesScreen() {
 
               <div className="total-row">
                 <span>Cambio</span>
-                <strong className={`total-amount ${change < 0 ? 'neg' : ''}`}>
-                  {formatMoney(change, payCurrency)}
+                <strong className={`total-amount ${changeGiven < 0 ? 'neg' : ''}`}>
+                  {formatMoney(changeGiven, effChangeCur)}
                 </strong>
               </div>
-              {/* Bloque G: al cobrar en divisa, el vuelto tambien en MN segun la
-                  tasa de Ajustes, para poder devolver en cualquiera de las dos. */}
-              {payCurrency !== baseCurrency && change > 0 && rate > 0 && (
-                <p className="muted">
-                  Puedes devolver <strong>{formatMoney(change, payCurrency)}</strong> o su
-                  equivalente <strong>{formatMoney(round2(change * rate), baseCurrency)}</strong> (tasa {rate}).
-                </p>
+
+              {/* Vuelto al cobrar en divisa: se muestra en AMBAS monedas (el MN
+                  se calcula exacto desde lo recibido, no desde el vuelto en
+                  divisa) y el vendedor elige en cual entregarlo. Esa eleccion
+                  determina de que caja sale el vuelto para el cuadre. */}
+              {payCurrency !== baseCurrency && changeBase >= 0 && rate > 0 && (
+                <>
+                  <p className="muted">
+                    Vuelto: <strong>{formatMoney(changeBase, baseCurrency)}</strong> ó{' '}
+                    <strong>{formatMoney(changeInPay, payCurrency)}</strong> (tasa {rate}).
+                  </p>
+                  <div className="pay-currencies">
+                    <span className="muted" style={{ alignSelf: 'center', marginRight: 4 }}>Entregar vuelto en:</span>
+                    <button
+                      className={`btn btn--sm ${effChangeCur === baseCurrency ? 'btn--primary' : 'btn--ghost'}`}
+                      onClick={() => setChangeCurrency(baseCurrency)}
+                    >
+                      {baseCurrency}
+                    </button>
+                    <button
+                      className={`btn btn--sm ${effChangeCur === payCurrency ? 'btn--primary' : 'btn--ghost'}`}
+                      onClick={() => setChangeCurrency(payCurrency)}
+                    >
+                      {payCurrency}
+                    </button>
+                  </div>
+                </>
               )}
             </>
           ) : (

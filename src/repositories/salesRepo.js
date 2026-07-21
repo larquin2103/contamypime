@@ -22,6 +22,10 @@ export const salesRepo = {
     cashAmount = 0,
     amountPaid = 0,
     change = 0,
+    // Moneda en que se ENTREGO el vuelto. Puede ser distinta a la del cobro
+    // (ej: cobro en USD, vuelto en MN): el cuadre descuenta de esa caja.
+    changeCurrency = null,
+    changeRate = null,
     rate = null,
     // transferencia
     transferCurrency = null,
@@ -73,7 +77,11 @@ export const salesRepo = {
         cashCurrency: isCash ? paymentCurrency : null,
         cashAmount: isCash ? cashAmount : 0,
         amountPaid: isCash ? amountPaid : 0,
-        change: isCash ? change : 0,
+        // El vuelto existe en efectivo y en mixto (por sobrepago); en
+        // transferencia siempre es 0. Se guarda con la moneda en que se entrego.
+        change: paymentMethod === 'transfer' ? 0 : round2(Number(change) || 0),
+        changeCurrency: paymentMethod === 'transfer' ? null : (changeCurrency || paymentCurrency || null),
+        changeRate,
         rate,
         // datos de transferencia (Fase 2)
         transferCurrency: isCash ? null : transferCurrency,
@@ -89,13 +97,13 @@ export const salesRepo = {
       // Bloque D: acreditar la tesoreria en tiempo real (efectivo a su caja
       // por moneda, transferencias a su cuenta). En pago mixto, cada parte.
       if (creditAccounts) {
-        const credit = async (method, currency, amount) => {
+        const move = async (method, currency, amount, direction = 'credit') => {
           const amt = Number(amount) || 0
           if (amt <= 0) return
           const accId = await ensureSystemAccount(method, currency || 'MN')
           await addAccountMovementRaw({
             accountId: accId,
-            direction: 'credit',
+            direction,
             amount: amt,
             currency: currency || 'MN',
             refType: 'sale',
@@ -104,12 +112,22 @@ export const salesRepo = {
             createdAt: ts
           })
         }
+        const chg = round2(Number(change) || 0)
+        const chgCur = changeCurrency || paymentCurrency
         if (Array.isArray(payments) && payments.length) {
-          for (const p of payments) await credit(p.method, p.currency, p.amount)
+          for (const p of payments) await move(p.method, p.currency, p.amount, 'credit')
+          if (chg > 0) await move('cash', chgCur || 'MN', chg, 'debit') // vuelto por sobrepago
         } else if (isCash) {
-          await credit('cash', paymentCurrency, cashAmount)
+          if (!chgCur || chgCur === paymentCurrency) {
+            // Vuelto en la misma moneda del cobro: entra el NETO (como antes).
+            await move('cash', paymentCurrency, cashAmount, 'credit')
+          } else {
+            // Vuelto en otra moneda: entra el bruto recibido y sale el vuelto.
+            await move('cash', paymentCurrency, amountPaid, 'credit')
+            await move('cash', chgCur, chg, 'debit')
+          }
         } else {
-          await credit('transfer', transferCurrency, transferAmount)
+          await move('transfer', transferCurrency, transferAmount, 'credit')
         }
       }
       for (const it of items) {
