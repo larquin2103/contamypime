@@ -246,7 +246,8 @@ export async function buildShiftsReport({ from = null, to = null } = {}) {
     subtitle: rangeLabel(from, to),
     head: ['Abierto', 'Cerrado', 'Vendedor', 'Área', 'Fondo MN', 'N.º ventas', 'Vendido MN', 'Transf. MN', 'Extrac. MN', 'Esperado MN', 'Declarado MN', 'Diferencia MN', 'Cuadre', 'Notas'],
     rows,
-    filename: 'cierres'
+    filename: 'cierres',
+    orientation: 'landscape' // 14 columnas: se exporta el PDF en horizontal
   }
 }
 
@@ -511,7 +512,8 @@ export async function exportExcel(report) {
 export async function exportPdf(report) {
   const { jsPDF } = await import('jspdf')
   const autoTable = (await import('jspdf-autotable')).default
-  const doc = new jsPDF()
+  // Los reportes muy anchos (p.ej. cierres de turno) se exportan horizontal.
+  const doc = new jsPDF({ orientation: report.orientation === 'landscape' ? 'landscape' : 'portrait' })
   doc.setFontSize(14)
   doc.text(report.title, 14, 16)
   doc.setFontSize(10)
