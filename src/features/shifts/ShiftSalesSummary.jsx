@@ -66,6 +66,7 @@ export function ShiftSalesSummary({ shiftId }) {
                   <th>Descripción</th>
                   <th>U/M</th>
                   <th className="num">Cant.</th>
+                  <th className="num">Precio</th>
                   <th className="num">Importe</th>
                 </tr>
               </thead>
@@ -75,6 +76,7 @@ export function ShiftSalesSummary({ shiftId }) {
                     <td>{it.name}</td>
                     <td>{it.unit}</td>
                     <td className="num">{it.qty}</td>
+                    <td className="num">{formatMoney(it.unitPrice ?? (it.lineTotal / (it.qty || 1)), baseCurrency)}</td>
                     <td className="num">{formatMoney(it.lineTotal ?? it.unitPrice * it.qty, baseCurrency)}</td>
                   </tr>
                 ))}

@@ -487,6 +487,7 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
         cross ? `↔ ${itArea}` : origin,
         it.unit,
         round2(it.qty),
+        round2(it.unitPrice ?? (it.lineTotal / (it.qty || 1))),
         round2(it.lineTotal ?? it.unitPrice * it.qty),
         // Linea con precio de escala mayorista (Bloque B): umbral aplicado.
         it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
@@ -497,11 +498,11 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
     })
     total += Number(s.totalBase || 0)
   }
-  rows.push(['', '', '', '', '', round2(total), '', 'TOTAL', '', ''])
+  rows.push(['', '', '', '', '', '', round2(total), '', 'TOTAL', '', ''])
   return {
     title: 'Ventas del turno',
     subtitle: `${sellerName ? sellerName + ' · ' : ''}Generado ${formatDateTime(new Date().toISOString())}`,
-    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Importe', 'Mayorista', 'Metodo', 'Cobrado', 'Vuelto'],
+    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Precio', 'Importe', 'Mayorista', 'Metodo', 'Cobrado', 'Vuelto'],
     rows,
     filename: 'ventas_turno'
   }
