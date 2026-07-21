@@ -22,46 +22,45 @@ async function userMap() {
 
 // --- Builders: cada uno devuelve { title, subtitle, head, rows, filename } ---
 
+// Reporte de ventas al DETALLE (una fila por producto vendido): fecha,
+// vendedor, area, descripcion, unidades, precio unitario e importe, con el
+// metodo de pago. Cada fila repite fecha/vendedor para poder filtrar en Excel.
 export async function buildSalesReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-  const rows = sales.map((s) => {
-    const isTransfer = s.paymentMethod === 'transfer'
-    const isMixed = s.paymentMethod === 'mixed'
-    // Para transferencias: esperado, recibido y diferencia (si la hay).
-    const expected = isTransfer ? round2(Number(s.transferExpected ?? s.totalBase ?? 0)) : ''
-    const received = isTransfer ? round2(Number(s.transferAmount || 0)) : ''
-    const diff = isTransfer ? round2(Number(s.transferDiff || 0)) : ''
-    // Referencias: la de la transferencia simple, o las de las partes del mixto.
-    const refs = isMixed
-      ? (s.payments || []).filter((p) => p.method === 'transfer' && p.reference).map((p) => p.reference).join(' / ')
-      : (isTransfer ? s.transferReference || '' : '')
-    return [
-      formatDateTime(s.createdAt),
-      names[s.sellerId] || 'vendedor',
-      areaLabel(s.area),
-      // Origen de la mercancia (Bloque A): "Almacén" cuando un turno de area
-      // vendio del almacen central (venta mayorista). Vacio = venta normal.
-      s.area && s.sourceLocation === WAREHOUSE ? WAREHOUSE_LABEL : '',
-      // Venta con precio de escala mayorista en alguna linea (Bloque B).
-      (s.items || []).some((it) => it.tierMinQty != null) ? 'Sí' : '',
-      s.hasCrossArea ? 'Sí' : '',
-      isMixed ? 'Mixto' : isTransfer ? 'Transferencia' : 'Efectivo',
-      refs,
-      round2(s.totalBase),
-      expected,
-      received,
-      diff
-    ]
-  })
-  const total = round2(sales.reduce((a, s) => a + Number(s.totalBase || 0), 0))
-  rows.push(['', '', '', '', '', '', '', 'TOTAL', total, '', '', ''])
+  const methodOf = (s) =>
+    s.paymentMethod === 'mixed' ? 'Mixto' : s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'
+
+  const rows = []
+  let total = 0
+  for (const s of sales) {
+    const seller = names[s.sellerId] || 'vendedor'
+    const area = areaLabel(s.area)
+    const method = methodOf(s)
+    for (const it of s.items || []) {
+      const importe = round2(it.lineTotal ?? it.unitPrice * it.qty)
+      rows.push([
+        formatDateTime(s.createdAt),
+        seller,
+        area,
+        it.name,
+        it.unit,
+        round2(it.qty),
+        round2(it.unitPrice ?? 0),
+        importe,
+        method,
+        it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : ''
+      ])
+      total += importe
+    }
+  }
+  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', ''])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Vendedor', 'Área', 'Origen', 'Mayorista', 'Cruzada', 'Metodo', 'No. operacion', 'Total', 'Esperado', 'Recibido', 'Diferencia'],
+    head: ['Fecha', 'Vendedor', 'Área', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Metodo', 'Mayorista'],
     rows,
     filename: 'ventas'
   }
@@ -300,6 +299,7 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
           it.name,
           it.unit,
           round2(it.qty),
+          round2(it.unitPrice ?? 0),
           importe,
           it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : ''
         ])
@@ -307,15 +307,15 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
         subTotal = round2(subTotal + importe)
       }
     }
-    rows.push([sel.name, '', 'Subtotal vendedor', '', subQty, subTotal, ''])
+    rows.push([sel.name, '', 'Subtotal vendedor', '', subQty, '', subTotal, ''])
     grandTotal = round2(grandTotal + subTotal)
   }
-  rows.push(['', '', 'TOTAL', '', '', grandTotal, ''])
+  rows.push(['', '', 'TOTAL', '', '', '', grandTotal, ''])
 
   return {
     title: 'Ventas por vendedor',
     subtitle: rangeLabel(from, to),
-    head: ['Vendedor', 'Fecha', 'Producto', 'U/M', 'Cantidad', 'Importe', 'Mayorista'],
+    head: ['Vendedor', 'Fecha', 'Producto', 'U/M', 'Cantidad', 'Precio', 'Importe', 'Mayorista'],
     rows,
     filename: 'ventas_vendedor'
   }
