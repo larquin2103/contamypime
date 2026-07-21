@@ -4,6 +4,7 @@ import { round2 } from '../../lib/currency'
 import { SHIFT_STATUS, areaLabel, WAREHOUSE, WAREHOUSE_LABEL } from '../../db/constants'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
+import { accountsRepo } from '../../repositories/accountsRepo'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
@@ -421,6 +422,26 @@ export async function buildAccountsReport({ from = null, to = null } = {}) {
   rows.push(['', '', '', '', '', '', '', '', ''])
   for (const a of accounts.filter((x) => x.active)) {
     rows.push(['', a.name, 'SALDO', '', '', '', a.currency, '', round2(balances[a.id] || 0)])
+  }
+
+  // Opcion B: desglose de ingresos y egresos por CONCEPTO (en el rango).
+  const { credits, debits } = await accountsRepo.byConcept({ from, to })
+  const conceptLabels = {
+    own: 'Ventas propias',
+    consignment: 'Ventas en consignación',
+    thirdparty: 'Cobros a terceros',
+    provider: 'Pagos a proveedores',
+    withdrawal: 'Extracciones de caja',
+    manual: 'Ajustes manuales'
+  }
+  rows.push(['', '', '', '', '', '', '', '', ''])
+  rows.push(['INGRESOS POR CONCEPTO', '', '', '', '', '', '', '', ''])
+  for (const k of ['own', 'consignment', 'thirdparty', 'manual']) {
+    if ((credits[k] || 0) > 0) rows.push(['', conceptLabels[k], '', '', round2(credits[k]), '', 'MN', '', ''])
+  }
+  rows.push(['EGRESOS POR CONCEPTO', '', '', '', '', '', '', '', ''])
+  for (const k of ['provider', 'withdrawal', 'manual']) {
+    if ((debits[k] || 0) > 0) rows.push(['', conceptLabels[k], '', '', '', round2(debits[k]), 'MN', '', ''])
   }
 
   return {

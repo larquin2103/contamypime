@@ -34,6 +34,7 @@ export const cashRepo = {
           amount: amt,
           currency,
           refType: 'withdrawal',
+          concept: 'withdrawal',
           refId: id,
           note: reason,
           userId,

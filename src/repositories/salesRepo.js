@@ -94,42 +94,7 @@ export const salesRepo = {
         payments: Array.isArray(payments) && payments.length ? payments : null,
         voided: false
       })
-      // Bloque D: acreditar la tesoreria en tiempo real (efectivo a su caja
-      // por moneda, transferencias a su cuenta). En pago mixto, cada parte.
-      if (creditAccounts) {
-        const move = async (method, currency, amount, direction = 'credit') => {
-          const amt = Number(amount) || 0
-          if (amt <= 0) return
-          const accId = await ensureSystemAccount(method, currency || 'MN')
-          await addAccountMovementRaw({
-            accountId: accId,
-            direction,
-            amount: amt,
-            currency: currency || 'MN',
-            refType: 'sale',
-            refId: id,
-            userId: sellerId,
-            createdAt: ts
-          })
-        }
-        const chg = round2(Number(change) || 0)
-        const chgCur = changeCurrency || paymentCurrency
-        if (Array.isArray(payments) && payments.length) {
-          for (const p of payments) await move(p.method, p.currency, p.amount, 'credit')
-          if (chg > 0) await move('cash', chgCur || 'MN', chg, 'debit') // vuelto por sobrepago
-        } else if (isCash) {
-          if (!chgCur || chgCur === paymentCurrency) {
-            // Vuelto en la misma moneda del cobro: entra el NETO (como antes).
-            await move('cash', paymentCurrency, cashAmount, 'credit')
-          } else {
-            // Vuelto en otra moneda: entra el bruto recibido y sale el vuelto.
-            await move('cash', paymentCurrency, amountPaid, 'credit')
-            await move('cash', chgCur, chg, 'debit')
-          }
-        } else {
-          await move('transfer', transferCurrency, transferAmount, 'credit')
-        }
-      }
+      let hadConsignment = false // Opcion B: concepto del ingreso de la venta.
       for (const it of items) {
         const qty = Math.abs(Number(it.qty))
         await db.stockMovements.add({
@@ -161,6 +126,7 @@ export const salesRepo = {
           // sin la marca (todos, sin el modulo) no ejecutan este camino.
           const consig = p.consignment
           if (consig?.partnerId && Number(consig.unitCost) > 0) {
+            hadConsignment = true
             await db.partnerMovements.add({
               id: newId(),
               partnerId: consig.partnerId,
@@ -176,6 +142,48 @@ export const salesRepo = {
               createdAt: ts
             })
           }
+        }
+      }
+
+      // Bloque D: acreditar la tesoreria en tiempo real (efectivo a su caja por
+      // moneda, transferencias a su cuenta; en pago mixto, cada parte). Se hace
+      // tras el bucle para conocer el CONCEPTO del ingreso (Opcion B): si la
+      // venta incluyo algun producto consignado -> "consignación", si no
+      // "ventas propias".
+      if (creditAccounts) {
+        const concept = hadConsignment ? 'consignment' : 'own'
+        const move = async (method, currency, amount, direction = 'credit') => {
+          const amt = Number(amount) || 0
+          if (amt <= 0) return
+          const accId = await ensureSystemAccount(method, currency || 'MN')
+          await addAccountMovementRaw({
+            accountId: accId,
+            direction,
+            amount: amt,
+            currency: currency || 'MN',
+            refType: 'sale',
+            refId: id,
+            concept,
+            userId: sellerId,
+            createdAt: ts
+          })
+        }
+        const chg = round2(Number(change) || 0)
+        const chgCur = changeCurrency || paymentCurrency
+        if (Array.isArray(payments) && payments.length) {
+          for (const p of payments) await move(p.method, p.currency, p.amount, 'credit')
+          if (chg > 0) await move('cash', chgCur || 'MN', chg, 'debit') // vuelto por sobrepago
+        } else if (isCash) {
+          if (!chgCur || chgCur === paymentCurrency) {
+            // Vuelto en la misma moneda del cobro: entra el NETO (como antes).
+            await move('cash', paymentCurrency, cashAmount, 'credit')
+          } else {
+            // Vuelto en otra moneda: entra el bruto recibido y sale el vuelto.
+            await move('cash', paymentCurrency, amountPaid, 'credit')
+            await move('cash', chgCur, chg, 'debit')
+          }
+        } else {
+          await move('transfer', transferCurrency, transferAmount, 'credit')
         }
       }
     })

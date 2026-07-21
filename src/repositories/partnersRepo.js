@@ -124,6 +124,8 @@ export const partnersRepo = {
           amount: amt,
           currency: acc.currency,
           refType: 'partnerPayment',
+          // Concepto (Opcion B): cobro a tercero (ingreso) o pago a proveedor (egreso).
+          concept: type === PARTNER_MOVEMENT_TYPES.PAYMENT_IN ? 'thirdparty' : 'provider',
           refId: id,
           note: cleanNote || (partner ? partner.name : ''),
           userId,

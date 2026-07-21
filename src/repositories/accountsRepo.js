@@ -50,6 +50,9 @@ export async function addAccountMovementRaw({
   currency,
   refType = '',
   refId = null,
+  // Concepto del movimiento (Opcion B): de que actividad vino/salio el dinero.
+  // 'own' | 'consignment' | 'thirdparty' | 'provider' | 'withdrawal' | 'manual'
+  concept = '',
   note = '',
   userId = null,
   createdAt = null
@@ -65,11 +68,22 @@ export async function addAccountMovementRaw({
     currency,
     refType,
     refId,
+    concept,
     note,
     userId,
     createdAt: createdAt || now()
   })
   return id
+}
+
+// Etiquetas de concepto de ingreso/egreso (Opcion B).
+export const ACCOUNT_CONCEPTS = {
+  own: 'Ventas propias',
+  consignment: 'Ventas en consignación',
+  thirdparty: 'Cobros a terceros',
+  provider: 'Pagos a proveedores',
+  withdrawal: 'Extracciones de caja',
+  manual: 'Ajustes manuales'
 }
 
 export const accountsRepo = {
@@ -135,6 +149,28 @@ export const accountsRepo = {
     return map
   },
 
+  // Opcion B: ingresos y egresos agrupados por CONCEPTO (de que actividad vino
+  // o salio el dinero), sumado en moneda base MN. Devuelve { credits, debits }
+  // como { concepto: monto }. `movs` opcional (para no releer si ya se tienen).
+  async byConcept({ from = null, to = null, movs = null } = {}) {
+    const rows = movs || (await db.accountMovements.toArray())
+    const inRange = (iso) => {
+      const d = (iso || '').slice(0, 10)
+      if (from && d < from) return false
+      if (to && d > to) return false
+      return true
+    }
+    const credits = {}
+    const debits = {}
+    for (const m of rows) {
+      if (!inRange(m.createdAt)) continue
+      const c = m.concept || 'own'
+      const bag = m.direction === 'debit' ? debits : credits
+      bag[c] = round2((bag[c] || 0) + Number(m.amount || 0))
+    }
+    return { credits, debits }
+  },
+
   // Ajuste manual del dueño/administrativo (correccion append-only con nota).
   async addManual({ accountId, direction, amount, note = '', userId = null }) {
     const acc = await db.accounts.get(accountId)
@@ -148,6 +184,7 @@ export const accountsRepo = {
       amount: amt,
       currency: acc.currency,
       refType: 'manual',
+      concept: 'manual',
       note: String(note || '').trim(),
       userId
     })

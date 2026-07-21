@@ -2,14 +2,15 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft } from 'lucide-react'
-import { accountsRepo } from '../../repositories/accountsRepo'
+import { accountsRepo, ACCOUNT_CONCEPTS } from '../../repositories/accountsRepo'
+import { partnersRepo } from '../../repositories/partnersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
-import { CASH_CURRENCIES } from '../../db/constants'
+import { CASH_CURRENCIES, PARTNER_TYPES } from '../../db/constants'
 
 // Etiquetas del origen de cada movimiento de cuenta.
 const REF_LABELS = {
@@ -30,6 +31,11 @@ export function AccountsScreen() {
   const canAccounts = hasModule(LICENSE_MODULES.ACCOUNTS)
   const accounts = useLiveQuery(() => accountsRepo.list(), [], [])
   const balances = useLiveQuery(() => accountsRepo.balances(), [], {})
+  // Opcion A: saldos de proveedores/terceros para la vista unificada.
+  const partners = useLiveQuery(() => partnersRepo.list(), [], [])
+  const partnerBal = useLiveQuery(() => partnersRepo.balances(), [], {})
+  // Opcion B: ingresos/egresos por concepto (de que actividad vino el dinero).
+  const byConcept = useLiveQuery(() => accountsRepo.byConcept(), [], { credits: {}, debits: {} })
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
 
@@ -97,8 +103,67 @@ export function AccountsScreen() {
         + Crear otra cuenta
       </button>
 
+      <UnifiedPartners partners={partners} partnerBal={partnerBal} onGo={() => navigate('/partners')} />
+      <IncomeByConcept byConcept={byConcept} />
+
       {creating && <AccountForm onClose={() => setCreating(false)} />}
     </div>
+  )
+}
+
+// Opcion A: saldos de proveedores (por pagar) y terceros (por cobrar) junto a
+// la tesoreria, para la foto completa del negocio.
+function UnifiedPartners({ partners, partnerBal, onGo }) {
+  const providers = partners.filter((p) => p.type === PARTNER_TYPES.PROVIDER && p.active)
+  const creditors = partners.filter((p) => p.type === PARTNER_TYPES.CREDITOR && p.active)
+  const sum = (list) => round2(list.reduce((a, p) => a + Math.max(0, partnerBal[p.id] || 0), 0))
+  const porPagar = sum(providers)
+  const porCobrar = sum(creditors)
+  if (providers.length === 0 && creditors.length === 0) return null
+
+  return (
+    <section className="card">
+      <h3>Proveedores y terceros</h3>
+      <div className="kv">
+        <span className="muted">Por pagar (proveedores)</span>
+        <strong className={porPagar > 0 ? 'warn-text' : ''}>{formatMoney(porPagar, 'MN')}</strong>
+      </div>
+      <div className="kv">
+        <span className="muted">Por cobrar (terceros)</span>
+        <strong className={porCobrar > 0 ? 'ok-text' : ''}>{formatMoney(porCobrar, 'MN')}</strong>
+      </div>
+      <button className="btn btn--ghost btn--block btn--sm" onClick={onGo}>Ver detalle de cuentas</button>
+    </section>
+  )
+}
+
+// Opcion B: ingresos por concepto (de que actividad vino el dinero) y egresos.
+function IncomeByConcept({ byConcept }) {
+  const { credits = {}, debits = {} } = byConcept || {}
+  const incomeKeys = ['own', 'consignment', 'thirdparty']
+  const egressKeys = ['provider', 'withdrawal']
+  const anyIncome = incomeKeys.some((k) => (credits[k] || 0) > 0)
+  const anyEgress = egressKeys.some((k) => (debits[k] || 0) > 0)
+  if (!anyIncome && !anyEgress) return null
+
+  return (
+    <section className="card">
+      <h3>Ingresos por concepto</h3>
+      <p className="muted">De qué actividad vino el dinero (en MN, todo el historial).</p>
+      {incomeKeys.map((k) => (credits[k] || 0) > 0 && (
+        <div key={k} className="kv">
+          <span className="muted">{ACCOUNT_CONCEPTS[k]}</span>
+          <strong className="ok-text">+{formatMoney(credits[k], 'MN')}</strong>
+        </div>
+      ))}
+      {anyEgress && <p className="muted" style={{ marginTop: 8 }}>Egresos</p>}
+      {egressKeys.map((k) => (debits[k] || 0) > 0 && (
+        <div key={k} className="kv">
+          <span className="muted">{ACCOUNT_CONCEPTS[k]}</span>
+          <strong className="warn-text">−{formatMoney(debits[k], 'MN')}</strong>
+        </div>
+      ))}
+    </section>
   )
 }
 
