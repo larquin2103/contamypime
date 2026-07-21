@@ -20,6 +20,14 @@ async function userMap() {
   return m
 }
 
+// Mapa id -> producto (para traer precio de venta en entradas/salidas).
+async function productMap() {
+  const products = await db.products.toArray()
+  const m = {}
+  for (const p of products) m[p.id] = p
+  return m
+}
+
 // --- Builders: cada uno devuelve { title, subtitle, head, rows, filename } ---
 
 // Reporte de ventas al DETALLE (una fila por producto vendido): fecha,
@@ -109,6 +117,7 @@ export async function buildInventoryReport() {
 // Entradas de mercancia al almacen central (compras).
 export async function buildEntriesReport({ from = null, to = null } = {}) {
   const names = await userMap()
+  const prods = await productMap()
   const purchases = (await db.purchases.toArray())
     .filter((p) => inRange(p.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
@@ -122,6 +131,7 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
         round2(it.qty),
         it.unit || '',
         round2(it.unitCost || 0),
+        round2(prods[it.productId]?.price ?? 0), // precio de venta actual
         round2(it.lineTotal ?? Number(it.qty) * Number(it.unitCost || 0)),
         pu.supplier || '',
         names[pu.userId] || 'dueño'
@@ -129,12 +139,12 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
     }
     total += Number(pu.totalBase || 0)
   }
-  if (rows.length === 0) rows.push(['Sin entradas en el periodo', '', '', '', '', '', '', ''])
-  else rows.push(['', '', '', '', '', round2(total), 'TOTAL', ''])
+  if (rows.length === 0) rows.push(['Sin entradas en el periodo', '', '', '', '', '', '', '', ''])
+  else rows.push(['', '', '', '', '', '', round2(total), 'TOTAL', ''])
   return {
     title: 'Entradas al almacén',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Producto', 'Cantidad', 'U/M', 'Costo unit', 'Total', 'Proveedor', 'Registró'],
+    head: ['Fecha', 'Producto', 'Cantidad', 'U/M', 'Costo unit', 'Precio venta', 'Total', 'Proveedor', 'Registró'],
     rows,
     filename: 'entradas'
   }
@@ -143,27 +153,35 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
 // Salidas del almacen hacia las areas (trazabilidad append-only, Bloque 20).
 export async function buildTransfersReport({ from = null, to = null } = {}) {
   const names = await userMap()
+  const prods = await productMap()
   const transfers = (await db.transfers.toArray())
     .filter((t) => inRange(t.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   const rows = []
+  let totalVal = 0
   for (const t of transfers) {
     for (const it of t.items || []) {
+      const price = round2(prods[it.productId]?.price ?? 0)
+      const valor = round2(price * Number(it.qty || 0))
+      totalVal += valor
       rows.push([
         formatDateTime(t.createdAt),
         t.toArea,
         it.name,
         round2(it.qty),
         it.unit || '',
+        price,
+        valor,
         names[t.byUserId] || 'dueño'
       ])
     }
   }
-  if (rows.length === 0) rows.push(['Sin salidas en el periodo', '', '', '', '', ''])
+  if (rows.length === 0) rows.push(['Sin salidas en el periodo', '', '', '', '', '', '', ''])
+  else rows.push(['', '', '', '', '', 'TOTAL', round2(totalVal), ''])
   return {
     title: 'Salidas almacén → área',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Área destino', 'Producto', 'Cantidad', 'U/M', 'Registró'],
+    head: ['Fecha', 'Área destino', 'Producto', 'Cantidad', 'U/M', 'Precio', 'Valor', 'Registró'],
     rows,
     filename: 'salidas_almacen'
   }
@@ -174,22 +192,59 @@ export async function buildShiftsReport({ from = null, to = null } = {}) {
   const shifts = (await db.shifts.toArray())
     .filter((s) => s.status === SHIFT_STATUS.CLOSED && inRange(s.closedAt, from, to))
     .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))
+
+  // Agregados por turno: nº de ventas, total vendido y transferencias en MN
+  // (de ventas por transferencia y de las partes de transferencia en mixto).
+  const agg = {}
+  for (const s of await db.sales.toArray()) {
+    if (s.voided) continue
+    const a = agg[s.shiftId] || (agg[s.shiftId] = { count: 0, sold: 0, transfer: 0 })
+    a.count += 1
+    a.sold += Number(s.totalBase || 0)
+    if (s.paymentMethod === 'transfer' && (s.transferCurrency || 'MN') === 'MN') {
+      a.transfer += Number(s.transferAmount || 0)
+    } else if (s.paymentMethod === 'mixed' && Array.isArray(s.payments)) {
+      for (const p of s.payments) {
+        if (p.method === 'transfer' && (p.currency || 'MN') === 'MN') a.transfer += Number(p.amount || 0)
+      }
+    }
+  }
+  // Extracciones de caja en MN por turno.
+  const wd = {}
+  for (const c of await db.cashMovements.toArray()) {
+    if (c.type !== 'withdrawal' || c.currency !== 'MN') continue
+    wd[c.shiftId] = (wd[c.shiftId] || 0) + Number(c.amount || 0)
+  }
+
   const sem = { green: 'Cuadra', yellow: 'Dif. menor', red: 'Dif. critica' }
-  const rows = shifts.map((s) => [
-    formatDateTime(s.openedAt),
-    formatDateTime(s.closedAt),
-    names[s.sellerId] || 'vendedor',
-    areaLabel(s.area),
-    round2(s.expectedCash?.MN ?? 0),
-    round2(s.declaredCash?.MN ?? 0),
-    round2(s.difference?.MN ?? 0),
-    sem[s.semaphore] || '',
-    [s.forced ? 'cerrado por dueño' : '', s.countSkipped ? 'sin conteo' : ''].filter(Boolean).join('; ')
-  ])
+  const rows = shifts.map((s) => {
+    const a = agg[s.id] || { count: 0, sold: 0, transfer: 0 }
+    const notes = [
+      s.forced ? 'cerrado por dueño' : '',
+      s.countSkipped ? 'sin conteo de billetes' : '',
+      s.closedBy && s.closedBy !== s.sellerId && names[s.closedBy] ? `cerró: ${names[s.closedBy]}` : ''
+    ].filter(Boolean).join('; ')
+    return [
+      formatDateTime(s.openedAt),
+      formatDateTime(s.closedAt),
+      names[s.sellerId] || 'vendedor',
+      areaLabel(s.area),
+      round2(s.openingCash?.MN ?? 0),
+      a.count,
+      round2(a.sold),
+      round2(a.transfer),
+      round2(wd[s.id] || 0),
+      round2(s.expectedCash?.MN ?? 0),
+      round2(s.declaredCash?.MN ?? 0),
+      round2(s.difference?.MN ?? 0),
+      sem[s.semaphore] || '',
+      notes
+    ]
+  })
   return {
     title: 'Cierres de turno',
     subtitle: rangeLabel(from, to),
-    head: ['Abierto', 'Cerrado', 'Vendedor', 'Área', 'Esperado MN', 'Declarado MN', 'Diferencia MN', 'Cuadre', 'Notas'],
+    head: ['Abierto', 'Cerrado', 'Vendedor', 'Área', 'Fondo MN', 'N.º ventas', 'Vendido MN', 'Transf. MN', 'Extrac. MN', 'Esperado MN', 'Declarado MN', 'Diferencia MN', 'Cuadre', 'Notas'],
     rows,
     filename: 'cierres'
   }
@@ -203,56 +258,57 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
 
-  const saleProfit = (s) =>
-    (s.items || []).reduce(
-      (a, it) => a + (Number(it.lineTotal ?? it.unitPrice * it.qty) - Number((it.unitCost || 0) * it.qty)),
-      0
-    )
-
-  // Agrupa por area del turno (donde se cobro) y, dentro, por vendedor.
+  // Agrupa por area del turno (donde se cobro); dentro, una fila por producto
+  // vendido (fecha, vendedor, descripcion, unidades, precio, importe, ganancia).
   const byArea = {}
-  let gRevenue = 0
-  let gProfit = 0
-  let gCount = 0
   for (const s of sales) {
     const area = String(s.area || '')
-    const a = byArea[area] || (byArea[area] = { area, sellers: {}, revenue: 0, profit: 0, count: 0 })
-    const sid = s.sellerId
-    const e = a.sellers[sid] || (a.sellers[sid] = { seller: names[sid] || 'vendedor', revenue: 0, profit: 0, count: 0 })
-    const rev = Number(s.totalBase || 0)
-    const prof = saleProfit(s)
-    e.revenue += rev; e.profit += prof; e.count += 1
-    a.revenue += rev; a.profit += prof; a.count += 1
-    gRevenue += rev; gProfit += prof; gCount += 1
+    const a = byArea[area] || (byArea[area] = { lines: [], revenue: 0, profit: 0, count: 0 })
+    a.count += 1
+    for (const it of s.items || []) {
+      const importe = round2(it.lineTotal ?? it.unitPrice * it.qty)
+      const ganancia = round2(importe - Number(it.unitCost || 0) * Number(it.qty || 0))
+      a.lines.push({
+        createdAt: s.createdAt,
+        seller: names[s.sellerId] || 'vendedor',
+        name: it.name,
+        unit: it.unit,
+        qty: round2(it.qty),
+        price: round2(it.unitPrice ?? 0),
+        importe,
+        ganancia
+      })
+      a.revenue += importe
+      a.profit += ganancia
+    }
   }
 
   const rows = []
-  const areasSorted = Object.values(byArea).sort((x, y) => y.revenue - x.revenue)
-  for (const a of areasSorted) {
-    const sellers = Object.values(a.sellers).sort((x, y) => y.revenue - x.revenue)
-    for (const e of sellers) {
-      rows.push([areaLabel(a.area), e.seller, e.count, round2(e.revenue), round2(e.profit)])
+  let gRev = 0, gProf = 0, gCount = 0
+  const areasSorted = Object.entries(byArea).sort((x, y) => y[1].revenue - x[1].revenue)
+  for (const [area, a] of areasSorted) {
+    a.lines.sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1))
+    for (const l of a.lines) {
+      rows.push([areaLabel(area), formatDateTime(l.createdAt), l.seller, l.name, l.unit, l.qty, l.price, l.importe, l.ganancia])
     }
-    // Subtotal del area (si tiene mas de un vendedor, ayuda a leerlo).
-    if (sellers.length > 1) {
-      rows.push([areaLabel(a.area), 'Subtotal área', a.count, round2(a.revenue), round2(a.profit)])
-    }
+    rows.push([areaLabel(area), 'SUBTOTAL', `${a.count} venta(s)`, '', '', '', '', round2(a.revenue), round2(a.profit)])
+    gRev += a.revenue; gProf += a.profit; gCount += a.count
   }
-  rows.push(['TOTAL', '', gCount, round2(gRevenue), round2(gProfit)])
+  rows.push(['TOTAL', '', `${gCount} venta(s)`, '', '', '', '', round2(gRev), round2(gProf)])
 
   // Bloque de ventas cruzadas (productos de OTRA area cobrados por un vendedor).
   const rep = await analyticsRepo.report({ from, to })
-  rows.push(['', '', '', '', ''])
-  rows.push(['VENTAS CRUZADAS (sustitución)', 'Vendedor', 'Cant', 'Importe', ''])
+  rows.push(['', '', '', '', '', '', '', '', ''])
+  rows.push(['VENTAS CRUZADAS (sustitución)', 'Vendedor', 'Cant', '', '', '', '', 'Importe', ''])
   for (const c of rep.crossArea?.bySeller || []) {
-    rows.push(['↔ de otras áreas', c.seller, c.qty, round2(c.revenue), ''])
+    rows.push(['↔ de otras áreas', c.seller, c.qty, '', '', '', '', round2(c.revenue), ''])
   }
-  if ((rep.crossArea?.count ?? 0) === 0) rows.push(['Sin ventas cruzadas', '', '', '', ''])
+  if ((rep.crossArea?.count ?? 0) === 0) rows.push(['Sin ventas cruzadas', '', '', '', '', '', '', '', ''])
 
   return {
     title: 'Ventas por área',
     subtitle: rangeLabel(from, to),
-    head: ['Área', 'Vendedor', 'Ventas', 'Ingreso', 'Ganancia'],
+    head: ['Área', 'Fecha', 'Vendedor', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Ganancia'],
     rows,
     filename: 'areas'
   }
