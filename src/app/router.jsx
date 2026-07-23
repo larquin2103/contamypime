@@ -15,6 +15,7 @@ import { ShiftScreen } from '../features/shifts/ShiftScreen'
 import { SalesScreen } from '../features/sales/SalesScreen'
 import { EntryScreen } from '../features/inventory/EntryScreen'
 import { TransferScreen } from '../features/inventory/TransferScreen'
+import { ConversionScreen } from '../features/inventory/ConversionScreen'
 import { CountScreen } from '../features/inventory/CountScreen'
 import { CashScreen } from '../features/cash/CashScreen'
 import { FinancesScreen } from '../features/cash/FinancesScreen'
@@ -60,6 +61,7 @@ export function AppRouter() {
         <Route path="/sell" element={<SalesScreen />} />
         <Route path="/entry" element={<EntryScreen />} />
         <Route path="/transfer" element={<TransferScreen />} />
+        <Route path="/convert" element={<ConversionScreen />} />
         <Route path="/count" element={<CountScreen />} />
         <Route path="/cash" element={<CashScreen />} />
         <Route path="/finances" element={<FinancesScreen />} />

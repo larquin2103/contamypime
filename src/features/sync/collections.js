@@ -18,6 +18,8 @@ export const SYNC_COLLECTIONS = [
   { name: 'auditEvents', pk: 'id' },
   { name: 'counts', pk: 'id' },
   { name: 'transfers', pk: 'id' },
+  // Modulo mayorista: conversiones de producto en el almacen.
+  { name: 'conversions', pk: 'id' },
   // Bloques C/D (modulo cuentas): terceros y tesoreria con sus libros.
   { name: 'partners', pk: 'id' },
   { name: 'partnerMovements', pk: 'id' },

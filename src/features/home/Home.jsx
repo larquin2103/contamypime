@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -198,6 +198,9 @@ export function Home() {
             <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Al almacén central" />
             {areas.length > 0 && (
               <ActionCard to="/transfer" icon={Send} title="Salida a áreas" sub="Marca productos y envía por área" />
+            )}
+            {hasModule(LICENSE_MODULES.WHOLESALE) && (
+              <ActionCard to="/convert" icon={Split} title="Conversión de productos" sub="Fraccionar en el almacén (mayorista)" />
             )}
             <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
           </Section>

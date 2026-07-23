@@ -83,7 +83,12 @@ export const MOVEMENT_TYPES = {
   TRANSFER_OUT: 'transfer_out',
   TRANSFER_IN: 'transfer_in',
   // Entrega de mercancia del almacen a un TERCERO (Bloque C, modulo cuentas).
-  PARTNER_OUT: 'partner_out'
+  PARTNER_OUT: 'partner_out',
+  // Conversion de producto en el almacen (modulo mayorista): se consume un
+  // producto (CONVERSION_OUT, -) y se da de alta otro con su propio codigo
+  // (CONVERSION_IN, +). Ej: un saco de azucar -> varias jabas fraccionadas.
+  CONVERSION_OUT: 'conversion_out',
+  CONVERSION_IN: 'conversion_in'
 }
 
 // Terceros del negocio (Bloque C, modulo 'cuentas').

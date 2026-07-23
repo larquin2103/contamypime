@@ -94,3 +94,12 @@ db.version(8).stores({
   accounts: 'id, active',
   accountMovements: 'id, accountId, direction, refId, createdAt'
 })
+
+// Modulo 'mayorista': conversion de productos en el almacen central. Un producto
+// se consume (saco de azucar) y otro con su propio codigo se da de alta (jabas
+// fraccionadas). Es append-only y genera dos movimientos en el libro mayor
+// (CONVERSION_OUT / CONVERSION_IN); el stock de ambos productos sale de la suma,
+// como siempre. Migracion aditiva: solo agrega una tabla vacia.
+db.version(9).stores({
+  conversions: 'id, fromProductId, toProductId, location, byUserId, createdAt'
+})

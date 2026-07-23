@@ -503,7 +503,7 @@ export async function buildCountReport({ from = null, to = null } = {}) {
 
   const allMoves = await db.stockMovements.toArray()
   const SALE = MOVEMENT_TYPES.SALE_OUT
-  const ENTRADAS = [MOVEMENT_TYPES.PURCHASE_IN, MOVEMENT_TYPES.TRANSFER_IN]
+  const ENTRADAS = [MOVEMENT_TYPES.PURCHASE_IN, MOVEMENT_TYPES.TRANSFER_IN, MOVEMENT_TYPES.CONVERSION_IN]
 
   const rows = []
   let grandMerma = 0
