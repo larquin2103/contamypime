@@ -260,11 +260,17 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
 
-  // Agrupa por area del turno (donde se cobro); dentro, una fila por producto
-  // vendido (fecha, vendedor, descripcion, unidades, precio, importe, ganancia).
+  // Etiqueta del grupo: el almacen central usa su nombre propio (areaLabel
+  // devolveria el centinela "__almacen"); las areas, su nombre.
+  const originLabel = (loc) => (loc === WAREHOUSE ? WAREHOUSE_LABEL : areaLabel(loc))
+
+  // Agrupa por el ORIGEN real de la mercancia: el ALMACEN central cuando fue una
+  // venta mayorista (sourceLocation), o el area del turno. Asi las ventas del
+  // almacen central se cuentan en su propio grupo y no se mezclan con el area del
+  // vendedor. Ventas antiguas (sin sourceLocation) caen en su area, como antes.
   const byArea = {}
   for (const s of sales) {
-    const area = String(s.area || '')
+    const area = s.sourceLocation || String(s.area || '')
     const a = byArea[area] || (byArea[area] = { lines: [], revenue: 0, profit: 0, count: 0 })
     a.count += 1
     for (const it of s.items || []) {
@@ -291,9 +297,9 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
   for (const [area, a] of areasSorted) {
     a.lines.sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1))
     for (const l of a.lines) {
-      rows.push([areaLabel(area), formatDateTime(l.createdAt), l.seller, l.name, l.unit, l.qty, l.price, l.importe, l.ganancia])
+      rows.push([originLabel(area), formatDateTime(l.createdAt), l.seller, l.name, l.unit, l.qty, l.price, l.importe, l.ganancia])
     }
-    rows.push([areaLabel(area), 'SUBTOTAL', `${a.count} venta(s)`, '', '', '', '', round2(a.revenue), round2(a.profit)])
+    rows.push([originLabel(area), 'SUBTOTAL', `${a.count} venta(s)`, '', '', '', '', round2(a.revenue), round2(a.profit)])
     gRev += a.revenue; gProf += a.profit; gCount += a.count
   }
   rows.push(['TOTAL', '', `${gCount} venta(s)`, '', '', '', '', round2(gRev), round2(gProf)])
@@ -349,11 +355,16 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
     let subQty = 0
     let subTotal = 0
     for (const s of sel.list) {
+      // Origen de la venta: el almacen central (venta mayorista) o el area del
+      // turno. Asi el reporte muestra de donde salio cada producto que vendio.
+      const originLoc = s.sourceLocation || s.area || ''
+      const origin = originLoc === WAREHOUSE ? WAREHOUSE_LABEL : areaLabel(originLoc)
       for (const it of s.items || []) {
         const importe = round2(it.lineTotal ?? it.unitPrice * it.qty)
         rows.push([
           sel.name,
           formatDateTime(s.createdAt),
+          origin,
           it.name,
           it.unit,
           round2(it.qty),
@@ -365,15 +376,15 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
         subTotal = round2(subTotal + importe)
       }
     }
-    rows.push([sel.name, '', 'Subtotal vendedor', '', subQty, '', subTotal, ''])
+    rows.push([sel.name, '', '', 'Subtotal vendedor', '', subQty, '', subTotal, ''])
     grandTotal = round2(grandTotal + subTotal)
   }
-  rows.push(['', '', 'TOTAL', '', '', '', grandTotal, ''])
+  rows.push(['', '', '', 'TOTAL', '', '', '', grandTotal, ''])
 
   return {
     title: 'Ventas por vendedor',
     subtitle: rangeLabel(from, to),
-    head: ['Vendedor', 'Fecha', 'Producto', 'U/M', 'Cantidad', 'Precio', 'Importe', 'Mayorista'],
+    head: ['Vendedor', 'Fecha', 'Origen', 'Producto', 'U/M', 'Cantidad', 'Precio', 'Importe', 'Mayorista'],
     rows,
     filename: 'ventas_vendedor'
   }
