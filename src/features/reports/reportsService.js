@@ -561,7 +561,7 @@ export async function buildCountReport({ from = null, to = null } = {}) {
     subtitle: rangeLabel(from, to),
     head: [
       'Fecha', 'Lugar', 'Producto', 'U/M',
-      'Inicial', '(+) Entradas', '(−) Ventas', '(±) Ajustes',
+      'Inicial', '(+) Entradas', '(-) Ventas', '(+/-) Ajustes',
       'Teórico', 'Físico', 'Diferencia', 'Estado'
     ],
     rows,
