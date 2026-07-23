@@ -1,7 +1,10 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
-import { round2 } from '../../lib/currency'
-import { SHIFT_STATUS, areaLabel, WAREHOUSE, WAREHOUSE_LABEL } from '../../db/constants'
+import { round2, formatMoney } from '../../lib/currency'
+import {
+  SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
+  areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL
+} from '../../db/constants'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { accountsRepo } from '../../repositories/accountsRepo'
@@ -461,6 +464,109 @@ export async function buildAccountsReport({ from = null, to = null } = {}) {
     head: ['Fecha', 'Cuenta', 'Tipo', 'Origen', 'Crédito', 'Débito', 'Moneda', 'Usuario', 'Nota'],
     rows,
     filename: 'cuentas'
+  }
+}
+
+// Submayor de CONTEO FISICO (Fase 7). Por cada conteo APROBADO (de un area o del
+// almacen central), reconstruye para cada producto contado el movimiento en esa
+// ubicacion desde el conteo anterior hasta este: existencia inicial, entradas,
+// ventas (que rebajan la existencia), otros ajustes/traspasos, existencia teorica
+// (= el "sistema" del conteo), fisico contado y diferencia (merma/sobrante). El
+// subtotal por conteo valora la diferencia con el costo. Incluye TODAS las
+// ubicaciones (areas y almacen), etiquetadas con locationLabel.
+export async function buildCountReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const prods = await productMap() // para el costo -> valor de la merma
+  const dateOf = (c) => c.approvedAt || c.submittedAt || c.createdAt
+
+  // Todos los conteos aprobados, agrupados por ubicacion y ordenados en el tiempo,
+  // para conocer el "conteo anterior" (inicio de la ventana del submayor).
+  const approved = (await db.counts.toArray()).filter((c) => c.status === COUNT_STATUS.APPROVED)
+  const byLoc = {}
+  for (const c of approved) {
+    const loc = c.location || WAREHOUSE
+    ;(byLoc[loc] = byLoc[loc] || []).push(c)
+  }
+  for (const loc in byLoc) byLoc[loc].sort((a, b) => (dateOf(a) < dateOf(b) ? -1 : 1))
+  const prevBoundary = (c) => {
+    const list = byLoc[c.location || WAREHOUSE] || []
+    const b = dateOf(c)
+    let prev = null
+    for (const x of list) { if (dateOf(x) < b) prev = x; else break }
+    return prev ? dateOf(prev) : null
+  }
+
+  // Los conteos a mostrar: aprobados dentro del rango, mas recientes primero.
+  const counts = approved
+    .filter((c) => inRange(dateOf(c), from, to))
+    .sort((a, b) => (dateOf(a) < dateOf(b) ? 1 : -1))
+
+  const allMoves = await db.stockMovements.toArray()
+  const SALE = MOVEMENT_TYPES.SALE_OUT
+  const ENTRADAS = [MOVEMENT_TYPES.PURCHASE_IN, MOVEMENT_TYPES.TRANSFER_IN]
+
+  const rows = []
+  let grandMerma = 0
+  for (const c of counts) {
+    const loc = c.location || WAREHOUSE
+    const start = prevBoundary(c) // exclusivo; null = desde el inicio del historial
+    const end = c.submittedAt || dateOf(c) // momento de la foto del sistema
+    const fecha = formatDateTime(dateOf(c))
+    const lugar = locationLabel(loc)
+
+    let nCounted = 0, nDif = 0, mermaVal = 0
+    for (const it of c.items || []) {
+      if (!it.counted) continue
+      nCounted += 1
+      // Movimientos de ESTE producto en ESTA ubicacion dentro de la ventana.
+      let entradas = 0, ventas = 0, otros = 0
+      for (const m of allMoves) {
+        if (m.productId !== it.productId) continue
+        if ((m.location || WAREHOUSE) !== loc) continue
+        if (start && m.createdAt <= start) continue
+        if (m.createdAt > end) continue
+        const q = Number(m.qty || 0)
+        if (m.type === SALE) ventas += q
+        else if (ENTRADAS.includes(m.type)) entradas += q
+        else otros += q
+      }
+      const teorico = round2(Number(it.systemStock || 0))
+      const inicial = round2(teorico - (entradas + ventas + otros))
+      const fisico = round2(Number(it.physicalQty || 0))
+      const dif = round2(fisico - teorico)
+      if (dif !== 0) nDif += 1
+      const cost = Number(prods[it.productId]?.cost || 0)
+      mermaVal = round2(mermaVal + dif * cost) // dif<0 (merma) resta; sobrante suma
+      const estado = dif === 0 ? 'Cuadra' : dif < 0 ? 'Merma' : 'Sobrante'
+      rows.push([
+        fecha, lugar, it.name, it.unit,
+        inicial, round2(entradas), round2(ventas), round2(otros),
+        teorico, fisico, dif, estado
+      ])
+    }
+    grandMerma = round2(grandMerma + mermaVal)
+    rows.push([
+      '', '', `SUBTOTAL ${lugar} — ${nCounted} producto(s), ${nDif} con diferencia`,
+      '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(mermaVal)}`
+    ])
+  }
+  if (counts.length === 0) {
+    rows.push(['Sin conteos aprobados en el periodo', '', '', '', '', '', '', '', '', '', '', ''])
+  } else {
+    rows.push(['', '', 'TOTAL', '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(grandMerma)}`])
+  }
+
+  return {
+    title: 'Conteo físico (submayor)',
+    subtitle: rangeLabel(from, to),
+    head: [
+      'Fecha', 'Lugar', 'Producto', 'U/M',
+      'Inicial', '(+) Entradas', '(−) Ventas', '(±) Ajustes',
+      'Teórico', 'Físico', 'Diferencia', 'Estado'
+    ],
+    rows,
+    orientation: 'landscape',
+    filename: 'conteo_fisico'
   }
 }
 

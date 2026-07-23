@@ -14,6 +14,7 @@ import {
   buildEntriesReport,
   buildTransfersReport,
   buildAccountsReport,
+  buildCountReport,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -89,6 +90,7 @@ export function ReportsScreen() {
       {areas.length > 0 &&
         card('transfers', 'Salidas almacén → área', 'Qué se sacó del almacén a cada área', buildTransfersReport, true)}
       {card('inv', 'Inventario por ubicación', 'Existencias en almacén y en cada área', buildInventoryReport, false)}
+      {card('count', 'Conteo físico (submayor)', 'Conciliación por conteo aprobado: existencia inicial, ventas que la rebajan, teórico, físico y diferencia — áreas y almacén central', buildCountReport, true)}
       {hasModule(LICENSE_MODULES.ACCOUNTS) &&
         card('accounts', 'Movimientos de cuentas', 'Créditos y débitos de la tesorería, con saldos', buildAccountsReport, true)}
     </div>
