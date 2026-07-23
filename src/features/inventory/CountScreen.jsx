@@ -8,6 +8,8 @@ import { productsRepo } from '../../repositories/productsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
@@ -36,6 +38,7 @@ function CloseReturnBanner() {
 export function CountScreen() {
   const { user, isManager } = useAuth()
   const { activeShift } = useShift()
+  const { hasModule } = useLicense()
   // Borrador PROPIO (cada vendedor cuenta su area de forma independiente).
   const draft = useLiveQuery(() => countsRepo.getDraft(user.id), [user.id], undefined)
   // Conteo enviado: el mando revisa cualquiera (cola); el vendedor solo el suyo.
@@ -46,10 +49,20 @@ export function CountScreen() {
   )
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const products = useLiveQuery(() => productsRepo.list(), [], [])
+  // Bloque A (mayorista): permiso del dueño para que el vendedor opere el almacén.
+  const warehouseAllowed = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], false)
   const [countLoc, setCountLoc] = useState(WAREHOUSE)
+  // Ubicación elegida por el vendedor (null hasta que la cambie; por defecto, su área).
+  const [sellerPick, setSellerPick] = useState(null)
 
   // El vendedor cuenta SU área (la de su turno); no elige ni ve el almacén.
   const sellerArea = activeShift?.area || ''
+  // Bloque A: si la licencia trae 'mayorista' y el dueño lo permitió, el vendedor
+  // con área puede, además de su área, contar el ALMACÉN central al cierre (para
+  // cuadrar lo que vendió como mayorista). Sin módulo/permiso: solo su área.
+  const canSellerWarehouse =
+    !isManager && !!sellerArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
+  const sellerCountLoc = canSellerWarehouse ? (sellerPick ?? sellerArea) : (sellerArea || WAREHOUSE)
 
   if (pending === undefined || draft === undefined) {
     return <div className="screen"><p className="muted">Cargando…</p></div>
@@ -60,7 +73,10 @@ export function CountScreen() {
   // antes de tener área) está obsoleto: no se muestra; al reiniciar se reconvierte
   // a su área. El dueño/administrativo retoma cualquier borrador suyo.
   const draftLoc = draft?.location || WAREHOUSE
-  const draftIsValidHere = draft && (isManager || draftLoc === (sellerArea || WAREHOUSE))
+  // El vendedor con permiso mayorista tiene DOS ubicaciones válidas (su área y el
+  // almacén); ambos borradores se retoman. Sin permiso, solo el de su área.
+  const sellerValidLocs = canSellerWarehouse ? [sellerArea, WAREHOUSE] : [sellerArea || WAREHOUSE]
+  const draftIsValidHere = draft && (isManager || sellerValidLocs.includes(draftLoc))
   if (draftIsValidHere) return <CountEditor draft={draft} />
 
   // 2. Hay un conteo enviado: el mando lo revisa; el vendedor que lo envió espera.
@@ -92,8 +108,9 @@ export function CountScreen() {
     )
   }
 
-  // Ubicación a contar: el dueño/administrativo elige; el vendedor cuenta su área.
-  const targetLoc = isManager ? countLoc : (sellerArea || WAREHOUSE)
+  // Ubicación a contar: el dueño/administrativo elige; el vendedor cuenta su área
+  // (o el almacén, si tiene el permiso mayorista y lo eligió).
+  const targetLoc = isManager ? countLoc : sellerCountLoc
   // ¿Hay algo que contar en ese destino? (existencia > 0 en esa ubicación)
   const hasItems = products.some((p) => p.active && stockAt(p, targetLoc) > 0)
 
@@ -105,7 +122,9 @@ export function CountScreen() {
         <p className="muted">
           {isManager
             ? `Vas a contar: ${locationLabel(targetLoc)}. Al terminar se ajustan las existencias de esa ubicación.`
-            : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño o administrativo aprueba y se ajustan.`}
+            : canSellerWarehouse
+              ? `Elige qué contar: tu área (${sellerArea}) o el almacén central. Al terminar, el dueño o administrativo aprueba y se ajustan.`
+              : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño o administrativo aprueba y se ajustan.`}
         </p>
         {isManager && areas.length > 0 && (
           <label className="field">
@@ -116,9 +135,18 @@ export function CountScreen() {
             </select>
           </label>
         )}
+        {canSellerWarehouse && (
+          <label className="field">
+            <span>¿Qué vas a contar?</span>
+            <select value={sellerCountLoc} onChange={(e) => setSellerPick(e.target.value)}>
+              <option value={sellerArea}>{sellerArea}</option>
+              <option value={WAREHOUSE}>{locationLabel(WAREHOUSE)}</option>
+            </select>
+          </label>
+        )}
         {!hasItems ? (
           <p className="muted">
-            {isManager
+            {isManager || targetLoc === WAREHOUSE
               ? `No hay existencias en ${locationLabel(targetLoc)} para contar.`
               : <>Aún no tienes productos asignados a <strong>{sellerArea || 'tu área'}</strong>. Pídele al dueño o administrativo una <strong>salida del almacén</strong> hacia tu área.</>}
           </p>
