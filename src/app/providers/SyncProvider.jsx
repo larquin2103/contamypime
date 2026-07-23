@@ -11,6 +11,12 @@ const PUSH_INTERVAL_MS = 20000 // sube cambios locales cada 20s si hay conexion
 // no bajaria las de otros. Un getDocs periodico garantiza que el inventario
 // (libro mayor) converja en todos los equipos aunque el streaming falle.
 const PULL_INTERVAL_MS = 45000
+// A) Push por evento: tras una venta se pide subir enseguida (con un pequeño
+// debounce para agrupar ventas seguidas), en vez de esperar el ciclo de 20s.
+const NUDGE_DEBOUNCE_MS = 1200
+// B) Al traer la app al frente se baja lo nuevo, pero el pull completo es caro
+// (relee todo): se limita a como mucho uno cada FOREGROUND_PULL_MIN_MS.
+const FOREGROUND_PULL_MIN_MS = 15000
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Bloque 24/25: arranca la sincronizacion a nivel de toda la app.
@@ -29,6 +35,12 @@ export function SyncProvider({ children }) {
   const [lastSyncAt, setLastSyncAt] = useState(null)
   const busyRef = useRef(false)
   const pullBusyRef = useRef(false)
+  // A) Push por evento: temporizador del debounce + bandera de "llegó algo
+  // mientras subíamos" para reintentar al terminar (no perder la última venta).
+  const nudgeTimerRef = useRef(null)
+  const pendingPushRef = useRef(false)
+  // B) Marca del último pull completo (para no repetirlo demasiado seguido).
+  const lastPullAtRef = useRef(0)
 
   // ¿Esta activada la sync en este dispositivo? (no toca Firebase)
   useEffect(() => {
@@ -76,7 +88,10 @@ export function SyncProvider({ children }) {
   }, [enabled])
 
   const runPush = async () => {
-    if (busyRef.current) return
+    // Si ya hay un push en curso, marcamos que hay algo pendiente y salimos: al
+    // terminar el push actual se relanza para incluir lo último (p.ej. una venta
+    // registrada mientras subíamos). Evita perder la venta hasta el próximo ciclo.
+    if (busyRef.current) { pendingPushRef.current = true; return }
     if (!enabled || !cloudUser || !navigator.onLine) return
     busyRef.current = true
     setSyncing(true)
@@ -88,7 +103,20 @@ export function SyncProvider({ children }) {
     } finally {
       busyRef.current = false
       setSyncing(false)
+      if (pendingPushRef.current) { pendingPushRef.current = false; runPush() }
     }
+  }
+
+  // A) Pide subir enseguida tras un evento local (una venta), con debounce para
+  // agrupar ventas seguidas. No-op si la sync está apagada. Al dispararse solo
+  // sube si hay conexión; si no la hay, la venta espera al ciclo/reconexión (la
+  // caché de Firestore la entrega igual). Reutiliza el guard de runPush.
+  const nudgePush = () => {
+    if (!enabled || !cloudUser) return
+    clearTimeout(nudgeTimerRef.current)
+    nudgeTimerRef.current = setTimeout(() => {
+      if (navigator.onLine) runPush()
+    }, NUDGE_DEBOUNCE_MS)
   }
 
   // Bajada de respaldo (getDocs de todas las colecciones + recalculo de stock).
@@ -100,6 +128,7 @@ export function SyncProvider({ children }) {
     pullBusyRef.current = true
     try {
       await initialPull()
+      lastPullAtRef.current = Date.now()
     } catch (e) {
       console.warn('[sync] pull periodico', e?.message)
     } finally {
@@ -129,6 +158,22 @@ export function SyncProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, cloudUser, online])
 
+  // B) Al traer la app al frente (el dueño la abre): baja lo nuevo al instante
+  // sin esperar el ciclo de 45s, y empuja cualquier cambio local pendiente. El
+  // pull completo se limita a uno cada FOREGROUND_PULL_MIN_MS (es caro).
+  useEffect(() => {
+    if (!enabled || !cloudUser) return
+    const onVisible = () => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'visible') return
+      if (!navigator.onLine) return
+      if (Date.now() - lastPullAtRef.current > FOREGROUND_PULL_MIN_MS) runPull()
+      nudgePush()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, cloudUser])
+
   const value = {
     enabled,
     cloudUser,
@@ -137,7 +182,9 @@ export function SyncProvider({ children }) {
     lastSyncAt,
     // refresca el flag tras vincular/desvincular desde la pantalla de nube
     refresh: async () => setEnabled(await syncConfig.isEnabled()),
-    syncNow: runPush
+    syncNow: runPush,
+    // A) lo llama la pantalla de venta tras registrar una venta (no-op sin sync).
+    nudgePush
   }
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>

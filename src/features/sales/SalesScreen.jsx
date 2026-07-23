@@ -9,6 +9,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
+import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { normalizeTiers, tierFor, tierPriceFor } from '../../lib/priceTiers'
 import { matchesQuery } from '../../lib/search'
@@ -21,6 +22,9 @@ export function SalesScreen() {
   const { activeShift, canSell } = useShift()
   const { baseCurrency, rateOf } = useCurrency()
   const { hasModule } = useLicense()
+  // A) Tras registrar una venta, pedimos subir enseguida (no-op si la sync está
+  // apagada). Acorta la propagación al teléfono del dueño sin esperar los 20s.
+  const { nudgePush } = useSync()
   const navigate = useNavigate()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
@@ -336,6 +340,8 @@ export function SalesScreen() {
       })
       setLastSale({ method: 'transfer', transferCurrency, transferRef })
     }
+    // A) La venta ya está en la base local; pedimos subirla enseguida.
+    nudgePush()
     resetCheckout()
     setConfirming(false)
   }
