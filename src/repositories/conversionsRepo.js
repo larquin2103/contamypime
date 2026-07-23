@@ -16,14 +16,17 @@ import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 // saliendo correcta en los reportes. El precio de venta del destino no se toca
 // (lo fija el dueño en el catalogo).
 export const conversionsRepo = {
-  async create({ fromProductId, toProductId, fromQty, toQty, byUserId, note = '' }) {
+  async create({ fromProductId, toProductId, fromQty, toQty, byUserId, note = '', location = WAREHOUSE }) {
     const fq = Math.abs(Number(fromQty) || 0)
     const tq = Math.abs(Number(toQty) || 0)
     if (!fromProductId || !toProductId) throw new Error('Elige el producto de origen y el de destino')
     if (fromProductId === toProductId) throw new Error('El origen y el destino deben ser productos distintos')
     if (fq <= 0 || tq <= 0) throw new Error('Indica las cantidades de origen y destino (mayores que 0)')
 
-    const loc = WAREHOUSE
+    // Ubicacion donde ocurre la conversion (almacen central para mayorista, o el
+    // centro de elaboracion). El origen se consume y el destino se da de alta en
+    // ESA misma ubicacion.
+    const loc = location || WAREHOUSE
     const id = newId()
     const ts = now()
     let result = null

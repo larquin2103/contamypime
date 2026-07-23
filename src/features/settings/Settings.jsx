@@ -35,6 +35,7 @@ export function Settings() {
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
       <AreasSection />
       <WholesaleSection />
+      <ElaborationSection />
       <SemaphoreSection />
       <DenominationsSection />
       <WhatsappSection />
@@ -123,6 +124,49 @@ function WholesaleSection() {
           {enabled ? 'Activado ✓' : 'Desactivado'}
         </button>
       </div>
+    </section>
+  )
+}
+
+// Modulo elaboracion: activa el centro de elaboracion (ubicacion intermedia entre
+// el almacen y las areas) y permite nombrarlo. Solo aparece con el modulo; sin el,
+// la app opera exactamente como la version clasica.
+function ElaborationSection() {
+  const { hasModule } = useLicense()
+  const cfg = useLiveQuery(() => configRepo.getElaboration(), [], undefined)
+  const [name, setName] = useState(null)
+  if (!hasModule(LICENSE_MODULES.ELABORATION)) return null
+  if (cfg === undefined) return null
+  const value = name ?? cfg.name
+
+  return (
+    <section className="card">
+      <h3>Centro de elaboración</h3>
+      <p className="muted">
+        Habilita una ubicación intermedia entre el <strong>almacén</strong> y las <strong>áreas de venta</strong>.
+        El crudo va del almacén a elaboración, se transforma (con su nuevo código) y luego se envía a un área.
+        No es un punto de venta.
+      </p>
+      <div className="kv">
+        <span className="muted">Usar centro de elaboración</span>
+        <button
+          className={`btn btn--sm ${cfg.enabled ? 'btn--primary' : 'btn--ghost'}`}
+          onClick={() => configRepo.set('elaborationEnabled', !cfg.enabled)}
+        >
+          {cfg.enabled ? 'Activado ✓' : 'Desactivado'}
+        </button>
+      </div>
+      {cfg.enabled && (
+        <label className="field">
+          <span>Nombre del centro</span>
+          <input
+            value={value}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => { const v = (value || '').trim() || 'Elaboración'; configRepo.set('elaborationName', v); setName(null) }}
+            placeholder="Elaboración"
+          />
+        </label>
+      )}
     </section>
   )
 }

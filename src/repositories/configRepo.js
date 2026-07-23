@@ -36,6 +36,15 @@ export const configRepo = {
     return Array.isArray(list) ? list : []
   },
 
+  // Centro de elaboracion (modulo 'elaboracion'). `enabled` lo activa el dueño en
+  // Ajustes (solo visible con el modulo); `name` es el nombre visible editable.
+  // Sin el modulo, `enabled` queda en false y nada de elaboracion aparece.
+  async getElaboration() {
+    const enabled = await this.get('elaborationEnabled', false)
+    const name = await this.get('elaborationName', 'Elaboración')
+    return { enabled: !!enabled, name: String(name || 'Elaboración').trim() || 'Elaboración' }
+  },
+
   async setAreas(list) {
     const clean = (Array.isArray(list) ? list : [])
       .map((s) => String(s).trim())

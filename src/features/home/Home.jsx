@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -140,6 +140,7 @@ export function Home() {
   const { user, isOwner, isManager } = useAuth()
   const { hasModule } = useLicense()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
+  const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
   const initial = (user.name || '?').trim().charAt(0).toUpperCase()
 
   return (
@@ -201,6 +202,9 @@ export function Home() {
             )}
             {hasModule(LICENSE_MODULES.WHOLESALE) && (
               <ActionCard to="/convert" icon={Split} title="Conversión de productos" sub="Fraccionar en el almacén (mayorista)" />
+            )}
+            {hasModule(LICENSE_MODULES.ELABORATION) && elab.enabled && (
+              <ActionCard to="/elaboracion" icon={Factory} title={elab.name} sub="Almacén → elaboración → ventas" />
             )}
             <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
           </Section>

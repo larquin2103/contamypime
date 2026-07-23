@@ -24,12 +24,14 @@ const IMPORT_ALGO = { name: 'ECDSA', namedCurve: 'P-256' }
 // ningun modulo habilitado y la app identica a la version clasica.
 export const LICENSE_MODULES = {
   WHOLESALE: 'mayorista', // venta desde almacen central + precios por escala
-  ACCOUNTS: 'cuentas' // proveedores/acreedores + cuentas de tesoreria
+  ACCOUNTS: 'cuentas', // proveedores/acreedores + cuentas de tesoreria
+  ELABORATION: 'elaboracion' // centro de elaboracion intermedio (almacen->elab->area)
 }
 
 export const LICENSE_MODULE_LABELS = {
   mayorista: 'Ventas mayoristas',
-  cuentas: 'Cuentas y proveedores'
+  cuentas: 'Cuentas y proveedores',
+  elaboracion: 'Centro de elaboración'
 }
 
 // Lista de modulos de un payload (tolerante a licencias viejas sin el campo).

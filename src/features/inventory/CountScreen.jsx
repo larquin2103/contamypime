@@ -13,7 +13,7 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { WAREHOUSE, locationLabel } from '../../db/constants'
+import { WAREHOUSE, ELABORATION, locationLabel } from '../../db/constants'
 
 // Existencia de un producto en una ubicacion (espejo de countsRepo) para saber
 // si hay algo que contar en el destino elegido.
@@ -51,6 +51,8 @@ export function CountScreen() {
   const products = useLiveQuery(() => productsRepo.list(), [], [])
   // Bloque A (mayorista): permiso del dueño para que el vendedor opere el almacén.
   const warehouseAllowed = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], false)
+  // Módulo elaboración: el dueño/admin también puede contar el centro de elaboración.
+  const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
   const [countLoc, setCountLoc] = useState(WAREHOUSE)
   // Ubicación elegida por el vendedor (null hasta que la cambie; por defecto, su área).
   const [sellerPick, setSellerPick] = useState(null)
@@ -121,16 +123,17 @@ export function CountScreen() {
       <section className="card">
         <p className="muted">
           {isManager
-            ? `Vas a contar: ${locationLabel(targetLoc)}. Al terminar se ajustan las existencias de esa ubicación.`
+            ? `Vas a contar: ${targetLoc === ELABORATION ? elab.name : locationLabel(targetLoc)}. Al terminar se ajustan las existencias de esa ubicación.`
             : canSellerWarehouse
               ? `Elige qué contar: tu área (${sellerArea}) o el almacén central. Al terminar, el dueño o administrativo aprueba y se ajustan.`
               : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño o administrativo aprueba y se ajustan.`}
         </p>
-        {isManager && areas.length > 0 && (
+        {isManager && (areas.length > 0 || elab.enabled) && (
           <label className="field">
             <span>¿Qué vas a contar?</span>
             <select value={countLoc} onChange={(e) => setCountLoc(e.target.value)}>
               <option value={WAREHOUSE}>{locationLabel(WAREHOUSE)}</option>
+              {elab.enabled && <option value={ELABORATION}>{elab.name}</option>}
               {areas.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>

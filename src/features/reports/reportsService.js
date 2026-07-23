@@ -3,7 +3,7 @@ import { formatDateTime, localDay } from '../../lib/dates'
 import { round2, formatMoney } from '../../lib/currency'
 import {
   SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
-  areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL
+  areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION
 } from '../../db/constants'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
@@ -83,12 +83,13 @@ export async function buildInventoryReport() {
   const catName = {}
   for (const c of cats) catName[c.id] = c.name
   const areas = await configRepo.getAreas()
+  const elab = await configRepo.getElaboration()
   const products = (await db.products.toArray())
     .filter((p) => p.active)
     .sort((a, b) => a.name.localeCompare(b.name))
 
-  // Columnas dinamicas: existencia en el almacen + en cada area configurada.
-  const locCols = [WAREHOUSE, ...areas]
+  // Columnas dinamicas: almacen (+ elaboracion si esta activa) + cada area.
+  const locCols = [WAREHOUSE, ...(elab.enabled ? [ELABORATION] : []), ...areas]
   const stockAt = (p, loc) => round2(Number(p.stockByLocation?.[loc] || 0))
 
   const rows = products.map((p) => [
@@ -110,7 +111,7 @@ export async function buildInventoryReport() {
     subtitle: `Generado ${formatDateTime(new Date().toISOString())}`,
     head: [
       'Codigo', 'Producto', 'Categoria', 'Unidad',
-      WAREHOUSE_LABEL, ...areas.map((a) => areaLabel(a)),
+      WAREHOUSE_LABEL, ...(elab.enabled ? [elab.name] : []), ...areas.map((a) => areaLabel(a)),
       'Total', 'Costo', 'Precio', 'Valor (total*costo)'
     ],
     rows,
@@ -158,6 +159,12 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
 export async function buildTransfersReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const prods = await productMap()
+  const elab = await configRepo.getElaboration()
+  // Con elaboración activa, los traspasos pueden salir del almacén O de
+  // elaboración: se añade una columna "Origen". Sin ella, el reporte queda
+  // idéntico a producción. Etiqueta legible para el centinela de elaboración.
+  const showOrigin = elab.enabled
+  const locName = (loc) => (loc === ELABORATION ? elab.name : locationLabel(loc))
   const transfers = (await db.transfers.toArray())
     .filter((t) => inRange(t.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
@@ -168,9 +175,11 @@ export async function buildTransfersReport({ from = null, to = null } = {}) {
       const price = round2(prods[it.productId]?.price ?? 0)
       const valor = round2(price * Number(it.qty || 0))
       totalVal += valor
+      const base = [formatDateTime(t.createdAt)]
+      if (showOrigin) base.push(locName(t.fromLocation || WAREHOUSE))
       rows.push([
-        formatDateTime(t.createdAt),
-        t.toArea,
+        ...base,
+        locName(t.toArea),
         it.name,
         round2(it.qty),
         it.unit || '',
@@ -180,12 +189,16 @@ export async function buildTransfersReport({ from = null, to = null } = {}) {
       ])
     }
   }
-  if (rows.length === 0) rows.push(['Sin salidas en el periodo', '', '', '', '', '', '', ''])
-  else rows.push(['', '', '', '', '', 'TOTAL', round2(totalVal), ''])
+  const width = showOrigin ? 9 : 8
+  if (rows.length === 0) rows.push(['Sin salidas en el periodo', ...new Array(width - 1).fill('')])
+  else rows.push([...new Array(width - 3).fill(''), 'TOTAL', round2(totalVal), ''])
   return {
-    title: 'Salidas almacén → área',
+    title: showOrigin ? 'Salidas de almacén / elaboración' : 'Salidas almacén → área',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Área destino', 'Producto', 'Cantidad', 'U/M', 'Precio', 'Valor', 'Registró'],
+    head: [
+      'Fecha', ...(showOrigin ? ['Origen'] : []), showOrigin ? 'Destino' : 'Área destino',
+      'Producto', 'Cantidad', 'U/M', 'Precio', 'Valor', 'Registró'
+    ],
     rows,
     filename: 'salidas_almacen'
   }
@@ -502,6 +515,7 @@ export async function buildCountReport({ from = null, to = null } = {}) {
     .sort((a, b) => (dateOf(a) < dateOf(b) ? 1 : -1))
 
   const allMoves = await db.stockMovements.toArray()
+  const elab = await configRepo.getElaboration()
   const SALE = MOVEMENT_TYPES.SALE_OUT
   const ENTRADAS = [MOVEMENT_TYPES.PURCHASE_IN, MOVEMENT_TYPES.TRANSFER_IN, MOVEMENT_TYPES.CONVERSION_IN]
 
@@ -512,7 +526,7 @@ export async function buildCountReport({ from = null, to = null } = {}) {
     const start = prevBoundary(c) // exclusivo; null = desde el inicio del historial
     const end = c.submittedAt || dateOf(c) // momento de la foto del sistema
     const fecha = formatDateTime(dateOf(c))
-    const lugar = locationLabel(loc)
+    const lugar = loc === ELABORATION ? elab.name : locationLabel(loc)
 
     let nCounted = 0, nDif = 0, mermaVal = 0
     for (const it of c.items || []) {

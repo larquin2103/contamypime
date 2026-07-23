@@ -142,8 +142,18 @@ export function areaLabel(area) {
 export const WAREHOUSE = '__almacen'
 export const WAREHOUSE_LABEL = 'Almacén'
 
+// Centro de elaboracion (modulo 'elaboracion'). Es una ubicacion intermedia entre
+// el almacen y las areas de venta: guarda stock pero NO es punto de venta (no se
+// abren turnos ni se vende desde ahi). Usa un centinela reservado, igual que el
+// almacen, para no chocar con un area que se llamara "Elaboracion". El nombre
+// visible es configurable (config 'elaborationName'); ELABORATION_LABEL es el
+// valor por defecto.
+export const ELABORATION = '__elaboracion'
+export const ELABORATION_LABEL = 'Elaboración'
+
 export function locationLabel(loc) {
   if (!loc || loc === WAREHOUSE) return WAREHOUSE_LABEL
+  if (loc === ELABORATION) return ELABORATION_LABEL
   return String(loc)
 }
 
