@@ -131,12 +131,13 @@ function TransferPanel({ title, hint, products, fromLocation, fixedTo, areas = [
   )
 }
 
-// Panel de transformación en elaboración: consume un crudo y da de alta otro
-// producto (nuevo código) en elaboración, con merma. Costo por promedio ponderado.
+// Panel de transformación en elaboración: consume UNO O VARIOS insumos (receta:
+// pan + carne + condimentos...) y da de alta el producto elaborado (nuevo código),
+// con merma. Costo del destino por promedio ponderado sobre el valor de la receta.
 function TransformPanel({ products, byUserId }) {
-  const [fromId, setFromId] = useState('')
+  const [selected, setSelected] = useState({}) // { insumoId: cantidadTexto }
+  const [query, setQuery] = useState('')
   const [toId, setToId] = useState('')
-  const [fromQty, setFromQty] = useState('')
   const [toQty, setToQty] = useState('')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -144,36 +145,48 @@ function TransformPanel({ products, byUserId }) {
   const [doneMsg, setDoneMsg] = useState('')
 
   const byId = useMemo(() => { const m = {}; for (const p of products) m[p.id] = p; return m }, [products])
-  const from = byId[fromId] || null
   const to = byId[toId] || null
-  // Origen: solo productos con existencia en elaboración.
-  const origins = useMemo(
-    () => products.filter((p) => stockAt(p, ELABORATION) > 0).sort((a, b) => a.name.localeCompare(b.name)),
-    [products]
-  )
-  const dests = useMemo(
-    () => products.filter((p) => p.id !== fromId).sort((a, b) => a.name.localeCompare(b.name)),
-    [products, fromId]
-  )
 
-  const fq = Number(fromQty) || 0
+  // Insumos elegibles: productos con existencia en elaboración.
+  const eligible = useMemo(() => {
+    const list = products.filter((p) => stockAt(p, ELABORATION) > 0 && p.id !== toId)
+    const filtered = query.trim() ? list.filter((p) => matchesQuery(p, query)) : list
+    return filtered.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 40)
+  }, [products, query, toId])
+
+  const toggle = (p) => {
+    setDoneMsg('')
+    setSelected((prev) => {
+      const next = { ...prev }
+      if (p.id in next) delete next[p.id]; else next[p.id] = '1'
+      return next
+    })
+  }
+  const setQty = (id, v) => setSelected((prev) => ({ ...prev, [id]: v }))
+  const selectedList = Object.keys(selected).map((id) => byId[id]).filter(Boolean)
+  const qtyOf = (id) => Number(selected[id]) || 0
+  const overOf = (p) => qtyOf(p.id) > stockAt(p, ELABORATION)
+
   const tq = Number(toQty) || 0
-  const avail = stockAt(from, ELABORATION)
-  const over = from && fq > avail
-  const movedValue = round2(fq * Number(from?.cost || 0))
+  const movedValue = round2(selectedList.reduce((a, p) => a + qtyOf(p.id) * Number(p.cost || 0), 0))
   const unitCostTo = tq > 0 ? round2(movedValue / tq) : 0
-  const rendimiento = from && to && fq > 0 && tq > 0 ? Math.round((tq / fq) * 100) : null
-  const valid = from && to && from.id !== to.id && fq > 0 && tq > 0 && !over
+  const insumosOk = selectedList.length > 0 && selectedList.every((p) => qtyOf(p.id) > 0 && !overOf(p))
+  const valid = insumosOk && to && tq > 0
+
+  const dests = useMemo(
+    () => products.filter((p) => !(p.id in selected)).sort((a, b) => a.name.localeCompare(b.name)),
+    [products, selected]
+  )
 
   const register = async () => {
     setError(''); setDoneMsg(''); setBusy(true)
     try {
+      const inputs = selectedList.map((p) => ({ productId: p.id, qty: qtyOf(p.id) }))
       const res = await conversionsRepo.create({
-        fromProductId: from.id, toProductId: to.id, fromQty: fq, toQty: tq,
-        byUserId, note, location: ELABORATION
+        inputs, toProductId: to.id, toQty: tq, byUserId, note, location: ELABORATION
       })
-      setDoneMsg(`✅ ${fq} ${from.unit} de "${from.name}" → ${tq} ${to.unit} de "${to.name}". Costo por ${to.unit}: ${formatMoney(res?.unitCostTo ?? unitCostTo)}.`)
-      setFromId(''); setToId(''); setFromQty(''); setToQty(''); setNote('')
+      setDoneMsg(`✅ ${inputs.length} insumo(s) → ${tq} ${to.unit} de "${to.name}". Costo por ${to.unit}: ${formatMoney(res?.unitCostTo ?? unitCostTo)}.`)
+      setSelected({}); setToId(''); setToQty(''); setNote(''); setQuery('')
     } catch (e) {
       setError(e.message)
     } finally { setBusy(false) }
@@ -182,26 +195,57 @@ function TransformPanel({ products, byUserId }) {
   return (
     <section className="card">
       <h3>2. Transformar en elaboración</h3>
-      <p className="muted">Consume un producto crudo de elaboración y da de alta el elaborado (otro código, ya creado en el catálogo). Puede haber merma.</p>
+      <p className="muted">
+        Marca los <strong>insumos</strong> de la receta (pan, carne, condimentos…) con su cantidad
+        y elige el <strong>producto elaborado</strong> resultante (otro código, ya creado en el catálogo).
+      </p>
       {doneMsg && <p className="ok-text">{doneMsg}</p>}
 
-      <label className="field">
-        <span>Producto crudo a consumir</span>
-        <select value={fromId} onChange={(e) => setFromId(e.target.value)}>
-          <option value="">— Elige el crudo (en elaboración) —</option>
-          {origins.map((p) => <option key={p.id} value={p.id}>{p.name} (disp: {stockAt(p, ELABORATION)} {p.unit})</option>)}
-        </select>
-      </label>
-      {from && (
-        <label className="field">
-          <span>Cantidad a consumir ({from.unit})</span>
-          <input type="number" inputMode="decimal" value={fromQty} onChange={(e) => setFromQty(e.target.value)} />
-        </label>
+      {/* Insumos seleccionados con su cantidad. */}
+      {selectedList.length > 0 && (
+        <div className="entry-lines">
+          {selectedList.map((p) => {
+            const avail = stockAt(p, ELABORATION)
+            return (
+              <div key={p.id} className="entry-line">
+                <div className="entry-line__head">
+                  <div><strong>{p.name}</strong><span className="muted"> · disp: {avail} {p.unit} · costo {formatMoney(p.cost || 0)}</span></div>
+                  <button className="link-del" onClick={() => toggle(p)}>quitar</button>
+                </div>
+                <label className="field">
+                  <span>Cantidad a consumir ({p.unit})</span>
+                  <input type="number" inputMode="decimal" value={selected[p.id] ?? ''}
+                    onChange={(e) => setQty(p.id, e.target.value)} />
+                </label>
+                {overOf(p) && <p className="error">No hay tanto en elaboración (disponible {avail}).</p>}
+              </div>
+            )
+          })}
+        </div>
       )}
-      {over && <p className="error">No hay tanto en elaboración (disponible {avail}).</p>}
 
+      {/* Buscador/checklist de insumos disponibles en elaboración. */}
+      <input className="search-input" type="search" value={query}
+        onChange={(e) => setQuery(e.target.value)} placeholder="Buscar insumo en elaboración…" />
+      <div className="list">
+        {eligible.length === 0 && <p className="muted">No hay productos con existencia en elaboración.</p>}
+        {eligible.map((p) => {
+          const checked = p.id in selected
+          return (
+            <label key={p.id} className={`check-row ${checked ? 'is-checked' : ''}`}>
+              <input type="checkbox" checked={checked} onChange={() => toggle(p)} />
+              <div className="check-row__main">
+                <strong>{p.name}</strong>
+                <span className="muted">{p.code ? `${p.code} · ` : ''}disp: {stockAt(p, ELABORATION)} {p.unit}</span>
+              </div>
+            </label>
+          )
+        })}
+      </div>
+
+      {/* Producto elaborado resultante. */}
       <label className="field">
-        <span>Producto elaborado (destino)</span>
+        <span>Producto elaborado (resultante)</span>
         <select value={toId} onChange={(e) => setToId(e.target.value)}>
           <option value="">— Elige el elaborado —</option>
           {dests.map((p) => <option key={p.id} value={p.id}>{p.name}{p.code ? ` (${p.code})` : ''}</option>)}
@@ -214,14 +258,15 @@ function TransformPanel({ products, byUserId }) {
         </label>
       )}
 
+      {selectedList.length > 0 && (
+        <div className="kv"><span className="muted">Valor de los insumos</span><strong>{formatMoney(movedValue)}</strong></div>
+      )}
       {valid && (
         <>
-          <div className="kv"><span className="muted">Rendimiento</span><strong>{rendimiento}%{rendimiento < 100 ? ` (merma ${100 - rendimiento}%)` : ''}</strong></div>
-          <div className="kv"><span className="muted">Valor consumido</span><strong>{formatMoney(movedValue)}</strong></div>
           <div className="kv"><span className="muted">Costo por {to.unit} (nuevo)</span><strong>{formatMoney(unitCostTo)}</strong></div>
           <label className="field">
             <span>Nota (opcional)</span>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej.: fileteado de 1 pieza" />
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej.: 100 hamburguesas" />
           </label>
         </>
       )}
