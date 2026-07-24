@@ -78,7 +78,8 @@ export async function startRealtime() {
           const docs = snap
             .docChanges()
             .filter((c) => c.type === 'added' || c.type === 'modified')
-            .map((c) => c.data())
+            // c es un DocumentChange: el documento (con .data()) esta en c.doc.
+            .map((c) => c.doc.data())
           if (docs.length) handleIncoming(col, docs)
         },
         (err) => console.warn('[sync] onSnapshot', col.name, err?.code || err?.message)
