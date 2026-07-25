@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { PinInput } from '../../components/PinInput'
 import { ROLES, ROLE_LABELS } from '../../db/constants'
 import { formatDateTime } from '../../lib/dates'
@@ -90,6 +92,7 @@ export function UsersAdmin() {
 
 // Crea VENDEDORES o ADMINISTRATIVOS (el dueño es unico, definido en el onboarding).
 function NewUserForm({ onClose }) {
+  const { hasModule } = useLicense()
   const [name, setName] = useState('')
   const [role, setRole] = useState(ROLES.SELLER)
   const [pin, setPin] = useState('')
@@ -124,8 +127,17 @@ function NewUserForm({ onClose }) {
           <select value={role} onChange={(e) => setRole(e.target.value)}>
             <option value={ROLES.SELLER}>{ROLE_LABELS[ROLES.SELLER]}</option>
             <option value={ROLES.ADMIN}>{ROLE_LABELS[ROLES.ADMIN]}</option>
+            {hasModule(LICENSE_MODULES.ELABORATION) && (
+              <option value={ROLES.ELABORATION}>{ROLE_LABELS[ROLES.ELABORATION]}</option>
+            )}
           </select>
         </label>
+        {role === ROLES.ELABORATION && (
+          <p className="muted">
+            Opera solo el <strong>centro de elaboración</strong>: transforma productos, hace salidas
+            a los puntos de venta y vende desde el centro. No ve el almacén central ni los datos del dueño.
+          </p>
+        )}
         {role === ROLES.ADMIN && (
           <p className="muted">
             El administrativo opera como el dueño en inventario y supervisión (entradas,

@@ -8,13 +8,19 @@ export const ROLES = {
   // financiera (reportes, panel, auditoria, costos). NO gestiona usuarios, ni la
   // licencia, ni la sincronizacion: la identidad del negocio sigue siendo del dueño.
   ADMIN: 'admin',
-  SELLER: 'seller'
+  SELLER: 'seller',
+  // Elaboracion (modulo 'elaboracion'): opera SOLO el centro de elaboracion —
+  // transforma productos y hace salidas a los puntos de venta, y vende desde el
+  // centro. No ve el almacen central ni los datos del dueño. Es un rol acotado,
+  // separado del vendedor.
+  ELABORATION: 'elaboration'
 }
 
 export const ROLE_LABELS = {
   [ROLES.OWNER]: 'Dueño',
   [ROLES.ADMIN]: 'Administrativo',
-  [ROLES.SELLER]: 'Vendedor'
+  [ROLES.SELLER]: 'Vendedor',
+  [ROLES.ELABORATION]: 'Elaboración'
 }
 
 // Unidades de medida soportadas por producto.
