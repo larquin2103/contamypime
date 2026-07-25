@@ -47,6 +47,7 @@ export function AuditScreen() {
   const cashMoves = useLiveQuery(() => cashRepo.listAll(), [], [])
   const movements = useLiveQuery(() => stockRepo.listAll(), [], [])
   const prices = useLiveQuery(() => productsRepo.allPriceChanges(), [], [])
+  const deletions = useLiveQuery(() => productsRepo.listDeletions(), [], [])
 
   const userName = useMemo(() => {
     const m = {}
@@ -75,6 +76,7 @@ export function AuditScreen() {
   const salesF = sales.filter((s) => inRange(s.createdAt, from, to)).slice(0, MAX)
   const movesF = movements.filter((x) => inRange(x.createdAt, from, to)).slice(0, MAX)
   const pricesF = prices.filter((p) => inRange(p.createdAt, from, to)).slice(0, MAX)
+  const deletionsF = deletions.filter((d) => inRange(d.createdAt, from, to)).slice(0, MAX)
 
   return (
     <div className="screen">
@@ -93,7 +95,25 @@ export function AuditScreen() {
         <button className={`tab ${tab === 'sales' ? 'is-active' : ''}`} onClick={() => setTab('sales')}>Ventas</button>
         <button className={`tab ${tab === 'inv' ? 'is-active' : ''}`} onClick={() => setTab('inv')}>Inventario</button>
         <button className={`tab ${tab === 'prices' ? 'is-active' : ''}`} onClick={() => setTab('prices')}>Precios</button>
+        <button className={`tab ${tab === 'del' ? 'is-active' : ''}`} onClick={() => setTab('del')}>Bajas</button>
       </div>
+
+      {tab === 'del' && (
+        <div className="list">
+          {deletionsF.map((d) => (
+            <div key={d.id} className="audit-row">
+              <div className="audit-row__head">
+                <strong>{d.name}{d.code ? ` · ${d.code}` : ''}</strong>
+                <span className="muted">{formatDateTime(d.createdAt)}</span>
+              </div>
+              <span className="muted">
+                Eliminado del catálogo · {userName[d.userId] || 'dueño'}{d.note ? ` · ${d.note}` : ''}
+              </span>
+            </div>
+          ))}
+          {deletionsF.length === 0 && <p className="muted">Sin bajas de productos en el rango.</p>}
+        </div>
+      )}
 
       {tab === 'shifts' && (
         <ShiftsAudit

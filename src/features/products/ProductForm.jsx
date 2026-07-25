@@ -12,8 +12,10 @@ import { useEscapeClose } from '../../lib/useEscapeClose'
 // Alta / edicion de producto. Solo dueño (la creacion desde entrada de
 // mercancia por el vendedor llega en el Bloque 7).
 export function ProductForm({ product, categories, onClose, onCreated, hideOpeningStock = false }) {
-  const { user } = useAuth()
+  const { user, isOwner } = useAuth()
   const editing = !!product
+  // Eliminar del catalogo: SOLO el dueño, con confirmacion. Es borrado logico.
+  const [confirmDel, setConfirmDel] = useState(false)
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const [code, setCode] = useState(product?.code ?? '')
   const [name, setName] = useState(product?.name ?? '')
@@ -39,6 +41,18 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
     setTiers((prev) => prev.map((t, j) => (j === i ? { ...t, [field]: value } : t)))
   const addTier = () => setTiers((prev) => [...prev, { minQty: '', price: '' }])
   const removeTier = (i) => setTiers((prev) => prev.filter((_, j) => j !== i))
+
+  const remove = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      await productsRepo.remove(product.id, { userId: user.id })
+      onClose()
+    } catch (e) {
+      setError('No se pudo eliminar: ' + e.message)
+      setBusy(false)
+    }
+  }
 
   const save = async () => {
     setError('')
@@ -247,7 +261,28 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
 
         {error && <p className="error">{error}</p>}
 
+        {/* Eliminar del catalogo: solo el dueño, en edicion, con confirmacion. */}
+        {editing && isOwner && confirmDel && (
+          <div className="card">
+            <p>
+              ¿Eliminar <strong>{name}</strong> del catálogo? Se conserva todo el historial
+              (ventas, movimientos, stock); solo deja de estar disponible. Queda en auditoría.
+            </p>
+            <div className="modal__actions">
+              <button className="btn btn--ghost" onClick={() => setConfirmDel(false)}>Cancelar</button>
+              <button className="btn btn--primary" disabled={busy} onClick={remove}>
+                {busy ? 'Eliminando…' : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="modal__actions">
+          {editing && isOwner && !confirmDel && (
+            <button className="btn btn--ghost link-del" style={{ marginRight: 'auto' }} onClick={() => setConfirmDel(true)}>
+              🗑 Eliminar
+            </button>
+          )}
           <button className="btn btn--ghost" onClick={onClose}>
             Cancelar
           </button>

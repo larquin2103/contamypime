@@ -87,6 +87,38 @@ export const productsRepo = {
     await db.products.update(id, { active, updatedAt: now() })
   },
 
+  // Eliminar del catalogo (solo dueño). Es un borrado LOGICO: el producto deja
+  // de estar activo (desaparece del catalogo) pero NADA se borra — ventas,
+  // movimientos y stock se conservan intactos y no hay efecto financiero. Queda
+  // registrado en auditoria (tabla auditEvents). Append-only.
+  async remove(id, { userId = null, note = '' } = {}) {
+    const ts = now()
+    await db.transaction('rw', db.products, db.auditEvents, async () => {
+      const p = await db.products.get(id)
+      if (!p) return
+      await db.products.update(id, { active: false, deletedAt: ts, deletedBy: userId, updatedAt: ts })
+      await db.auditEvents.add({
+        id: newId(),
+        entity: 'product',
+        entityId: id,
+        action: 'delete',
+        name: p.name,
+        code: p.code || '',
+        userId,
+        note: String(note || '').trim(),
+        createdAt: ts
+      })
+    })
+  },
+
+  // Bajas de catalogo registradas (para la auditoria), mas recientes primero.
+  async listDeletions() {
+    const rows = await db.auditEvents.where('entity').equals('product').toArray()
+    return rows
+      .filter((r) => r.action === 'delete')
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
   // Cambia el precio de venta y deja el cambio en el historial (priceChanges).
   // Las ventas ya registradas conservan su precio congelado: NO se tocan.
   // Devuelve true si hubo cambio real.
