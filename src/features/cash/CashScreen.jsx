@@ -5,13 +5,14 @@ import { cashRepo } from '../../repositories/cashRepo'
 import { debtsRepo } from '../../repositories/debtsRepo'
 import { productsRepo } from '../../repositories/productsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
+import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
-import { CASH_CURRENCIES } from '../../db/constants'
+import { CASH_CURRENCIES, WAREHOUSE, locationLabel } from '../../db/constants'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
@@ -134,8 +135,11 @@ function WithdrawForm({ shift, user, isManager }) {
 
 function DebtForm({ shift, user, isManager }) {
   const { baseCurrency } = useCurrency()
+  const { hasModule } = useLicense()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const users = useLiveQuery(() => usersRepo.listActive(), [], [])
+  // Bloque A (mayorista): permiso del dueño para operar el almacén desde el turno.
+  const warehouseAllowed = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], false)
   const [query, setQuery] = useState('')
   const [product, setProduct] = useState(null)
   const [qty, setQty] = useState('1')
@@ -144,6 +148,16 @@ function DebtForm({ shift, user, isManager }) {
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
   const [askAuth, setAskAuth] = useState(false)
+  // Mayorista: origen desde donde se TOMA el producto (su área o el almacén).
+  const [fromWarehouse, setFromWarehouse] = useState(false)
+
+  const sellArea = shift?.area || ''
+  const canPickSource = !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
+  // Ubicación de la que se rebaja: el almacén si se eligió, si no el área del turno.
+  const sourceLoc = canPickSource && fromWarehouse ? WAREHOUSE : sellArea
+  const stockAt = (p) => canPickSource
+    ? Number(p.stockByLocation?.[sourceLoc] ?? (sourceLoc === WAREHOUSE ? p.stock : 0) ?? 0)
+    : Number(p.stock || 0)
 
   const results = useMemo(() => {
     if (!query.trim()) return []
@@ -164,7 +178,9 @@ function DebtForm({ shift, user, isManager }) {
       productId: product.id,
       qty,
       unitValue: product.price,
-      note
+      note,
+      // Con mayorista, rebaja del almacén si se eligió; si no, vacío = área (clásico).
+      sourceLocation: canPickSource && fromWarehouse ? WAREHOUSE : ''
     })
     setProduct(null)
     setQty('1')
@@ -187,6 +203,24 @@ function DebtForm({ shift, user, isManager }) {
       <h3>Deuda interna</h3>
       <p className="muted">Retiro de producto sin pago. Descuenta inventario y NO cuenta como ingreso.</p>
 
+      {/* Mayorista: de dónde se toma el producto (rebaja de esa ubicación). */}
+      {canPickSource && (
+        <div className="tabs">
+          <button
+            className={`tab ${!fromWarehouse ? 'is-active' : ''}`}
+            onClick={() => setFromWarehouse(false)}
+          >
+            {sellArea}
+          </button>
+          <button
+            className={`tab ${fromWarehouse ? 'is-active' : ''}`}
+            onClick={() => setFromWarehouse(true)}
+          >
+            🏬 {locationLabel(WAREHOUSE)}
+          </button>
+        </div>
+      )}
+
       {!product ? (
         <>
           <input
@@ -201,7 +235,7 @@ function DebtForm({ shift, user, isManager }) {
               <button key={p.id} className="product-row" onClick={() => { setProduct(p); setQuery('') }}>
                 <div className="product-row__main">
                   <strong>{p.name}</strong>
-                  <span className="muted">stock {p.stock} {p.unit}</span>
+                  <span className="muted">stock {stockAt(p)} {p.unit}</span>
                 </div>
                 <span className="price">{formatMoney(p.price, baseCurrency)}</span>
               </button>

@@ -7,14 +7,16 @@ import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 // Deuda interna: retiro de producto sin pago. Descuenta inventario, NO cuenta
 // como ingreso y queda como deuda asociada a un usuario registrado.
 export const debtsRepo = {
-  async create({ shiftId, debtorUserId, registeredBy, authorizedBy = '', productId, qty, unitValue, note = '' }) {
+  async create({ shiftId, debtorUserId, registeredBy, authorizedBy = '', productId, qty, unitValue, note = '', sourceLocation = '' }) {
     const id = newId()
     const ts = now()
     const q = Math.abs(Number(qty))
     const valueAtTime = round2(q * (Number(unitValue) || 0))
-    // El producto sale de la ubicacion del turno (su area); sin area, del almacen.
+    // El producto sale de la ubicacion desde donde se TOMA: por defecto el area
+    // del turno (sin area, el almacen) — comportamiento clasico. Con mayorista, la
+    // pantalla puede pasar sourceLocation (almacen central) para rebajar de ahi.
     const shift = shiftId ? await db.shifts.get(shiftId) : null
-    const loc = (shift?.area || '').trim() || WAREHOUSE
+    const loc = String(sourceLocation || '').trim() || (shift?.area || '').trim() || WAREHOUSE
     await db.transaction('rw', db.internalDebts, db.stockMovements, db.products, async () => {
       await db.internalDebts.add({
         id,
