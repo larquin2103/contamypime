@@ -11,6 +11,10 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { WAREHOUSE, ELABORATION } from '../../db/constants'
+import {
+  buildElabConsolidatedSales, buildElabOutputs, buildElabReconciliation,
+  exportExcel, exportPdf
+} from '../reports/reportsService'
 
 // Módulo elaboración. Centro intermedio entre el almacén y las áreas de venta.
 // Tres acciones para el dueño/admin: (1) enviar crudo del almacén a elaboración,
@@ -278,6 +282,55 @@ function TransformPanel({ products, byUserId }) {
   )
 }
 
+// Reportes del módulo elaboración: consolidado de ventas, salidas a puntos y
+// cuadre cruzado. Visibles para el elaborador y el mando (sin datos del dueño).
+function ElabReports() {
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [busy, setBusy] = useState('')
+  const run = async (key, builder, fmt) => {
+    setBusy(`${key}-${fmt}`)
+    try {
+      const report = await builder({ from, to })
+      if (fmt === 'pdf') await exportPdf(report)
+      else await exportExcel(report)
+    } catch (e) {
+      alert('No se pudo generar el reporte: ' + e.message)
+    } finally { setBusy('') }
+  }
+  const card = (key, title, desc, builder) => (
+    <section className="card">
+      <h3>{title}</h3>
+      <p className="muted">{desc}</p>
+      <div className="report-actions">
+        <button className="btn" disabled={!!busy} onClick={() => run(key, builder, 'excel')}>
+          {busy === `${key}-excel` ? '...' : '⬇ Excel'}
+        </button>
+        <button className="btn" disabled={!!busy} onClick={() => run(key, builder, 'pdf')}>
+          {busy === `${key}-pdf` ? '...' : '⬇ PDF'}
+        </button>
+      </div>
+    </section>
+  )
+  return (
+    <>
+      <section className="card">
+        <h3>Reportes de elaboración</h3>
+        <div className="form-row">
+          <label className="field"><span>Desde</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+          <label className="field"><span>Hasta</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+        </div>
+        <p className="muted">Vacío = todo el historial.</p>
+      </section>
+      {card('cons', 'Ventas consolidadas por área', 'Unidades, precio e importe vendido en cada punto', buildElabConsolidatedSales)}
+      {card('out', 'Salidas de elaboración a puntos', 'Qué se envió desde elaboración a cada punto', buildElabOutputs)}
+      {card('rec', 'Cuadre de elaboración', 'Entró / salió / existencia en elaboración y vendido en puntos', buildElabReconciliation)}
+    </>
+  )
+}
+
 export function ElaborationScreen() {
   const { user, isManager, isElaborator } = useAuth()
   const { hasModule } = useLicense()
@@ -351,6 +404,8 @@ export function ElaborationScreen() {
         areas={areas}
         byUserId={user.id}
       />
+
+      <ElabReports />
     </div>
   )
 }

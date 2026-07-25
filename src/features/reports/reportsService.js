@@ -639,6 +639,111 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
   }
 }
 
+// === Reportes del módulo ELABORACIÓN =======================================
+// Pensados para el rol de elaboración: NO exponen costo ni ganancia (datos del
+// dueño). Solo cantidades, importes y precios de venta.
+
+// R1: ventas consolidadas de TODAS las áreas (por área y producto).
+export async function buildElabConsolidatedSales({ from = null, to = null } = {}) {
+  const sales = (await db.sales.toArray()).filter((s) => !s.voided && inRange(s.createdAt, from, to))
+  const map = {}
+  for (const s of sales) {
+    const area = areaLabel(s.area)
+    for (const it of s.items || []) {
+      const key = area + ' ' + it.name
+      const g = map[key] || (map[key] = { area, name: it.name, unit: it.unit, qty: 0, importe: 0 })
+      g.qty = round2(g.qty + Number(it.qty || 0))
+      g.importe = round2(g.importe + Number(it.lineTotal ?? it.unitPrice * it.qty))
+    }
+  }
+  const groups = Object.values(map).sort((a, b) => a.area.localeCompare(b.area) || a.name.localeCompare(b.name))
+  const rows = []
+  let gQty = 0, gImp = 0, curArea = null, subQty = 0, subImp = 0
+  const flush = () => { if (curArea !== null) rows.push([curArea, 'SUBTOTAL', '', round2(subQty), '', round2(subImp)]) }
+  for (const g of groups) {
+    if (g.area !== curArea) { flush(); curArea = g.area; subQty = 0; subImp = 0 }
+    const precio = g.qty ? round2(g.importe / g.qty) : 0
+    rows.push([g.area, g.name, g.unit, round2(g.qty), precio, round2(g.importe)])
+    subQty = round2(subQty + g.qty); subImp = round2(subImp + g.importe)
+    gQty = round2(gQty + g.qty); gImp = round2(gImp + g.importe)
+  }
+  flush()
+  rows.push(['TOTAL', '', '', round2(gQty), '', round2(gImp)])
+  if (groups.length === 0) rows.length = 0, rows.push(['Sin ventas en el periodo', '', '', '', '', ''])
+  return {
+    title: 'Ventas consolidadas por área',
+    subtitle: rangeLabel(from, to),
+    head: ['Área', 'Producto', 'U/M', 'Unidades', 'Precio', 'Importe'],
+    rows,
+    filename: 'ventas_consolidadas'
+  }
+}
+
+// R2: salidas del área de ELABORACIÓN hacia los puntos de venta.
+export async function buildElabOutputs({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const transfers = (await db.transfers.toArray())
+    .filter((t) => (t.fromLocation || WAREHOUSE) === ELABORATION && inRange(t.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const rows = []
+  let totalQty = 0
+  for (const t of transfers) {
+    for (const it of t.items || []) {
+      rows.push([formatDateTime(t.createdAt), areaLabel(t.toArea), it.name, round2(it.qty), it.unit || '', names[t.byUserId] || '—'])
+      totalQty = round2(totalQty + Number(it.qty || 0))
+    }
+  }
+  if (rows.length === 0) rows.push(['Sin salidas en el periodo', '', '', '', '', ''])
+  else rows.push(['', '', 'TOTAL', round2(totalQty), '', ''])
+  return {
+    title: 'Salidas de elaboración a puntos',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Área destino', 'Producto', 'Cantidad', 'U/M', 'Registró'],
+    rows,
+    filename: 'salidas_elaboracion'
+  }
+}
+
+// Cuadre cruzado: por producto, lo que ENTRÓ a elaboración (recibido del almacén
+// + producido), lo que SALIÓ (consumido en transformación + enviado a puntos), la
+// existencia actual en elaboración y lo vendido en los puntos.
+export async function buildElabReconciliation({ from = null, to = null } = {}) {
+  const moves = await db.stockMovements.toArray()
+  const products = await db.products.toArray()
+  const pById = {}
+  for (const p of products) pById[p.id] = p
+  const T = MOVEMENT_TYPES
+  const acc = {}
+  for (const m of moves) {
+    if (!inRange(m.createdAt, from, to)) continue
+    const loc = m.location || WAREHOUSE
+    const q = Number(m.qty || 0)
+    const a = acc[m.productId] || (acc[m.productId] = { entradas: 0, salidas: 0, vendido: 0 })
+    if (loc === ELABORATION) {
+      if (m.type === T.TRANSFER_IN || m.type === T.CONVERSION_IN) a.entradas = round2(a.entradas + q)
+      else a.salidas = round2(a.salidas - q) // cualquier salida de elab (consumo/transfer/venta): q es negativo
+    } else if (m.type === T.SALE_OUT) {
+      a.vendido = round2(a.vendido - q) // vendido en un punto (q negativo)
+    }
+  }
+  const ids = Object.keys(acc).filter((id) => acc[id].entradas || acc[id].salidas || acc[id].vendido)
+  ids.sort((x, y) => (pById[x]?.name || '').localeCompare(pById[y]?.name || ''))
+  const rows = ids.map((id) => {
+    const p = pById[id]; const a = acc[id]
+    const existencia = round2(Number(p?.stockByLocation?.[ELABORATION] || 0))
+    return [p?.name || '—', p?.unit || '', round2(a.entradas), round2(a.salidas), existencia, round2(a.vendido)]
+  })
+  if (rows.length === 0) rows.push(['Sin actividad de elaboración en el periodo', '', '', '', '', ''])
+  return {
+    title: 'Cuadre de elaboración',
+    subtitle: rangeLabel(from, to),
+    head: ['Producto', 'U/M', 'Entró a elab.', 'Salió de elab.', 'Existencia elab.', 'Vendido en puntos'],
+    rows,
+    orientation: 'landscape',
+    filename: 'cuadre_elaboracion'
+  }
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
