@@ -7,6 +7,9 @@ import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
+import { WAREHOUSE, locationLabel } from '../../db/constants'
 import { matchesQuery } from '../../lib/search'
 import { formatMoney } from '../../lib/currency'
 import { ProductForm } from './ProductForm'
@@ -18,21 +21,31 @@ export function Catalog() {
   const { isManager } = useAuth()
   const { activeShift } = useShift()
   const { baseCurrency } = useCurrency()
+  const { hasModule } = useLicense()
   const products = useLiveQuery(() => productsRepo.list(), [], [])
   const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
+  // Bloque A (mayorista): permiso del dueño para que el vendedor opere el almacén.
+  const warehouseAllowed = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], false)
 
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState(null) // producto en edicion
   const [creating, setCreating] = useState(false)
   const [showCategories, setShowCategories] = useState(false)
+  // Vendedor con mayorista: puede ALTERNAR la vista entre su área y el almacén.
+  const [showWarehouse, setShowWarehouse] = useState(false)
 
   // El vendedor solo ve los productos ASIGNADOS a su área (no el almacén). El
   // dueño y el administrativo ven todo el catálogo. Modo área solo si hay áreas.
   const sellArea = activeShift?.area || ''
   const areaMode = !isManager && areas.length > 0
-  // Existencia a mostrar: en modo área, la del área; si no, el total.
-  const stockShown = (p) => (areaMode ? Number(p.stockByLocation?.[sellArea] || 0) : Number(p.stock || 0))
+  // Mayorista: si el dueño lo permitió, el vendedor puede VER (solo lectura) el
+  // catálogo del almacén central, además del de su área.
+  const canWarehouseView = areaMode && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
+  // Ubicación que se está mirando (para el vendedor): su área o el almacén.
+  const viewLoc = canWarehouseView && showWarehouse ? WAREHOUSE : sellArea
+  // Existencia a mostrar: en modo área, la de la ubicación vista; si no, el total.
+  const stockShown = (p) => (areaMode ? Number(p.stockByLocation?.[viewLoc] || 0) : Number(p.stock || 0))
 
   const categoryName = useMemo(() => {
     const map = {}
@@ -42,13 +55,13 @@ export function Catalog() {
 
   const filtered = useMemo(() => {
     let active = products.filter((p) => p.active)
-    // En modo área, solo productos con existencia asignada a esa área.
-    if (areaMode && sellArea) active = active.filter((p) => Number(p.stockByLocation?.[sellArea] || 0) > 0)
+    // En modo área, solo productos con existencia en la ubicación vista (área o almacén).
+    if (areaMode && viewLoc) active = active.filter((p) => Number(p.stockByLocation?.[viewLoc] || 0) > 0)
     const result = active.filter((p) => matchesQuery(p, query))
     result.sort((a, b) => a.name.localeCompare(b.name))
     return result
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, query, areaMode, sellArea])
+  }, [products, query, areaMode, viewLoc])
 
   const shown = filtered.slice(0, MAX_RENDER)
 
@@ -86,6 +99,27 @@ export function Catalog() {
           </div>
         )}
       </div>
+
+      {/* Mayorista: el vendedor alterna entre su área y el almacén (solo lectura). */}
+      {canWarehouseView && (
+        <div className="tabs">
+          <button
+            className={`tab ${!showWarehouse ? 'is-active' : ''}`}
+            onClick={() => setShowWarehouse(false)}
+          >
+            {sellArea}
+          </button>
+          <button
+            className={`tab ${showWarehouse ? 'is-active' : ''}`}
+            onClick={() => setShowWarehouse(true)}
+          >
+            🏬 {locationLabel(WAREHOUSE)}
+          </button>
+        </div>
+      )}
+      {canWarehouseView && showWarehouse && (
+        <p className="muted">Vista del <strong>almacén central</strong> (solo lectura).</p>
+      )}
 
       <input
         className="search-input"
