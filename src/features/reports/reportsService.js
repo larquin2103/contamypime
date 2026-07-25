@@ -836,6 +836,56 @@ export async function buildProductLedger({ productId = '', location = '', from =
   }
 }
 
+// Submayor CONSOLIDADO: una fila por producto con sus totales del período
+// (apertura, entradas, salidas, ajustes, existencia y valor). productIds vacío
+// = todos los productos activos. Solo lectura, deriva de stockMovements.
+export async function buildProductsLedgerSummary({ productIds = [], location = '', from = null, to = null, valued = false } = {}) {
+  const active = (await db.products.toArray()).filter((p) => p.active)
+  const idSet = productIds && productIds.length ? new Set(productIds) : null
+  const selected = (idSet ? active.filter((p) => idSet.has(p.id)) : active)
+    .sort((a, b) => a.name.localeCompare(b.name))
+  const acc = {}
+  for (const p of selected) acc[p.id] = { apertura: 0, ent: 0, sal: 0, aju: 0 }
+
+  const moves = await db.stockMovements.toArray()
+  for (const m of moves) {
+    const a = acc[m.productId]
+    if (!a) continue
+    if (location && (m.location || WAREHOUSE) !== location) continue
+    const day = localDay(m.createdAt)
+    const q = Number(m.qty || 0)
+    if (from && day < from) { a.apertura = round2(a.apertura + q); continue }
+    if (to && day > to) continue
+    if (m.type === MOVEMENT_TYPES.ADJUSTMENT) a.aju = round2(a.aju + q)
+    else if (LEDGER_ENTRADAS.includes(m.type)) a.ent = round2(a.ent + q)
+    else a.sal = round2(a.sal + q)
+  }
+
+  const rows = []
+  let tEnt = 0, tSal = 0, tAju = 0, tVal = 0
+  for (const p of selected) {
+    const a = acc[p.id]
+    const existencia = round2(a.apertura + a.ent + a.sal + a.aju)
+    const cost = Number(p.cost || 0)
+    tEnt = round2(tEnt + a.ent); tSal = round2(tSal + a.sal); tAju = round2(tAju + a.aju)
+    tVal = round2(tVal + existencia * cost)
+    rows.push([p.name, p.unit, round2(a.apertura), round2(a.ent), round2(a.sal), round2(a.aju), existencia,
+      ...(valued ? [formatMoney(round2(existencia * cost))] : [])])
+  }
+  if (selected.length === 0) rows.push(['Sin productos', '', '', '', '', '', '', ...(valued ? [''] : [])])
+  else rows.push(['TOTAL', '', '', round2(tEnt), round2(tSal), round2(tAju), '', ...(valued ? [formatMoney(tVal)] : [])])
+
+  const locLabel = location ? locationLabel(location) : 'Todas las ubicaciones'
+  return {
+    title: 'Submayor consolidado por producto',
+    subtitle: `${idSet ? selected.length + ' producto(s)' : 'Todos los productos'} · ${locLabel} · ${rangeLabel(from, to)}`,
+    head: ['Producto', 'U/M', 'Apertura', 'Entradas', 'Salidas', 'Ajustes', 'Existencia', ...(valued ? ['Valor (costo)'] : [])],
+    rows,
+    orientation: 'landscape',
+    filename: 'submayor_consolidado'
+  }
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

@@ -6,23 +6,30 @@ import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { matchesQuery } from '../../lib/search'
 import { WAREHOUSE, ELABORATION, locationLabel } from '../../db/constants'
-import { buildProductLedger, exportExcel, exportPdf } from './reportsService'
+import { buildProductLedger, buildProductsLedgerSummary, exportExcel, exportPdf } from './reportsService'
 
-// Submayor por producto (kardex). Solo el dueño. Elige producto, rango de fechas,
-// ubicación (o todas) y ve apertura / entradas / salidas / ajustes / existencia,
-// por día o por movimiento. Es SOLO LECTURA (deriva de stockMovements).
+// Submayor por producto (kardex). Solo el dueño. Dos alcances:
+//  - Un producto: apertura/entradas/salidas/ajustes/existencia por día o detallado.
+//  - Todos / varios (resumen): una fila por producto con sus totales del período.
+// Es SOLO LECTURA (deriva de stockMovements).
 export function ProductLedgerScreen() {
   const { isOwner } = useAuth()
   const products = useLiveQuery(() => productsRepo.list(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
 
+  const [scope, setScope] = useState('one') // one | all
+  // Un producto
   const [query, setQuery] = useState('')
   const [product, setProduct] = useState(null)
+  const [mode, setMode] = useState('daily') // daily | detailed
+  // Varios / todos
+  const [queryAll, setQueryAll] = useState('')
+  const [selected, setSelected] = useState({}) // { productId: true }
+  // Filtros comunes
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [location, setLocation] = useState('') // '' = todas
-  const [mode, setMode] = useState('daily') // daily | detailed
+  const [location, setLocation] = useState('')
   const [valued, setValued] = useState(false)
   const [busy, setBusy] = useState('')
 
@@ -31,9 +38,19 @@ export function ProductLedgerScreen() {
     return products.filter((p) => p.active && matchesQuery(p, query)).slice(0, 15)
   }, [products, query])
 
+  const eligibleAll = useMemo(() => {
+    const act = products.filter((p) => p.active)
+    const f = queryAll.trim() ? act.filter((p) => matchesQuery(p, queryAll)) : act
+    return f.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 60)
+  }, [products, queryAll])
+
+  const selIds = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected])
+
   const report = useLiveQuery(
-    () => buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued }),
-    [product?.id, location, from, to, mode, valued],
+    () => (scope === 'one'
+      ? buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued })
+      : buildProductsLedgerSummary({ productIds: selIds, location, from, to, valued })),
+    [scope, product?.id, selIds.join(','), location, from, to, mode, valued],
     undefined
   )
 
@@ -49,8 +66,9 @@ export function ProductLedgerScreen() {
     )
   }
 
+  const canShow = scope === 'one' ? !!product : true
   const run = async (fmt) => {
-    if (!product || !report) return
+    if (!report || !canShow) return
     setBusy(fmt)
     try {
       if (fmt === 'pdf') await exportPdf(report)
@@ -59,36 +77,66 @@ export function ProductLedgerScreen() {
       alert('No se pudo exportar: ' + e.message)
     } finally { setBusy('') }
   }
+  const toggleSel = (id) => setSelected((prev) => ({ ...prev, [id]: !prev[id] }))
 
   return (
     <div className="screen">
       <h2>Submayor por producto</h2>
-      <p className="muted">Historial de un producto: apertura, entradas, salidas, ajustes y existencia. Solo lectura.</p>
+      <p className="muted">Apertura, entradas, salidas, ajustes y existencia. Solo lectura.</p>
 
-      {/* 1. Producto */}
-      <section className="card">
-        <h3>1. Producto</h3>
-        {!product ? (
-          <>
-            <input className="search-input" type="search" value={query}
-              onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nombre o código…" />
-            <div className="list">
-              {results.map((p) => (
-                <button key={p.id} className="list-item" onClick={() => { setProduct(p); setQuery('') }}>
-                  <div><strong>{p.name}</strong><span className="muted"> {p.code ? `· ${p.code} ` : ''}· total {p.stock} {p.unit}</span></div>
-                  <span className="muted">›</span>
-                </button>
-              ))}
-              {query.trim() && results.length === 0 && <p className="muted">Sin resultados.</p>}
+      {/* Alcance */}
+      <div className="tabs">
+        <button className={`tab ${scope === 'one' ? 'is-active' : ''}`} onClick={() => setScope('one')}>Un producto</button>
+        <button className={`tab ${scope === 'all' ? 'is-active' : ''}`} onClick={() => setScope('all')}>Todos / varios</button>
+      </div>
+
+      {/* 1. Producto(s) */}
+      {scope === 'one' ? (
+        <section className="card">
+          <h3>1. Producto</h3>
+          {!product ? (
+            <>
+              <input className="search-input" type="search" value={query}
+                onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nombre o código…" />
+              <div className="list">
+                {results.map((p) => (
+                  <button key={p.id} className="list-item" onClick={() => { setProduct(p); setQuery('') }}>
+                    <div><strong>{p.name}</strong><span className="muted"> {p.code ? `· ${p.code} ` : ''}· total {p.stock} {p.unit}</span></div>
+                    <span className="muted">›</span>
+                  </button>
+                ))}
+                {query.trim() && results.length === 0 && <p className="muted">Sin resultados.</p>}
+              </div>
+            </>
+          ) : (
+            <div className="kv">
+              <span><strong>{product.name}</strong>{product.code ? <span className="muted"> · {product.code}</span> : null}</span>
+              <button className="link-del" onClick={() => setProduct(null)}>cambiar</button>
             </div>
-          </>
-        ) : (
-          <div className="kv">
-            <span><strong>{product.name}</strong>{product.code ? <span className="muted"> · {product.code}</span> : null}</span>
-            <button className="link-del" onClick={() => setProduct(null)}>cambiar</button>
+          )}
+        </section>
+      ) : (
+        <section className="card">
+          <h3>1. Productos</h3>
+          <p className="muted">
+            {selIds.length === 0 ? 'Sin marcar = TODOS los productos.' : `${selIds.length} seleccionado(s).`}
+            {selIds.length > 0 && <button className="link-del" onClick={() => setSelected({})} style={{ marginLeft: 8 }}>quitar todos</button>}
+          </p>
+          <input className="search-input" type="search" value={queryAll}
+            onChange={(e) => setQueryAll(e.target.value)} placeholder="Buscar para marcar (opcional)…" />
+          <div className="list">
+            {eligibleAll.map((p) => (
+              <label key={p.id} className={`check-row ${selected[p.id] ? 'is-checked' : ''}`}>
+                <input type="checkbox" checked={!!selected[p.id]} onChange={() => toggleSel(p.id)} />
+                <div className="check-row__main">
+                  <strong>{p.name}</strong>
+                  <span className="muted">{p.code ? `${p.code} · ` : ''}total {p.stock} {p.unit}</span>
+                </div>
+              </label>
+            ))}
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* 2. Filtros */}
       <section className="card">
@@ -109,11 +157,13 @@ export function ProductLedgerScreen() {
             {areas.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
-        <div className="tabs">
-          <button className={`tab ${mode === 'daily' ? 'is-active' : ''}`} onClick={() => setMode('daily')}>Por día</button>
-          <button className={`tab ${mode === 'detailed' ? 'is-active' : ''}`} onClick={() => setMode('detailed')}>Detallado</button>
-        </div>
-        {mode === 'daily' && (
+        {scope === 'one' && (
+          <div className="tabs">
+            <button className={`tab ${mode === 'daily' ? 'is-active' : ''}`} onClick={() => setMode('daily')}>Por día</button>
+            <button className={`tab ${mode === 'detailed' ? 'is-active' : ''}`} onClick={() => setMode('detailed')}>Detallado</button>
+          </div>
+        )}
+        {(scope === 'all' || mode === 'daily') && (
           <label className="check-row">
             <input type="checkbox" checked={valued} onChange={(e) => setValued(e.target.checked)} />
             <div className="check-row__main"><strong>Mostrar valor (existencia × costo)</strong></div>
@@ -122,7 +172,7 @@ export function ProductLedgerScreen() {
       </section>
 
       {/* 3. Resultado */}
-      {product && report && (
+      {canShow && report && (
         <section className="card">
           <div className="screen__header">
             <h3>Submayor</h3>
@@ -139,7 +189,7 @@ export function ProductLedgerScreen() {
               </thead>
               <tbody>
                 {report.rows.map((r, i) => (
-                  <tr key={i} className={r[0] === 'Apertura' || String(r[0]).startsWith('Existencia') ? 'is-strong' : ''}>
+                  <tr key={i} className={r[0] === 'Apertura' || r[0] === 'TOTAL' || String(r[0]).startsWith('Existencia') ? 'is-strong' : ''}>
                     {r.map((c, j) => <td key={j} className={j === 0 ? '' : 'num'}>{c}</td>)}
                   </tr>
                 ))}
