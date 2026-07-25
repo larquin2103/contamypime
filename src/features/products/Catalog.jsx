@@ -83,17 +83,22 @@ export function Catalog() {
     <div className="screen">
       <div className="screen__header">
         <h2>Catalogo</h2>
-        {isManager && (
+        {(isManager || isElaborator) && (
           <div className="header-actions">
-            <Link className="btn btn--ghost btn--sm" to="/import">
-              ⬆ Importar
-            </Link>
-            <Link className="btn btn--ghost btn--sm" to="/price">
-              🏷️ Precios
-            </Link>
-            <button className="btn btn--ghost btn--sm" onClick={() => setShowCategories(true)}>
-              Categorías
-            </button>
+            {isManager && (
+              <>
+                <Link className="btn btn--ghost btn--sm" to="/import">
+                  ⬆ Importar
+                </Link>
+                <Link className="btn btn--ghost btn--sm" to="/price">
+                  🏷️ Precios
+                </Link>
+                <button className="btn btn--ghost btn--sm" onClick={() => setShowCategories(true)}>
+                  Categorías
+                </button>
+              </>
+            )}
+            {/* El elaborador puede CREAR productos (para elaborar), no editar/eliminar. */}
             <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}>
               + Producto
             </button>
@@ -173,7 +178,11 @@ export function Catalog() {
       </div>
 
       {creating && (
-        <ProductForm categories={categories} onClose={() => setCreating(false)} />
+        <ProductForm
+          categories={categories}
+          onClose={() => setCreating(false)}
+          hideOpeningStock={isElaborator}
+        />
       )}
       {editing && (
         <ProductForm
