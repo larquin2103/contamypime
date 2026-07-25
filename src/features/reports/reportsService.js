@@ -748,7 +748,6 @@ export async function buildElabReconciliation({ from = null, to = null } = {}) {
 // Elegido un producto, ubicación (o todas) y rango, reconstruye del libro mayor:
 // apertura (existencia al inicio), y por día (o por movimiento) las entradas,
 // salidas y ajustes con la existencia corriendo. Deriva todo de stockMovements.
-const LEDGER_ENTRADAS = [MOVEMENT_TYPES.PURCHASE_IN, MOVEMENT_TYPES.TRANSFER_IN, MOVEMENT_TYPES.CONVERSION_IN]
 const LEDGER_TIPO = {
   purchase_in: 'Compra', sale_out: 'Venta', internal_debt_out: 'Deuda interna',
   adjustment: 'Ajuste', transfer_out: 'Salida a área', transfer_in: 'Entrada de traspaso',
@@ -756,22 +755,57 @@ const LEDGER_TIPO = {
   conversion_out: 'Consumido (conversión)'
 }
 
-export async function buildProductLedger({ productId = '', location = '', from = null, to = null, mode = 'daily', valued = false } = {}) {
+// Clasificacion fina de cada movimiento. La CARGA INICIAL (alta con existencia
+// inicial) es un ajuste con nota 'Existencia inicial': se separa para no
+// confundirla con un ajuste de correccion. Cada clave suma la cantidad con signo.
+function ledgerKey(m) {
+  const T = MOVEMENT_TYPES
+  switch (m.type) {
+    case T.PURCHASE_IN: return 'compras'
+    case T.TRANSFER_IN: return 'traspIn'
+    case T.CONVERSION_IN: return 'producido'
+    case T.SALE_OUT: return 'ventas'
+    case T.TRANSFER_OUT: return 'traspOut'
+    case T.CONVERSION_OUT: return 'consumo'
+    case T.INTERNAL_DEBT_OUT: return 'deuda'
+    case T.PARTNER_OUT: return 'terceros'
+    case T.ADJUSTMENT: return m.note === 'Existencia inicial' ? 'cargaIni' : 'ajustes'
+    default: return 'ajustes'
+  }
+}
+const LEDGER_KEYS = ['compras', 'traspIn', 'producido', 'ventas', 'traspOut', 'consumo', 'deuda', 'terceros', 'cargaIni', 'ajustes']
+const LEDGER_FULL = [
+  ['compras', 'Compras'], ['traspIn', 'Traspasos recibidos'], ['producido', 'Producido'],
+  ['ventas', 'Ventas'], ['traspOut', 'Traspasos a áreas'], ['consumo', 'Consumo elab.'],
+  ['deuda', 'Deuda interna'], ['terceros', 'Entrega terceros'],
+  ['cargaIni', 'Carga inicial'], ['ajustes', 'Ajustes']
+]
+const emptyLedger = () => ({ compras: 0, traspIn: 0, producido: 0, ventas: 0, traspOut: 0, consumo: 0, deuda: 0, terceros: 0, cargaIni: 0, ajustes: 0 })
+const ledgerAdd = (g, m) => { const k = ledgerKey(m); g[k] = round2(g[k] + Number(m.qty || 0)) }
+const ledgerNet = (g) => round2(LEDGER_KEYS.reduce((s, k) => s + g[k], 0))
+// Columnas intermedias segun nivel: 'basic' (pantalla/PDF) o 'full' (Excel).
+const ledgerMidHead = (detail) => detail === 'full'
+  ? LEDGER_FULL.map(([, l]) => l)
+  : ['Entradas', 'Ventas', 'Otras salidas', 'Carga inicial', 'Ajustes']
+const ledgerMidCols = (g, detail) => {
+  if (detail === 'full') return LEDGER_FULL.map(([k]) => round2(g[k]))
+  const entradas = round2(g.compras + g.traspIn + g.producido)
+  const otras = round2(g.traspOut + g.consumo + g.deuda + g.terceros)
+  return [entradas, round2(g.ventas), otras, round2(g.cargaIni), round2(g.ajustes)]
+}
+
+export async function buildProductLedger({ productId = '', location = '', from = null, to = null, mode = 'daily', valued = false, detail = 'basic' } = {}) {
   const p = productId ? await db.products.get(productId) : null
   const locLabel = location ? locationLabel(location) : 'Todas las ubicaciones'
+  const mh = ledgerMidHead(detail)
+  const nMid = mh.length
+  const valHead = valued ? ['Valor (costo)'] : []
   const baseHead = mode === 'detailed'
     ? ['Fecha', 'Tipo', 'Cantidad', 'Existencia', 'Nota']
-    : ['Fecha', 'Entradas', 'Salidas', 'Ajustes', 'Existencia', ...(valued ? ['Valor (costo)'] : [])]
+    : ['Fecha', ...mh, 'Existencia', ...valHead]
 
   if (!productId || !p) {
-    return {
-      title: 'Submayor por producto',
-      subtitle: 'Elige un producto para ver su submayor',
-      head: baseHead,
-      rows: [],
-      filename: 'submayor',
-      orientation: mode === 'detailed' ? 'landscape' : 'portrait'
-    }
+    return { title: 'Submayor por producto', subtitle: 'Elige un producto para ver su submayor', head: baseHead, rows: [], filename: 'submayor', orientation: 'landscape' }
   }
 
   const all = await db.stockMovements.where('productId').equals(productId).toArray()
@@ -791,13 +825,6 @@ export async function buildProductLedger({ productId = '', location = '', from =
 
   const cost = Number(p.cost || 0)
   const val = (n) => formatMoney(round2(n * cost))
-  const bucket = (m) => {
-    const q = Number(m.qty || 0)
-    if (m.type === MOVEMENT_TYPES.ADJUSTMENT) return { ent: 0, sal: 0, aju: q }
-    if (LEDGER_ENTRADAS.includes(m.type)) return { ent: q, sal: 0, aju: 0 }
-    return { ent: 0, sal: q, aju: 0 } // salidas (q negativo)
-  }
-
   const rows = []
   let saldo = round2(apertura)
 
@@ -805,7 +832,9 @@ export async function buildProductLedger({ productId = '', location = '', from =
     rows.push(['Apertura', '', '', round2(apertura), ''])
     for (const m of win) {
       saldo = round2(saldo + Number(m.qty || 0))
-      rows.push([formatDateTime(m.createdAt), LEDGER_TIPO[m.type] || m.type, round2(Number(m.qty || 0)), round2(saldo), m.note || ''])
+      const tipo = (m.type === MOVEMENT_TYPES.ADJUSTMENT && m.note === 'Existencia inicial')
+        ? 'Carga inicial' : (LEDGER_TIPO[m.type] || m.type)
+      rows.push([formatDateTime(m.createdAt), tipo, round2(Number(m.qty || 0)), round2(saldo), m.note || ''])
     }
     rows.push(['Existencia final', '', '', round2(saldo), ''])
   } else {
@@ -813,17 +842,16 @@ export async function buildProductLedger({ productId = '', location = '', from =
     const order = []
     for (const m of win) {
       const day = localDay(m.createdAt)
-      if (!byDay.has(day)) { byDay.set(day, { ent: 0, sal: 0, aju: 0 }); order.push(day) }
-      const b = bucket(m); const g = byDay.get(day)
-      g.ent = round2(g.ent + b.ent); g.sal = round2(g.sal + b.sal); g.aju = round2(g.aju + b.aju)
+      if (!byDay.has(day)) { byDay.set(day, emptyLedger()); order.push(day) }
+      ledgerAdd(byDay.get(day), m)
     }
-    rows.push(['Apertura', '', '', '', round2(apertura), ...(valued ? [val(apertura)] : [])])
+    rows.push(['Apertura', ...new Array(nMid).fill(''), round2(apertura), ...(valued ? [val(apertura)] : [])])
     for (const day of order) {
       const g = byDay.get(day)
-      saldo = round2(saldo + g.ent + g.sal + g.aju)
-      rows.push([day, round2(g.ent), round2(g.sal), round2(g.aju), round2(saldo), ...(valued ? [val(saldo)] : [])])
+      saldo = round2(saldo + ledgerNet(g))
+      rows.push([day, ...ledgerMidCols(g, detail), round2(saldo), ...(valued ? [val(saldo)] : [])])
     }
-    rows.push(['Existencia final', '', '', '', round2(saldo), ...(valued ? [val(saldo)] : [])])
+    rows.push(['Existencia final', ...new Array(nMid).fill(''), round2(saldo), ...(valued ? [val(saldo)] : [])])
   }
 
   return {
@@ -832,20 +860,19 @@ export async function buildProductLedger({ productId = '', location = '', from =
     head: baseHead,
     rows,
     filename: 'submayor',
-    orientation: mode === 'detailed' ? 'landscape' : 'portrait'
+    orientation: 'landscape'
   }
 }
 
-// Submayor CONSOLIDADO: una fila por producto con sus totales del período
-// (apertura, entradas, salidas, ajustes, existencia y valor). productIds vacío
-// = todos los productos activos. Solo lectura, deriva de stockMovements.
-export async function buildProductsLedgerSummary({ productIds = [], location = '', from = null, to = null, valued = false } = {}) {
+// Submayor CONSOLIDADO: una fila por producto con sus totales del período.
+// productIds vacío = todos los productos activos. Solo lectura.
+export async function buildProductsLedgerSummary({ productIds = [], location = '', from = null, to = null, valued = false, detail = 'basic' } = {}) {
   const active = (await db.products.toArray()).filter((p) => p.active)
   const idSet = productIds && productIds.length ? new Set(productIds) : null
   const selected = (idSet ? active.filter((p) => idSet.has(p.id)) : active)
     .sort((a, b) => a.name.localeCompare(b.name))
   const acc = {}
-  for (const p of selected) acc[p.id] = { apertura: 0, ent: 0, sal: 0, aju: 0 }
+  for (const p of selected) acc[p.id] = { apertura: 0, g: emptyLedger() }
 
   const moves = await db.stockMovements.toArray()
   for (const m of moves) {
@@ -853,33 +880,34 @@ export async function buildProductsLedgerSummary({ productIds = [], location = '
     if (!a) continue
     if (location && (m.location || WAREHOUSE) !== location) continue
     const day = localDay(m.createdAt)
-    const q = Number(m.qty || 0)
-    if (from && day < from) { a.apertura = round2(a.apertura + q); continue }
+    if (from && day < from) { a.apertura = round2(a.apertura + Number(m.qty || 0)); continue }
     if (to && day > to) continue
-    if (m.type === MOVEMENT_TYPES.ADJUSTMENT) a.aju = round2(a.aju + q)
-    else if (LEDGER_ENTRADAS.includes(m.type)) a.ent = round2(a.ent + q)
-    else a.sal = round2(a.sal + q)
+    ledgerAdd(a.g, m)
   }
 
+  const mh = ledgerMidHead(detail)
+  const nMid = mh.length
   const rows = []
-  let tEnt = 0, tSal = 0, tAju = 0, tVal = 0
+  const tot = emptyLedger()
+  let tVal = 0
   for (const p of selected) {
     const a = acc[p.id]
-    const existencia = round2(a.apertura + a.ent + a.sal + a.aju)
+    const existencia = round2(a.apertura + ledgerNet(a.g))
     const cost = Number(p.cost || 0)
-    tEnt = round2(tEnt + a.ent); tSal = round2(tSal + a.sal); tAju = round2(tAju + a.aju)
+    for (const k of LEDGER_KEYS) tot[k] = round2(tot[k] + a.g[k])
     tVal = round2(tVal + existencia * cost)
-    rows.push([p.name, p.unit, round2(a.apertura), round2(a.ent), round2(a.sal), round2(a.aju), existencia,
+    rows.push([p.name, p.unit, round2(a.apertura), ...ledgerMidCols(a.g, detail), existencia,
       ...(valued ? [formatMoney(round2(existencia * cost))] : [])])
   }
-  if (selected.length === 0) rows.push(['Sin productos', '', '', '', '', '', '', ...(valued ? [''] : [])])
-  else rows.push(['TOTAL', '', '', round2(tEnt), round2(tSal), round2(tAju), '', ...(valued ? [formatMoney(tVal)] : [])])
+  const emptyMid = new Array(nMid).fill('')
+  if (selected.length === 0) rows.push(['Sin productos', '', '', ...emptyMid, '', ...(valued ? [''] : [])])
+  else rows.push(['TOTAL', '', '', ...ledgerMidCols(tot, detail), '', ...(valued ? [formatMoney(tVal)] : [])])
 
   const locLabel = location ? locationLabel(location) : 'Todas las ubicaciones'
   return {
     title: 'Submayor consolidado por producto',
     subtitle: `${idSet ? selected.length + ' producto(s)' : 'Todos los productos'} · ${locLabel} · ${rangeLabel(from, to)}`,
-    head: ['Producto', 'U/M', 'Apertura', 'Entradas', 'Salidas', 'Ajustes', 'Existencia', ...(valued ? ['Valor (costo)'] : [])],
+    head: ['Producto', 'U/M', 'Apertura', ...mh, 'Existencia', ...(valued ? ['Valor (costo)'] : [])],
     rows,
     orientation: 'landscape',
     filename: 'submayor_consolidado'

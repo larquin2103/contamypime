@@ -71,8 +71,15 @@ export function ProductLedgerScreen() {
     if (!report || !canShow) return
     setBusy(fmt)
     try {
-      if (fmt === 'pdf') await exportPdf(report)
-      else await exportExcel(report)
+      // Pantalla y PDF: básico (legible). Excel: detallado por concepto (full).
+      let rep = report
+      if (fmt === 'excel') {
+        rep = scope === 'one'
+          ? await buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued, detail: 'full' })
+          : await buildProductsLedgerSummary({ productIds: selIds, location, from, to, valued, detail: 'full' })
+      }
+      if (fmt === 'pdf') await exportPdf(rep)
+      else await exportExcel(rep)
     } catch (e) {
       alert('No se pudo exportar: ' + e.message)
     } finally { setBusy('') }
