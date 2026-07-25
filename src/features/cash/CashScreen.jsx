@@ -136,6 +136,7 @@ function WithdrawForm({ shift, user, isManager }) {
 function DebtForm({ shift, user, isManager }) {
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
+  const { isElaborator } = useAuth()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const users = useLiveQuery(() => usersRepo.listActive(), [], [])
   // Bloque A (mayorista): permiso del dueño para operar el almacén desde el turno.
@@ -152,7 +153,7 @@ function DebtForm({ shift, user, isManager }) {
   const [fromWarehouse, setFromWarehouse] = useState(false)
 
   const sellArea = shift?.area || ''
-  const canPickSource = !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
+  const canPickSource = !isElaborator && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
   // Ubicación de la que se rebaja: el almacén si se eligió, si no el área del turno.
   const sourceLoc = canPickSource && fromWarehouse ? WAREHOUSE : sellArea
   const stockAt = (p) => canPickSource

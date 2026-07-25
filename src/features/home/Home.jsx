@@ -237,7 +237,7 @@ export function Home() {
         </>
       ) : (
         <>
-          {isElaborator && (
+          {isElaborator && hasModule(LICENSE_MODULES.ELABORATION) && elab.enabled && (
             <Section label="Elaboración">
               <ActionCard to="/elaboracion" icon={Factory} title="Elaboración" sub="Transformar y enviar a puntos" />
             </Section>
