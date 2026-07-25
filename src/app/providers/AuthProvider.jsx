@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { usersRepo } from '../../repositories/usersRepo'
+import { configRepo } from '../../repositories/configRepo'
 import { ROLES } from '../../db/constants'
 
 const AuthContext = createContext(null)
@@ -61,12 +63,22 @@ export function AuthProvider({ children }) {
   const isOwner = user?.role === ROLES.OWNER
   const isAdmin = user?.role === ROLES.ADMIN
 
+  // Permisos del administrativo (Bloque 20.6+). El dueño puede QUITAR facultades
+  // puntuales al admin en Ajustes. Por defecto (config ausente o clave sin poner)
+  // TODO permitido -> el admin conserva sus facultades actuales (comportamiento
+  // de hoy). El dueño nunca se ve afectado.
+  const adminPerms = useLiveQuery(() => configRepo.get('adminPermissions', {}), [], {})
+  // can(cap): ¿el usuario actual puede realizar `cap`? El dueño siempre; el admin
+  // salvo que el dueño lo haya puesto explícitamente en false; otros roles no.
+  const can = (cap) => isOwner || (isAdmin && (adminPerms?.[cap] !== false))
+
   const value = {
     user,
     login,
     logout,
     isOwner,
     isAdmin,
+    can,
     // "Mando": dueño O administrativo. Habilita inventario, supervision y la
     // visibilidad financiera. Lo exclusivo del dueño (usuarios, licencia, nube)
     // se sigue comprobando con isOwner.

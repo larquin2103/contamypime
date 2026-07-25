@@ -24,7 +24,7 @@ const REF_LABELS = {
 // acreditan su cuenta en tiempo real (efectivo por moneda, transferencias);
 // extracciones y pagos a proveedores debitan. Saldo = creditos - debitos.
 export function AccountsScreen() {
-  const { user, isManager } = useAuth()
+  const { user, isManager, can } = useAuth()
   const { hasModule } = useLicense()
   const navigate = useNavigate()
 
@@ -99,9 +99,12 @@ export function AccountsScreen() {
         })}
       </div>
 
-      <button className="btn btn--ghost btn--block" onClick={() => setCreating(true)}>
-        + Crear otra cuenta
-      </button>
+      {/* Modificar (crear cuenta): el dueño puede quitarle esta facultad al admin. */}
+      {can('accounts') && (
+        <button className="btn btn--ghost btn--block" onClick={() => setCreating(true)}>
+          + Crear otra cuenta
+        </button>
+      )}
 
       <UnifiedPartners partners={partners} partnerBal={partnerBal} onGo={() => navigate('/partners')} />
       <IncomeByConcept byConcept={byConcept} />
@@ -216,6 +219,7 @@ function AccountForm({ onClose }) {
 
 // Detalle de una cuenta: saldo, movimientos y ajuste manual.
 function AccountDetail({ account, balance, userId, onBack }) {
+  const { can } = useAuth()
   const movements = useLiveQuery(() => accountsRepo.movements(account.id), [account.id], [])
   const [adjusting, setAdjusting] = useState(false)
 
@@ -233,9 +237,12 @@ function AccountDetail({ account, balance, userId, onBack }) {
             {formatMoney(balance, account.currency)}
           </strong>
         </div>
-        <button className="btn btn--ghost btn--block" onClick={() => setAdjusting(true)}>
-          Registrar ajuste manual
-        </button>
+        {/* Modificar (ajuste manual): el dueño puede quitarle esta facultad al admin. */}
+        {can('accounts') && (
+          <button className="btn btn--ghost btn--block" onClick={() => setAdjusting(true)}>
+            Registrar ajuste manual
+          </button>
+        )}
       </section>
 
       <section className="card">

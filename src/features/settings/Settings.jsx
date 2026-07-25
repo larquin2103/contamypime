@@ -36,6 +36,7 @@ export function Settings() {
       <AreasSection />
       <WholesaleSection />
       <ElaborationSection />
+      <AdminPermsSection />
       <SemaphoreSection />
       <DenominationsSection />
       <WhatsappSection />
@@ -167,6 +168,47 @@ function ElaborationSection() {
           />
         </label>
       )}
+    </section>
+  )
+}
+
+// Permisos del administrativo (Bloque 20.6+). Todo permitido por DEFECTO: el
+// admin conserva sus facultades de hoy. El dueño puede QUITAR puntualmente
+// algunas (asignacion temporal: quita, opera, vuelve a poner). No afecta al
+// dueño ni al vendedor. Cada facultad solo se muestra si su modulo esta activo.
+const ADMIN_CAPS = [
+  { key: 'entries', label: 'Dar entrada de productos', module: null },
+  { key: 'conversion', label: 'Crear conversión de códigos', module: LICENSE_MODULES.WHOLESALE },
+  { key: 'accounts', label: 'Modificar cuentas (crear / ajustar)', module: LICENSE_MODULES.ACCOUNTS },
+  { key: 'partners', label: 'Crear proveedores y terceros', module: LICENSE_MODULES.ACCOUNTS }
+]
+function AdminPermsSection() {
+  const { hasModule } = useLicense()
+  const perms = useLiveQuery(() => configRepo.get('adminPermissions', {}), [], undefined)
+  if (perms === undefined) return null
+  const allowed = (k) => perms?.[k] !== false
+  const setCap = (k, value) => configRepo.set('adminPermissions', { ...(perms || {}), [k]: value })
+  const caps = ADMIN_CAPS.filter((c) => !c.module || hasModule(c.module))
+
+  return (
+    <section className="card">
+      <h3>Permisos del administrativo</h3>
+      <p className="muted">
+        Todo está permitido por defecto. Desactiva lo que <strong>no</strong> quieras autorizar al
+        administrativo; puedes volver a activarlo cuando lo necesite. No afecta al vendedor ni a las
+        demás facultades del administrativo. El dueño no se ve afectado.
+      </p>
+      {caps.map((c) => (
+        <div key={c.key} className="kv">
+          <span className="muted">{c.label}</span>
+          <button
+            className={`btn btn--sm ${allowed(c.key) ? 'btn--primary' : 'btn--ghost'}`}
+            onClick={() => setCap(c.key, !allowed(c.key))}
+          >
+            {allowed(c.key) ? 'Permitido ✓' : 'Bloqueado'}
+          </button>
+        </div>
+      ))}
     </section>
   )
 }

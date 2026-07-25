@@ -55,7 +55,7 @@ function ProductPicker({ label, products, excludeId, onlyWithStock, onPick }) {
 }
 
 export function ConversionScreen() {
-  const { user, isManager } = useAuth()
+  const { user, isManager, can } = useAuth()
   const { hasModule } = useLicense()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
 
@@ -90,6 +90,18 @@ export function ConversionScreen() {
         <h2>Conversión de productos</h2>
         <section className="card">
           <p>Esta función es parte del módulo <strong>Ventas mayoristas</strong> de tu licencia.</p>
+          <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
+        </section>
+      </div>
+    )
+  }
+  // Permiso configurable: el dueño puede quitarle esta facultad al administrativo.
+  if (!can('conversion')) {
+    return (
+      <div className="screen">
+        <h2>Conversión de productos</h2>
+        <section className="card">
+          <p>No tienes autorización del dueño para crear conversiones de productos.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>

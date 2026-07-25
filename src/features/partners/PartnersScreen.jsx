@@ -25,7 +25,7 @@ import {
 // terceros/acreedores (entregas de mercancia, cuenta por cobrar). El saldo de
 // cada cuenta se deriva de sus movimientos (append-only, sincronizable).
 export function PartnersScreen() {
-  const { user, isManager } = useAuth()
+  const { user, isManager, can } = useAuth()
   const { hasModule } = useLicense()
   const { baseCurrency } = useCurrency()
   const navigate = useNavigate()
@@ -103,9 +103,12 @@ export function PartnersScreen() {
         entregas mercancía). El saldo se calcula solo, con cada venta o entrega.
       </p>
 
-      <button className="btn btn--primary btn--block" onClick={() => setCreating(true)}>
-        + Nuevo proveedor o tercero
-      </button>
+      {/* Crear tercero: el dueño puede quitarle esta facultad al administrativo. */}
+      {can('partners') && (
+        <button className="btn btn--primary btn--block" onClick={() => setCreating(true)}>
+          + Nuevo proveedor o tercero
+        </button>
+      )}
 
       {providers.length > 0 && (
         <section className="help-section">

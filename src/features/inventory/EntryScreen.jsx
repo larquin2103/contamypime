@@ -19,7 +19,7 @@ import { ProductForm } from '../products/ProductForm'
 import { parseEntryFile, buildEntryTemplateBlob, entryTemplateHeaders } from '../import/entryImportService'
 
 export function EntryScreen() {
-  const { user, isManager } = useAuth()
+  const { user, isManager, can } = useAuth()
   const { activeShift, canSell } = useShift()
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
@@ -50,6 +50,18 @@ export function EntryScreen() {
         <h2>Entrada de mercancia</h2>
         <section className="card">
           <p>Solo el <strong>dueño o un administrativo</strong> puede registrar entradas de mercancia.</p>
+          <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
+        </section>
+      </div>
+    )
+  }
+  // Permiso configurable: el dueño puede quitarle esta facultad al administrativo.
+  if (!can('entries')) {
+    return (
+      <div className="screen">
+        <h2>Entrada de mercancia</h2>
+        <section className="card">
+          <p>No tienes autorización del dueño para registrar entradas de mercancía.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>
