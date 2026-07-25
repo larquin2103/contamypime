@@ -279,18 +279,19 @@ function TransformPanel({ products, byUserId }) {
 }
 
 export function ElaborationScreen() {
-  const { user, isManager } = useAuth()
+  const { user, isManager, isElaborator } = useAuth()
   const { hasModule } = useLicense()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], undefined)
 
-  if (!isManager) {
+  // Operan el centro: el dueño/admin y el rol de elaboración.
+  if (!isManager && !isElaborator) {
     return (
       <div className="screen">
         <h2>Elaboración</h2>
         <section className="card">
-          <p>Solo el <strong>dueño o un administrativo</strong> puede operar el centro de elaboración.</p>
+          <p>Solo el <strong>dueño, un administrativo o el rol de elaboración</strong> puede operar el centro.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>
@@ -328,14 +329,17 @@ export function ElaborationScreen() {
         transfórmalo (con su nuevo código) y mándalo ya elaborado a un área.
       </p>
 
-      <TransferPanel
-        title="1. Enviar al centro de elaboración"
-        hint="Saca productos crudos del almacén central hacia elaboración."
-        products={products}
-        fromLocation={WAREHOUSE}
-        fixedTo={ELABORATION}
-        byUserId={user.id}
-      />
+      {/* Enviar desde el almacén: solo dueño/admin (el elaborador no ve el almacén). */}
+      {!isElaborator && (
+        <TransferPanel
+          title="1. Enviar al centro de elaboración"
+          hint="Saca productos crudos del almacén central hacia elaboración."
+          products={products}
+          fromLocation={WAREHOUSE}
+          fixedTo={ELABORATION}
+          byUserId={user.id}
+        />
+      )}
 
       <TransformPanel products={products} byUserId={user.id} />
 

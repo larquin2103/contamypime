@@ -18,7 +18,7 @@ import { CategoryManager } from './CategoryManager'
 const MAX_RENDER = 200 // evita pintar 400+ filas de golpe en gama media
 
 export function Catalog() {
-  const { isManager } = useAuth()
+  const { isManager, isElaborator } = useAuth()
   const { activeShift } = useShift()
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
@@ -38,10 +38,11 @@ export function Catalog() {
   // El vendedor solo ve los productos ASIGNADOS a su área (no el almacén). El
   // dueño y el administrativo ven todo el catálogo. Modo área solo si hay áreas.
   const sellArea = activeShift?.area || ''
-  const areaMode = !isManager && areas.length > 0
+  // El elaborador ve el catálogo de SU centro (su turno.area = elaboración).
+  const areaMode = !isManager && (areas.length > 0 || isElaborator)
   // Mayorista: si el dueño lo permitió, el vendedor puede VER (solo lectura) el
-  // catálogo del almacén central, además del de su área.
-  const canWarehouseView = areaMode && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
+  // catálogo del almacén central, además del de su área. El elaborador NO (no ve almacén).
+  const canWarehouseView = !isElaborator && areaMode && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
   // Ubicación que se está mirando (para el vendedor): su área o el almacén.
   const viewLoc = canWarehouseView && showWarehouse ? WAREHOUSE : sellArea
   // Existencia a mostrar: en modo área, la de la ubicación vista; si no, el total.

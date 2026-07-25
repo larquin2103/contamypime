@@ -18,7 +18,7 @@ import { parseSms } from '../../lib/sms'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, WAREHOUSE } from '../../db/constants'
 
 export function SalesScreen() {
-  const { user } = useAuth()
+  const { user, isElaborator } = useAuth()
   const { activeShift, canSell } = useShift()
   const { baseCurrency, rateOf } = useCurrency()
   const { hasModule } = useLicense()
@@ -78,7 +78,7 @@ export function SalesScreen() {
   // Bloque A: el vendedor con área puede alternar el ORIGEN de la mercancía
   // (su área / almacén central) si la licencia trae el módulo y el dueño lo
   // permitió en Ajustes. El dinero entra siempre a la caja de SU turno.
-  const canPickSource = !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
+  const canPickSource = !isElaborator && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
   const sellLoc = sellArea && !(canPickSource && fromWarehouse) ? sellArea : WAREHOUSE
 
   const availAt = (p, loc) =>

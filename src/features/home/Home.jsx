@@ -137,7 +137,7 @@ function RatesCard() {
 }
 
 export function Home() {
-  const { user, isOwner, isManager } = useAuth()
+  const { user, isOwner, isManager, isElaborator } = useAuth()
   const { hasModule } = useLicense()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
@@ -233,11 +233,18 @@ export function Home() {
           )}
         </>
       ) : (
-        <Section label="Operación">
-          <ActionCard to="/handoff" icon={ArrowLeftRight} title="Traspaso de turno" sub="Entregar la caja" />
-          <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
-          <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo vender y cerrar" />
-        </Section>
+        <>
+          {isElaborator && (
+            <Section label="Elaboración">
+              <ActionCard to="/elaboracion" icon={Factory} title="Elaboración" sub="Transformar y enviar a puntos" />
+            </Section>
+          )}
+          <Section label="Operación">
+            <ActionCard to="/handoff" icon={ArrowLeftRight} title="Traspaso de turno" sub="Entregar la caja" />
+            <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
+            <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo vender y cerrar" />
+          </Section>
+        </>
       )}
     </div>
   )

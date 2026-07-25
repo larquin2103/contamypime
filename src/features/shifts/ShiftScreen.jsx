@@ -12,7 +12,7 @@ import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 import { DenominationCounter, totalsFromCounts } from '../../components/DenominationCounter'
 import { ShiftSalesSummary } from './ShiftSalesSummary'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
-import { CASH_CURRENCIES } from '../../db/constants'
+import { CASH_CURRENCIES, ELABORATION } from '../../db/constants'
 import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
@@ -91,9 +91,11 @@ function OtherOpenShifts({ excludeId, onClose }) {
 
 // ---- Abrir turno ----
 function OpenShiftForm() {
-  const { user, isManager } = useAuth()
+  const { user, isManager, isElaborator } = useAuth()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], undefined)
-  const [area, setArea] = useState('')
+  const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
+  // El elaborador siempre abre turno en el CENTRO DE ELABORACIÓN (no elige área).
+  const [area, setArea] = useState(isElaborator ? ELABORATION : '')
   const [openingCash, setOpeningCash] = useState({})
   const [usedInherited, setUsedInherited] = useState(false)
   const [error, setError] = useState('')
@@ -138,7 +140,9 @@ function OpenShiftForm() {
       <h2>Abrir turno</h2>
       <section className="card">
         <p className="muted">Inicias turno como <strong>{user.name}</strong>.</p>
-        {areas && areas.length > 0 && (
+        {isElaborator ? (
+          <div className="kv"><span className="muted">Turno en</span><strong>🏭 {elab.name}</strong></div>
+        ) : areas && areas.length > 0 && (
           <label className="field">
             <span>{isManager ? 'Dónde vas a vender' : 'Área'}</span>
             <select value={area} onChange={(e) => setArea(e.target.value)}>
