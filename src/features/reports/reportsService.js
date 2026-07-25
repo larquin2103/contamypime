@@ -516,8 +516,6 @@ export async function buildCountReport({ from = null, to = null } = {}) {
 
   const allMoves = await db.stockMovements.toArray()
   const elab = await configRepo.getElaboration()
-  const SALE = MOVEMENT_TYPES.SALE_OUT
-  const ENTRADAS = [MOVEMENT_TYPES.PURCHASE_IN, MOVEMENT_TYPES.TRANSFER_IN, MOVEMENT_TYPES.CONVERSION_IN]
 
   const rows = []
   let grandMerma = 0
@@ -533,19 +531,22 @@ export async function buildCountReport({ from = null, to = null } = {}) {
       if (!it.counted) continue
       nCounted += 1
       // Movimientos de ESTE producto en ESTA ubicacion dentro de la ventana.
-      let entradas = 0, ventas = 0, otros = 0
+      let entradas = 0, ventas = 0, otrasSal = 0, cargaIni = 0, ajustes = 0
       for (const m of allMoves) {
         if (m.productId !== it.productId) continue
         if ((m.location || WAREHOUSE) !== loc) continue
         if (start && m.createdAt <= start) continue
         if (m.createdAt > end) continue
         const q = Number(m.qty || 0)
-        if (m.type === SALE) ventas += q
-        else if (ENTRADAS.includes(m.type)) entradas += q
-        else otros += q
+        const k = ledgerKey(m)
+        if (k === 'ventas') ventas += q
+        else if (k === 'compras' || k === 'traspIn' || k === 'producido') entradas += q
+        else if (k === 'cargaIni') cargaIni += q
+        else if (k === 'ajustes') ajustes += q
+        else otrasSal += q // traspasos a áreas, consumo de elaboración, deuda interna, terceros
       }
       const teorico = round2(Number(it.systemStock || 0))
-      const inicial = round2(teorico - (entradas + ventas + otros))
+      const inicial = round2(teorico - (entradas + ventas + otrasSal + cargaIni + ajustes))
       const fisico = round2(Number(it.physicalQty || 0))
       const dif = round2(fisico - teorico)
       if (dif !== 0) nDif += 1
@@ -554,20 +555,20 @@ export async function buildCountReport({ from = null, to = null } = {}) {
       const estado = dif === 0 ? 'Cuadra' : dif < 0 ? 'Merma' : 'Sobrante'
       rows.push([
         fecha, lugar, it.name, it.unit,
-        inicial, round2(entradas), round2(ventas), round2(otros),
+        inicial, round2(entradas), round2(ventas), round2(otrasSal), round2(cargaIni), round2(ajustes),
         teorico, fisico, dif, estado
       ])
     }
     grandMerma = round2(grandMerma + mermaVal)
     rows.push([
       '', '', `SUBTOTAL ${lugar} — ${nCounted} producto(s), ${nDif} con diferencia`,
-      '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(mermaVal)}`
+      '', '', '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(mermaVal)}`
     ])
   }
   if (counts.length === 0) {
-    rows.push(['Sin conteos aprobados en el periodo', '', '', '', '', '', '', '', '', '', '', ''])
+    rows.push(['Sin conteos aprobados en el periodo', '', '', '', '', '', '', '', '', '', '', '', '', ''])
   } else {
-    rows.push(['', '', 'TOTAL', '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(grandMerma)}`])
+    rows.push(['', '', 'TOTAL', '', '', '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(grandMerma)}`])
   }
 
   return {
@@ -575,7 +576,7 @@ export async function buildCountReport({ from = null, to = null } = {}) {
     subtitle: rangeLabel(from, to),
     head: [
       'Fecha', 'Lugar', 'Producto', 'U/M',
-      'Inicial', '(+) Entradas', '(-) Ventas', '(+/-) Ajustes',
+      'Inicial', 'Entradas', 'Ventas', 'Otras salidas', 'Carga inicial', 'Ajustes',
       'Teórico', 'Físico', 'Diferencia', 'Estado'
     ],
     rows,
