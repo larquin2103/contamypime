@@ -744,6 +744,98 @@ export async function buildElabReconciliation({ from = null, to = null } = {}) {
   }
 }
 
+// === Submayor por PRODUCTO (kardex) — solo lectura, para el dueño ==========
+// Elegido un producto, ubicación (o todas) y rango, reconstruye del libro mayor:
+// apertura (existencia al inicio), y por día (o por movimiento) las entradas,
+// salidas y ajustes con la existencia corriendo. Deriva todo de stockMovements.
+const LEDGER_ENTRADAS = [MOVEMENT_TYPES.PURCHASE_IN, MOVEMENT_TYPES.TRANSFER_IN, MOVEMENT_TYPES.CONVERSION_IN]
+const LEDGER_TIPO = {
+  purchase_in: 'Compra', sale_out: 'Venta', internal_debt_out: 'Deuda interna',
+  adjustment: 'Ajuste', transfer_out: 'Salida a área', transfer_in: 'Entrada de traspaso',
+  partner_out: 'Entrega a tercero', conversion_in: 'Producido (conversión)',
+  conversion_out: 'Consumido (conversión)'
+}
+
+export async function buildProductLedger({ productId = '', location = '', from = null, to = null, mode = 'daily', valued = false } = {}) {
+  const p = productId ? await db.products.get(productId) : null
+  const locLabel = location ? locationLabel(location) : 'Todas las ubicaciones'
+  const baseHead = mode === 'detailed'
+    ? ['Fecha', 'Tipo', 'Cantidad', 'Existencia', 'Nota']
+    : ['Fecha', 'Entradas', 'Salidas', 'Ajustes', 'Existencia', ...(valued ? ['Valor (costo)'] : [])]
+
+  if (!productId || !p) {
+    return {
+      title: 'Submayor por producto',
+      subtitle: 'Elige un producto para ver su submayor',
+      head: baseHead,
+      rows: [],
+      filename: 'submayor',
+      orientation: mode === 'detailed' ? 'landscape' : 'portrait'
+    }
+  }
+
+  const all = await db.stockMovements.where('productId').equals(productId).toArray()
+  const movs = all
+    .filter((m) => !location || (m.location || WAREHOUSE) === location)
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+
+  // Apertura = todo lo ANTERIOR a `desde`; ventana = movimientos dentro del rango.
+  let apertura = 0
+  const win = []
+  for (const m of movs) {
+    const day = localDay(m.createdAt)
+    if (from && day < from) { apertura = round2(apertura + Number(m.qty || 0)); continue }
+    if (to && day > to) continue
+    win.push(m)
+  }
+
+  const cost = Number(p.cost || 0)
+  const val = (n) => formatMoney(round2(n * cost))
+  const bucket = (m) => {
+    const q = Number(m.qty || 0)
+    if (m.type === MOVEMENT_TYPES.ADJUSTMENT) return { ent: 0, sal: 0, aju: q }
+    if (LEDGER_ENTRADAS.includes(m.type)) return { ent: q, sal: 0, aju: 0 }
+    return { ent: 0, sal: q, aju: 0 } // salidas (q negativo)
+  }
+
+  const rows = []
+  let saldo = round2(apertura)
+
+  if (mode === 'detailed') {
+    rows.push(['Apertura', '', '', round2(apertura), ''])
+    for (const m of win) {
+      saldo = round2(saldo + Number(m.qty || 0))
+      rows.push([formatDateTime(m.createdAt), LEDGER_TIPO[m.type] || m.type, round2(Number(m.qty || 0)), round2(saldo), m.note || ''])
+    }
+    rows.push(['Existencia final', '', '', round2(saldo), ''])
+  } else {
+    const byDay = new Map()
+    const order = []
+    for (const m of win) {
+      const day = localDay(m.createdAt)
+      if (!byDay.has(day)) { byDay.set(day, { ent: 0, sal: 0, aju: 0 }); order.push(day) }
+      const b = bucket(m); const g = byDay.get(day)
+      g.ent = round2(g.ent + b.ent); g.sal = round2(g.sal + b.sal); g.aju = round2(g.aju + b.aju)
+    }
+    rows.push(['Apertura', '', '', '', round2(apertura), ...(valued ? [val(apertura)] : [])])
+    for (const day of order) {
+      const g = byDay.get(day)
+      saldo = round2(saldo + g.ent + g.sal + g.aju)
+      rows.push([day, round2(g.ent), round2(g.sal), round2(g.aju), round2(saldo), ...(valued ? [val(saldo)] : [])])
+    }
+    rows.push(['Existencia final', '', '', '', round2(saldo), ...(valued ? [val(saldo)] : [])])
+  }
+
+  return {
+    title: 'Submayor por producto',
+    subtitle: `${p.name}${p.code ? ' · ' + p.code : ''} · ${locLabel} · ${rangeLabel(from, to)}`,
+    head: baseHead,
+    rows,
+    filename: 'submayor',
+    orientation: mode === 'detailed' ? 'landscape' : 'portrait'
+  }
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

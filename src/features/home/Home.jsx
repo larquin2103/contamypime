@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -214,6 +214,9 @@ export function Home() {
           </Section>
           <Section label="Gestión">
             <ActionCard to="/reports" icon={FileText} title="Reportes" sub="PDF y Excel" />
+            {isOwner && (
+              <ActionCard to="/submayor" icon={BookOpen} title="Submayor por producto" sub="Kardex: entradas, salidas y existencia" />
+            )}
             <ActionCard to="/audit" icon={ShieldCheck} title="Auditoría" sub="Registro de cambios" />
             {hasModule(LICENSE_MODULES.ACCOUNTS) && (
               <ActionCard to="/partners" icon={Handshake} title="Proveedores y terceros" sub="Por pagar y por cobrar" />
