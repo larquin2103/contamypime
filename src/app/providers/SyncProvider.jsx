@@ -33,6 +33,12 @@ export function SyncProvider({ children }) {
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine)
   const [syncing, setSyncing] = useState(false)
   const [lastSyncAt, setLastSyncAt] = useState(null)
+  // FASE 1 (salud honesta de la sync): marca de la ULTIMA bajada CONFIRMADA por
+  // el servidor y el ultimo error real. Con esto la cabecera deja de mostrar
+  // "conectada" solo porque el sistema operativo dice que hay red: el verde solo
+  // aparece si hubo ida y vuelta real reciente con Firestore.
+  const [lastPullOkAt, setLastPullOkAt] = useState(null)
+  const [pullError, setPullError] = useState('')
   const busyRef = useRef(false)
   const pullBusyRef = useRef(false)
   // A) Push por evento: temporizador del debounce + bandera de "llegó algo
@@ -127,12 +133,51 @@ export function SyncProvider({ children }) {
     if (!enabled || !cloudUser || !navigator.onLine) return
     pullBusyRef.current = true
     try {
-      await initialPull()
+      const res = await initialPull()
       lastPullAtRef.current = Date.now()
+      // initialPull hace getDocs y ESPERA respuesta del servidor. Si resuelve con
+      // ok, hubo ida y vuelta real -> "confirmada". Si el token murio o la red
+      // bloquea Firestore, getDocs LANZA -> lo captura el catch (badge en amarillo).
+      if (res?.ok) {
+        setLastPullOkAt(new Date().toISOString())
+        setPullError('')
+      } else if (res?.reason) {
+        setPullError(res.reason)
+      }
     } catch (e) {
+      setPullError(e?.message || 'error de red')
       console.warn('[sync] pull periodico', e?.message)
     } finally {
       pullBusyRef.current = false
+    }
+  }
+
+  // FASE 1: sincronizacion MANUAL con resultado visible (boton "Sincronizar
+  // ahora" de la cabecera). Sube lo local y luego baja CONFIRMANDO con el
+  // servidor; devuelve { ok, error } para mostrar exito o el fallo real en la UI.
+  const manualSync = async () => {
+    if (!enabled || !cloudUser) return { ok: false, error: 'La sincronización no está activada en este dispositivo.' }
+    if (!navigator.onLine) return { ok: false, error: 'Sin conexión a internet.' }
+    setSyncing(true)
+    try {
+      await syncNow()                 // sube lo local (motor; no lanza por red)
+      const res = await initialPull() // baja y CONFIRMA ida y vuelta
+      lastPullAtRef.current = Date.now()
+      if (res?.ok) {
+        setLastPullOkAt(new Date().toISOString())
+        setLastSyncAt(new Date().toISOString())
+        setPullError('')
+        return { ok: true }
+      }
+      const reason = res?.reason || 'No se pudo confirmar la sincronización.'
+      setPullError(reason)
+      return { ok: false, error: reason }
+    } catch (e) {
+      const msg = e?.message || 'Error de red al sincronizar.'
+      setPullError(msg)
+      return { ok: false, error: msg }
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -180,6 +225,10 @@ export function SyncProvider({ children }) {
     online,
     syncing,
     lastSyncAt,
+    // FASE 1: salud honesta para la cabecera.
+    lastPullOkAt,
+    pullError,
+    manualSync,
     // refresca el flag tras vincular/desvincular desde la pantalla de nube
     refresh: async () => setEnabled(await syncConfig.isEnabled()),
     syncNow: runPush,

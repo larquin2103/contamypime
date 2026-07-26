@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, HelpCircle } from 'lucide-react'
 import { useAuth } from '../app/providers/AuthProvider'
@@ -5,19 +6,83 @@ import { useShift } from '../app/providers/ShiftProvider'
 import { useSync } from '../app/providers/SyncProvider'
 import { useLicense } from '../app/providers/LicenseProvider'
 
+// El verde solo es "de verdad" si hubo una bajada confirmada por el servidor
+// hace menos de esto. Con el pull de respaldo cada 45s, 120s deja margen para
+// dos ciclos antes de dudar (evita parpadeo pero avisa pronto si se cae la red).
+const SYNC_FRESH_MS = 120000
+
 // Indicador de sincronizacion en la cabecera (solo si la sync esta activada).
+// FASE 1: refleja SALUD REAL, no solo navigator.onLine. Al tocarlo abre un panel
+// con la ultima sincronizacion confirmada y un boton para forzarla con resultado.
 function SyncBadge() {
-  const { enabled, cloudUser, online, syncing } = useSync()
+  const { enabled, cloudUser, online, syncing, lastPullOkAt, pullError, manualSync } = useSync()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null) // { ok, error } del ultimo intento manual
   if (!enabled || !cloudUser) return null
-  let icon = '☁️'
-  let label = 'En línea'
-  let cls = 'sync-badge--ok'
+
+  const ageMs = lastPullOkAt ? Date.now() - new Date(lastPullOkAt).getTime() : Infinity
+  const fresh = ageMs < SYNC_FRESH_MS
+
+  // Verde SOLO si hubo ida y vuelta reciente confirmada. Si el SO dice "en red"
+  // pero no hay bajada confirmada, es AMARILLO ("sin confirmar"): ese era el
+  // falso verde que enganaba.
+  let icon = '⚠️', label = 'Sin confirmar', cls = 'sync-badge--warn'
   if (!online) { icon = '📴'; label = 'Sin conexión'; cls = 'sync-badge--off' }
   else if (syncing) { icon = '🔄'; label = 'Sincronizando'; cls = 'sync-badge--busy' }
+  else if (fresh) { icon = '☁️'; label = 'Sincronizada'; cls = 'sync-badge--ok' }
+
+  const since = () => {
+    if (!lastPullOkAt) return 'aún no confirmada en esta sesión'
+    const s = Math.max(0, Math.round(ageMs / 1000))
+    if (s < 60) return `hace ${s} s`
+    const m = Math.round(s / 60)
+    if (m < 60) return `hace ${m} min`
+    return `hace ${Math.round(m / 60)} h`
+  }
+
+  const doSync = async () => {
+    setBusy(true)
+    setResult(null)
+    const r = await manualSync()
+    setResult(r)
+    setBusy(false)
+  }
+
   return (
-    <span className={`sync-badge ${cls}`} title={label}>
-      {icon}
-    </span>
+    <div className="sync-wrap">
+      <button
+        className={`sync-badge ${cls}`}
+        title={label}
+        aria-label={`Sincronización: ${label}`}
+        onClick={() => { setOpen((v) => !v); setResult(null) }}
+      >
+        {icon}
+      </button>
+      {open && (
+        <>
+          <div className="sync-pop__backdrop" onClick={() => setOpen(false)} />
+          <div className="sync-pop" role="dialog" aria-label="Estado de sincronización">
+            <p className="sync-pop__state">{icon} {label}</p>
+            <p className="sync-pop__line">Última sincronización real: <strong>{since()}</strong></p>
+            {!fresh && online && !syncing && (
+              <p className="sync-pop__warn">
+                La nube aparece activa pero no se confirma una bajada reciente. Pulsa
+                “Sincronizar ahora” para verificar la conexión real con el servidor.
+              </p>
+            )}
+            {pullError && <p className="sync-pop__err">Último error: {pullError}</p>}
+            {result && (result.ok
+              ? <p className="sync-pop__ok">✅ Sincronización confirmada.</p>
+              : <p className="sync-pop__err">❌ {result.error}</p>
+            )}
+            <button className="btn btn--primary btn--sm" disabled={busy} onClick={doSync}>
+              {busy ? 'Sincronizando…' : 'Sincronizar ahora'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
