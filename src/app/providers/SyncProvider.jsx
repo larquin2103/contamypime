@@ -135,12 +135,15 @@ export function SyncProvider({ children }) {
     try {
       const res = await initialPull()
       lastPullAtRef.current = Date.now()
-      // initialPull hace getDocs y ESPERA respuesta del servidor. Si resuelve con
-      // ok, hubo ida y vuelta real -> "confirmada". Si el token murio o la red
-      // bloquea Firestore, getDocs LANZA -> lo captura el catch (badge en amarillo).
-      if (res?.ok) {
+      // Solo cuenta como confirmada si la respuesta vino del SERVIDOR (fromServer).
+      // Si vino de cache, el SO dice "en red" pero Firestore no contesto -> se deja
+      // en "sin confirmar" (badge amarillo) con el motivo. Si getDocs LANZA (token
+      // muerto / sin cache), lo captura el catch de abajo.
+      if (res?.ok && res.fromServer) {
         setLastPullOkAt(new Date().toISOString())
         setPullError('')
+      } else if (res?.ok && !res.fromServer) {
+        setPullError('El servidor no respondió; se leyó de la caché local.')
       } else if (res?.reason) {
         setPullError(res.reason)
       }
@@ -163,13 +166,17 @@ export function SyncProvider({ children }) {
       await syncNow()                 // sube lo local (motor; no lanza por red)
       const res = await initialPull() // baja y CONFIRMA ida y vuelta
       lastPullAtRef.current = Date.now()
-      if (res?.ok) {
+      // Solo es exito real si la respuesta vino del SERVIDOR. Leer de la cache
+      // (fromServer=false) NO confirma que el servidor este accesible.
+      if (res?.ok && res.fromServer) {
         setLastPullOkAt(new Date().toISOString())
         setLastSyncAt(new Date().toISOString())
         setPullError('')
         return { ok: true }
       }
-      const reason = res?.reason || 'No se pudo confirmar la sincronización.'
+      const reason = res?.ok && !res.fromServer
+        ? 'El servidor no respondió; se mostró la caché local. Revisa conexión, antivirus o proxy.'
+        : (res?.reason || 'No se pudo confirmar la sincronización.')
       setPullError(reason)
       return { ok: false, error: reason }
     } catch (e) {

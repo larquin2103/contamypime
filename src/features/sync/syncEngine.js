@@ -31,9 +31,17 @@ export async function initialPull() {
   const { collection, getDocs } = await import('firebase/firestore')
 
   let total = 0
+  // ¿Al menos una respuesta vino del SERVIDOR (no de la cache)? Firestore, con
+  // cache persistente, NO lanza cuando el servidor no responde: sirve la cache y
+  // resuelve igual. Por eso, para una salud honesta, hay que mirar
+  // metadata.fromCache: si TODO viene de cache, hay "conexion" segun el SO pero
+  // el servidor no contesto (antivirus/proxy que corta Firestore, red sin salida
+  // o token muerto). Eso NO es una sincronizacion confirmada.
+  let fromServer = false
   const affected = new Set()
   for (const col of SYNC_COLLECTIONS) {
     const snap = await getDocs(collection(fs, 'businesses', businessId, col.name))
+    if (!snap.metadata.fromCache) fromServer = true
     const docs = snap.docs.map((d) => d.data())
     if (docs.length) {
       const aff = await mergeIncoming(col, docs)
@@ -42,7 +50,7 @@ export async function initialPull() {
     }
   }
   if (affected.size) await recomputeStock(affected)
-  return { ok: true, total }
+  return { ok: true, total, fromServer }
 }
 
 let listeners = []
