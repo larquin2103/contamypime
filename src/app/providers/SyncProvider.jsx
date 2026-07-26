@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { observeAuth, syncConfig } from '../../features/sync/syncService'
-import { syncNow, startRealtime, stopRealtime, initialPull } from '../../features/sync/syncEngine'
+import { observeAuth, syncConfig, refreshSession } from '../../features/sync/syncService'
+import { syncNow, startRealtime, stopRealtime, initialPull, restartRealtime } from '../../features/sync/syncEngine'
 import { touchThisDevice } from '../../features/sync/deviceRegistry'
 
 const SyncContext = createContext(null)
@@ -17,6 +17,9 @@ const NUDGE_DEBOUNCE_MS = 1200
 // B) Al traer la app al frente se baja lo nuevo, pero el pull completo es caro
 // (relee todo): se limita a como mucho uno cada FOREGROUND_PULL_MIN_MS.
 const FOREGROUND_PULL_MIN_MS = 15000
+// FASE 2: recuperacion de sesion (renovar token + reabrir tiempo real) como
+// mucho una vez cada esto, para no repetir ni gastar cuota / evitar bucles.
+const RECOVER_MIN_MS = 30000
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Bloque 24/25: arranca la sincronizacion a nivel de toda la app.
@@ -47,6 +50,8 @@ export function SyncProvider({ children }) {
   const pendingPushRef = useRef(false)
   // B) Marca del último pull completo (para no repetirlo demasiado seguido).
   const lastPullAtRef = useRef(0)
+  // FASE 2: marca del último intento de recuperación de sesión (throttle).
+  const lastRecoverRef = useRef(0)
 
   // ¿Esta activada la sync en este dispositivo? (no toca Firebase)
   useEffect(() => {
@@ -144,14 +149,41 @@ export function SyncProvider({ children }) {
         setPullError('')
       } else if (res?.ok && !res.fromServer) {
         setPullError('El servidor no respondió; se leyó de la caché local.')
+        recoverSession() // FASE 2: en red pero sin respuesta -> intenta recuperar
       } else if (res?.reason) {
         setPullError(res.reason)
       }
     } catch (e) {
       setPullError(e?.message || 'error de red')
       console.warn('[sync] pull periodico', e?.message)
+      recoverSession() // FASE 2: probablemente token caducado -> renovar y reabrir
     } finally {
       pullBusyRef.current = false
+    }
+  }
+
+  // FASE 2: recuperacion automatica de la sesion de nube. Se dispara cuando el
+  // pull ve que el servidor no responde estando "en red" (token caducado tras
+  // horas offline, o listeners caidos). Fuerza un token FRESCO, reabre el tiempo
+  // real y vuelve a bajar/subir. Throttle (RECOVER_MIN_MS) para no repetir ni
+  // entrar en bucle: la marca se fija al ENTRAR, asi el runPull que llamamos aqui
+  // dentro no vuelve a disparar otra recuperacion. Todo protegido: si falla,
+  // degrada a un mensaje claro y NUNCA rompe la app ni el cobro.
+  const recoverSession = async () => {
+    if (!enabled || !cloudUser || !navigator.onLine) return
+    if (Date.now() - lastRecoverRef.current < RECOVER_MIN_MS) return
+    lastRecoverRef.current = Date.now()
+    try {
+      const ok = await refreshSession() // getIdToken(true): token nuevo del servidor
+      if (!ok) {
+        setPullError('No se pudo renovar la sesión de nube. Revisa tu conexión; si persiste, vuelve a vincular el dispositivo.')
+        return
+      }
+      await restartRealtime() // re-arma listeners que pudieran haber muerto por auth
+      await runPull()         // baja y confirma ya con el token nuevo
+      runPush()               // empuja lo local pendiente (no bloqueante)
+    } catch (e) {
+      console.warn('[sync] recover', e?.message)
     }
   }
 
@@ -163,6 +195,10 @@ export function SyncProvider({ children }) {
     if (!navigator.onLine) return { ok: false, error: 'Sin conexión a internet.' }
     setSyncing(true)
     try {
+      // FASE 2: el boton tambien REPARA la sesion: renueva el token por si estaba
+      // caducado y reabre el tiempo real. Best-effort (refreshSession no lanza).
+      await refreshSession()
+      await restartRealtime()
       await syncNow()                 // sube lo local (motor; no lanza por red)
       const res = await initialPull() // baja y CONFIRMA ida y vuelta
       lastPullAtRef.current = Date.now()

@@ -113,3 +113,12 @@ export function stopRealtime() {
 export function isRealtimeOn() {
   return listeners.length > 0
 }
+
+// FASE 2: reabre los listeners en vivo (p.ej. tras renovar un token caducado o
+// al reconectar). Cierra los actuales y vuelve a suscribir. Seguro: solo afecta
+// a las SUSCRIPCIONES de lectura (onSnapshot), nunca a la cola de escrituras del
+// SDK (esa la administra Firestore y sobrevive a esto).
+export async function restartRealtime() {
+  stopRealtime()
+  await startRealtime()
+}

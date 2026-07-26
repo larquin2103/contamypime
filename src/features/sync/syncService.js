@@ -118,6 +118,22 @@ export async function observeAuth(callback) {
   return onAuthStateChanged(auth, callback)
 }
 
+// FASE 2 (recuperacion): fuerza un token de sesion FRESCO del servidor
+// (getIdToken(true)). Sirve para recuperar la sync tras horas offline o un token
+// caducado SIN limpiar cache ni volver a entrar. Nunca lanza: devuelve false si
+// no hay sesion o el refresco falla (el llamador degrada a "sin confirmar").
+export async function refreshSession() {
+  try {
+    const { auth } = await getFirebase()
+    const u = auth.currentUser
+    if (!u) return false
+    await u.getIdToken(true)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // Mensajes de error en español para los codigos de Firebase Auth.
 function authErrorMessage(e) {
   const code = e?.code || ''
