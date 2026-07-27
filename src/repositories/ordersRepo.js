@@ -285,6 +285,17 @@ export const ordersRepo = {
     }
   },
 
+  // Quita del pedido TODAS las unidades de un producto (boton papelera). Es el
+  // atajo de "el cliente ya no lo quiere": anula sus lineas vivas y devuelve
+  // todo el stock de una vez, sin tener que restar unidad por unidad.
+  async removeProduct({ orderId, productId, userId, note = '' }) {
+    const rows = await db.orderItems.where('orderId').equals(orderId).toArray()
+    const lines = rows.filter((i) => i.productId === productId && !i.voided)
+    for (const l of lines) {
+      await this.voidItem({ itemId: l.id, userId, note: note || 'Retirado de la cuenta' })
+    }
+  },
+
   // Totales de la cuenta: consumo + cargo por servicio del area.
   // `waived` = el mando eximio el cargo para esta mesa.
   async totals(orderId, { servicePct = 0, waived = false } = {}) {

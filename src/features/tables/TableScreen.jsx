@@ -16,6 +16,7 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2 } from '../../lib/currency'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
+import { Trash2 } from 'lucide-react'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,7 @@ export function TableScreen() {
   const [waived, setWaived] = useState(false) // servicio eximido (requiere mando)
   const [askWaive, setAskWaive] = useState(false)
   const [done, setDone] = useState(null) // resumen del cobro para el ticket
+  const [confirmDel, setConfirmDel] = useState(null) // producto a quitar entero
 
   // --- cobro ---
   const [payMethod, setPayMethod] = useState(PAYMENT_METHODS.CASH)
@@ -138,6 +140,17 @@ export function TableScreen() {
     setError('')
     try {
       await ordersRepo.decrementOne({ orderId: id, productId, userId: user.id })
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  // Quitar el producto ENTERO de la cuenta (papelera), sin restar de uno en uno.
+  const removeProduct = async (productId) => {
+    setError('')
+    try {
+      await ordersRepo.removeProduct({ orderId: id, productId, userId: user.id })
+      setConfirmDel(null)
     } catch (e) {
       setError(e.message)
     }
@@ -294,7 +307,7 @@ export function TableScreen() {
   }
 
   return (
-    <div className="screen">
+    <div className={`screen ${!paying && live.length > 0 ? 'screen--paybar' : ''}`}>
       <button className="link-back" onClick={() => navigate('/salon')}>← Salón</button>
       <div className="screen__header">
         <h2>{order.table}</h2>
@@ -319,11 +332,16 @@ export function TableScreen() {
               <button className="stepper__btn" onClick={() => addOne({ id: g.productId, name: g.name, unit: g.unit, price: g.unitPrice })} aria-label="Agregar uno">+</button>
             </div>
             <span className="order-line__total">{formatMoney(g.total, baseCurrency)}</span>
+            <button
+              className="order-line__del"
+              onClick={() => setConfirmDel(g)}
+              aria-label={`Quitar ${g.name} de la cuenta`}
+              title="Quitar de la cuenta"
+            >
+              <Trash2 size={16} strokeWidth={2} />
+            </button>
           </div>
         ))}
-        {items.some((i) => i.voided) && (
-          <p className="muted">{items.filter((i) => i.voided).length} línea(s) anulada(s) (se conservan en el historial).</p>
-        )}
 
         <div className="total-row"><span>Subtotal</span><strong>{formatMoney(subtotal, baseCurrency)}</strong></div>
         {Number(servicePct) > 0 && (
@@ -490,6 +508,25 @@ export function TableScreen() {
             <strong className="pay-bar__amount">{formatMoney(total, baseCurrency)}</strong>
           </div>
           <button className="btn btn--primary" onClick={() => setPaying(true)}>Cobrar</button>
+        </div>
+      )}
+
+      {/* Quitar un producto entero de la cuenta */}
+      {confirmDel && (
+        <div className="modal-backdrop" onClick={() => setConfirmDel(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>¿Quitar de la cuenta?</h3>
+            <p className="muted">
+              Se retiran las <strong>{confirmDel.qty}</strong> unidad(es) de{' '}
+              <strong>{confirmDel.name}</strong> y vuelven al inventario del área.
+            </p>
+            <div className="modal__actions">
+              <button className="btn btn--ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
+              <button className="btn btn--primary" onClick={() => removeProduct(confirmDel.productId)}>
+                Sí, quitar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -2269,6 +2269,21 @@ input[type='file'] {
   flex: 0 0 auto;
 }
 .order-line__total { font-weight: 700; white-space: nowrap; }
+/* Papelera: quita el producto ENTERO sin restar de uno en uno. */
+.order-line__del {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.order-line__del:active { color: var(--danger); background: rgba(252, 123, 123, 0.12); }
 
 .total-row {
   display: flex;
@@ -2449,7 +2464,24 @@ input[type='file'] {
   border-top: 1px solid var(--border);
   z-index: 15;
 }
-.pay-bar__info { display: flex; flex-direction: column; min-width: 0; }
+.pay-bar__info { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .pay-bar__lbl { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.5px; }
-.pay-bar__amount { font-size: 1.15rem; overflow-wrap: anywhere; }
-.pay-bar .btn { flex: 0 0 auto; }
+/* El importe se ajusta al hueco disponible sin empujar al boton fuera. */
+.pay-bar__amount {
+  font-size: clamp(0.95rem, 4.5vw, 1.2rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* El boton nunca se encoge ni parte su texto. */
+.pay-bar .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 12px 20px;
+}
+/* Hueco para que la carta no quede tapada por la barra de cobro. */
+.screen--paybar { padding-bottom: 64px; }
+@media (max-width: 360px) {
+  .pay-bar { padding: 8px 12px; gap: 8px; }
+  .pay-bar .btn { padding: 11px 14px; font-size: 0.92rem; }
+}
