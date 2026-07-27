@@ -104,6 +104,10 @@ h3 {
   height: 100%;
 }
 .app-header {
+  /* Ancla del panel de sincronizacion: se posiciona respecto a la CABECERA
+     (que ocupa todo el ancho) y no respecto al icono, que lleva Ayuda y Salir
+     detras y haria que el panel se saliera de la pantalla por la izquierda. */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1469,7 +1473,8 @@ input[type='file'] {
   align-items: center;
   gap: 8px;
 }
-.sync-wrap { position: relative; display: inline-flex; }
+/* Sin position: el panel se ancla a .app-header (ver arriba), no al icono. */
+.sync-wrap { display: inline-flex; }
 .sync-badge {
   font-size: 1.1rem;
   line-height: 1;
@@ -1495,9 +1500,13 @@ input[type='file'] {
 .sync-pop {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  /* Margen simetrico de 12px: el panel nunca se sale por ningun borde, sea cual
+     sea el ancho del telefono (con right:12px, el hueco izquierdo es 12px). */
+  right: 12px;
+  left: auto;
   z-index: 41;
-  width: min(280px, 82vw);
+  width: min(300px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
