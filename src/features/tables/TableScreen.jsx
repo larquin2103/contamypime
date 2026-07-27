@@ -64,7 +64,6 @@ export function TableScreen() {
   const [waived, setWaived] = useState(false) // servicio eximido (requiere mando)
   const [askWaive, setAskWaive] = useState(false)
   const [done, setDone] = useState(null) // resumen del cobro para el ticket
-  const [confirmDel, setConfirmDel] = useState(null) // producto a quitar entero
 
   // --- cobro ---
   const [payMethod, setPayMethod] = useState(PAYMENT_METHODS.CASH)
@@ -145,12 +144,13 @@ export function TableScreen() {
     }
   }
 
-  // Quitar el producto ENTERO de la cuenta (papelera), sin restar de uno en uno.
+  // Quitar el producto ENTERO de la cuenta (papelera). Sin confirmacion: en el
+  // servicio hay que ser rapido y el stock se devuelve solo (todo queda en el
+  // libro, asi que un toque de mas no pierde nada).
   const removeProduct = async (productId) => {
     setError('')
     try {
       await ordersRepo.removeProduct({ orderId: id, productId, userId: user.id })
-      setConfirmDel(null)
     } catch (e) {
       setError(e.message)
     }
@@ -334,7 +334,7 @@ export function TableScreen() {
             <span className="order-line__total">{formatMoney(g.total, baseCurrency)}</span>
             <button
               className="order-line__del"
-              onClick={() => setConfirmDel(g)}
+              onClick={() => removeProduct(g.productId)}
               aria-label={`Quitar ${g.name} de la cuenta`}
               title="Quitar de la cuenta"
             >
@@ -508,25 +508,6 @@ export function TableScreen() {
             <strong className="pay-bar__amount">{formatMoney(total, baseCurrency)}</strong>
           </div>
           <button className="btn btn--primary" onClick={() => setPaying(true)}>Cobrar</button>
-        </div>
-      )}
-
-      {/* Quitar un producto entero de la cuenta */}
-      {confirmDel && (
-        <div className="modal-backdrop" onClick={() => setConfirmDel(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>¿Quitar de la cuenta?</h3>
-            <p className="muted">
-              Se retiran las <strong>{confirmDel.qty}</strong> unidad(es) de{' '}
-              <strong>{confirmDel.name}</strong> y vuelven al inventario del área.
-            </p>
-            <div className="modal__actions">
-              <button className="btn btn--ghost" onClick={() => setConfirmDel(null)}>Cancelar</button>
-              <button className="btn btn--primary" onClick={() => removeProduct(confirmDel.productId)}>
-                Sí, quitar
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
