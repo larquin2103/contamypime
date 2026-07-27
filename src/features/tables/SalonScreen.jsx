@@ -185,13 +185,26 @@ export function SalonScreen() {
                 const occupied = order?.status === ORDER_STATUS.OPEN
                 const long = occupied && minutesOpen(order.openedAt) >= 60
                 const state = reserved ? 'reserved' : long ? 'long' : occupied ? 'busy' : 'free'
+                const mine = canOperate(area)
+                // Un toque abre/entra a la mesa (accion mas frecuente). El boton
+                // "..." deja a mano reservar o cancelar sin estorbar.
+                const primary = () => {
+                  if (occupied) return navigate(`/mesa/${order.id}`)
+                  if (reserved) return mine ? occupyReserved(order) : setMenu({ area, table: t, order })
+                  return mine ? openTable(area, t) : setMenu({ area, table: t, order })
+                }
                 return (
-                  <button
-                    key={t}
-                    className={`table-card table-card--${state}`}
-                    disabled={busy === `${area}|${t}`}
-                    onClick={() => (occupied ? navigate(`/mesa/${order.id}`) : setMenu({ area, table: t, order }))}
-                  >
+                  <div key={t} className={`table-card table-card--${state}`}>
+                    <button
+                      className="table-card__more"
+                      onClick={() => setMenu({ area, table: t, order })}
+                      aria-label="Más acciones"
+                    >⋯</button>
+                    <button
+                      className="table-card__main"
+                      disabled={busy === `${area}|${t}`}
+                      onClick={primary}
+                    >
                     <span className="table-card__name">{t}</span>
                     {occupied && (
                       <>
@@ -207,7 +220,8 @@ export function SalonScreen() {
                       </>
                     )}
                     {!order && <span className="table-card__state">Libre</span>}
-                  </button>
+                    </button>
+                  </div>
                 )
               })}
             </div>

@@ -7,6 +7,7 @@ import { productsRepo } from '../../repositories/productsRepo'
 import { salesRepo } from '../../repositories/salesRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { usersRepo } from '../../repositories/usersRepo'
+import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -40,6 +41,7 @@ export function TableScreen() {
   const items = useLiveQuery(() => ordersRepo.items(id), [id], [])
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const users = useLiveQuery(() => usersRepo.list(), [], [])
+  const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
   // Venta asociada (si ya se cobro): de ahi salen los totales del ticket al
   // volver a abrir una mesa cerrada. Los totales viven en la VENTA, no en el pedido.
   const sale = useLiveQuery(
@@ -54,7 +56,7 @@ export function TableScreen() {
   )
 
   const [q, setQ] = useState('')
-  const [qty, setQty] = useState({}) // cantidad por producto
+  const [cat, setCat] = useState('') // filtro de categoria (vacio = todas)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [paying, setPaying] = useState(false)
@@ -75,6 +77,23 @@ export function TableScreen() {
   const [partRef, setPartRef] = useState('')
 
   const live = useMemo(() => items.filter((i) => !i.voided), [items])
+  // Se muestran AGRUPADAS por producto: el camarero ve "3 x Hamburguesa" con
+  // sus botones - / +, aunque por dentro sean varias lineas append-only.
+  const grouped = useMemo(() => {
+    const map = new Map()
+    for (const i of live) {
+      const g = map.get(i.productId) || {
+        productId: i.productId, name: i.name, unit: i.unit,
+        unitPrice: i.unitPrice, qty: 0, total: 0
+      }
+      g.qty += Number(i.qty || 0)
+      g.total += Number(i.lineTotal || 0)
+      map.set(i.productId, g)
+    }
+    return [...map.values()]
+  }, [live])
+  // Cuantas unidades de un producto lleva ya la cuenta (badge en el mosaico).
+  const inOrder = (pid) => grouped.find((g) => g.productId === pid)?.qty || 0
   const subtotal = useMemo(
     () => round2(live.reduce((a, i) => a + Number(i.lineTotal || 0), 0)),
     [live]
@@ -97,34 +116,30 @@ export function TableScreen() {
   const filtered = products
     .filter((p) => {
       if (stockOf(p) <= 0) return false
+      if (cat && p.categoryId !== cat) return false
       return !q.trim() || matchesQuery(p, q)
     })
-    .slice(0, 40)
+  // Solo las categorias que tienen algo disponible en el area.
+  const usedCats = categories.filter((c) =>
+    products.some((p) => p.categoryId === c.id && stockOf(p) > 0))
 
-  const add = async (p) => {
+  // UN TOQUE = una unidad. Es la accion mas repetida del servicio: nada de
+  // teclado ni pasos intermedios.
+  const addOne = async (p) => {
     setError('')
-    const n = Number(qty[p.id] || 1)
-    setBusy(true)
     try {
-      await ordersRepo.addItem({ orderId: id, product: p, qty: n, userId: user.id, shiftId: order.shiftId })
-      setQty((s) => ({ ...s, [p.id]: '' }))
-      setQ('')
+      await ordersRepo.addItem({ orderId: id, product: p, qty: 1, userId: user.id, shiftId: order.shiftId })
     } catch (e) {
       setError(e.message)
-    } finally {
-      setBusy(false)
     }
   }
 
-  const removeLine = async (itemId) => {
+  const removeOne = async (productId) => {
     setError('')
-    setBusy(true)
     try {
-      await ordersRepo.voidItem({ itemId, userId: user.id })
+      await ordersRepo.decrementOne({ orderId: id, productId, userId: user.id })
     } catch (e) {
       setError(e.message)
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -292,16 +307,18 @@ export function TableScreen() {
       <section className="card">
         <h3>Cuenta</h3>
         {live.length === 0 && <p className="muted">Sin consumos todavía.</p>}
-        {live.map((i) => (
-          <div key={i.id} className="order-line">
+        {grouped.map((g) => (
+          <div key={g.productId} className="order-line">
             <div className="order-line__info">
-              <span className="order-line__name">{i.qty} × {i.name}</span>
-              <span className="order-line__sub">{formatMoney(i.unitPrice, baseCurrency)} c/u</span>
+              <span className="order-line__name">{g.name}</span>
+              <span className="order-line__sub">{formatMoney(g.unitPrice, baseCurrency)} c/u</span>
             </div>
-            <div className="order-line__right">
-              <span className="order-line__total">{formatMoney(i.lineTotal, baseCurrency)}</span>
-              <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => removeLine(i.id)}>Quitar</button>
+            <div className="stepper">
+              <button className="stepper__btn" onClick={() => removeOne(g.productId)} aria-label="Quitar uno">−</button>
+              <span className="stepper__qty">{g.qty}</span>
+              <button className="stepper__btn" onClick={() => addOne({ id: g.productId, name: g.name, unit: g.unit, price: g.unitPrice })} aria-label="Agregar uno">+</button>
             </div>
+            <span className="order-line__total">{formatMoney(g.total, baseCurrency)}</span>
           </div>
         ))}
         {items.some((i) => i.voided) && (
@@ -322,9 +339,6 @@ export function TableScreen() {
         )}
         <div className="total-row total-row--grand"><strong>TOTAL</strong><strong className="price">{formatMoney(total, baseCurrency)}</strong></div>
 
-        {live.length > 0 && !paying && (
-          <button className="btn btn--primary btn--block" onClick={() => setPaying(true)}>Cobrar</button>
-        )}
       </section>
 
       {/* Cobro */}
@@ -421,36 +435,62 @@ export function TableScreen() {
         </section>
       )}
 
-      {/* Agregar consumo (solo mientras no se esta cobrando) */}
+      {/* Carta: UN TOQUE agrega una unidad. Sin teclado, sin pasos intermedios. */}
       {!paying && (
         <section className="card">
-          <h3>Agregar consumo</h3>
+          <div className="salon-area-head">
+            <h3>Carta</h3>
+            <span className="muted">toca para agregar</span>
+          </div>
+
+          {usedCats.length > 1 && (
+            <div className="chip-row">
+              <button className={`chip-btn ${!cat ? 'is-active' : ''}`} onClick={() => setCat('')}>Todo</button>
+              {usedCats.map((c) => (
+                <button
+                  key={c.id}
+                  className={`chip-btn ${cat === c.id ? 'is-active' : ''}`}
+                  onClick={() => setCat(c.id)}
+                >{c.name}</button>
+              ))}
+            </div>
+          )}
+
           <input
+            className="menu-search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar producto del área…"
+            placeholder="Buscar…"
           />
+
           {filtered.length === 0 && <p className="muted">Sin productos con existencia en {order.area}.</p>}
-          {filtered.map((p) => (
-            <div key={p.id} className="pick-row">
-              <div className="pick-row__info">
-                <span className="pick-row__name">{p.name}</span>
-                <span className="pick-row__meta">
-                  {formatMoney(p.price, baseCurrency)} · quedan {stockOf(p)} {p.unit}
-                </span>
-              </div>
-              <input
-                className="pick-row__qty"
-                type="number"
-                inputMode="decimal"
-                value={qty[p.id] ?? ''}
-                placeholder="1"
-                onChange={(e) => setQty((s) => ({ ...s, [p.id]: e.target.value }))}
-              />
-              <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => add(p)}>Agregar</button>
-            </div>
-          ))}
+
+          <div className="menu-grid">
+            {filtered.map((p) => {
+              const n = inOrder(p.id)
+              const left = stockOf(p)
+              return (
+                <button key={p.id} className="menu-tile" onClick={() => addOne(p)}>
+                  {n > 0 && <span className="menu-tile__badge">{n}</span>}
+                  <span className="menu-tile__name">{p.name}</span>
+                  <span className="menu-tile__price">{formatMoney(p.price, baseCurrency)}</span>
+                  <span className={`menu-tile__stock ${left <= 3 ? 'is-low' : ''}`}>{left} {p.unit}</span>
+                </button>
+              )
+            })}
+          </div>
         </section>
+      )}
+
+      {/* Barra fija: el total y el cobro siempre a la vista */}
+      {!paying && live.length > 0 && (
+        <div className="pay-bar">
+          <div className="pay-bar__info">
+            <span className="pay-bar__lbl">TOTAL</span>
+            <strong className="pay-bar__amount">{formatMoney(total, baseCurrency)}</strong>
+          </div>
+          <button className="btn btn--primary" onClick={() => setPaying(true)}>Cobrar</button>
+        </div>
       )}
 
       {/* Eximir el cargo por servicio: requiere autorizacion de mando. */}

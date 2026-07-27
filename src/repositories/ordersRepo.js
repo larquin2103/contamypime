@@ -265,6 +265,26 @@ export const ordersRepo = {
     })
   },
 
+  // Quita UNA unidad de un producto (boton "-" de la cuenta). Append-only: anula
+  // la ultima linea viva de ese producto y, si esa linea traia mas de una unidad,
+  // vuelve a registrar el resto. El stock se devuelve/rebaja en consecuencia.
+  async decrementOne({ orderId, productId, userId }) {
+    const rows = await db.orderItems.where('orderId').equals(orderId).toArray()
+    const lines = rows
+      .filter((i) => i.productId === productId && !i.voided)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+    const last = lines[lines.length - 1]
+    if (!last) return
+    const rest = Number(last.qty) - 1
+    // Anula la linea completa (devuelve todo su stock)...
+    await this.voidItem({ itemId: last.id, userId, note: 'Ajuste de cantidad' })
+    if (rest > 0) {
+      // ...y vuelve a poner el resto como linea nueva (vuelve a rebajar).
+      const p = await db.products.get(productId)
+      if (p) await this.addItem({ orderId, product: p, qty: rest, userId })
+    }
+  },
+
   // Totales de la cuenta: consumo + cargo por servicio del area.
   // `waived` = el mando eximio el cargo para esta mesa.
   async totals(orderId, { servicePct = 0, waived = false } = {}) {

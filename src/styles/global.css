@@ -2181,25 +2181,48 @@ input[type='file'] {
   margin-top: 10px;
 }
 .table-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 10px;
-  min-height: 88px;
+  position: relative;
   min-width: 0;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  text-align: left;
-  cursor: pointer;
   overflow: hidden;
 }
-.table-card:disabled { opacity: 0.6; cursor: default; }
-.table-card > span {
+/* Toda la tarjeta es el boton principal: un toque abre la mesa. */
+.table-card__main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 88px;
+  padding: 10px 26px 10px 10px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.table-card__main:disabled { opacity: 0.6; cursor: default; }
+.table-card__main > span {
   max-width: 100%;
   overflow-wrap: anywhere;
+}
+/* Acciones secundarias (reservar, cancelar): a mano pero sin estorbar. */
+.table-card__more {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: none;
+  color: var(--text-3);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
 }
 .table-card__name { font-weight: 700; }
 /* El importe manda: se ajusta al ancho de la tarjeta sin desbordar. */
@@ -2300,3 +2323,133 @@ input[type='file'] {
   .app-main { padding: 0; }
   .ticket { border: none; }
 }
+
+/* ----- Mesas: carta de un toque (velocidad de servicio) ----- */
+.chip-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.chip-btn {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip-btn.is-active {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--surface-2);
+}
+.menu-search { margin-bottom: 10px; }
+
+/* Mosaico: objetivos grandes para el dedo, sin teclado. */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+}
+.menu-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 76px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-hi);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+.menu-tile:active { transform: scale(0.97); border-color: var(--primary); }
+.menu-tile__name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  padding-right: 22px;
+}
+.menu-tile__price { font-weight: 700; color: var(--primary); font-size: 0.92rem; }
+.menu-tile__stock { font-size: 0.7rem; color: var(--text-3); }
+.menu-tile__stock.is-low { color: var(--warn); font-weight: 600; }
+/* Cuantas unidades lleva ya la cuenta: confirmacion inmediata al tocar. */
+.menu-tile__badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Sumar / restar unidades en la cuenta */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px;
+}
+.stepper__btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.stepper__btn:active { background: var(--primary); }
+.stepper__qty {
+  min-width: 26px;
+  text-align: center;
+  font-weight: 700;
+}
+
+/* Barra fija de cobro: el total siempre a la vista */
+.pay-bar {
+  position: fixed;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(10, 28, 56, 0.94);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  z-index: 15;
+}
+.pay-bar__info { display: flex; flex-direction: column; min-width: 0; }
+.pay-bar__lbl { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.5px; }
+.pay-bar__amount { font-size: 1.15rem; overflow-wrap: anywhere; }
+.pay-bar .btn { flex: 0 0 auto; }
