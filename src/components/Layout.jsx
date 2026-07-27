@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, HelpCircle } from 'lucide-react'
 import { useAuth } from '../app/providers/AuthProvider'
@@ -19,10 +19,21 @@ function SyncBadge() {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null) // { ok, error } del ultimo intento manual
+  // El estado "fresco" depende del PASO DEL TIEMPO y, ante fallos repetidos, el
+  // error puede reasignarse al mismo texto (React no re-renderiza). Este "tick"
+  // fuerza re-evaluar el badge cada pocos segundos, para que el ☁️/⚠️ cambie
+  // solo, sin tener que recargar la pestaña. (Solo redibuja este badge pequeño.)
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 5000)
+    return () => clearInterval(id)
+  }, [])
   if (!enabled || !cloudUser) return null
 
   const ageMs = lastPullOkAt ? Date.now() - new Date(lastPullOkAt).getTime() : Infinity
-  const fresh = ageMs < SYNC_FRESH_MS
+  // Verde exige bajada reciente CONFIRMADA y sin error pendiente. Incluir
+  // pullError hace que un fallo pase a amarillo de inmediato (no espera los 120s).
+  const fresh = ageMs < SYNC_FRESH_MS && !pullError
 
   // Verde SOLO si hubo ida y vuelta reciente confirmada. Si el SO dice "en red"
   // pero no hay bajada confirmada, es AMARILLO ("sin confirmar"): ese era el
