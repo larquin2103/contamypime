@@ -14,6 +14,7 @@ import { genRecoveryCode } from '../../lib/pin'
 import { formatDateTime } from '../../lib/dates'
 import { getStorageInfo } from '../../lib/storage'
 import { licenseModules, LICENSE_MODULES, LICENSE_MODULE_LABELS } from '../../lib/license'
+import { TablesSettings } from '../tables/TablesSettings'
 
 export function Settings() {
   const { user, isOwner } = useAuth()
@@ -34,6 +35,7 @@ export function Settings() {
       <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
       <AreasSection />
+      <TablesSettings />
       <WholesaleSection />
       <ElaborationSection />
       <AdminPermsSection />

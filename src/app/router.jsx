@@ -33,6 +33,8 @@ import { UsersAdmin } from '../features/auth/UsersAdmin'
 import { HelpScreen } from '../features/help/HelpScreen'
 import { PartnersScreen } from '../features/partners/PartnersScreen'
 import { AccountsScreen } from '../features/accounts/AccountsScreen'
+import { SalonScreen } from '../features/tables/SalonScreen'
+import { TableScreen } from '../features/tables/TableScreen'
 
 // Decide que mostrar segun el estado:
 //  - sin licencia valida   -> Activacion (compuerta: ni se crea dueño ni se entra)
@@ -81,6 +83,8 @@ export function AppRouter() {
         <Route path="/help" element={<HelpScreen />} />
         <Route path="/partners" element={<PartnersScreen />} />
         <Route path="/accounts" element={<AccountsScreen />} />
+        <Route path="/salon" element={<SalonScreen />} />
+        <Route path="/mesa/:id" element={<TableScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

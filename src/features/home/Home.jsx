@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -208,6 +208,11 @@ export function Home() {
             )}
             <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
           </Section>
+          {hasModule(LICENSE_MODULES.TABLES) && (
+            <Section label="Salón">
+              <ActionCard to="/salon" icon={UtensilsCrossed} title="Mesas" sub="Ver todo el salón y cobrar" />
+            </Section>
+          )}
           <Section label="Operación">
             <ActionCard to="/handoff" icon={ArrowLeftRight} title="Traspaso de turno" sub="Entregar la caja" />
             <ActionCard to="/finances" icon={Wallet} title="Deudas y caja" sub="Cobros y pagos" />
@@ -240,6 +245,11 @@ export function Home() {
           {isElaborator && hasModule(LICENSE_MODULES.ELABORATION) && elab.enabled && (
             <Section label="Elaboración">
               <ActionCard to="/elaboracion" icon={Factory} title="Elaboración" sub="Transformar y enviar a puntos" />
+            </Section>
+          )}
+          {hasModule(LICENSE_MODULES.TABLES) && (
+            <Section label="Salón">
+              <ActionCard to="/salon" icon={UtensilsCrossed} title="Mesas" sub="Atender y cobrar mesas" />
             </Section>
           )}
           <Section label="Operación">

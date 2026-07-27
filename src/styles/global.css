@@ -2115,3 +2115,77 @@ input[type='file'] {
 .cash-table th,
 .cash-table td { border-bottom-color: var(--border); }
 .cash-table tr.is-strong td { color: var(--accent-light); }
+
+/* ----- Modulo 'mesas': panel del salon ----- */
+.salon-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.salon-stat {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  text-align: center;
+}
+.salon-stat__num { font-size: 1.35rem; font-weight: 700; color: var(--text); }
+.salon-stat__lbl { font-size: 0.78rem; color: var(--muted); }
+
+/* Rejilla de mesas: se adapta sola al ancho del telefono. */
+.salon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.table-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  min-height: 84px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.table-card:disabled { opacity: 0.5; cursor: default; }
+.table-card__name { font-weight: 700; }
+.table-card__total { font-size: 1.05rem; font-weight: 700; color: var(--primary); }
+.table-card__meta { font-size: 0.74rem; color: var(--muted); }
+.table-card__who { font-size: 0.74rem; color: var(--text-3); }
+/* Libre = tenue · Ocupada = borde verde · Mas de 1h abierta = borde ambar */
+.table-card--free { border-style: dashed; }
+.table-card--busy { border-color: var(--primary); background: var(--surface-hi); }
+.table-card--long { border-color: var(--warn); background: var(--surface-hi); }
+
+/* Comprobante (ticket) de la cuenta de una mesa. */
+.ticket__lines { margin: 10px 0; }
+.ticket__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 0.92rem;
+}
+.ticket__total {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 8px;
+  font-size: 1.1rem;
+}
+/* Al imprimir, solo el ticket (sin cabecera, menu ni botones). */
+@media print {
+  .app-header, .app-nav, .link-back, .btn { display: none !important; }
+  .app-main { padding: 0; }
+  .ticket { border: none; }
+}
