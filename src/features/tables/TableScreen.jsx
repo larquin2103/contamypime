@@ -293,34 +293,34 @@ export function TableScreen() {
         <h3>Cuenta</h3>
         {live.length === 0 && <p className="muted">Sin consumos todavía.</p>}
         {live.map((i) => (
-          <div key={i.id} className="kv">
-            <span>{i.qty} × {i.name} <span className="muted">({formatMoney(i.unitPrice, baseCurrency)})</span></span>
-            <span>
-              <strong>{formatMoney(i.lineTotal, baseCurrency)}</strong>
+          <div key={i.id} className="order-line">
+            <div className="order-line__info">
+              <span className="order-line__name">{i.qty} × {i.name}</span>
+              <span className="order-line__sub">{formatMoney(i.unitPrice, baseCurrency)} c/u</span>
+            </div>
+            <div className="order-line__right">
+              <span className="order-line__total">{formatMoney(i.lineTotal, baseCurrency)}</span>
               <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => removeLine(i.id)}>Quitar</button>
-            </span>
+            </div>
           </div>
         ))}
         {items.some((i) => i.voided) && (
           <p className="muted">{items.filter((i) => i.voided).length} línea(s) anulada(s) (se conservan en el historial).</p>
         )}
 
-        <div className="kv"><span>Subtotal</span><strong>{formatMoney(subtotal, baseCurrency)}</strong></div>
+        <div className="total-row"><span>Subtotal</span><strong>{formatMoney(subtotal, baseCurrency)}</strong></div>
         {Number(servicePct) > 0 && (
-          <div className="kv">
-            <span>
-              Servicio {pct}%
-            </span>
-            <span>
+          <div className="total-row">
+            <span>Servicio {pct}%{waived && <span className="muted"> · eximido</span>}</span>
+            <span className="order-line__right">
               <strong>{formatMoney(service, baseCurrency)}</strong>
               {!waived && (
                 <button className="btn btn--ghost btn--sm" onClick={() => setAskWaive(true)}>Eximir</button>
               )}
-              {waived && <span className="muted"> eximido</span>}
             </span>
           </div>
         )}
-        <div className="kv"><span><strong>TOTAL</strong></span><strong className="price">{formatMoney(total, baseCurrency)}</strong></div>
+        <div className="total-row total-row--grand"><strong>TOTAL</strong><strong className="price">{formatMoney(total, baseCurrency)}</strong></div>
 
         {live.length > 0 && !paying && (
           <button className="btn btn--primary btn--block" onClick={() => setPaying(true)}>Cobrar</button>
@@ -432,21 +432,22 @@ export function TableScreen() {
           />
           {filtered.length === 0 && <p className="muted">Sin productos con existencia en {order.area}.</p>}
           {filtered.map((p) => (
-            <div key={p.id} className="kv">
-              <span>
-                {p.name} <span className="muted">· {formatMoney(p.price, baseCurrency)} · quedan {stockOf(p)} {p.unit}</span>
-              </span>
-              <span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  style={{ width: 64 }}
-                  value={qty[p.id] ?? ''}
-                  placeholder="1"
-                  onChange={(e) => setQty((s) => ({ ...s, [p.id]: e.target.value }))}
-                />
-                <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => add(p)}>Agregar</button>
-              </span>
+            <div key={p.id} className="pick-row">
+              <div className="pick-row__info">
+                <span className="pick-row__name">{p.name}</span>
+                <span className="pick-row__meta">
+                  {formatMoney(p.price, baseCurrency)} · quedan {stockOf(p)} {p.unit}
+                </span>
+              </div>
+              <input
+                className="pick-row__qty"
+                type="number"
+                inputMode="decimal"
+                value={qty[p.id] ?? ''}
+                placeholder="1"
+                onChange={(e) => setQty((s) => ({ ...s, [p.id]: e.target.value }))}
+              />
+              <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => add(p)}>Agregar</button>
             </div>
           ))}
         </section>

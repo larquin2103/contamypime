@@ -2118,55 +2118,166 @@ input[type='file'] {
 
 /* ----- Modulo 'mesas': panel del salon ----- */
 .salon-summary {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
 }
 .salon-stat {
-  flex: 1;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
+  padding: 10px 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   align-items: center;
   text-align: center;
+  min-width: 0;
 }
-.salon-stat__num { font-size: 1.35rem; font-weight: 700; color: var(--text); }
-.salon-stat__lbl { font-size: 0.78rem; color: var(--muted); }
+.salon-stat__num {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.15;
+}
+/* El importe es largo: se reduce y se permite partir para no desbordar. */
+.salon-stat__num--money {
+  font-size: 0.98rem;
+  overflow-wrap: anywhere;
+}
+.salon-stat__lbl { font-size: 0.72rem; color: var(--muted); }
+
+/* Leyenda de estados */
+.salon-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.salon-legend__item { display: inline-flex; align-items: center; gap: 5px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.dot--free { border: 1px dashed var(--text-3); }
+.dot--busy { background: var(--primary); }
+.dot--reserved { background: #7aa7ff; }
+.dot--long { background: var(--warn); }
+
+.salon-area-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.salon-area-head h3 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 
 /* Rejilla de mesas: se adapta sola al ancho del telefono. */
 .salon-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   gap: 10px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 .table-card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: 10px 12px;
-  min-height: 84px;
+  padding: 10px;
+  min-height: 88px;
+  min-width: 0;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
 }
-.table-card:disabled { opacity: 0.5; cursor: default; }
+.table-card:disabled { opacity: 0.6; cursor: default; }
+.table-card > span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .table-card__name { font-weight: 700; }
-.table-card__total { font-size: 1.05rem; font-weight: 700; color: var(--primary); }
-.table-card__meta { font-size: 0.74rem; color: var(--muted); }
-.table-card__who { font-size: 0.74rem; color: var(--text-3); }
-/* Libre = tenue · Ocupada = borde verde · Mas de 1h abierta = borde ambar */
+/* El importe manda: se ajusta al ancho de la tarjeta sin desbordar. */
+.table-card__total {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--primary);
+  line-height: 1.2;
+}
+.table-card__meta { font-size: 0.72rem; color: var(--muted); }
+.table-card__who {
+  font-size: 0.72rem;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.table-card__state { font-size: 0.78rem; color: var(--muted); }
+/* Estados: libre (tenue) · ocupada (verde) · reservada (azul) · +1h (ambar) */
 .table-card--free { border-style: dashed; }
 .table-card--busy { border-color: var(--primary); background: var(--surface-hi); }
+.table-card--reserved { border-color: #7aa7ff; background: var(--surface-hi); }
+.table-card--reserved .table-card__state { color: #7aa7ff; font-weight: 600; }
 .table-card--long { border-color: var(--warn); background: var(--surface-hi); }
+
+/* ----- Cuenta de una mesa: lineas y totales ----- */
+.order-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.order-line__info { flex: 1; min-width: 0; }
+.order-line__name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.order-line__sub { font-size: 0.76rem; color: var(--muted); }
+.order-line__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.order-line__total { font-weight: 700; white-space: nowrap; }
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+}
+.total-row--grand {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 10px;
+  font-size: 1.1rem;
+}
+
+/* Selector de productos al agregar consumo */
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.pick-row__info { flex: 1; min-width: 0; }
+.pick-row__name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.pick-row__meta { font-size: 0.74rem; color: var(--muted); }
+.pick-row__qty {
+  width: 58px;
+  flex: 0 0 auto;
+  padding: 9px 6px;
+  text-align: center;
+}
 
 /* Comprobante (ticket) de la cuenta de una mesa. */
 .ticket__lines { margin: 10px 0; }

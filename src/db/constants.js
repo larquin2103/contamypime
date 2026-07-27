@@ -126,13 +126,15 @@ export const PARTNER_MOVEMENT_LABELS = {
 // Estados de un pedido de mesa (modulo 'mesas'). El pedido se abre al sentarse
 // el cliente, acumula lineas y se cierra al cobrar (genera la venta real).
 export const ORDER_STATUS = {
+  RESERVED: 'reserved', // mesa apartada, aun sin consumo
   OPEN: 'open', // mesa ocupada, pedido en curso
-  CLOSED: 'closed', // cobrado -> tiene saleId
+  CLOSED: 'closed', // cobrado -> tiene saleId (la mesa vuelve a quedar LIBRE)
   VOIDED: 'voided' // anulado sin cobro (se devolvio el stock)
 }
 
 export const ORDER_STATUS_LABELS = {
-  open: 'Abierta',
+  reserved: 'Reservada',
+  open: 'Ocupada',
   closed: 'Cobrada',
   voided: 'Anulada'
 }

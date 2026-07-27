@@ -46,6 +46,72 @@ export const ordersRepo = {
     return rows.find((o) => o.area === area && o.table === table) || null
   },
 
+  // Mesas NO libres: ocupadas (open) + reservadas. Una mesa cobrada (closed) o
+  // anulada NO aparece aqui: vuelve a estar LIBRE al instante.
+  async listActive(area = null) {
+    const rows = await db.orders
+      .where('status').anyOf(ORDER_STATUS.OPEN, ORDER_STATUS.RESERVED).toArray()
+    const list = area ? rows.filter((o) => o.area === area) : rows
+    return list.sort((a, b) => (a.openedAt < b.openedAt ? -1 : 1))
+  },
+
+  // Pedido vivo (ocupado o reservado) de una mesa concreta.
+  async getActiveFor(area, table) {
+    const rows = await this.listActive(area)
+    return rows.find((o) => o.table === table) || null
+  },
+
+  // Reserva una mesa: queda apartada, sin consumo y sin turno asociado todavia.
+  async reserve({ area, table, userId, note = '' }) {
+    const a = String(area || '').trim()
+    const t = String(table || '').trim()
+    const existing = await this.getActiveFor(a, t)
+    if (existing) return existing.id
+    const id = newId()
+    const ts = now()
+    await db.orders.add({
+      id,
+      area: a,
+      table: t,
+      status: ORDER_STATUS.RESERVED,
+      shiftId: null,
+      openedBy: userId,
+      openedAt: ts,
+      reservedNote: String(note || '').trim(),
+      updatedAt: ts,
+      closedAt: null,
+      closedBy: null,
+      saleId: null
+    })
+    return id
+  },
+
+  // El cliente llega: la reserva pasa a mesa OCUPADA y se ata al turno que la
+  // atiende (a partir de aqui ya se le puede agregar consumo).
+  async occupy({ orderId, shiftId, userId }) {
+    const ts = now()
+    await db.orders.update(orderId, {
+      status: ORDER_STATUS.OPEN,
+      shiftId,
+      openedBy: userId,
+      openedAt: ts,
+      updatedAt: ts
+    })
+  },
+
+  // Cancela una reserva (la mesa vuelve a estar libre). No se borra: queda
+  // anulada con su motivo, como todo en el sistema.
+  async cancelReservation({ orderId, userId, note = '' }) {
+    const ts = now()
+    await db.orders.update(orderId, {
+      status: ORDER_STATUS.VOIDED,
+      closedBy: userId,
+      closedAt: ts,
+      voidNote: String(note || '').trim() || 'Reserva cancelada',
+      updatedAt: ts
+    })
+  },
+
   // Lineas de un pedido (las anuladas se conservan, marcadas).
   async items(orderId) {
     const rows = await db.orderItems.where('orderId').equals(orderId).toArray()

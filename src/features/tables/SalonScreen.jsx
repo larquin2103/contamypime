@@ -10,30 +10,29 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
+import { ORDER_STATUS } from '../../db/constants'
 
 // ---------------------------------------------------------------------------
-// Panel del SALON (modulo 'mesas'). De un vistazo: todas las mesas del local,
-// cuales estan ocupadas, cuanto llevan consumido, cuanto tiempo abiertas y quien
-// las atiende.
+// Panel del SALON (modulo 'mesas'). De un vistazo: el estado de cada mesa del
+// local, cuanto lleva consumido, cuanto tiempo abierta y quien la atiende.
+//
+// Estados de una mesa:
+//   LIBRE      - sin cuenta viva. Es tambien el estado al que vuelve en cuanto
+//                se COBRA (el pedido pasa a 'closed' y deja de estar viva).
+//   RESERVADA  - apartada para un cliente que aun no llega (sin consumo).
+//   OCUPADA    - con cuenta en curso. Si lleva mas de una hora, se resalta.
 //
 //  - El dueño / administrativo ve TODAS las areas del local.
 //  - El vendedor (camarero) ve solo el area de SU turno abierto.
-//
-// Los datos son en vivo (useLiveQuery) y, como los pedidos se sincronizan, la
-// caja ve lo que el camarero va agregando desde su telefono.
 // ---------------------------------------------------------------------------
 
-// "hace 12 min" a partir de una marca ISO.
 function since(iso) {
   if (!iso) return ''
-  const ms = Date.now() - new Date(iso).getTime()
-  const m = Math.max(0, Math.round(ms / 60000))
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
   if (m < 60) return `${m} min`
-  const h = Math.floor(m / 60)
-  return `${h} h ${m % 60} min`
+  return `${Math.floor(m / 60)} h ${m % 60} min`
 }
 
-// Minutos abiertos (para resaltar mesas que llevan mucho tiempo).
 function minutesOpen(iso) {
   if (!iso) return 0
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
@@ -44,16 +43,16 @@ export function SalonScreen() {
   const { hasModule } = useLicense()
   const navigate = useNavigate()
   const [busy, setBusy] = useState('')
+  const [menu, setMenu] = useState(null) // { area, table, order } al tocar una mesa
 
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const tablesMap = useLiveQuery(() => configRepo.getTables(), [], {})
   const charges = useLiveQuery(() => configRepo.getServiceCharges(), [], {})
-  const openOrders = useLiveQuery(() => ordersRepo.listOpen(), [], [])
-  // Todas las lineas vivas: para el total en curso de cada mesa.
+  // Mesas NO libres: ocupadas + reservadas.
+  const active = useLiveQuery(() => ordersRepo.listActive(), [], [])
   const allItems = useLiveQuery(() => db.orderItems.toArray(), [], [])
   const users = useLiveQuery(() => usersRepo.list(), [], [])
   const baseCurrency = useLiveQuery(() => configRepo.getBaseCurrency(), [], 'MN')
-  // Turno abierto del usuario (el camarero solo opera en el area de su turno).
   const myShift = useLiveQuery(() => (user ? shiftsRepo.getActiveFor(user.id) : null), [user?.id], undefined)
 
   if (!hasModule(LICENSE_MODULES.TABLES)) {
@@ -67,34 +66,58 @@ export function SalonScreen() {
   if (myShift === undefined) return <div className="screen"><p className="muted">Cargando…</p></div>
 
   const userName = (id) => users.find((u) => u.id === id)?.name || '—'
-  // Areas visibles: el mando ve todo el local; el camarero solo la suya.
   const myArea = myShift?.area || ''
   const visibleAreas = isManager ? areas : (myArea ? [myArea] : [])
 
-  // Total en curso de un pedido (solo lineas no anuladas).
   const orderTotal = (orderId) =>
-    allItems
-      .filter((i) => i.orderId === orderId && !i.voided)
+    allItems.filter((i) => i.orderId === orderId && !i.voided)
       .reduce((a, i) => a + Number(i.lineTotal || 0), 0)
-
   const orderCount = (orderId) =>
-    allItems.filter((i) => i.orderId === orderId && !i.voided).length
+    allItems.filter((i) => i.orderId === orderId && !i.voided)
+      .reduce((a, i) => a + Number(i.qty || 0), 0)
 
-  // Abre (o retoma) la cuenta de una mesa y entra a ella.
+  const canOperate = (area) => !!myShift && myShift.area === area
+
   const openTable = async (area, table) => {
-    if (!myShift || myShift.area !== area) return
+    if (!canOperate(area)) return
     setBusy(`${area}|${table}`)
     try {
       const id = await ordersRepo.open({ area, table, shiftId: myShift.id, userId: user.id })
+      setMenu(null)
       navigate(`/mesa/${id}`)
-    } finally {
-      setBusy('')
-    }
+    } finally { setBusy('') }
   }
 
-  // Resumen del local (cabecera del panel).
-  const totalOpen = openOrders.length
-  const totalAmount = openOrders.reduce((a, o) => a + orderTotal(o.id), 0)
+  const reserveTable = async (area, table) => {
+    setBusy(`${area}|${table}`)
+    try {
+      await ordersRepo.reserve({ area, table, userId: user.id })
+      setMenu(null)
+    } finally { setBusy('') }
+  }
+
+  const occupyReserved = async (order) => {
+    if (!canOperate(order.area)) return
+    setBusy(`${order.area}|${order.table}`)
+    try {
+      await ordersRepo.occupy({ orderId: order.id, shiftId: myShift.id, userId: user.id })
+      setMenu(null)
+      navigate(`/mesa/${order.id}`)
+    } finally { setBusy('') }
+  }
+
+  const cancelReserve = async (order) => {
+    setBusy(`${order.area}|${order.table}`)
+    try {
+      await ordersRepo.cancelReservation({ orderId: order.id, userId: user.id })
+      setMenu(null)
+    } finally { setBusy('') }
+  }
+
+  // Resumen: solo las OCUPADAS suman consumo (las reservadas aun no consumen).
+  const busyOrders = active.filter((o) => o.status === ORDER_STATUS.OPEN)
+  const totalAmount = busyOrders.reduce((a, o) => a + orderTotal(o.id), 0)
+  const reservedCount = active.filter((o) => o.status === ORDER_STATUS.RESERVED).length
 
   return (
     <div className="screen">
@@ -110,66 +133,80 @@ export function SalonScreen() {
         </div>
       )}
 
-      {/* Resumen en vivo del local */}
       {visibleAreas.length > 0 && (
-        <div className="salon-summary">
-          <div className="salon-stat">
-            <span className="salon-stat__num">{totalOpen}</span>
-            <span className="salon-stat__lbl">cuenta(s) abierta(s)</span>
+        <>
+          <div className="salon-summary">
+            <div className="salon-stat">
+              <span className="salon-stat__num">{busyOrders.length}</span>
+              <span className="salon-stat__lbl">ocupada(s)</span>
+            </div>
+            <div className="salon-stat">
+              <span className="salon-stat__num">{reservedCount}</span>
+              <span className="salon-stat__lbl">reservada(s)</span>
+            </div>
+            <div className="salon-stat">
+              <span className="salon-stat__num salon-stat__num--money">{formatMoney(totalAmount, baseCurrency)}</span>
+              <span className="salon-stat__lbl">consumo en curso</span>
+            </div>
           </div>
-          <div className="salon-stat">
-            <span className="salon-stat__num">{formatMoney(totalAmount, baseCurrency)}</span>
-            <span className="salon-stat__lbl">consumo en curso</span>
+
+          {/* Leyenda de estados */}
+          <div className="salon-legend">
+            <span className="salon-legend__item"><i className="dot dot--free" />Libre</span>
+            <span className="salon-legend__item"><i className="dot dot--busy" />Ocupada</span>
+            <span className="salon-legend__item"><i className="dot dot--reserved" />Reservada</span>
+            <span className="salon-legend__item"><i className="dot dot--long" />+1 h</span>
           </div>
-        </div>
+        </>
       )}
 
       {visibleAreas.map((area) => {
         const tables = Array.isArray(tablesMap[area]) ? tablesMap[area] : []
         const pct = Number(charges[area]) || 0
-        // Cuentas abiertas del area que ya no estan en la lista de mesas (la
-        // mesa se quito de Ajustes): se siguen mostrando para poder cobrarlas.
-        const orphan = openOrders.filter((o) => o.area === area && !tables.includes(o.table))
+        const orphan = active.filter((o) => o.area === area && !tables.includes(o.table))
+        const allTables = [...tables, ...orphan.map((o) => o.table)]
         return (
           <section key={area} className="card">
-            <div className="kv">
-              <h3 style={{ margin: 0 }}>{area}</h3>
+            <div className="salon-area-head">
+              <h3>{area}</h3>
               {pct > 0 && <span className="muted">Servicio {pct}%</span>}
             </div>
 
-            {tables.length === 0 && orphan.length === 0 && (
+            {allTables.length === 0 && (
               <p className="muted">
                 Esta área no tiene mesas configuradas{isManager ? ' (Ajustes → Mesas y cuentas).' : '.'}
               </p>
             )}
 
             <div className="salon-grid">
-              {[...tables, ...orphan.map((o) => o.table)].map((t) => {
-                const order = openOrders.find((o) => o.area === area && o.table === t)
-                const busyThis = busy === `${area}|${t}`
-                const mine = myShift && myShift.area === area
-                const mins = order ? minutesOpen(order.openedAt) : 0
-                const long = mins >= 60 // lleva mucho abierta: se resalta
+              {allTables.map((t) => {
+                const order = active.find((o) => o.area === area && o.table === t)
+                const reserved = order?.status === ORDER_STATUS.RESERVED
+                const occupied = order?.status === ORDER_STATUS.OPEN
+                const long = occupied && minutesOpen(order.openedAt) >= 60
+                const state = reserved ? 'reserved' : long ? 'long' : occupied ? 'busy' : 'free'
                 return (
                   <button
                     key={t}
-                    className={`table-card ${order ? (long ? 'table-card--long' : 'table-card--busy') : 'table-card--free'}`}
-                    disabled={busyThis || (!order && !mine)}
-                    onClick={() => (order ? navigate(`/mesa/${order.id}`) : openTable(area, t))}
-                    title={order ? 'Ver la cuenta' : (mine ? 'Abrir cuenta' : 'Solo el vendedor con turno en esta área puede abrirla')}
+                    className={`table-card table-card--${state}`}
+                    disabled={busy === `${area}|${t}`}
+                    onClick={() => (occupied ? navigate(`/mesa/${order.id}`) : setMenu({ area, table: t, order }))}
                   >
                     <span className="table-card__name">{t}</span>
-                    {order ? (
+                    {occupied && (
                       <>
                         <span className="table-card__total">{formatMoney(orderTotal(order.id), baseCurrency)}</span>
-                        <span className="table-card__meta">
-                          {orderCount(order.id)} ítem(s) · {since(order.openedAt)}
-                        </span>
+                        <span className="table-card__meta">{orderCount(order.id)} ítem(s) · {since(order.openedAt)}</span>
                         <span className="table-card__who">{userName(order.openedBy)}</span>
                       </>
-                    ) : (
-                      <span className="table-card__meta">{busyThis ? 'Abriendo…' : 'Libre'}</span>
                     )}
+                    {reserved && (
+                      <>
+                        <span className="table-card__state">Reservada</span>
+                        <span className="table-card__meta">hace {since(order.openedAt)}</span>
+                      </>
+                    )}
+                    {!order && <span className="table-card__state">Libre</span>}
                   </button>
                 )
               })}
@@ -178,11 +215,45 @@ export function SalonScreen() {
         )
       })}
 
-      {isManager && openOrders.length > 0 && (
-        <p className="muted">
-          Toca cualquier mesa para ver su cuenta y cobrarla. Las mesas en rojo llevan
-          más de una hora abiertas.
-        </p>
+      {/* Acciones al tocar una mesa libre o reservada */}
+      {menu && (
+        <div className="modal-backdrop" onClick={() => setMenu(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{menu.table}</h3>
+            <p className="muted">{menu.area}</p>
+
+            {!canOperate(menu.area) && !menu.order && (
+              <p className="muted">Necesitas turno abierto en esta área para atenderla.</p>
+            )}
+
+            {menu.order?.status === ORDER_STATUS.RESERVED ? (
+              <>
+                <p className="muted">Mesa reservada hace {since(menu.order.openedAt)}.</p>
+                {canOperate(menu.area) && (
+                  <button className="btn btn--primary btn--block" onClick={() => occupyReserved(menu.order)}>
+                    El cliente llegó · abrir cuenta
+                  </button>
+                )}
+                <button className="btn btn--ghost btn--block" onClick={() => cancelReserve(menu.order)}>
+                  Cancelar reserva
+                </button>
+              </>
+            ) : (
+              <>
+                {canOperate(menu.area) && (
+                  <button className="btn btn--primary btn--block" onClick={() => openTable(menu.area, menu.table)}>
+                    Abrir cuenta
+                  </button>
+                )}
+                <button className="btn btn--ghost btn--block" onClick={() => reserveTable(menu.area, menu.table)}>
+                  Reservar mesa
+                </button>
+              </>
+            )}
+
+            <button className="btn btn--ghost btn--block" onClick={() => setMenu(null)}>Cerrar</button>
+          </div>
+        </div>
       )}
     </div>
   )
