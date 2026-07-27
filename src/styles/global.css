@@ -837,6 +837,7 @@ input[type='file'] {
   text-align: center;
 }
 .total-row {
+  font-variant-numeric: tabular-nums;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2250,28 +2251,34 @@ input[type='file'] {
 .table-card--long { border-color: var(--warn); background: var(--surface-hi); }
 
 /* ----- Cuenta de una mesa: lineas y totales ----- */
+/* Rejilla de COLUMNAS FIJAS: el nombre toma el espacio libre y el stepper, el
+   total y la papelera caen en columnas de ancho fijo -> quedan perfectamente
+   ALINEADOS entre todas las lineas, sin importar el largo del nombre. Esa es
+   la simetria "de diseñador": la vista se lee como una tabla limpia. */
 .order-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 8px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--stepper-w, 116px) var(--total-w, 96px) 34px;
+  align-items: center;
+  column-gap: 10px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--border-soft);
 }
-.order-line__info { flex: 1; min-width: 0; }
-.order-line__name { display: block; font-weight: 600; overflow-wrap: anywhere; }
-.order-line__sub { font-size: 0.76rem; color: var(--muted); }
-.order-line__right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  flex: 0 0 auto;
+.order-line__info { min-width: 0; }
+.order-line__name { display: block; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.order-line__sub { font-size: 0.75rem; color: var(--muted); }
+/* El stepper, centrado en su columna: mismo eje en cada fila. */
+.order-line .stepper { justify-self: center; }
+/* Importe alineado a la derecha, con cifras de ancho fijo (tabular) para que
+   los numeros de distintas filas queden en columna, como en una factura. */
+.order-line__total {
+  justify-self: end;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
-.order-line__total { font-weight: 700; white-space: nowrap; }
 /* Papelera: quita el producto ENTERO sin restar de uno en uno. */
 .order-line__del {
-  flex: 0 0 auto;
+  justify-self: center;
   width: 34px;
   height: 34px;
   display: inline-flex;
@@ -2284,15 +2291,14 @@ input[type='file'] {
   border-radius: 8px;
 }
 .order-line__del:active { color: var(--danger); background: rgba(252, 123, 123, 0.12); }
-/* En pantallas estrechas el nombre toma toda la fila y los controles bajan,
-   asi nunca se comprimen ni se salen (nombre + stepper + total + papelera). */
-@media (max-width: 400px) {
-  .order-line { flex-wrap: wrap; row-gap: 6px; }
-  .order-line__info { flex: 1 1 100%; }
-  .order-line__total { margin-left: auto; }
+/* En pantallas muy estrechas se compactan las columnas de controles (no el
+   nombre): el stepper y el total ceden ancho antes que descuadrar la rejilla. */
+@media (max-width: 380px) {
+  .order-line { --stepper-w: 104px; --total-w: 78px; column-gap: 6px; }
 }
 
 .total-row {
+  font-variant-numeric: tabular-nums;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2404,7 +2410,7 @@ input[type='file'] {
   overflow-wrap: anywhere;
   padding-right: 22px;
 }
-.menu-tile__price { font-weight: 700; color: var(--primary); font-size: 0.92rem; }
+.menu-tile__price { font-weight: 700; color: var(--primary); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
 .menu-tile__stock { font-size: 0.7rem; color: var(--text-3); }
 .menu-tile__stock.is-low { color: var(--warn); font-weight: 600; }
 /* Cuantas unidades lleva ya la cuenta: confirmacion inmediata al tocar. */
@@ -2446,11 +2452,13 @@ input[type='file'] {
   line-height: 1;
   cursor: pointer;
 }
+.stepper__btn { display: inline-flex; align-items: center; justify-content: center; }
 .stepper__btn:active { background: var(--primary); }
 .stepper__qty {
-  min-width: 26px;
+  min-width: 30px;
   text-align: center;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Barra fija de cobro: el total siempre a la vista */
@@ -2489,6 +2497,7 @@ input[type='file'] {
   line-height: 1;
 }
 .pay-bar__amount {
+  font-variant-numeric: tabular-nums;
   font-size: clamp(0.9rem, 4vw, 1.15rem);
   line-height: 1.25;
   white-space: nowrap;
