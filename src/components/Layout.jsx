@@ -25,9 +25,12 @@ function SyncBadge() {
   // solo, sin tener que recargar la pestaña. (Solo redibuja este badge pequeño.)
   const [, setTick] = useState(0)
   useEffect(() => {
+    // Gateado: solo corre cuando la sync está activa (el badge se muestra). Para
+    // clientes sin sync no se arma ningún temporizador -> app idéntica.
+    if (!enabled || !cloudUser) return
     const id = setInterval(() => setTick((n) => n + 1), 5000)
     return () => clearInterval(id)
-  }, [])
+  }, [enabled, cloudUser])
   if (!enabled || !cloudUser) return null
 
   const ageMs = lastPullOkAt ? Date.now() - new Date(lastPullOkAt).getTime() : Infinity
