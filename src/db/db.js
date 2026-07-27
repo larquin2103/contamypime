@@ -103,3 +103,16 @@ db.version(8).stores({
 db.version(9).stores({
   conversions: 'id, fromProductId, toProductId, location, byUserId, createdAt'
 })
+
+// Modulo 'mesas': cuentas abiertas por mesa dentro de un area (cafeteria).
+// `orders` es la cabecera del pedido (mesa, area, turno, estado) y `orderItems`
+// son las lineas, APPEND-ONLY: cada consumo es una fila y las correcciones se
+// marcan `voided` con su movimiento de compensacion, nunca se borran. Se modela
+// asi (y no como un array dentro del pedido) porque la sincronizacion es
+// "ultima escritura gana": con un array, dos dispositivos editando la misma
+// mesa se pisarian; con filas, las adiciones se FUSIONAN, igual que el stock
+// sale de la suma del libro mayor. Migracion aditiva: solo tablas vacias.
+db.version(10).stores({
+  orders: 'id, area, table, status, shiftId, openedBy, openedAt',
+  orderItems: 'id, orderId, productId, voided, createdAt'
+})

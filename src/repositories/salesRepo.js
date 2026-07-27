@@ -43,7 +43,22 @@ export const salesRepo = {
     sourceLocation = '',
     // Bloque D (modulo cuentas): acreditar las cuentas de tesoreria en tiempo
     // real. Lo decide la pantalla segun la licencia; false = camino clasico.
-    creditAccounts = false
+    creditAccounts = false,
+    // --- Modulo 'mesas' (cuentas por mesa). Todos con default = clasico. ---
+    // Pedido de mesa que origina esta venta (trazabilidad; null en venta directa).
+    orderId = null,
+    table = '',
+    // El stock YA se rebajo al agregar cada item a la mesa (control en vivo para
+    // no vender lo agotado), asi que al cobrar NO se vuelve a mover: se saltan
+    // los movimientos del libro mayor. false = camino clasico (la venta rebaja).
+    skipStock = false,
+    // Cargo por servicio (% del area) sumado al consumo. subtotal = suma de
+    // lineas; totalBase = subtotal + serviceChargeAmount (lo que se cobra).
+    subtotal = null,
+    serviceChargePct = 0,
+    serviceChargeAmount = 0,
+    // Quien autorizo eximir el cargo por servicio (mando), si se eximio.
+    serviceWaivedBy = null
   }) {
     const id = newId()
     const ts = now()
@@ -70,6 +85,14 @@ export const salesRepo = {
         createdAt: ts,
         items, // [{ productId, name, unit, qty, unitPrice, unitCost, lineTotal, area }]
         totalBase,
+        // Modulo 'mesas': desglose del cobro. Sin el modulo, subtotal == totalBase
+        // y el cargo por servicio queda en cero (identico al comportamiento clasico).
+        subtotal: subtotal != null ? round2(Number(subtotal)) : round2(Number(totalBase) || 0),
+        serviceChargePct: Number(serviceChargePct) || 0,
+        serviceChargeAmount: round2(Number(serviceChargeAmount) || 0),
+        serviceWaivedBy: serviceWaivedBy || null,
+        orderId: orderId || null,
+        table: String(table || '').trim(),
         paymentMethod,
         // Contrato con shiftsRepo.getSummary: solo el efectivo entra a caja.
         // En transferencia, cashCurrency queda null para no afectar el cuadre de caja.
@@ -97,29 +120,37 @@ export const salesRepo = {
       let hadConsignment = false // Opcion B: concepto del ingreso de la venta.
       for (const it of items) {
         const qty = Math.abs(Number(it.qty))
-        await db.stockMovements.add({
-          id: newId(),
-          productId: it.productId,
-          qty: -qty,
-          type: MOVEMENT_TYPES.SALE_OUT,
-          refType: 'sale',
-          refId: id,
-          unitCost: it.unitCost ?? null,
-          shiftId,
-          userId: sellerId,
-          note: '',
-          location: loc,
-          createdAt: ts
-        })
+        // Con skipStock (venta de mesa) el libro mayor NO se toca aqui: la
+        // salida se registro al agregar el item a la mesa. Se evita asi la
+        // doble rebaja. La consignacion SI se procesa: es una deuda que nace
+        // de la VENTA (cobro), no del movimiento de inventario.
+        if (!skipStock) {
+          await db.stockMovements.add({
+            id: newId(),
+            productId: it.productId,
+            qty: -qty,
+            type: MOVEMENT_TYPES.SALE_OUT,
+            refType: 'sale',
+            refId: id,
+            unitCost: it.unitCost ?? null,
+            shiftId,
+            userId: sellerId,
+            note: '',
+            location: loc,
+            createdAt: ts
+          })
+        }
         const p = await db.products.get(it.productId)
         if (p) {
-          const byLoc = { ...(p.stockByLocation || {}) }
-          byLoc[loc] = Number(byLoc[loc] || 0) - qty
-          await db.products.update(it.productId, {
-            stock: Number(p.stock || 0) - qty,
-            stockByLocation: byLoc,
-            updatedAt: ts
-          })
+          if (!skipStock) {
+            const byLoc = { ...(p.stockByLocation || {}) }
+            byLoc[loc] = Number(byLoc[loc] || 0) - qty
+            await db.products.update(it.productId, {
+              stock: Number(p.stock || 0) - qty,
+              stockByLocation: byLoc,
+              updatedAt: ts
+            })
+          }
           // Consignacion (Bloque C, modulo cuentas): si el producto esta en
           // consignacion, cada venta acumula la deuda con su proveedor
           // (cantidad x costo acordado) en la misma transaccion. Los productos

@@ -24,7 +24,12 @@ export const SYNC_COLLECTIONS = [
   { name: 'partners', pk: 'id' },
   { name: 'partnerMovements', pk: 'id' },
   { name: 'accounts', pk: 'id' },
-  { name: 'accountMovements', pk: 'id' }
+  { name: 'accountMovements', pk: 'id' },
+  // Modulo 'mesas': cuentas por mesa. Las lineas son filas append-only, por lo
+  // que dos dispositivos (camarero y caja) atendiendo la misma mesa FUSIONAN
+  // sus adiciones en vez de pisarse (que es lo que pasaria con un array).
+  { name: 'orders', pk: 'id' },
+  { name: 'orderItems', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

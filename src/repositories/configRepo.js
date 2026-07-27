@@ -45,6 +45,60 @@ export const configRepo = {
     return { enabled: !!enabled, name: String(name || 'Elaboración').trim() || 'Elaboración' }
   },
 
+  // Mesas por area (modulo 'mesas'). Mapa { area: ['Mesa 1', 'Mesa 2', ...] }.
+  // Vacio = el area no usa mesas (venta directa clasica). Quitar una mesa de la
+  // lista NO borra sus pedidos ni ventas (append-only): solo deja de ofrecerse.
+  async getTables() {
+    const map = await this.get('tables', {})
+    return map && typeof map === 'object' && !Array.isArray(map) ? map : {}
+  },
+
+  // Mesas de UN area concreta (lista de nombres, sin duplicados).
+  async getTablesFor(area) {
+    const map = await this.getTables()
+    const list = map[String(area || '').trim()]
+    return Array.isArray(list) ? list : []
+  },
+
+  async setTablesFor(area, list) {
+    const key = String(area || '').trim()
+    if (!key) return []
+    const clean = (Array.isArray(list) ? list : [])
+      .map((s) => String(s).trim())
+      .filter(Boolean)
+    const seen = new Set()
+    const uniq = []
+    for (const t of clean) {
+      const k = t.toLowerCase()
+      if (!seen.has(k)) { seen.add(k); uniq.push(t) }
+    }
+    const map = await this.getTables()
+    await this.set('tables', { ...map, [key]: uniq })
+    return uniq
+  },
+
+  // Cargo por servicio por AREA (modulo 'mesas'): % que se suma al total de la
+  // cuenta. Mapa { area: porcentaje }. 0 o ausente = sin cargo (clasico).
+  async getServiceCharges() {
+    const map = await this.get('serviceCharge', {})
+    return map && typeof map === 'object' && !Array.isArray(map) ? map : {}
+  },
+
+  async getServiceChargeFor(area) {
+    const map = await this.getServiceCharges()
+    const pct = Number(map[String(area || '').trim()])
+    return Number.isFinite(pct) && pct > 0 ? pct : 0
+  },
+
+  async setServiceChargeFor(area, pct) {
+    const key = String(area || '').trim()
+    if (!key) return 0
+    const n = Math.max(0, Math.min(100, Number(pct) || 0))
+    const map = await this.getServiceCharges()
+    await this.set('serviceCharge', { ...map, [key]: n })
+    return n
+  },
+
   async setAreas(list) {
     const clean = (Array.isArray(list) ? list : [])
       .map((s) => String(s).trim())

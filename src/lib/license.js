@@ -25,13 +25,15 @@ const IMPORT_ALGO = { name: 'ECDSA', namedCurve: 'P-256' }
 export const LICENSE_MODULES = {
   WHOLESALE: 'mayorista', // venta desde almacen central + precios por escala
   ACCOUNTS: 'cuentas', // proveedores/acreedores + cuentas de tesoreria
-  ELABORATION: 'elaboracion' // centro de elaboracion intermedio (almacen->elab->area)
+  ELABORATION: 'elaboracion', // centro de elaboracion intermedio (almacen->elab->area)
+  TABLES: 'mesas' // mesas con cuenta abierta por area (cafeteria/restaurante)
 }
 
 export const LICENSE_MODULE_LABELS = {
   mayorista: 'Ventas mayoristas',
   cuentas: 'Cuentas y proveedores',
-  elaboracion: 'Centro de elaboración'
+  elaboracion: 'Centro de elaboración',
+  mesas: 'Mesas y cuentas'
 }
 
 // Lista de modulos de un payload (tolerante a licencias viejas sin el campo).
