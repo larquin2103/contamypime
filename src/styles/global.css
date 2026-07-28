@@ -2331,25 +2331,68 @@ input[type='file'] {
 }
 
 /* Comprobante (ticket) de la cuenta de una mesa. */
-.ticket__lines { margin: 10px 0; }
-.ticket__line {
+/* ----- Ticket térmico 58 mm (GOOJPRT PT-210, ESC/POS) -----
+   En pantalla se ve como un recibo angosto; al imprimir ocupa el papel de
+   58 mm (área útil ~48 mm). Fuente monoespaciada para que las columnas de
+   importes queden alineadas como en una caja registradora. */
+.thermal {
+  width: 280px;
+  max-width: 100%;
+  margin: 0 auto;
+  background: #fff;
+  color: #000;
+  padding: 12px 10px;
+  border-radius: 8px;
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.thermal__head {
+  text-align: center;
+  font-weight: 700;
+  font-size: 15px;
+  text-transform: uppercase;
+  word-break: break-word;
+}
+.thermal__meta { text-align: center; font-size: 11px; margin-top: 4px; }
+.thermal__rule { border-top: 1px dashed #000; margin: 8px 0; }
+.thermal__item { display: flex; justify-content: space-between; gap: 8px; }
+.thermal__item-name { flex: 1; word-break: break-word; }
+.thermal__item-amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.thermal__row {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  padding: 3px 0;
-  font-size: 0.92rem;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
 }
-.ticket__total {
-  border-top: 1px solid var(--border);
-  margin-top: 6px;
-  padding-top: 8px;
-  font-size: 1.1rem;
+.thermal__row--sm { font-size: 11px; }
+.thermal__total { font-weight: 700; font-size: 15px; margin-top: 4px; }
+.thermal__pay { text-align: center; margin-top: 8px; font-size: 12px; }
+.thermal__parts { margin-top: 4px; }
+.thermal__foot {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 11px;
+  word-break: break-word;
 }
-/* Al imprimir, solo el ticket (sin cabecera, menu ni botones). */
+
+/* Impresión: SOLO el ticket, a 58 mm, sin nada del resto de la app. */
 @media print {
-  .app-header, .app-nav, .link-back, .btn { display: none !important; }
-  .app-main { padding: 0; }
-  .ticket { border: none; }
+  @page { size: 58mm auto; margin: 0; }
+  body { background: #fff !important; }
+  .app-header, .app-nav, .print-hide { display: none !important; }
+  .app-main { padding: 0 !important; overflow: visible !important; }
+  /* El ticket toma el ancho del papel; área útil ~48 mm centrada. */
+  .thermal {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 3mm !important;
+    border-radius: 0 !important;
+    font-size: 12px;
+    color: #000 !important;
+    background: #fff !important;
+  }
 }
 
 /* ----- Mesas: carta de un toque (velocidad de servicio) ----- */

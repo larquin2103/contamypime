@@ -55,6 +55,9 @@ export function TableScreen() {
     [order?.area],
     0
   )
+  // Encabezado (nombre del negocio) y pie del ticket, configurables en Ajustes.
+  const ticketHeader = useLiveQuery(() => configRepo.get('ticketHeader', ''), [], '')
+  const ticketFooter = useLiveQuery(() => configRepo.get('ticketFooter', ''), [], '')
 
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('') // filtro de categoria (vacio = todas)
@@ -268,8 +271,10 @@ export function TableScreen() {
     }
   }
 
-  // Ticket (comprobante). La impresion a hardware llega en una fase posterior;
-  // por ahora se ve en pantalla y se puede imprimir con el dialogo del sistema.
+  // Ticket (comprobante) formateado para impresora TERMICA de 58 mm (GOOJPRT
+  // PT-210, ESC/POS). Se imprime con window.print(): en Android el diálogo
+  // envía el ticket a la impresora emparejada por Bluetooth (vía RawBT o el
+  // servicio de impresión). El CSS @media print aísla SOLO el ticket a 58 mm.
   if (done || closed) {
     const d = done || {
       subtotal: Number(sale?.subtotal ?? 0),
@@ -277,30 +282,63 @@ export function TableScreen() {
       pct: Number(sale?.serviceChargePct ?? 0),
       total: Number(sale?.totalBase ?? 0)
     }
+    // Lineas del ticket: si es una mesa ya cobrada, se toman de la venta
+    // (inmutable); si es el cobro recién hecho, de las líneas vivas.
+    const ticketLines = sale?.items?.length
+      ? sale.items.map((it) => ({ qty: it.qty, name: it.name, total: it.lineTotal }))
+      : live.map((i) => ({ qty: i.qty, name: i.name, total: i.lineTotal }))
+    const folio = (sale?.id || order.id).slice(-6).toUpperCase()
+    const payLabel = sale?.paymentMethod === 'mixed'
+      ? 'Pago mixto'
+      : sale?.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'
+
     return (
       <div className="screen">
-        <button className="link-back" onClick={() => navigate('/salon')}>← Volver al salón</button>
-        <div className="card ticket">
-          <h3 style={{ textAlign: 'center' }}>Comprobante</h3>
-          <p className="muted" style={{ textAlign: 'center' }}>
+        <button className="link-back print-hide" onClick={() => navigate('/salon')}>← Volver al salón</button>
+
+        <div className="thermal" id="ticket">
+          {ticketHeader
+            ? <div className="thermal__head">{ticketHeader}</div>
+            : <div className="thermal__head">COMPROBANTE</div>}
+          <div className="thermal__meta">
             {order.area} · {order.table}<br />
             {new Date(order.closedAt || Date.now()).toLocaleString()}<br />
-            Atendió: {userName(order.openedBy)}
-          </p>
-          <div className="ticket__lines">
-            {live.map((i) => (
-              <div key={i.id} className="ticket__line">
-                <span>{i.qty} × {i.name}</span>
-                <strong>{formatMoney(i.lineTotal, baseCurrency)}</strong>
-              </div>
-            ))}
+            Atendió: {userName(order.openedBy)}<br />
+            Folio: {folio}
           </div>
-          <div className="ticket__line"><span>Subtotal</span><strong>{formatMoney(d.subtotal, baseCurrency)}</strong></div>
+          <div className="thermal__rule" />
+          {ticketLines.map((l, i) => (
+            <div key={i} className="thermal__item">
+              <div className="thermal__item-name">{l.qty} x {l.name}</div>
+              <div className="thermal__item-amt">{formatMoney(l.total, baseCurrency)}</div>
+            </div>
+          ))}
+          <div className="thermal__rule" />
+          <div className="thermal__row"><span>Subtotal</span><span>{formatMoney(d.subtotal, baseCurrency)}</span></div>
           {d.pct > 0 && (
-            <div className="ticket__line"><span>Servicio {d.pct}%</span><strong>{formatMoney(d.service, baseCurrency)}</strong></div>
+            <div className="thermal__row"><span>Servicio {d.pct}%</span><span>{formatMoney(d.service, baseCurrency)}</span></div>
           )}
-          <div className="ticket__line ticket__total"><span>TOTAL</span><strong>{formatMoney(d.total, baseCurrency)}</strong></div>
-          <button className="btn btn--ghost btn--block" onClick={() => window.print()}>🖨 Imprimir</button>
+          <div className="thermal__row thermal__total"><span>TOTAL</span><span>{formatMoney(d.total, baseCurrency)}</span></div>
+          <div className="thermal__pay">{payLabel}</div>
+          {sale?.paymentMethod === 'mixed' && Array.isArray(sale.payments) && (
+            <div className="thermal__parts">
+              {sale.payments.map((p, i) => (
+                <div key={i} className="thermal__row thermal__row--sm">
+                  <span>{p.method === 'transfer' ? 'Transf.' : 'Efec.'} {p.currency}</span>
+                  <span>{formatMoney(p.amount, p.currency)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {ticketFooter && <div className="thermal__foot">{ticketFooter}</div>}
+        </div>
+
+        <div className="print-hide" style={{ marginTop: 12 }}>
+          <button className="btn btn--primary btn--block" onClick={() => window.print()}>🖨 Imprimir ticket</button>
+          <p className="muted" style={{ marginTop: 8 }}>
+            En el diálogo, elige la impresora Bluetooth (o RawBT). El ticket sale
+            en papel de 58 mm.
+          </p>
         </div>
       </div>
     )

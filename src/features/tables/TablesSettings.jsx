@@ -17,11 +17,14 @@ export function TablesSettings() {
   const areas = useLiveQuery(() => configRepo.getAreas(), [], undefined)
   const tables = useLiveQuery(() => configRepo.getTables(), [], undefined)
   const charges = useLiveQuery(() => configRepo.getServiceCharges(), [], undefined)
+  const tHeader = useLiveQuery(() => configRepo.get('ticketHeader', ''), [], undefined)
+  const tFooter = useLiveQuery(() => configRepo.get('ticketFooter', ''), [], undefined)
   const [draft, setDraft] = useState({}) // nombre de mesa en curso, por area
   const [saved, setSaved] = useState(false)
 
   if (!hasModule(LICENSE_MODULES.TABLES)) return null
   if (areas === undefined || tables === undefined || charges === undefined) return null
+  if (tHeader === undefined || tFooter === undefined) return null
 
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1200) }
 
@@ -131,6 +134,28 @@ export function TablesSettings() {
           </div>
         )
       })}
+
+      {/* Ticket de la impresora térmica (58 mm) */}
+      <div className="card">
+        <strong>🖨️ Ticket impreso</strong>
+        <p className="muted">Encabezado y pie del comprobante que sale por la impresora (58 mm).</p>
+        <label className="field">
+          <span>Encabezado (nombre del negocio)</span>
+          <input
+            defaultValue={tHeader}
+            placeholder="Ej: Cafetería La Esquina"
+            onBlur={(e) => { configRepo.set('ticketHeader', e.target.value.trim()); flash() }}
+          />
+        </label>
+        <label className="field">
+          <span>Pie (mensaje final)</span>
+          <input
+            defaultValue={tFooter}
+            placeholder="Ej: ¡Gracias por su visita!"
+            onBlur={(e) => { configRepo.set('ticketFooter', e.target.value.trim()); flash() }}
+          />
+        </label>
+      </div>
 
       {saved && <p className="ok-text">Guardado ✓</p>}
     </section>
