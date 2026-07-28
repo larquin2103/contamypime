@@ -5,14 +5,18 @@ import { ChevronLeft, Receipt, Wallet, LogOut } from 'lucide-react'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { usersRepo } from '../../repositories/usersRepo'
+import { ordersRepo } from '../../repositories/ordersRepo'
+import { db } from '../../db/db'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { CashInputs } from '../../components/CashInputs'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 import { DenominationCounter, totalsFromCounts } from '../../components/DenominationCounter'
 import { ShiftSalesSummary } from './ShiftSalesSummary'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
-import { CASH_CURRENCIES, ELABORATION } from '../../db/constants'
+import { CASH_CURRENCIES, ELABORATION, ORDER_STATUS } from '../../db/constants'
 import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
@@ -180,17 +184,51 @@ function OpenShiftForm() {
 
 // ---- Turno activo (mio) ----
 function ActiveShiftPanel({ shift, onClosed }) {
-  const { isManager } = useAuth()
+  const { isManager, user } = useAuth()
+  const { hasModule } = useLicense()
   const navigate = useNavigate()
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   // Retoma el cierre si el vendedor fue al conteo y volvio (flujo no se pierde).
   const [closing, setClosing] = useState(() => sessionStorage.getItem('closeFlowShift') === shift.id)
   const [showSales, setShowSales] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  // Modulo 'mesas': un turno con mesas abiertas/reservadas en su area NO se puede
+  // cerrar (esas cuentas quedarian colgadas de un turno cerrado). Se bloquea el
+  // cierre hasta cobrarlas o liberarlas. Gateado: sin el modulo, nada cambia.
+  const tablesModule = hasModule(LICENSE_MODULES.TABLES)
+  const openTables = useLiveQuery(
+    () => (tablesModule && shift.area ? ordersRepo.listActive(shift.area) : []),
+    [tablesModule, shift.area],
+    []
+  )
+  const tableItems = useLiveQuery(
+    () => (tablesModule ? db.orderItems.toArray() : []),
+    [tablesModule],
+    []
+  )
+  const itemsOf = (oid) => tableItems.filter((i) => i.orderId === oid && !i.voided)
+    .reduce((a, i) => a + Number(i.qty || 0), 0)
+  // Mesas "en espera" (abiertas sin consumo): se pueden liberar de golpe.
+  const emptyTables = openTables.filter((o) => o.status === ORDER_STATUS.OPEN && itemsOf(o.id) === 0)
+  const blocking = openTables.length > 0
 
   const startClose = () => {
+    if (blocking) return // el boton esta deshabilitado, doble seguro
     sessionStorage.setItem('closeFlowShift', shift.id)
     sessionStorage.setItem('closeFlowStep', '1') // arranca desde el principio
     setClosing(true)
+  }
+
+  // Libera de una vez las mesas en espera (sin consumo). Las que tienen consumo
+  // hay que cobrarlas o anularlas en el salon (con su PIN), nunca en masa aqui.
+  const releaseEmpties = async () => {
+    setBusy(true)
+    try {
+      for (const o of emptyTables) {
+        await ordersRepo.voidOrder({ orderId: o.id, userId: user.id, note: 'Liberada al cerrar turno' })
+      }
+    } finally { setBusy(false) }
   }
 
   if (closing) {
@@ -280,7 +318,26 @@ function ActiveShiftPanel({ shift, onClosed }) {
         {showSales && <ShiftSalesSummary shiftId={shift.id} />}
       </section>
 
-      <button className="btn btn--primary btn--block" onClick={startClose}>
+      {blocking && (
+        <section className="card card--warn">
+          <strong>🍽️ No puedes cerrar el turno todavía</strong>
+          <p className="muted">
+            Hay <strong>{openTables.length}</strong> mesa(s) sin cerrar en {shift.area}.
+            Cóbralas o libéralas antes de cerrar el turno (si no, quedarían
+            colgadas de un turno cerrado).
+          </p>
+          <button className="btn btn--primary btn--block" onClick={() => navigate('/salon')}>
+            Ir al salón
+          </button>
+          {emptyTables.length > 0 && (
+            <button className="btn btn--ghost btn--block" disabled={busy} onClick={releaseEmpties}>
+              {busy ? 'Liberando…' : `Liberar ${emptyTables.length} mesa(s) en espera (sin consumo)`}
+            </button>
+          )}
+        </section>
+      )}
+
+      <button className="btn btn--primary btn--block" onClick={startClose} disabled={blocking}>
         <LogOut size={18} strokeWidth={2} /> Cerrar turno
       </button>
     </div>

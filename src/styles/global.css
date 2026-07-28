@@ -2569,3 +2569,9 @@ input[type='file'] {
 }
 .salon-menu__title { overflow-wrap: anywhere; }
 .salon-menu .btn { width: 100%; }
+
+/* Aviso (bloqueo de cierre de turno con mesas abiertas, etc.) */
+.card--warn {
+  border-color: var(--warn);
+  background: rgba(251, 191, 36, 0.08);
+}
