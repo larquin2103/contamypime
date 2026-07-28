@@ -15,6 +15,7 @@ import {
   buildTransfersReport,
   buildAccountsReport,
   buildCountReport,
+  buildTablesReport,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -93,6 +94,8 @@ export function ReportsScreen() {
       {card('count', 'Conteo físico (submayor)', 'Conciliación por conteo aprobado: existencia inicial, ventas que la rebajan, teórico, físico y diferencia — áreas y almacén central', buildCountReport, true)}
       {hasModule(LICENSE_MODULES.ACCOUNTS) &&
         card('accounts', 'Movimientos de cuentas', 'Créditos y débitos de la tesorería, con saldos', buildAccountsReport, true)}
+      {hasModule(LICENSE_MODULES.TABLES) &&
+        card('tables', 'Ventas por mesa', 'Cuentas cobradas por mesa: consumo, servicio, total y ticket promedio', buildTablesReport, true)}
     </div>
   )
 }

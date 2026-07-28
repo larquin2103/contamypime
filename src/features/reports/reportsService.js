@@ -924,6 +924,54 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url)
 }
 
+// Modulo 'mesas': ventas cobradas desde una mesa (cafeteria). Una fila por
+// cuenta cerrada, con su desglose (consumo, servicio, total). Al final, totales
+// y ticket promedio. Solo mira ventas que llevan mesa (sale.table): las ventas
+// directas no aparecen aqui.
+export async function buildTablesReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const sales = (await db.sales.toArray())
+    .filter((s) => !s.voided && s.table && inRange(s.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const methodOf = (s) =>
+    s.paymentMethod === 'mixed' ? 'Mixto' : s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'
+
+  const rows = []
+  let totSub = 0
+  let totServ = 0
+  let totTotal = 0
+  for (const s of sales) {
+    const units = (s.items || []).reduce((a, it) => a + Number(it.qty || 0), 0)
+    const sub = round2(s.subtotal ?? s.totalBase ?? 0)
+    const serv = round2(s.serviceChargeAmount ?? 0)
+    const tot = round2(s.totalBase ?? 0)
+    totSub += sub; totServ += serv; totTotal += tot
+    rows.push([
+      formatDateTime(s.createdAt),
+      areaLabel(s.area),
+      s.table,
+      names[s.sellerId] || 'vendedor',
+      round2(units),
+      sub,
+      s.serviceChargePct ? `${s.serviceChargePct}%` : '',
+      serv,
+      tot,
+      methodOf(s)
+    ])
+  }
+  const avg = sales.length ? round2(totTotal / sales.length) : 0
+  rows.push(['', '', '', 'TOTALES', '', round2(totSub), '', round2(totServ), round2(totTotal), ''])
+  rows.push(['', '', '', `Cuentas: ${sales.length}`, '', '', 'Ticket promedio', avg, '', ''])
+  return {
+    title: 'Ventas por mesa',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Área', 'Mesa', 'Camarero', 'Unidades', 'Consumo', 'Serv.%', 'Servicio', 'Total', 'Método'],
+    rows,
+    filename: 'ventas-mesas',
+    orientation: 'landscape'
+  }
+}
+
 // --- Exportadores (carga diferida de las librerias) ---
 
 export async function exportExcel(report) {
