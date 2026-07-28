@@ -282,11 +282,22 @@ export function TableScreen() {
       pct: Number(sale?.serviceChargePct ?? 0),
       total: Number(sale?.totalBase ?? 0)
     }
-    // Lineas del ticket: si es una mesa ya cobrada, se toman de la venta
-    // (inmutable); si es el cobro recién hecho, de las líneas vivas.
-    const ticketLines = sale?.items?.length
-      ? sale.items.map((it) => ({ qty: it.qty, name: it.name, total: it.lineTotal }))
-      : live.map((i) => ({ qty: i.qty, name: i.name, total: i.lineTotal }))
+    // Lineas del ticket AGRUPADAS por producto: aunque se hayan agregado de una
+    // en una (7 lineas de "Refresco"), el ticket muestra un solo renglon con la
+    // cantidad total (7 x Refresco). Se toman de la venta inmutable si la mesa
+    // ya se cobro; si es el cobro recien hecho, de las lineas vivas.
+    const rawLines = sale?.items?.length ? sale.items : live
+    const ticketLines = (() => {
+      const map = new Map()
+      for (const it of rawLines) {
+        const key = it.productId || it.name
+        const g = map.get(key) || { qty: 0, name: it.name, total: 0 }
+        g.qty += Number(it.qty || 0)
+        g.total += Number(it.lineTotal || 0)
+        map.set(key, g)
+      }
+      return [...map.values()]
+    })()
     const folio = (sale?.id || order.id).slice(-6).toUpperCase()
     const payLabel = sale?.paymentMethod === 'mixed'
       ? 'Pago mixto'

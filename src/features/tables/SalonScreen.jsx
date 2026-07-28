@@ -153,7 +153,8 @@ export function SalonScreen() {
           {/* Leyenda de estados */}
           <div className="salon-legend">
             <span className="salon-legend__item"><i className="dot dot--free" />Libre</span>
-            <span className="salon-legend__item"><i className="dot dot--busy" />Ocupada</span>
+            <span className="salon-legend__item"><i className="dot dot--waiting" />En espera</span>
+            <span className="salon-legend__item"><i className="dot dot--busy" />Activa</span>
             <span className="salon-legend__item"><i className="dot dot--reserved" />Reservada</span>
             <span className="salon-legend__item"><i className="dot dot--long" />+1 h</span>
           </div>
@@ -183,8 +184,16 @@ export function SalonScreen() {
                 const order = active.find((o) => o.area === area && o.table === t)
                 const reserved = order?.status === ORDER_STATUS.RESERVED
                 const occupied = order?.status === ORDER_STATUS.OPEN
-                const long = occupied && minutesOpen(order.openedAt) >= 60
-                const state = reserved ? 'reserved' : long ? 'long' : occupied ? 'busy' : 'free'
+                const count = order ? orderCount(order.id) : 0
+                // Mesa abierta SIN consumo todavia = "en espera de pedido"; con
+                // consumo = "activa". Se distinguen a simple vista.
+                const waiting = occupied && count === 0
+                const long = occupied && count > 0 && minutesOpen(order.openedAt) >= 60
+                const state = reserved ? 'reserved'
+                  : waiting ? 'waiting'
+                  : long ? 'long'
+                  : occupied ? 'busy'
+                  : 'free'
                 const mine = canOperate(area)
                 // Un toque abre/entra a la mesa (accion mas frecuente). El boton
                 // "..." deja a mano reservar o cancelar sin estorbar.
@@ -206,10 +215,16 @@ export function SalonScreen() {
                       onClick={primary}
                     >
                     <span className="table-card__name">{t}</span>
-                    {occupied && (
+                    {waiting && (
+                      <>
+                        <span className="table-card__state">En espera de pedido</span>
+                        <span className="table-card__who">{userName(order.openedBy)}</span>
+                      </>
+                    )}
+                    {occupied && count > 0 && (
                       <>
                         <span className="table-card__total">{formatMoney(orderTotal(order.id), baseCurrency)}</span>
-                        <span className="table-card__meta">{orderCount(order.id)} ítem(s) · {since(order.openedAt)}</span>
+                        <span className="table-card__meta">{count} ítem(s) · {since(order.openedAt)}</span>
                         <span className="table-card__who">{userName(order.openedBy)}</span>
                       </>
                     )}
@@ -232,8 +247,8 @@ export function SalonScreen() {
       {/* Acciones al tocar una mesa libre o reservada */}
       {menu && (
         <div className="modal-backdrop" onClick={() => setMenu(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>{menu.table}</h3>
+          <div className="modal salon-menu" onClick={(e) => e.stopPropagation()}>
+            <h3 className="salon-menu__title">{menu.table}</h3>
             <p className="muted">{menu.area}</p>
 
             {!canOperate(menu.area) && !menu.order && (

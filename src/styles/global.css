@@ -2162,6 +2162,7 @@ input[type='file'] {
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
 .dot--free { border: 1px dashed var(--text-3); }
 .dot--busy { background: var(--primary); }
+.dot--waiting { background: var(--warn); opacity: 0.75; }
 .dot--reserved { background: #7aa7ff; }
 .dot--long { background: var(--warn); }
 
@@ -2246,6 +2247,9 @@ input[type='file'] {
 /* Estados: libre (tenue) · ocupada (verde) · reservada (azul) · +1h (ambar) */
 .table-card--free { border-style: dashed; }
 .table-card--busy { border-color: var(--primary); background: var(--surface-hi); }
+/* En espera: mesa abierta sin consumo todavia. */
+.table-card--waiting { border-color: var(--warn); border-style: dashed; }
+.table-card--waiting .table-card__state { color: var(--warn); font-weight: 600; }
 .table-card--reserved { border-color: #7aa7ff; background: var(--surface-hi); }
 .table-card--reserved .table-card__state { color: #7aa7ff; font-weight: 600; }
 .table-card--long { border-color: var(--warn); background: var(--surface-hi); }
@@ -2555,3 +2559,13 @@ input[type='file'] {
 }
 /* Hueco para que la carta no quede tapada por la barra de cobro. */
 .screen--paybar { padding-bottom: 68px; }
+
+/* Menu de acciones de una mesa: responsive, no desborda, respeta el ancho de la
+   app (480px como el resto) y el area segura inferior del telefono. */
+.salon-menu {
+  width: min(480px, 100%);
+  max-width: 100%;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+.salon-menu__title { overflow-wrap: anywhere; }
+.salon-menu .btn { width: 100%; }
