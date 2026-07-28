@@ -11,6 +11,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
 import { ORDER_STATUS } from '../../db/constants'
+import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 
 // ---------------------------------------------------------------------------
 // Panel del SALON (modulo 'mesas'). De un vistazo: el estado de cada mesa del
@@ -44,6 +45,7 @@ export function SalonScreen() {
   const navigate = useNavigate()
   const [busy, setBusy] = useState('')
   const [menu, setMenu] = useState(null) // { area, table, order } al tocar una mesa
+  const [voidAsk, setVoidAsk] = useState(null) // pedido CON consumo a anular (pide mando)
 
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const tablesMap = useLiveQuery(() => configRepo.getTables(), [], {})
@@ -110,6 +112,29 @@ export function SalonScreen() {
     setBusy(`${order.area}|${order.table}`)
     try {
       await ordersRepo.cancelReservation({ orderId: order.id, userId: user.id })
+      setMenu(null)
+    } finally { setBusy('') }
+  }
+
+  // Liberar una mesa EN ESPERA (abierta sin consumo, p.ej. abierta por error):
+  // la mesa vuelve a libre. No requiere mando porque no hay nada que descartar.
+  const releaseEmpty = async (order) => {
+    setBusy(`${order.area}|${order.table}`)
+    try {
+      await ordersRepo.voidOrder({ orderId: order.id, userId: user.id, note: 'Mesa liberada sin consumo' })
+      setMenu(null)
+    } finally { setBusy('') }
+  }
+
+  // Anular una mesa CON consumo (autorizado por mando en OwnerAuthModal): devuelve
+  // el stock consumido y la mesa vuelve a libre, sin generar venta.
+  const voidWithConsumo = async () => {
+    const order = voidAsk
+    if (!order) return
+    setBusy(`${order.area}|${order.table}`)
+    try {
+      await ordersRepo.voidOrder({ orderId: order.id, userId: user.id, note: 'Pedido anulado' })
+      setVoidAsk(null)
       setMenu(null)
     } finally { setBusy('') }
   }
@@ -255,7 +280,7 @@ export function SalonScreen() {
               <p className="muted">Necesitas turno abierto en esta área para atenderla.</p>
             )}
 
-            {menu.order?.status === ORDER_STATUS.RESERVED ? (
+            {menu.order?.status === ORDER_STATUS.RESERVED && (
               <>
                 <p className="muted">Mesa reservada hace {since(menu.order.openedAt)}.</p>
                 {canOperate(menu.area) && (
@@ -264,10 +289,29 @@ export function SalonScreen() {
                   </button>
                 )}
                 <button className="btn btn--ghost btn--block" onClick={() => cancelReserve(menu.order)}>
-                  Cancelar reserva
+                  Cancelar reserva · liberar
                 </button>
               </>
-            ) : (
+            )}
+
+            {menu.order?.status === ORDER_STATUS.OPEN && (
+              <>
+                <button className="btn btn--primary btn--block" onClick={() => navigate(`/mesa/${menu.order.id}`)}>
+                  Ver la cuenta
+                </button>
+                {orderCount(menu.order.id) === 0 ? (
+                  <button className="btn btn--ghost btn--block" onClick={() => releaseEmpty(menu.order)}>
+                    Liberar mesa (sin consumo)
+                  </button>
+                ) : (
+                  <button className="btn btn--ghost btn--block link-del" onClick={() => setVoidAsk(menu.order)}>
+                    Anular pedido y liberar…
+                  </button>
+                )}
+              </>
+            )}
+
+            {!menu.order && (
               <>
                 {canOperate(menu.area) && (
                   <button className="btn btn--primary btn--block" onClick={() => openTable(menu.area, menu.table)}>
@@ -280,9 +324,17 @@ export function SalonScreen() {
               </>
             )}
 
-            <button className="btn btn--ghost btn--block" onClick={() => setMenu(null)}>Cerrar</button>
+            <button className="btn btn--ghost btn--block" onClick={() => setMenu(null)}>Cerrar este menú</button>
           </div>
         </div>
+      )}
+
+      {/* Anular una mesa con consumo: devuelve el stock, requiere PIN de mando. */}
+      {voidAsk && (
+        <OwnerAuthModal
+          onCancel={() => setVoidAsk(null)}
+          onAuthorized={voidWithConsumo}
+        />
       )}
     </div>
   )
