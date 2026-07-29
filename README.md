@@ -4,7 +4,10 @@ Sistema de gestión para una MYPIME cubana (comercio minorista con varios vended
 PWA instalable en Android desde Chrome, **100% funcional offline** (todos los datos en IndexedDB).
 
 > Estado actual: **Fases 1–5 completas** (núcleo, caja/traspaso, conteo/auditoría/reportes,
-> sincronización Firebase y seguridad por licencias). Multi-punto de venta diferido.
+> sincronización Firebase y seguridad por licencias), **Fase 6** (áreas de venta + almacén por
+> ubicaciones + rol Administrativo) y **Fase 7 en curso** (robustez: respaldo, resiliencia).
+> Además, **módulos opcionales por licencia**: mayorista, cuentas, elaboración y **mesas**.
+> Multi-punto de venta físico diferido.
 
 ## Stack
 
@@ -47,8 +50,8 @@ src/
 └── styles/
 ```
 
-La capa `repositories/` aísla el acceso a datos: cuando llegue la Fase 4 (RxDB+Firestore),
-solo se cambia esa capa, no las pantallas.
+La capa `repositories/` aísla el acceso a datos: gracias a ella se montó la sincronización
+(Fase 4, capa propia sobre Firestore — **no** se migró a RxDB) sin reescribir las pantallas.
 
 ## Modelo de datos (Fase 1)
 
@@ -69,6 +72,24 @@ Colecciones en IndexedDB (PK = UUID string en todas):
 | `cashMovements` | Extracciones de caja autorizadas (separadas de ventas) |
 | `internalDebts` | Deuda interna (producto retirado sin pago; no es ingreso) |
 | `auditEvents` | Base de auditoría para Fase 3 |
+
+Colecciones añadidas en fases/módulos posteriores (esquema Dexie **v10**; ver
+`src/db/db.js` y `CLAUDE.md` para el detalle de cada versión):
+
+| Colección | Versión | Propósito |
+|-----------|---------|-----------|
+| `counts` | v2 | Conteo físico de inventario |
+| `syncState` | v3 | Cursores de sincronización (marca de agua por colección) |
+| `transfers` | v5 | Salidas almacén → área (Bloque 20). `stockMovements`/`products` ganan `location` |
+| `errorLog` | v6 | Registro **local** de errores (no sincroniza ni viaja en respaldos) |
+| `partners`, `partnerMovements` | v7 | Módulo `cuentas`: proveedores/terceros (saldo derivado) |
+| `accounts`, `accountMovements` | v8 | Módulo `cuentas`: tesorería del negocio |
+| `conversions` | v9 | Módulo `mayorista`: fraccionamiento en el almacén |
+| `orders`, `orderItems` | v10 | Módulo `mesas`: cuenta por mesa (líneas append-only) |
+
+> **Áreas y ubicaciones:** cada producto lleva `area` (índice, v4) y `stockByLocation`
+> (`{ '__almacen': Q, 'Víveres': Q, ... }`, v5). El stock por ubicación sale del libro mayor;
+> `products.stock`/`stockByLocation` son cachés que se actualizan en la misma transacción.
 
 ### Reglas de negocio clave
 
@@ -145,6 +166,38 @@ temporales**. Una licencia es un texto firmado con la **clave privada** del desa
 - [x] **Bloque 29** — Vigencia + periodo de gracia + **anti-trampa de reloj** (marca de agua de fecha) + aviso "por vencer" en la cabecera
 - [x] **Bloque 30** — Estado y **renovación** de licencia desde Ajustes (negocio, plan, días restantes)
 - [x] **Bloque 31** — Licencia ligada a la nube + **límite de dispositivos** (`maxDispositivos`), gestión desde Sincronización
+
+## Fase 6 — Áreas de venta y almacén por ubicaciones — ✅ COMPLETA
+
+Un punto puede dividirse en **áreas** (Víveres, Carnicería, …), cada una con su **caja y cuadre
+propios**. Turno **por vendedor** (varios abiertos a la vez = normal); catálogo global con cobro
+por área y ventas cruzadas auditadas. Un **almacén central** (`__almacen`) distribuye a las áreas
+por **traspasos** (`transfers`); el stock vive por ubicación (`stockByLocation`).
+
+- [x] **Bloque 19** — Áreas de venta: turno por vendedor, caja/cuadre por área, ventas cruzadas
+- [x] **Bloque 20** — Almacén con ubicaciones: entradas al almacén, salidas a áreas, conteo por ubicación
+- [x] **Bloque 20.6** — Rol **Administrativo** (mando operativo sin la identidad del negocio: no toca usuarios, licencia ni nube)
+
+## Fase 7 — Robustez y calidad profesional — 🚧 EN CURSO
+
+- [x] **Bloque 32** — Protección del dato local: `storage.persist()`, respaldo/restauración completa en `/backup`, recordatorio en el Home
+- [x] **Bloque 33** — Resiliencia: `ErrorBoundary` global, registro local de errores (`errorLog`) y pantalla `/errors`
+- [ ] **Bloques 34–39** — Pendientes (ver `docs/FASE7.md`)
+
+## Módulos de licencia opcionales
+
+Funciones que se venden por separado y viajan **firmadas** en la licencia (`modulos: [...]`).
+Sin el campo, ningún módulo se habilita y la app es idéntica a la versión clásica. Se comprueban
+con `useLicense().hasModule(...)`; **todo lo de un módulo va gateado** y quitarlo no borra nada.
+
+- **`mayorista`** — venta desde el almacén central, precios por escala, pago mixto, conversión de productos.
+- **`cuentas`** — proveedores/terceros (consignación, por pagar/cobrar) + cuentas de tesorería.
+- **`elaboracion`** — centro de elaboración intermedio (almacén → elaboración → área) con rol acotado.
+- **`mesas`** — cuentas abiertas por **mesa** dentro de un área (cafetería/restaurante):
+  panel del salón, estados de mesa (libre/reservada/ocupada), **un toque = una unidad** con
+  rebaja de stock en el acto, cargo por servicio (eximible por el mando con PIN), **ticket
+  térmico 58 mm** (ESC/POS por Bluetooth) y reporte *"Ventas por mesa"*. Cobro por el camino
+  normal (efectivo/transferencia/mixto); la venta se guarda **agrupada por producto**.
 
 ### Estilo y correcciones recientes
 

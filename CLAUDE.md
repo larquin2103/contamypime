@@ -50,6 +50,9 @@ src/
 ├── features/                 # cada función de negocio en su carpeta
 │   ├── auth/ settings/ home/ products/ import/ shifts/ sales/
 │   ├── inventory/ cash/ handoff/ dashboard/ audit/ reports/ sync/ help/
+│   ├── tables/               # módulo 'mesas' (salón, cuenta por mesa, ticket)
+│   ├── partners/ accounts/   # módulo 'cuentas' (proveedores/terceros + tesorería)
+│   ├── license/ backup/ errors/  # activación, respaldo local, registro de errores
 ├── components/               # UI compartida (PinInput, Layout, CashInputs, ...)
 ├── lib/                      # utilidades puras (ids, pin, currency, dates, search, firebase)
 └── styles/global.css         # estilos globales (tema oscuro, clases .card .btn .field ...)
@@ -126,6 +129,50 @@ producto tiene `stockByLocation = { '__almacen': Q1, 'Víveres': Q2, ... }`:
 
 **Catálogo + entradas:** coherencia de plantilla (mismo formato, mismo orden de columnas).
 
+## Módulos de licencia (funciones que se venden por separado)
+
+Cada licencia puede traer, **firmados** en su payload (`modulos: [...]`), módulos opcionales.
+Sin el campo → **ningún módulo** y la app es idéntica a la versión clásica. Definidos en
+`src/lib/license.js` (`LICENSE_MODULES`) y comprobados en las pantallas con
+`useLicense().hasModule(...)` (solo cuentan si la licencia está **desbloqueada**; no se pueden
+autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no rompe ni borra nada
+(append-only) — solo deja de ofrecerse.
+
+- **`mayorista`** — venta desde el almacén central por el vendedor (con permiso del dueño),
+  precios por escala (mayoreo), pago mixto, conversión/fraccionamiento de productos.
+- **`cuentas`** — proveedores y terceros (consignación, por pagar/cobrar) + cuentas de
+  tesorería del negocio (`features/partners/`, `features/accounts/`).
+- **`elaboracion`** — centro de elaboración intermedio (almacén → elaboración → área) con su
+  rol acotado `ELABORATION`.
+- **`mesas`** — cuentas abiertas por mesa dentro de un área (cafetería/restaurante). Ver abajo.
+
+## Mesas (módulo `mesas`)
+
+Cuentas abiertas por **mesa** dentro de un área (cafetería/restaurante). Gateado por la
+licencia `mesas`; sin él, la app queda idéntica a la clásica. Pantallas en `features/tables/`:
+`SalonScreen` (panel del salón), `TableScreen` (cuenta de una mesa) y `TablesSettings` (mesas
+por área, % de cargo por servicio, encabezado/pie del ticket). Repo: `ordersRepo`.
+
+- **Estados de mesa:** LIBRE · RESERVADA (apartada, sin consumo) · OCUPADA (cuenta en curso;
+  se resalta si lleva >1 h). Al **cobrar**, el pedido pasa a `closed` y la mesa vuelve a LIBRE
+  al instante. El dueño/admin ve todas las áreas; el vendedor solo la de su turno.
+- **Append-only por líneas:** cada consumo es una fila de `orderItems` (NO un array dentro del
+  pedido) para que la sync "última escritura gana" **fusione** adiciones de dos dispositivos
+  (camarero + caja) sin pisarse. Quitar una línea la marca `voided` con su movimiento de
+  compensación; nunca se borra.
+- **Un toque = una unidad.** El stock del área **se rebaja al agregar** cada ítem
+  (`ordersRepo.addItem` valida existencia): no se puede prometer lo que no hay. Una mesa
+  SIEMPRE consume del área de su turno (aquí no existe el almacén central).
+- **Cobro por el camino normal:** al cobrar se crea la venta con `salesRepo.create({ skipStock:
+  true })` (el inventario ya se movió al agregar) → reutiliza todo el cobro existente (efectivo,
+  transferencia, **mixto**, cuentas, consignación). La venta se guarda **agrupada por producto**
+  (una línea "5 × Refresco") igual que una venta directa, para que ticket y reportes no repitan.
+- **Cargo por servicio** configurable por área; el mando puede **eximirlo** con su PIN
+  (`OwnerAuthModal`). El **ticket térmico 58 mm** (impresora ESC/POS por Bluetooth) se imprime
+  con `window.print()` y `@media print`.
+- **Cierre de turno bloqueado** si el área tiene mesas abiertas/reservadas: hay que cobrarlas o
+  liberarlas antes (las vacías se liberan de golpe). Reporte **"Ventas por mesa"** en Reportes.
+
 ## Modelo de datos (Dexie)
 
 Versiones en `src/db/db.js`:
@@ -140,6 +187,16 @@ Versiones en `src/db/db.js`:
   movimientos previos, inicializa `stockByLocation` en productos.
 - **v6**: `errorLog` (registro local de errores, Bloque 33). LOCAL del dispositivo: no se
   sincroniza a la nube ni viaja en respaldos; se poda a las 200 entradas más recientes.
+- **v7**: `partners`, `partnerMovements` (módulo `cuentas`: proveedores/terceros). El saldo se
+  deriva de los movimientos (nunca se guarda), como el stock. Migración aditiva.
+- **v8**: `accounts`, `accountMovements` (módulo `cuentas`: tesorería). Cuentas de sistema con
+  ids FIJOS (`acc_cash_mn`, …) para que dos dispositivos no las dupliquen. Migración aditiva.
+- **v9**: `conversions` (módulo `mayorista`: fraccionamiento en el almacén; `CONVERSION_OUT/IN`
+  en el libro mayor). Migración aditiva.
+- **v10**: `orders`, `orderItems` (módulo `mesas`). `orders` = cabecera (mesa, área, turno,
+  estado); `orderItems` = líneas append-only (una por consumo, correcciones marcadas `voided`).
+  Migración aditiva. Campos nuevos en `sales` (sin índice): `orderId`, `table`, `subtotal`,
+  `serviceChargePct`, `serviceChargeAmount`, `serviceWaivedBy`.
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`.
@@ -172,6 +229,10 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   respaldo en el Home del dueño). Bloque 33 ✅ (resiliencia: ErrorBoundary global,
   registro local de errores en `errorLog` — Dexie v6, local, no sincroniza ni viaja en
   respaldos — y pantalla `/errors` para verlo/compartirlo). Bloques 34–39 pendientes.
+- **Módulos de licencia** (opcionales, ver sección "Módulos de licencia"): `mayorista` ✅
+  (venta del almacén, escalas, pago mixto, conversión), `cuentas` ✅ (proveedores/terceros +
+  tesorería), `elaboracion` ✅ (centro intermedio + rol acotado), `mesas` ✅ (cuentas por mesa,
+  ticket térmico y reporte "Ventas por mesa"). Cada uno gateado con `hasModule(...)`.
 
 ## Fase 4 — Sincronización (cómo funciona)
 
