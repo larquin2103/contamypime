@@ -204,16 +204,36 @@ export function TableScreen() {
     if (!live.length) return setError('La cuenta está vacía')
     setBusy(true)
     try {
-      const saleItems = live.map((i) => ({
-        productId: i.productId,
-        name: i.name,
-        unit: i.unit,
-        qty: i.qty,
-        unitPrice: i.unitPrice,
-        unitCost: i.unitCost,
-        lineTotal: i.lineTotal,
-        area: i.area
-      }))
+      // Las lineas de la mesa se agregan de UNA en UNA (append-only), asi que un
+      // mismo producto deja varias filas de qty 1. La VENTA, en cambio, se guarda
+      // AGRUPADA por producto (una sola linea "5 x Refresco") -> exactamente igual
+      // que una venta directa de mostrador. De este modo el ticket, el reporte de
+      // venta por turno y todos los reportes muestran un renglon por producto, sin
+      // repetir. Se agrupa por producto + precio + costo CONGELADOS: si el precio
+      // cambio a mitad del servicio, esas unidades quedan en lineas aparte (el
+      // importe sigue siendo exacto). El libro mayor (stockMovements) conserva
+      // intacto el detalle fila a fila; esto solo compacta el resumen de la venta.
+      const grouped = new Map()
+      for (const i of live) {
+        const key = `${i.productId}|${i.unitPrice}|${i.unitCost}`
+        const g = grouped.get(key)
+        if (g) {
+          g.qty = round2(g.qty + Number(i.qty || 0))
+          g.lineTotal = round2(g.lineTotal + Number(i.lineTotal || 0))
+        } else {
+          grouped.set(key, {
+            productId: i.productId,
+            name: i.name,
+            unit: i.unit,
+            qty: Number(i.qty || 0),
+            unitPrice: i.unitPrice,
+            unitCost: i.unitCost,
+            lineTotal: Number(i.lineTotal || 0),
+            area: i.area
+          })
+        }
+      }
+      const saleItems = [...grouped.values()]
       const common = {
         shiftId: order.shiftId,
         sellerId: order.openedBy,
