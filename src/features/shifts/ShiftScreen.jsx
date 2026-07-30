@@ -115,6 +115,13 @@ function ForcedCloseGuard({ shift, onCancel, onClosed }) {
   )
   const [busy, setBusy] = useState(false)
 
+  // Sin el módulo 'mesas' no hay salón: al cuadre de cierre DIRECTO, sin esperar
+  // ninguna consulta (idéntico a producción, sin el parpadeo de "comprobando").
+  // Va tras todos los hooks para no alterar su número entre renders.
+  if (!tablesModule) {
+    return <CloseShiftPanel shift={shift} forcedByOwner onCancel={onCancel} onClosed={onClosed} />
+  }
+
   if (openTables === undefined) {
     return <div className="screen"><p className="muted">Comprobando mesas…</p></div>
   }
