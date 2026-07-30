@@ -16,6 +16,7 @@ import {
   buildAccountsReport,
   buildCountReport,
   buildTablesReport,
+  buildMermasReport,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -92,6 +93,7 @@ export function ReportsScreen() {
         card('transfers', 'Salidas almacén → área', 'Qué se sacó del almacén a cada área', buildTransfersReport, true)}
       {card('inv', 'Inventario por ubicación', 'Existencias en almacén y en cada área', buildInventoryReport, false)}
       {card('count', 'Conteo físico (submayor)', 'Conciliación por conteo aprobado: existencia inicial, ventas que la rebajan, teórico, físico y diferencia — áreas y almacén central', buildCountReport, true)}
+      {card('mermas', 'Mermas', 'Rebajas por deterioro/pérdida (no son ventas): cantidad, precio de venta, costo e importe del costo (afectación al dueño)', buildMermasReport, true)}
       {hasModule(LICENSE_MODULES.ACCOUNTS) &&
         card('accounts', 'Movimientos de cuentas', 'Créditos y débitos de la tesorería, con saldos', buildAccountsReport, true)}
       {hasModule(LICENSE_MODULES.TABLES) &&

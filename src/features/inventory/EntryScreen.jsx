@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { purchasesRepo } from '../../repositories/purchasesRepo'
+import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
@@ -25,6 +26,9 @@ export function EntryScreen() {
   const { hasModule } = useLicense()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
+  // Permiso independiente: el dueño puede autorizar al VENDEDOR a registrar
+  // entradas (no depende de ningún módulo). Apagado por defecto.
+  const sellerEntriesAllowed = useLiveQuery(() => configRepo.get('sellerEntries', false), [], false)
 
   const [query, setQuery] = useState('')
   const [lines, setLines] = useState([]) // [{ productId, name, unit, qty, unitCost }]
@@ -43,20 +47,12 @@ export function EntryScreen() {
   const [importMsg, setImportMsg] = useState(null) // { added, notFound:[], errors:[] }
   const fileRef = useRef(null)
 
-  // Dueño o administrativo registran entradas de mercancia (y ven costos).
-  if (!isManager) {
-    return (
-      <div className="screen">
-        <h2>Entrada de mercancia</h2>
-        <section className="card">
-          <p>Solo el <strong>dueño o un administrativo</strong> puede registrar entradas de mercancia.</p>
-          <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
-        </section>
-      </div>
-    )
-  }
-  // Permiso configurable: el dueño puede quitarle esta facultad al administrativo.
-  if (!can('entries')) {
+  // Quien puede registrar entradas: el MANDO con la facultad 'entries' (el dueño
+  // puede quitársela al administrativo), o el VENDEDOR si el dueño activó el
+  // permiso independiente 'sellerEntries'. Las entradas siempre ingresan al
+  // almacén central (purchasesRepo), sea quien sea quien las registre.
+  const canEnter = isManager ? can('entries') : !!sellerEntriesAllowed
+  if (!canEnter) {
     return (
       <div className="screen">
         <h2>Entrada de mercancia</h2>

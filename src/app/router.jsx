@@ -18,6 +18,7 @@ import { TransferScreen } from '../features/inventory/TransferScreen'
 import { ConversionScreen } from '../features/inventory/ConversionScreen'
 import { ElaborationScreen } from '../features/inventory/ElaborationScreen'
 import { CountScreen } from '../features/inventory/CountScreen'
+import { MermaScreen } from '../features/inventory/MermaScreen'
 import { CashScreen } from '../features/cash/CashScreen'
 import { FinancesScreen } from '../features/cash/FinancesScreen'
 import { HandoffScreen } from '../features/handoff/HandoffScreen'
@@ -68,6 +69,7 @@ export function AppRouter() {
         <Route path="/convert" element={<ConversionScreen />} />
         <Route path="/elaboracion" element={<ElaborationScreen />} />
         <Route path="/count" element={<CountScreen />} />
+        <Route path="/mermas" element={<MermaScreen />} />
         <Route path="/cash" element={<CashScreen />} />
         <Route path="/finances" element={<FinancesScreen />} />
         <Route path="/handoff" element={<HandoffScreen />} />

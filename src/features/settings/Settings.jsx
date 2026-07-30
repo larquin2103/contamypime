@@ -39,6 +39,7 @@ export function Settings() {
       <WholesaleSection />
       <ElaborationSection />
       <AdminPermsSection />
+      <SellerPermsSection />
       <SemaphoreSection />
       <DenominationsSection />
       <WhatsappSection />
@@ -229,6 +230,34 @@ function AdminPermsSection() {
           </button>
         </div>
       ))}
+    </section>
+  )
+}
+
+// Permisos del VENDEDOR independientes de cualquier módulo (Ajustes). Hoy:
+// registrar entradas de mercancía. Apagados por defecto; el dueño los activa
+// cuando el vendedor los necesite y los desactiva después. No afectan al dueño
+// ni al administrativo. Las entradas del vendedor ingresan al almacén central.
+function SellerPermsSection() {
+  const entries = useLiveQuery(() => configRepo.get('sellerEntries', false), [], undefined)
+  if (entries === undefined) return null
+  return (
+    <section className="card">
+      <h3>Permisos del vendedor</h3>
+      <p className="muted">
+        Facultades que el dueño puede conceder al <strong>vendedor</strong>, independientes de
+        cualquier módulo. Apagadas por defecto; actívalas cuando las necesite y desactívalas
+        después. No afectan al dueño ni al administrativo.
+      </p>
+      <div className="kv">
+        <span className="muted">Registrar entradas de mercancía</span>
+        <button
+          className={`btn btn--sm ${entries ? 'btn--primary' : 'btn--ghost'}`}
+          onClick={() => configRepo.set('sellerEntries', !entries)}
+        >
+          {entries ? 'Activado ✓' : 'Desactivado'}
+        </button>
+      </div>
     </section>
   )
 }

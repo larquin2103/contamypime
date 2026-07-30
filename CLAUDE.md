@@ -131,6 +131,27 @@ producto tiene `stockByLocation = { '__almacen': Q1, 'Víveres': Q2, ... }`:
 
 **Catálogo + entradas:** coherencia de plantilla (mismo formato, mismo orden de columnas).
 
+## Mermas (deterioro/pérdida)
+
+Rebaja de inventario que **NO es venta** (no entra dinero): solo baja la existencia y deja
+constancia de la afectación al **costo**. Pantalla `features/inventory/MermaScreen.jsx` (`/mermas`),
+repo `mermasRepo`. Es una **función base** (no gateada por licencia); solo la usa el **mando**
+(dueño/administrativo, que ve costos).
+- **Por ubicación:** el mando elige almacén central o un área; se valida la existencia en ella.
+- **Snapshot append-only:** cada merma congela precio de venta y costo (pueden cambiar después) y
+  genera un `MERMA_OUT` en `stockMovements` que rebaja el stock real. Nunca se edita/borra.
+- **Reporte "Mermas"** (Reportes, Excel/PDF): fecha, producto, ubicación, cantidad, precio de
+  venta, costo unitario, **importe del costo (afectación = cant × costo)** y motivo; con totales
+  de afectación y de precio de venta perdido. En el submayor cuenta como "otras salidas".
+
+## Permisos del vendedor (independientes de módulos)
+
+Además de los permisos del módulo `mayorista`, hay permisos del vendedor **independientes de
+cualquier módulo**, que el dueño activa en Ajustes → *Permisos del vendedor* (apagados por
+defecto, sincronizados):
+- **`sellerEntries`** — el vendedor puede registrar **entradas de mercancía** (van al almacén
+  central, vía `purchasesRepo`, igual que las del dueño). Sin él, `EntryScreen` lo bloquea.
+
 ## Módulos de licencia (funciones que se venden por separado)
 
 Cada licencia puede traer, **firmados** en su payload (`modulos: [...]`), módulos opcionales.
@@ -204,6 +225,9 @@ Versiones en `src/db/db.js`:
   estado); `orderItems` = líneas append-only (una por consumo, correcciones marcadas `voided`).
   Migración aditiva. Campos nuevos en `sales` (sin índice): `orderId`, `table`, `subtotal`,
   `serviceChargePct`, `serviceChargeAmount`, `serviceWaivedBy`.
+- **v11**: `mermas` (deterioro/pérdida). Snapshot para el reporte de afectación (precio de venta
+  y costo AL MOMENTO de la merma); el libro mayor lleva el movimiento `MERMA_OUT` que deriva el
+  stock, como `purchases` acompaña a las entradas. Migración aditiva.
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`.

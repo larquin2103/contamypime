@@ -94,7 +94,11 @@ export const MOVEMENT_TYPES = {
   // producto (CONVERSION_OUT, -) y se da de alta otro con su propio codigo
   // (CONVERSION_IN, +). Ej: un saco de azucar -> varias jabas fraccionadas.
   CONVERSION_OUT: 'conversion_out',
-  CONVERSION_IN: 'conversion_in'
+  CONVERSION_IN: 'conversion_in',
+  // Merma (deterioro/perdida): rebaja de inventario que NO es venta. Sale de la
+  // ubicacion elegida (almacen o area). Su afectacion se valora al COSTO en el
+  // reporte de mermas (cantidad x costo = perdida para el dueño).
+  MERMA_OUT: 'merma_out'
 }
 
 // Terceros del negocio (Bloque C, modulo 'cuentas').

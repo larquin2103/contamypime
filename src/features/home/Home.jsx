@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  LayoutDashboard, Package, PackagePlus, ClipboardList, ArrowLeftRight,
+  LayoutDashboard, Package, PackagePlus, PackageMinus, ClipboardList, ArrowLeftRight,
   Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
@@ -141,6 +141,8 @@ export function Home() {
   const { hasModule } = useLicense()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
+  // Permiso independiente: el dueño autoriza al vendedor a dar entradas.
+  const sellerEntries = useLiveQuery(() => configRepo.get('sellerEntries', false), [], false)
   const initial = (user.name || '?').trim().charAt(0).toUpperCase()
 
   return (
@@ -207,6 +209,7 @@ export function Home() {
               <ActionCard to="/elaboracion" icon={Factory} title={elab.name} sub="Almacén → elaboración → ventas" />
             )}
             <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
+            <ActionCard to="/mermas" icon={PackageMinus} title="Mermas" sub="Rebajar por deterioro" />
           </Section>
           {hasModule(LICENSE_MODULES.TABLES) && (
             <Section label="Salón">
@@ -250,6 +253,11 @@ export function Home() {
           {hasModule(LICENSE_MODULES.TABLES) && (
             <Section label="Salón">
               <ActionCard to="/salon" icon={UtensilsCrossed} title="Mesas" sub="Atender y cobrar mesas" />
+            </Section>
+          )}
+          {sellerEntries && (
+            <Section label="Inventario">
+              <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Al almacén central" />
             </Section>
           )}
           <Section label="Operación">

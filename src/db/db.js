@@ -116,3 +116,12 @@ db.version(10).stores({
   orders: 'id, area, table, status, shiftId, openedBy, openedAt',
   orderItems: 'id, orderId, productId, voided, createdAt'
 })
+
+// Mermas (deterioro/perdida de mercancia): rebaja de inventario que NO es venta.
+// `mermas` guarda el snapshot para el reporte de afectacion (precio de venta y
+// costo AL MOMENTO de la merma, que pueden cambiar despues), igual que
+// `purchases` acompaña a las entradas; el libro mayor lleva el MERMA_OUT que
+// deriva el stock. Migracion aditiva: solo una tabla vacia.
+db.version(11).stores({
+  mermas: 'id, productId, location, userId, createdAt'
+})

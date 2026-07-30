@@ -753,7 +753,7 @@ const LEDGER_TIPO = {
   purchase_in: 'Compra', sale_out: 'Venta', internal_debt_out: 'Deuda interna',
   adjustment: 'Ajuste', transfer_out: 'Salida a área', transfer_in: 'Entrada de traspaso',
   partner_out: 'Entrega a tercero', conversion_in: 'Producido (conversión)',
-  conversion_out: 'Consumido (conversión)'
+  conversion_out: 'Consumido (conversión)', merma_out: 'Merma'
 }
 
 // Clasificacion fina de cada movimiento. La CARGA INICIAL (alta con existencia
@@ -770,18 +770,19 @@ function ledgerKey(m) {
     case T.CONVERSION_OUT: return 'consumo'
     case T.INTERNAL_DEBT_OUT: return 'deuda'
     case T.PARTNER_OUT: return 'terceros'
+    case T.MERMA_OUT: return 'merma'
     case T.ADJUSTMENT: return m.note === 'Existencia inicial' ? 'cargaIni' : 'ajustes'
     default: return 'ajustes'
   }
 }
-const LEDGER_KEYS = ['compras', 'traspIn', 'producido', 'ventas', 'traspOut', 'consumo', 'deuda', 'terceros', 'cargaIni', 'ajustes']
+const LEDGER_KEYS = ['compras', 'traspIn', 'producido', 'ventas', 'traspOut', 'consumo', 'deuda', 'terceros', 'merma', 'cargaIni', 'ajustes']
 const LEDGER_FULL = [
   ['compras', 'Compras'], ['traspIn', 'Traspasos recibidos'], ['producido', 'Producido'],
   ['ventas', 'Ventas'], ['traspOut', 'Traspasos a áreas'], ['consumo', 'Consumo elab.'],
-  ['deuda', 'Deuda interna'], ['terceros', 'Entrega terceros'],
+  ['deuda', 'Deuda interna'], ['terceros', 'Entrega terceros'], ['merma', 'Mermas'],
   ['cargaIni', 'Carga inicial'], ['ajustes', 'Ajustes']
 ]
-const emptyLedger = () => ({ compras: 0, traspIn: 0, producido: 0, ventas: 0, traspOut: 0, consumo: 0, deuda: 0, terceros: 0, cargaIni: 0, ajustes: 0 })
+const emptyLedger = () => ({ compras: 0, traspIn: 0, producido: 0, ventas: 0, traspOut: 0, consumo: 0, deuda: 0, terceros: 0, merma: 0, cargaIni: 0, ajustes: 0 })
 const ledgerAdd = (g, m) => { const k = ledgerKey(m); g[k] = round2(g[k] + Number(m.qty || 0)) }
 const ledgerNet = (g) => round2(LEDGER_KEYS.reduce((s, k) => s + g[k], 0))
 // Columnas intermedias segun nivel: 'basic' (pantalla/PDF) o 'full' (Excel).
@@ -791,7 +792,7 @@ const ledgerMidHead = (detail) => detail === 'full'
 const ledgerMidCols = (g, detail) => {
   if (detail === 'full') return LEDGER_FULL.map(([k]) => round2(g[k]))
   const entradas = round2(g.compras + g.traspIn + g.producido)
-  const otras = round2(g.traspOut + g.consumo + g.deuda + g.terceros)
+  const otras = round2(g.traspOut + g.consumo + g.deuda + g.terceros + g.merma)
   return [entradas, round2(g.ventas), otras, round2(g.cargaIni), round2(g.ajustes)]
 }
 
@@ -968,6 +969,53 @@ export async function buildTablesReport({ from = null, to = null } = {}) {
     head: ['Fecha', 'Área', 'Mesa', 'Camarero', 'Unidades', 'Consumo', 'Serv.%', 'Servicio', 'Total', 'Método'],
     rows,
     filename: 'ventas-mesas',
+    orientation: 'landscape'
+  }
+}
+
+// Mermas (deterioro/perdida): una fila por merma. Muestra el precio al que
+// estaba a la venta (valor que ya no se realizara), el costo unitario y el
+// importe del costo (cantidad x costo = perdida REAL para el dueño). Al final,
+// el total de afectacion al costo y el total de precio de venta perdido.
+export async function buildMermasReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const mermas = (await db.mermas.toArray())
+    .filter((m) => inRange(m.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const rows = []
+  let totCost = 0
+  let totSale = 0
+  for (const m of mermas) {
+    const qty = round2(Number(m.qty || 0))
+    const costTotal = round2(Number(m.costTotal ?? qty * Number(m.unitCost || 0)))
+    const saleTotal = round2(Number(m.saleTotal ?? qty * Number(m.salePrice || 0)))
+    totCost += costTotal
+    totSale += saleTotal
+    rows.push([
+      formatDateTime(m.createdAt),
+      m.name,
+      locationLabel(m.location),
+      qty,
+      m.unit || '',
+      round2(Number(m.salePrice || 0)),
+      round2(Number(m.unitCost || 0)),
+      costTotal,
+      m.reason || '',
+      names[m.userId] || ''
+    ])
+  }
+  if (rows.length === 0) {
+    rows.push(['Sin mermas en el periodo', '', '', '', '', '', '', '', '', ''])
+  } else {
+    rows.push(['', '', '', '', '', '', 'Venta perdida', round2(totSale), '', ''])
+    rows.push(['', '', '', '', '', '', 'AFECTACIÓN TOTAL (costo)', round2(totCost), '', ''])
+  }
+  return {
+    title: 'Mermas',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Producto', 'Ubicación', 'Cantidad', 'U/M', 'Precio venta', 'Costo unit', 'Importe costo', 'Motivo', 'Registró'],
+    rows,
+    filename: 'mermas',
     orientation: 'landscape'
   }
 }
