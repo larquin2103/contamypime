@@ -40,9 +40,8 @@ export function ShiftScreen() {
   }
   if (foreignClose) {
     return (
-      <CloseShiftPanel
+      <ForcedCloseGuard
         shift={foreignClose}
-        forcedByOwner
         onCancel={() => setForeignClose(null)}
         onClosed={(res) => { setForeignClose(null); setCloseResult(res) }}
       />
@@ -89,6 +88,78 @@ function OtherOpenShifts({ excludeId, onClose }) {
           </button>
         </section>
       ))}
+    </div>
+  )
+}
+
+// Compuerta previa al cierre FORZADO por el dueño (turno ajeno). Si el área del
+// turno tiene mesas abiertas/reservadas, avisa antes de cerrar y ofrece
+// resolverlas (cobrarlas en el salón o liberar las que están en espera). El
+// dueño ve y cobra las mesas de cualquier área. Cuando ya no quedan mesas
+// abiertas, pasa al cuadre de cierre. Gateado por el módulo 'mesas': sin él,
+// no hay mesas y va directo al cierre (comportamiento clásico).
+function ForcedCloseGuard({ shift, onCancel, onClosed }) {
+  const { user } = useAuth()
+  const { hasModule } = useLicense()
+  const navigate = useNavigate()
+  const tablesModule = hasModule(LICENSE_MODULES.TABLES)
+  const openTables = useLiveQuery(
+    () => (tablesModule && shift.area ? ordersRepo.listActive(shift.area) : []),
+    [tablesModule, shift.area],
+    undefined
+  )
+  const tableItems = useLiveQuery(
+    () => (tablesModule ? db.orderItems.toArray() : []),
+    [tablesModule],
+    []
+  )
+  const [busy, setBusy] = useState(false)
+
+  if (openTables === undefined) {
+    return <div className="screen"><p className="muted">Comprobando mesas…</p></div>
+  }
+
+  // Sin mesas pendientes: al cuadre de cierre directamente (como siempre).
+  if (openTables.length === 0) {
+    return <CloseShiftPanel shift={shift} forcedByOwner onCancel={onCancel} onClosed={onClosed} />
+  }
+
+  const itemsOf = (oid) => tableItems.filter((i) => i.orderId === oid && !i.voided)
+    .reduce((a, i) => a + Number(i.qty || 0), 0)
+  const emptyTables = openTables.filter((o) => o.status === ORDER_STATUS.OPEN && itemsOf(o.id) === 0)
+
+  // Libera de una vez las mesas EN ESPERA (sin consumo). Las que tienen consumo
+  // se cobran o anulan en el salón (con su PIN); nunca en masa aquí.
+  const releaseEmpties = async () => {
+    setBusy(true)
+    try {
+      for (const o of emptyTables) {
+        await ordersRepo.voidOrder({ orderId: o.id, userId: user.id, note: 'Liberada al forzar cierre' })
+      }
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="screen">
+      <button className="link-back" onClick={onCancel}>← Volver</button>
+      <h2>Cerrar turno de {shift.sellerName || 'vendedor'}</h2>
+      <section className="card card--warn">
+        <strong>🍽️ Hay mesas abiertas sin cobrar</strong>
+        <p className="muted">
+          {shift.sellerName || 'El vendedor'} tiene <strong>{openTables.length}</strong> mesa(s)
+          abierta(s) en {shift.area}. Cóbralas o libéralas antes de cerrar el turno; si no,
+          quedarían colgadas de un turno cerrado.
+        </p>
+        <button className="btn btn--primary btn--block" onClick={() => navigate('/salon')}>
+          Ir al salón a cobrarlas
+        </button>
+        {emptyTables.length > 0 && (
+          <button className="btn btn--ghost btn--block" disabled={busy} onClick={releaseEmpties}>
+            {busy ? 'Liberando…' : `Liberar ${emptyTables.length} mesa(s) en espera (sin consumo)`}
+          </button>
+        )}
+        <button className="btn btn--ghost btn--block" onClick={onCancel}>Cancelar</button>
+      </section>
     </div>
   )
 }
