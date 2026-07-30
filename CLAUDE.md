@@ -87,7 +87,9 @@ Importaciones pesadas (xlsx/jspdf/firebase) siempre con `import()` dinámico.
   del dueño se sigue comprobando con `isOwner`.
 - **Vendedor (SELLER)**: solo **ventas + extracciones de caja + deuda interna**, estas dos
   últimas **con autorización del dueño o de un administrativo** (`OwnerAuthModal` →
-  `usersRepo.verifyManagerPin`). **NO** hace entradas, NO cambia precios, NO ve costos, NO crea usuarios.
+  `usersRepo.verifyManagerPin`) — salvo que el dueño active el permiso mayorista
+  `sellerSelfAuthorize`, con el que el vendedor las confirma (y el retiro al cerrar turno) con
+  **su propio PIN**. **NO** hace entradas, NO cambia precios, NO ve costos, NO crea usuarios.
 - **Regla de oro:** solo el vendedor con **su turno abierto** puede vender (ni el dueño sin turno).
   Desde el Bloque 19, **varios vendedores pueden tener turno a la vez** (uno por área); el turno
   es por vendedor (`shiftsRepo.getActiveFor(sellerId)`), no global.
@@ -139,7 +141,12 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
 (append-only) — solo deja de ofrecerse.
 
 - **`mayorista`** — venta desde el almacén central por el vendedor (con permiso del dueño),
-  precios por escala (mayoreo), pago mixto, conversión/fraccionamiento de productos.
+  precios por escala (mayoreo), pago mixto, conversión/fraccionamiento de productos. Trae dos
+  permisos que el dueño activa en Ajustes → *Ventas mayoristas* (ambos apagados por defecto,
+  sincronizados, y gateados también en la lectura): `sellerWarehouseSale` (vender del almacén
+  central) y `sellerSelfAuthorize` (el vendedor confirma **extracciones de caja, deudas internas
+  y el retiro de efectivo al cerrar turno** con **su propio PIN** vía `OwnerAuthModal self=...`,
+  sin necesitar el PIN de un mando; la operación queda a su nombre).
 - **`cuentas`** — proveedores y terceros (consignación, por pagar/cobrar) + cuentas de
   tesorería del negocio (`features/partners/`, `features/accounts/`).
 - **`elaboracion`** — centro de elaboración intermedio (almacén → elaboración → área) con su

@@ -107,8 +107,9 @@ function AreasSection() {
 function WholesaleSection() {
   const { hasModule } = useLicense()
   const enabled = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], undefined)
+  const selfAuth = useLiveQuery(() => configRepo.get('sellerSelfAuthorize', false), [], undefined)
   if (!hasModule(LICENSE_MODULES.WHOLESALE)) return null
-  if (enabled === undefined) return null
+  if (enabled === undefined || selfAuth === undefined) return null
 
   return (
     <section className="card">
@@ -125,6 +126,23 @@ function WholesaleSection() {
           onClick={() => configRepo.set('sellerWarehouseSale', !enabled)}
         >
           {enabled ? 'Activado ✓' : 'Desactivado'}
+        </button>
+      </div>
+
+      <p className="muted" style={{ marginTop: 14 }}>
+        Con este permiso, el vendedor puede registrar <strong>extracciones de caja</strong>,
+        <strong> deudas internas</strong> y <strong>retirar efectivo al cerrar su turno</strong>
+        confirmando con <strong>su propio PIN</strong>, sin necesidad del dueño ni de un
+        administrativo. Cada operación queda registrada a su nombre. Desactivado (por defecto),
+        estas operaciones siguen exigiendo el PIN de un mando.
+      </p>
+      <div className="kv">
+        <span className="muted">Vendedor se autoriza con su PIN</span>
+        <button
+          className={`btn btn--sm ${selfAuth ? 'btn--primary' : 'btn--ghost'}`}
+          onClick={() => configRepo.set('sellerSelfAuthorize', !selfAuth)}
+        >
+          {selfAuth ? 'Activado ✓' : 'Desactivado'}
         </button>
       </div>
     </section>

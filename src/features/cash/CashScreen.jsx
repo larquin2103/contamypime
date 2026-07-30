@@ -66,6 +66,10 @@ export function CashScreen() {
 
 function WithdrawForm({ shift, user, isManager }) {
   const { hasModule } = useLicense()
+  // Permiso mayorista: el vendedor se autoriza con SU propio PIN (sin mando).
+  // Gateado por el modulo: si se degrada la licencia, vuelve al PIN de mando.
+  const selfAuth = useLiveQuery(() => configRepo.get('sellerSelfAuthorize', false), [], false)
+  const canSelfAuth = hasModule(LICENSE_MODULES.WHOLESALE) && !!selfAuth
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState(CASH_CURRENCIES[0])
   const [reason, setReason] = useState('')
@@ -121,13 +125,23 @@ function WithdrawForm({ shift, user, isManager }) {
         <span>Motivo</span>
         <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ej: pago a proveedor" />
       </label>
-      {!isManager && <p className="muted">Requiere autorización del dueño o administrativo (PIN) al confirmar.</p>}
+      {!isManager && (
+        <p className="muted">
+          {canSelfAuth
+            ? 'El dueño te autorizó: confírmalo con tu PIN al registrar.'
+            : 'Requiere autorización del dueño o administrativo (PIN) al confirmar.'}
+        </p>
+      )}
       {saved && <p className="ok-text">✓ Extracción registrada</p>}
       <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
         {busy ? 'Registrando…' : 'Registrar extracción'}
       </button>
       {askAuth && (
-        <OwnerAuthModal onCancel={() => setAskAuth(false)} onAuthorized={(owner) => doWithdraw(owner.name)} />
+        <OwnerAuthModal
+          self={canSelfAuth ? user : null}
+          onCancel={() => setAskAuth(false)}
+          onAuthorized={(who) => doWithdraw(who.name)}
+        />
       )}
     </section>
   )
@@ -141,6 +155,9 @@ function DebtForm({ shift, user, isManager }) {
   const users = useLiveQuery(() => usersRepo.listActive(), [], [])
   // Bloque A (mayorista): permiso del dueño para operar el almacén desde el turno.
   const warehouseAllowed = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], false)
+  // Permiso mayorista: el vendedor se autoriza con SU propio PIN (sin mando).
+  const selfAuth = useLiveQuery(() => configRepo.get('sellerSelfAuthorize', false), [], false)
+  const canSelfAuth = hasModule(LICENSE_MODULES.WHOLESALE) && !!selfAuth
   const [query, setQuery] = useState('')
   const [product, setProduct] = useState(null)
   const [qty, setQty] = useState('1')
@@ -270,7 +287,13 @@ function DebtForm({ shift, user, isManager }) {
             <span>Nota (opcional)</span>
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
-          {!isManager && <p className="muted">Requiere autorización del dueño o administrativo (PIN) al confirmar.</p>}
+          {!isManager && (
+            <p className="muted">
+              {canSelfAuth
+                ? 'El dueño te autorizó: confírmalo con tu PIN al registrar.'
+                : 'Requiere autorización del dueño o administrativo (PIN) al confirmar.'}
+            </p>
+          )}
           {saved && <p className="ok-text">✓ Deuda registrada</p>}
           <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={submit}>
             {busy ? 'Registrando…' : 'Registrar deuda'}
@@ -279,7 +302,11 @@ function DebtForm({ shift, user, isManager }) {
       )}
       {saved && !product && <p className="ok-text">✓ Deuda registrada</p>}
       {askAuth && (
-        <OwnerAuthModal onCancel={() => setAskAuth(false)} onAuthorized={(owner) => doCreate(owner.name)} />
+        <OwnerAuthModal
+          self={canSelfAuth ? user : null}
+          onCancel={() => setAskAuth(false)}
+          onAuthorized={(who) => doCreate(who.name)}
+        />
       )}
     </section>
   )

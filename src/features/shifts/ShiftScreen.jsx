@@ -363,6 +363,11 @@ const CLOSE_STEPS = ['Conteo', 'Ventas', 'Cuadre', 'Fondo', 'Cerrar']
 
 function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
   const { user, isManager } = useAuth()
+  const { hasModule } = useLicense()
+  // Permiso mayorista: el vendedor autoriza el retiro al cierre con SU propio PIN
+  // (sin mando). Gateado por el modulo: degradar la licencia vuelve al PIN de mando.
+  const selfAuthCfg = useLiveQuery(() => configRepo.get('sellerSelfAuthorize', false), [], false)
+  const canSelfAuth = hasModule(LICENSE_MODULES.WHOLESALE) && !!selfAuthCfg
   const summary = useLiveQuery(() => shiftsRepo.getSummary(shift.id), [shift.id])
   const denominations = useLiveQuery(() => configRepo.getDenominations(), [], null)
   // Paso persistido: si el vendedor va al conteo y vuelve, retoma donde estaba.
@@ -534,7 +539,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
           />
           {!canEditFloat && (
             <button className="btn btn--block" onClick={() => setAskOwner(true)}>
-              🔒 Autorizar retiro (PIN del dueño)
+              {canSelfAuth ? '🔒 Confirmar retiro (tu PIN)' : '🔒 Autorizar retiro (PIN del dueño)'}
             </button>
           )}
           <div className="cuadre-mini">
@@ -576,6 +581,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
 
       {askOwner && (
         <OwnerAuthModal
+          self={canSelfAuth ? user : null}
           onAuthorized={() => { setFloatUnlocked(true); setAskOwner(false) }}
           onCancel={() => setAskOwner(false)}
         />
