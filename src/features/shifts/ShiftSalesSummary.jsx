@@ -51,7 +51,8 @@ export function ShiftSalesSummary({ shiftId }) {
         const cobrado = isMixed
           ? Number(s.totalBase || 0)
           : isCash ? Number(s.amountPaid || 0) : Number(s.transferAmount || 0)
-        const vuelto = isCash ? Number(s.change || 0) : 0
+        // Vuelto: efectivo (cambio) y mixto (sobrepago). En transferencia no hay.
+        const vuelto = s.paymentMethod === 'transfer' ? 0 : Number(s.change || 0)
         // El vuelto puede haberse entregado en otra moneda distinta a la del cobro.
         const vueltoCur = s.changeCurrency || cur
         return (
@@ -84,7 +85,7 @@ export function ShiftSalesSummary({ shiftId }) {
             </table>
             <div className="sale-card__foot">
               <span>Cobrado <strong>{formatMoney(cobrado, cur)}</strong></span>
-              {isCash && <span>Vuelto <strong>{formatMoney(vuelto, vueltoCur)}</strong></span>}
+              {vuelto > 0 && <span>Vuelto <strong>{formatMoney(vuelto, vueltoCur)}</strong></span>}
             </div>
             {isMixed && (
               <p className="muted">

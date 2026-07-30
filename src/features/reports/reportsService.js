@@ -32,6 +32,25 @@ async function productMap() {
   return m
 }
 
+// Moneda en que se COBRO la venta (para los reportes). En efectivo, la moneda
+// del efectivo (puede ser USD); en transferencia, la de la transferencia; en
+// mixto el total se expresa en la base (MN), porque las partes pueden venir en
+// varias monedas.
+function payCurrencyOf(s) {
+  if (s.paymentMethod === 'transfer') return s.transferCurrency || 'MN'
+  if (s.paymentMethod === 'mixed') return 'MN'
+  return s.cashCurrency || s.paymentCurrency || 'MN'
+}
+
+// Vuelto (dinero devuelto) de una venta, con su moneda. Existe en efectivo
+// (cambio normal) y en mixto (exceso por sobrepago, en MN); en transferencia es
+// 0. Es lo que el reporte muestra como "se cobró de más / se devolvió".
+function changeOf(s) {
+  const amount = s.paymentMethod === 'transfer' ? 0 : round2(Number(s.change || 0))
+  const currency = s.changeCurrency || payCurrencyOf(s)
+  return { amount, currency }
+}
+
 // --- Builders: cada uno devuelve { title, subtitle, head, rows, filename } ---
 
 // Reporte de ventas al DETALLE (una fila por producto vendido): fecha,
@@ -51,7 +70,9 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
     const seller = names[s.sellerId] || 'vendedor'
     const area = areaLabel(s.area)
     const method = methodOf(s)
-    for (const it of s.items || []) {
+    const payCur = payCurrencyOf(s) // moneda del cobro (USD/MN/MLC)
+    const chg = changeOf(s) // vuelto (efectivo y sobrepago mixto), con su moneda
+    ;(s.items || []).forEach((it, i) => {
       const importe = round2(it.lineTotal ?? it.unitPrice * it.qty)
       rows.push([
         formatDateTime(s.createdAt),
@@ -63,17 +84,21 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
         round2(it.unitPrice ?? 0),
         importe,
         method,
+        payCur,
+        // Vuelto solo en la 1.ª línea de la venta (es por venta, no por producto).
+        i === 0 && chg.amount > 0 ? formatMoney(chg.amount, chg.currency) : '',
         it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : ''
       ])
       total += importe
-    }
+    })
   }
-  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', ''])
+  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', '', '', ''])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Vendedor', 'Área', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Metodo', 'Mayorista'],
+    head: ['Fecha', 'Vendedor', 'Área', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Metodo', 'Moneda', 'Vuelto', 'Mayorista'],
     rows,
+    orientation: 'landscape',
     filename: 'ventas'
   }
 }
@@ -596,11 +621,13 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
   for (const s of sales) {
     const isMixed = s.paymentMethod === 'mixed'
     const isCash = !isMixed && s.paymentMethod !== 'transfer'
-    // En pago mixto se cobra el total exacto (en base); sin vuelto.
+    // En mixto el total se cobra en base (MN); en efectivo/transferencia, en su
+    // moneda. El vuelto existe en efectivo y en mixto (sobrepago) — ver changeOf.
     const cobrado = isMixed
       ? round2(Number(s.totalBase || 0))
       : isCash ? Number(s.amountPaid || 0) : Number(s.transferAmount || 0)
-    const vuelto = isCash ? Number(s.change || 0) : 0
+    const payCur = payCurrencyOf(s) // moneda del cobro (USD/MN/MLC)
+    const chg = changeOf(s) // vuelto con su moneda (puede diferir de la del cobro)
     const items = s.items || []
     const shiftArea = String(s.area || '')
     // Area de la venta = la del TURNO donde se cobro (no la del producto, que
@@ -624,18 +651,21 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
         // Linea con precio de escala mayorista (Bloque B): umbral aplicado.
         it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
         i === 0 ? (isMixed ? 'Mixto' : isCash ? 'Efectivo' : 'Transferencia') : '',
+        i === 0 ? payCur : '',
         i === 0 ? round2(cobrado) : '',
-        i === 0 ? round2(vuelto) : ''
+        // Vuelto con su moneda (efectivo con cambio y sobrepago en mixto).
+        i === 0 && chg.amount > 0 ? formatMoney(chg.amount, chg.currency) : ''
       ])
     })
     total += Number(s.totalBase || 0)
   }
-  rows.push(['', '', '', '', '', '', round2(total), '', 'TOTAL', '', ''])
+  rows.push(['', '', '', '', '', '', round2(total), '', 'TOTAL', '', '', ''])
   return {
     title: 'Ventas del turno',
     subtitle: `${sellerName ? sellerName + ' · ' : ''}Generado ${formatDateTime(new Date().toISOString())}`,
-    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Precio', 'Importe', 'Mayorista', 'Metodo', 'Cobrado', 'Vuelto'],
+    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Precio', 'Importe', 'Mayorista', 'Metodo', 'Moneda', 'Cobrado', 'Vuelto'],
     rows,
+    orientation: 'landscape',
     filename: 'ventas_turno'
   }
 }
