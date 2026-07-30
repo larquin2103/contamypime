@@ -538,7 +538,9 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
             </button>
           )}
           <div className="cuadre-mini">
-            <span>Declarado {formatMoney(declaredTotal, CASH_CURRENCIES[0])}…</span>
+            {/* Declarado POR MONEDA: nunca se suma MN + USD en crudo (1 USD no es
+                1 MN). El fondo y el retiro tambien se separan por moneda. */}
+            <span>Declarado: {CASH_CURRENCIES.map((c) => formatMoney(declared[c] || 0, c)).join(' · ')}</span>
             <span className={retiroTotal > 0 ? 'warn-text' : 'ok-text'}>
               Retiro del dueño: {CASH_CURRENCIES.map((c) => formatMoney(retiro[c], c)).join(' · ')}
             </span>
