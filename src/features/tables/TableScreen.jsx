@@ -162,14 +162,18 @@ export function TableScreen() {
     }
   }
 
-  // --- pago mixto: partes con importe exacto ---
-  // Va INCLUIDO en el modulo 'mesas' (no depende de mayorista).
+  // --- pago mixto: partes con importe exacto (incluido en el modulo 'mesas',
+  // no depende de mayorista). Misma logica y UI que el turno: se permite
+  // sobrepago y el exceso es el vuelto (en MN). ---
+  const partRate = (cur) => (cur === baseCurrency ? 1 : rateOf(cur) || 0)
   const mixedBase = round2(mixParts.reduce((a, p) => a + Number(p.amountBase || 0), 0))
-  const mixedLeft = round2(total - mixedBase)
+  const mixRemaining = round2(total - mixedBase)           // lo que falta por cubrir
+  const mixChange = round2(Math.max(0, mixedBase - total)) // sobrepago -> vuelto en MN
+  const mixOk = mixParts.length > 0 && mixedBase >= total - 0.01
   const addPart = () => {
     const amt = Number(partAmount)
     if (!(amt > 0)) return
-    const rate = partCurrency === baseCurrency ? 1 : rateOf(partCurrency)
+    const rate = partRate(partCurrency)
     if (partCurrency !== baseCurrency && !(rate > 0)) {
       return setError(`Sin tasa de cambio para ${partCurrency}`)
     }
@@ -184,6 +188,12 @@ export function TableScreen() {
     setPartAmount('')
     setPartRef('')
     setError('')
+  }
+  // Rellena la parte en curso con lo que falta por cobrar, en su moneda.
+  const fillRemaining = () => {
+    const r = partRate(partCurrency)
+    if (r <= 0 || mixRemaining <= 0) return
+    setPartAmount(String(round2(mixRemaining / r)))
   }
 
   // Importes del cobro en efectivo (con vuelto). Igual que el turno: el vuelto
@@ -209,7 +219,7 @@ export function TableScreen() {
       ? paid >= dueInCash && dueInCash > 0
       : payMethod === PAYMENT_METHODS.TRANSFER
         ? true
-        : Math.abs(mixedLeft) < 0.01)
+        : mixOk)
 
   const charge = async () => {
     setError('')
@@ -264,7 +274,13 @@ export function TableScreen() {
       }
       let payload
       if (payMethod === PAYMENT_METHODS.MIXED) {
-        payload = { ...common, paymentMethod: PAYMENT_METHODS.MIXED, payments: mixParts }
+        payload = {
+          ...common,
+          paymentMethod: PAYMENT_METHODS.MIXED,
+          payments: mixParts,
+          change: mixChange,          // vuelto por sobrepago (en MN)
+          changeCurrency: baseCurrency
+        }
       } else if (payMethod === PAYMENT_METHODS.CASH) {
         payload = {
           ...common,
@@ -540,53 +556,111 @@ export function TableScreen() {
 
           {payMethod === PAYMENT_METHODS.MIXED && (
             <>
-              <p className="muted">Cobra en varias partes (efectivo y/o transferencia). Falta por asignar: <strong>{formatMoney(mixedLeft, baseCurrency)}</strong></p>
-              {mixParts.map((p, i) => (
-                <div key={i} className="kv">
-                  <span>{p.method === PAYMENT_METHODS.TRANSFER ? 'Transferencia' : 'Efectivo'} {p.currency}</span>
-                  <span>
-                    <strong>{formatMoney(p.amount, p.currency)}</strong>
-                    <button className="btn btn--ghost btn--sm" onClick={() => setMixParts((prev) => prev.filter((_, j) => j !== i))}>Quitar</button>
-                  </span>
+              <p className="muted">
+                Cobra la cuenta en varias partes (efectivo y/o transferencia, en distintas
+                monedas). Los montos son exactos: usa <strong>Completar</strong> para la última parte.
+              </p>
+
+              {mixParts.length > 0 && (
+                <div className="list">
+                  {mixParts.map((p, i) => (
+                    <div key={i} className="kv">
+                      <span className="muted">
+                        {p.method === PAYMENT_METHODS.TRANSFER ? 'Transferencia' : 'Efectivo'} {p.currency}
+                        {p.reference ? ` · ref ${p.reference}` : ''}
+                      </span>
+                      <strong>
+                        {formatMoney(Number(p.amount) || 0, p.currency)}
+                        {p.currency !== baseCurrency && ` (= ${formatMoney(Number(p.amountBase) || 0, baseCurrency)})`}
+                        <button
+                          className="link-del"
+                          onClick={() => setMixParts((prev) => prev.filter((_, j) => j !== i))}
+                        >
+                          quitar
+                        </button>
+                      </strong>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              <div className="tabs">
-                <button
-                  className={`tab ${partMethod === PAYMENT_METHODS.CASH ? 'is-active' : ''}`}
-                  onClick={() => { setPartMethod(PAYMENT_METHODS.CASH); setPartCurrency(baseCurrency) }}
-                >
-                  Efectivo
-                </button>
-                <button
-                  className={`tab ${partMethod === PAYMENT_METHODS.TRANSFER ? 'is-active' : ''}`}
-                  onClick={() => { setPartMethod(PAYMENT_METHODS.TRANSFER); setPartCurrency('MN') }}
-                >
-                  Transferencia
-                </button>
-              </div>
-              <div className="pay-currencies">
-                {(partMethod === PAYMENT_METHODS.CASH ? CASH_CURRENCIES : TRANSFER_CURRENCIES).map((c) => (
-                  <button
-                    key={c}
-                    className={`btn btn--sm ${partCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
-                    onClick={() => setPartCurrency(c)}
-                    disabled={c !== baseCurrency && !rateOf(c)}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-              <label className="field">
-                <span>Importe</span>
-                <input type="number" inputMode="decimal" value={partAmount} onChange={(e) => setPartAmount(e.target.value)} />
-              </label>
-              {partMethod === PAYMENT_METHODS.TRANSFER && (
-                <label className="field">
-                  <span>Referencia</span>
-                  <input value={partRef} onChange={(e) => setPartRef(e.target.value)} />
-                </label>
               )}
-              <button className="btn btn--ghost btn--sm" onClick={addPart}>+ Agregar parte</button>
+
+              <div className="total-row">
+                <span>{mixRemaining > 0.01 ? 'Falta por cobrar' : mixChange > 0.01 ? 'Vuelto (MN)' : 'Cubierto'}</span>
+                <strong className="total-amount">
+                  {mixRemaining > 0.01
+                    ? formatMoney(mixRemaining, baseCurrency)
+                    : mixChange > 0.01
+                      ? formatMoney(mixChange, baseCurrency)
+                      : '✓'}
+                </strong>
+              </div>
+
+              {mixRemaining > 0.01 && (
+                <>
+                  <div className="tabs">
+                    <button
+                      className={`tab ${partMethod === PAYMENT_METHODS.CASH ? 'is-active' : ''}`}
+                      onClick={() => { setPartMethod(PAYMENT_METHODS.CASH); setPartCurrency(baseCurrency) }}
+                    >
+                      Efectivo
+                    </button>
+                    <button
+                      className={`tab ${partMethod === PAYMENT_METHODS.TRANSFER ? 'is-active' : ''}`}
+                      onClick={() => { setPartMethod(PAYMENT_METHODS.TRANSFER); setPartCurrency('MN') }}
+                    >
+                      Transferencia
+                    </button>
+                  </div>
+                  <div className="pay-currencies">
+                    {(partMethod === PAYMENT_METHODS.CASH ? CASH_CURRENCIES : TRANSFER_CURRENCIES).map((c) => (
+                      <button
+                        key={c}
+                        className={`btn btn--sm ${partCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
+                        onClick={() => setPartCurrency(c)}
+                        disabled={c !== baseCurrency && !rateOf(c)}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="form-row">
+                    <label className="field">
+                      <span>Monto ({partCurrency})</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={partAmount}
+                        onChange={(e) => setPartAmount(e.target.value)}
+                        placeholder="0"
+                      />
+                    </label>
+                    {partMethod === PAYMENT_METHODS.TRANSFER && (
+                      <label className="field">
+                        <span>Referencia</span>
+                        <input
+                          value={partRef}
+                          onChange={(e) => setPartRef(e.target.value)}
+                          placeholder="No. de operación"
+                        />
+                      </label>
+                    )}
+                  </div>
+                  {partCurrency !== baseCurrency && Number(partAmount) > 0 && partRate(partCurrency) > 0 && (
+                    <p className="muted">
+                      Equivale a <strong>{formatMoney(round2(Number(partAmount) * partRate(partCurrency)), baseCurrency)}</strong> (tasa {partRate(partCurrency)}).
+                    </p>
+                  )}
+                  <div className="report-actions">
+                    <button className="btn" onClick={fillRemaining} disabled={mixRemaining <= 0.01 || partRate(partCurrency) <= 0}>
+                      Completar
+                    </button>
+                    <button className="btn btn--primary" onClick={addPart} disabled={!(Number(partAmount) > 0)}>
+                      Agregar pago
+                    </button>
+                  </div>
+                </>
+              )}
+              <p className="muted">Las partes de efectivo entran a la caja por su moneda; las transferencias van aparte. Todo cuadra al cierre.</p>
             </>
           )}
 
