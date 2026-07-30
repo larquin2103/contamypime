@@ -72,6 +72,9 @@ export function TableScreen() {
   const [payMethod, setPayMethod] = useState(PAYMENT_METHODS.CASH)
   const [cashCurrency, setCashCurrency] = useState(baseCurrency)
   const [received, setReceived] = useState('')
+  // Moneda en que se entrega el vuelto (igual que el turno): por defecto la base
+  // (MN). Solo se ofrece elegir cuando se cobra en una divisa.
+  const [changeCurrency, setChangeCurrency] = useState(baseCurrency)
   const [transferCurrency, setTransferCurrency] = useState('MN')
   const [transferRef, setTransferRef] = useState('')
   const [mixParts, setMixParts] = useState([])
@@ -183,13 +186,22 @@ export function TableScreen() {
     setError('')
   }
 
-  // Importes del cobro en efectivo (con vuelto).
+  // Importes del cobro en efectivo (con vuelto). Igual que el turno: el vuelto
+  // puede entregarse en MN o en la moneda del cobro (lo elige el vendedor). El
+  // vuelto en MN se calcula EXACTO desde lo recibido (recibido x tasa), no desde
+  // el vuelto en divisa, para que no arrastre redondeos.
   const cashRate = cashCurrency === baseCurrency ? 1 : rateOf(cashCurrency)
   const dueInCash = cashCurrency === baseCurrency
     ? total
     : (cashRate > 0 ? round2(total / cashRate) : 0)
   const paid = Number(received) || 0
-  const changeForeign = round2(Math.max(0, paid - dueInCash))
+  const paidBase = cashCurrency === baseCurrency ? paid : round2(paid * cashRate)
+  const changeBase = round2(paidBase - total)   // vuelto en MN (exacto)
+  const changeInPay = round2(paid - dueInCash)  // vuelto en la moneda del cobro
+  // Moneda efectiva del vuelto: si se cobra en MN, siempre MN; si en divisa, la
+  // que eligio el vendedor (MN por defecto o la propia divisa).
+  const effChangeCur = cashCurrency === baseCurrency ? baseCurrency : changeCurrency
+  const changeGiven = effChangeCur === cashCurrency ? changeInPay : changeBase
 
   const canPay =
     total > 0 &&
@@ -260,10 +272,10 @@ export function TableScreen() {
           paymentCurrency: cashCurrency,
           cashAmount: round2(dueInCash),
           amountPaid: round2(paid),
-          change: changeForeign,
-          changeCurrency: cashCurrency,
-          changeRate: cashRate,
-          rate: cashRate
+          change: changeGiven,
+          changeCurrency: effChangeCur,
+          changeRate: effChangeCur === baseCurrency ? null : (rateOf(effChangeCur) || null),
+          rate: cashCurrency === baseCurrency ? null : cashRate
         }
       } else {
         payload = {
@@ -440,29 +452,85 @@ export function TableScreen() {
 
           {payMethod === PAYMENT_METHODS.CASH && (
             <>
+              <div className="pay-currencies">
+                {CASH_CURRENCIES.map((c) => (
+                  <button
+                    key={c}
+                    className={`btn btn--sm ${cashCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
+                    onClick={() => { setCashCurrency(c); setChangeCurrency(baseCurrency); setReceived('') }}
+                    disabled={c !== baseCurrency && !rateOf(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+
+              {cashCurrency !== baseCurrency && (
+                <p className="muted">
+                  Total en {cashCurrency}: <strong>{formatMoney(dueInCash, cashCurrency)}</strong>{' '}
+                  (tasa {cashRate}) · equivale a {formatMoney(total, baseCurrency)}
+                </p>
+              )}
+
               <label className="field">
-                <span>Moneda</span>
-                <select value={cashCurrency} onChange={(e) => { setCashCurrency(e.target.value); setReceived('') }}>
-                  {CASH_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <span>Recibido ({cashCurrency})</span>
+                <input type="number" inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} placeholder="0" />
               </label>
-              <p className="muted">A cobrar: <strong>{formatMoney(dueInCash, cashCurrency)}</strong></p>
-              <label className="field">
-                <span>Recibido</span>
-                <input type="number" inputMode="decimal" value={received} onChange={(e) => setReceived(e.target.value)} />
-              </label>
-              {changeForeign > 0 && <p className="muted">Vuelto: <strong>{formatMoney(changeForeign, cashCurrency)}</strong></p>}
+
+              <div className="total-row">
+                <span>Vuelto</span>
+                <strong className={`total-amount ${changeGiven < 0 ? 'neg' : ''}`}>
+                  {formatMoney(changeGiven, effChangeCur)}
+                </strong>
+              </div>
+
+              {/* Vuelto al cobrar en divisa: se muestra en AMBAS monedas y el
+                  vendedor elige en cual entregarlo (igual que el turno). Esa
+                  eleccion determina de que caja sale el vuelto en el cuadre. */}
+              {cashCurrency !== baseCurrency && changeBase >= 0 && cashRate > 0 && (
+                <>
+                  <p className="muted">
+                    Vuelto: <strong>{formatMoney(changeBase, baseCurrency)}</strong> ó{' '}
+                    <strong>{formatMoney(changeInPay, cashCurrency)}</strong> (tasa {cashRate}).
+                  </p>
+                  <div className="pay-currencies">
+                    <span className="muted" style={{ alignSelf: 'center', marginRight: 4 }}>Entregar vuelto en:</span>
+                    <button
+                      className={`btn btn--sm ${effChangeCur === baseCurrency ? 'btn--primary' : 'btn--ghost'}`}
+                      onClick={() => setChangeCurrency(baseCurrency)}
+                    >
+                      {baseCurrency}
+                    </button>
+                    <button
+                      className={`btn btn--sm ${effChangeCur === cashCurrency ? 'btn--primary' : 'btn--ghost'}`}
+                      onClick={() => setChangeCurrency(cashCurrency)}
+                    >
+                      {cashCurrency}
+                    </button>
+                  </div>
+                </>
+              )}
             </>
           )}
 
           {payMethod === PAYMENT_METHODS.TRANSFER && (
             <>
-              <label className="field">
-                <span>Moneda</span>
-                <select value={transferCurrency} onChange={(e) => setTransferCurrency(e.target.value)}>
-                  {TRANSFER_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
+              <div className="pay-currencies">
+                {TRANSFER_CURRENCIES.map((c) => (
+                  <button
+                    key={c}
+                    className={`btn btn--sm ${transferCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
+                    onClick={() => setTransferCurrency(c)}
+                    disabled={c !== baseCurrency && !rateOf(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <p className="muted">
+                A cobrar: <strong>{formatMoney(transferCurrency === baseCurrency ? total : (rateOf(transferCurrency) > 0 ? round2(total / rateOf(transferCurrency)) : 0), transferCurrency)}</strong>
+                {transferCurrency !== baseCurrency && ` (tasa ${rateOf(transferCurrency)})`}
+              </p>
               <label className="field">
                 <span>Referencia / confirmación</span>
                 <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} placeholder="Nº de transacción" />
@@ -482,22 +550,31 @@ export function TableScreen() {
                   </span>
                 </div>
               ))}
-              <div className="form-row">
-                <label className="field">
-                  <span>Forma</span>
-                  <select value={partMethod} onChange={(e) => setPartMethod(e.target.value)}>
-                    <option value={PAYMENT_METHODS.CASH}>Efectivo</option>
-                    <option value={PAYMENT_METHODS.TRANSFER}>Transferencia</option>
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Moneda</span>
-                  <select value={partCurrency} onChange={(e) => setPartCurrency(e.target.value)}>
-                    {(partMethod === PAYMENT_METHODS.CASH ? CASH_CURRENCIES : TRANSFER_CURRENCIES).map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </label>
+              <div className="tabs">
+                <button
+                  className={`tab ${partMethod === PAYMENT_METHODS.CASH ? 'is-active' : ''}`}
+                  onClick={() => { setPartMethod(PAYMENT_METHODS.CASH); setPartCurrency(baseCurrency) }}
+                >
+                  Efectivo
+                </button>
+                <button
+                  className={`tab ${partMethod === PAYMENT_METHODS.TRANSFER ? 'is-active' : ''}`}
+                  onClick={() => { setPartMethod(PAYMENT_METHODS.TRANSFER); setPartCurrency('MN') }}
+                >
+                  Transferencia
+                </button>
+              </div>
+              <div className="pay-currencies">
+                {(partMethod === PAYMENT_METHODS.CASH ? CASH_CURRENCIES : TRANSFER_CURRENCIES).map((c) => (
+                  <button
+                    key={c}
+                    className={`btn btn--sm ${partCurrency === c ? 'btn--primary' : 'btn--ghost'}`}
+                    onClick={() => setPartCurrency(c)}
+                    disabled={c !== baseCurrency && !rateOf(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
               </div>
               <label className="field">
                 <span>Importe</span>
