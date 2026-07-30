@@ -47,23 +47,6 @@ export function EntryScreen() {
   const [importMsg, setImportMsg] = useState(null) // { added, notFound:[], errors:[] }
   const fileRef = useRef(null)
 
-  // Quien puede registrar entradas: el MANDO con la facultad 'entries' (el dueño
-  // puede quitársela al administrativo), o el VENDEDOR si el dueño activó el
-  // permiso independiente 'sellerEntries'. Las entradas siempre ingresan al
-  // almacén central (purchasesRepo), sea quien sea quien las registre.
-  const canEnter = isManager ? can('entries') : !!sellerEntriesAllowed
-  if (!canEnter) {
-    return (
-      <div className="screen">
-        <h2>Entrada de mercancia</h2>
-        <section className="card">
-          <p>No tienes autorización del dueño para registrar entradas de mercancía.</p>
-          <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
-        </section>
-      </div>
-    )
-  }
-
   const results = useMemo(() => {
     if (!query.trim()) return []
     return products.filter((p) => matchesQuery(p, query)).slice(0, 20)
@@ -138,6 +121,26 @@ export function EntryScreen() {
     () => round2(lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.unitCost) || 0), 0)),
     [lines]
   )
+
+  // Quien puede registrar entradas: el MANDO con la facultad 'entries' (el dueño
+  // puede quitársela al administrativo), o el VENDEDOR si el dueño activó el
+  // permiso independiente 'sellerEntries'. Las entradas siempre ingresan al
+  // almacén central (purchasesRepo), sea quien sea quien las registre.
+  // IMPORTANTE: esta compuerta va DESPUÉS de todos los hooks (el permiso del
+  // vendedor llega asíncrono: false -> true; si cortáramos antes, cambiaría el
+  // número de hooks entre renders — "Rendered more hooks than during...").
+  const canEnter = isManager ? can('entries') : !!sellerEntriesAllowed
+  if (!canEnter) {
+    return (
+      <div className="screen">
+        <h2>Entrada de mercancia</h2>
+        <section className="card">
+          <p>No tienes autorización del dueño para registrar entradas de mercancía.</p>
+          <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
+        </section>
+      </div>
+    )
+  }
 
   const valid = lines.length > 0 && lines.every((l) => Number(l.qty) > 0 && Number(l.unitCost) >= 0)
 
