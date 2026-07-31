@@ -41,7 +41,10 @@ export function EntryScreen() {
   // ubicacion efectiva y valida (nunca un area si no puede elegirla).
   const sellArea = activeShift?.area || ''
   const canPickArea = !isManager && !!sellArea
-  const effLoc = canPickArea ? entryLoc : WAREHOUSE
+  // Ubicacion efectiva: SOLO el almacen o EXACTAMENTE el area del turno actual.
+  // Si `entryLoc` quedara con un area distinta (borde: cambio de turno/sync), cae
+  // a WAREHOUSE — nunca entra a un area que no sea la del vendedor de ahora.
+  const effLoc = (canPickArea && entryLoc === sellArea) ? sellArea : WAREHOUSE
   // Consignacion (Bloque C, modulo cuentas): proveedor dueño de la mercancia.
   const canAccounts = hasModule(LICENSE_MODULES.ACCOUNTS)
   const providers = useLiveQuery(

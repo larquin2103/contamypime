@@ -144,7 +144,8 @@ export async function buildInventoryReport() {
   }
 }
 
-// Entradas de mercancia al almacen central (compras).
+// Entradas de mercancia (compras). Por defecto al almacen central; el vendedor
+// con permiso puede entrar directo a su area (se muestra en la columna Ubicacion).
 export async function buildEntriesReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const prods = await productMap()
