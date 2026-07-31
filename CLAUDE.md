@@ -116,7 +116,9 @@ Un punto de venta puede dividirse en **áreas** (ej: Víveres, Carnicería), cad
 
 **Modelo:** un almacén central (`WAREHOUSE = '__almacen'`) distribuye a áreas. Cada
 producto tiene `stockByLocation = { '__almacen': Q1, 'Víveres': Q2, ... }`:
-- **Entradas** (compras) suman al almacén: `stockByLocation[WAREHOUSE] += qty`.
+- **Entradas** (compras) suman al almacén por defecto: `stockByLocation[WAREHOUSE] += qty`.
+  (Excepción: el vendedor con permiso `sellerEntries` puede entrar directo a **su área**; ver
+  "Permisos del vendedor". El mando siempre entra al almacén.)
 - **Salidas** (transfers) restan del almacén, suman al área: `WAREHOUSE -= qty`, `area += qty`.
   La pantalla `TransferScreen` trabaja **por área con selección múltiple**: eliges el área, marcas
   con checkbox varios productos del catálogo del almacén (agrupados por categoría), pones la
@@ -149,8 +151,14 @@ repo `mermasRepo`. Es una **función base** (no gateada por licencia); solo la u
 Además de los permisos del módulo `mayorista`, hay permisos del vendedor **independientes de
 cualquier módulo**, que el dueño activa en Ajustes → *Permisos del vendedor* (apagados por
 defecto, sincronizados):
-- **`sellerEntries`** — el vendedor puede registrar **entradas de mercancía** (van al almacén
-  central, vía `purchasesRepo`, igual que las del dueño). Sin él, `EntryScreen` lo bloquea.
+- **`sellerEntries`** — el vendedor puede registrar **entradas de mercancía**. El **mando entra
+  siempre al almacén central** (sin selector, como siempre). El **vendedor con turno abierto**
+  puede elegir entre el **almacén central** o el **área de su turno**: si elige su área, la
+  mercancía entra directo a ella (se salta el traspaso). `purchasesRepo.create` recibe un
+  `location` opcional (default almacén → sin pasarlo, todo idéntico a hoy); el `PURCHASE_IN`
+  lleva esa ubicación y el stock por ubicación se deriva del libro mayor (la sync lo recalcula
+  igual en cada dispositivo). El reporte de entradas muestra la **ubicación**. Sin el permiso,
+  `EntryScreen` lo bloquea.
 
 ## Módulos de licencia (funciones que se venden por separado)
 

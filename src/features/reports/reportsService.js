@@ -154,10 +154,14 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
   const rows = []
   let total = 0
   for (const pu of purchases) {
+    // Ubicacion de la entrada: por defecto el almacen central; el vendedor puede
+    // haber entrado directo a su area (entradas antiguas no llevan el campo).
+    const lugar = locationLabel(pu.location || WAREHOUSE)
     for (const it of pu.items || []) {
       rows.push([
         formatDateTime(pu.createdAt),
         it.name,
+        lugar,
         round2(it.qty),
         it.unit || '',
         round2(it.unitCost || 0),
@@ -169,13 +173,14 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
     }
     total += Number(pu.totalBase || 0)
   }
-  if (rows.length === 0) rows.push(['Sin entradas en el periodo', '', '', '', '', '', '', '', ''])
-  else rows.push(['', '', '', '', '', '', round2(total), 'TOTAL', ''])
+  if (rows.length === 0) rows.push(['Sin entradas en el periodo', '', '', '', '', '', '', '', '', ''])
+  else rows.push(['', '', '', '', '', '', '', round2(total), 'TOTAL', ''])
   return {
-    title: 'Entradas al almacén',
+    title: 'Entradas de mercancía',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Producto', 'Cantidad', 'U/M', 'Costo unit', 'Precio venta', 'Total', 'Proveedor', 'Registró'],
+    head: ['Fecha', 'Producto', 'Ubicación', 'Cantidad', 'U/M', 'Costo unit', 'Precio venta', 'Total', 'Proveedor', 'Registró'],
     rows,
+    orientation: 'landscape',
     filename: 'entradas'
   }
 }

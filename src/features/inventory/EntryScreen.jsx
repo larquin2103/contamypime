@@ -15,7 +15,7 @@ import { partnersRepo } from '../../repositories/partnersRepo'
 import { PARTNER_TYPES } from '../../db/constants'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
-import { WAREHOUSE } from '../../db/constants'
+import { WAREHOUSE, WAREHOUSE_LABEL, locationLabel } from '../../db/constants'
 import { ProductForm } from '../products/ProductForm'
 import { parseEntryFile, buildEntryTemplateBlob, entryTemplateHeaders } from '../import/entryImportService'
 
@@ -33,6 +33,15 @@ export function EntryScreen() {
   const [query, setQuery] = useState('')
   const [lines, setLines] = useState([]) // [{ productId, name, unit, qty, unitCost }]
   const [supplier, setSupplier] = useState('')
+  // Ubicacion a la que ENTRA la mercancia. Por defecto el almacen central
+  // (clasico). Solo el vendedor con turno abierto puede cambiarlo a SU area.
+  const [entryLoc, setEntryLoc] = useState(WAREHOUSE)
+  // Solo el VENDEDOR (no el mando) elige ubicacion, y solo entre el almacen y el
+  // AREA DE SU TURNO. Sin turno no hay area -> almacen (clasico). `effLoc` es la
+  // ubicacion efectiva y valida (nunca un area si no puede elegirla).
+  const sellArea = activeShift?.area || ''
+  const canPickArea = !isManager && !!sellArea
+  const effLoc = canPickArea ? entryLoc : WAREHOUSE
   // Consignacion (Bloque C, modulo cuentas): proveedor dueño de la mercancia.
   const canAccounts = hasModule(LICENSE_MODULES.ACCOUNTS)
   const providers = useLiveQuery(
@@ -52,12 +61,15 @@ export function EntryScreen() {
     return products.filter((p) => matchesQuery(p, query)).slice(0, 20)
   }, [products, query])
 
-  // Existencia ACTUAL en el almacen por producto (la entrada se suma a esto).
-  const warehouseStock = useMemo(() => {
+  // Existencia ACTUAL en la ubicacion elegida por producto (la entrada se suma a
+  // esto). Por defecto el almacen; para el vendedor, su area si la eligio.
+  const locStock = useMemo(() => {
     const m = {}
-    for (const p of products) m[p.id] = Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
+    for (const p of products) {
+      m[p.id] = Number(p.stockByLocation?.[effLoc] ?? (effLoc === WAREHOUSE ? p.stock : 0) ?? 0)
+    }
     return m
-  }, [products])
+  }, [products, effLoc])
 
   const addLine = (p) => {
     setLines((prev) => {
@@ -124,8 +136,8 @@ export function EntryScreen() {
 
   // Quien puede registrar entradas: el MANDO con la facultad 'entries' (el dueño
   // puede quitársela al administrativo), o el VENDEDOR si el dueño activó el
-  // permiso independiente 'sellerEntries'. Las entradas siempre ingresan al
-  // almacén central (purchasesRepo), sea quien sea quien las registre.
+  // permiso independiente 'sellerEntries'. Por defecto las entradas ingresan al
+  // almacén central; el vendedor con turno abierto puede meterlas a SU área.
   // IMPORTANTE: esta compuerta va DESPUÉS de todos los hooks (el permiso del
   // vendedor llega asíncrono: false -> true; si cortáramos antes, cambiaría el
   // número de hooks entre renders — "Rendered more hooks than during...").
@@ -151,7 +163,8 @@ export function EntryScreen() {
       supplier,
       userId: user.id,
       shiftId: activeShift?.id ?? null,
-      consignmentPartnerId: canAccounts && consignPartner ? consignPartner : null
+      consignmentPartnerId: canAccounts && consignPartner ? consignPartner : null,
+      location: effLoc // almacén por defecto; el área del vendedor si la eligió
     })
     // Consignacion: los productos de la entrada quedan marcados con su
     // proveedor y el costo acordado (= costo unitario de la linea). Al
@@ -190,7 +203,7 @@ export function EntryScreen() {
           <span className="cuadre-emoji">📥</span>
           <div>
             <strong>Entrada registrada</strong>
-            <p className="muted">Las existencias se actualizaron al instante.</p>
+            <p className="muted">Las existencias de <strong>{locationLabel(effLoc)}</strong> se actualizaron al instante.</p>
           </div>
         </div>
         <button className="btn btn--primary btn--block" onClick={() => setDone(false)}>
@@ -224,10 +237,33 @@ export function EntryScreen() {
       />
 
       <section className="card import-entry-hint">
-        <p className="muted">
-          Las entradas ingresan al <strong>almacén central</strong> y se <strong>suman</strong> a la
-          existencia actual (no la reemplazan). Desde el almacén se reparte a las áreas con “Salida a área”.
-        </p>
+        {canPickArea && (
+          <div className="tabs">
+            <button
+              className={`tab ${effLoc === WAREHOUSE ? 'is-active' : ''}`}
+              onClick={() => setEntryLoc(WAREHOUSE)}
+            >
+              🏬 {WAREHOUSE_LABEL}
+            </button>
+            <button
+              className={`tab ${effLoc === sellArea ? 'is-active' : ''}`}
+              onClick={() => setEntryLoc(sellArea)}
+            >
+              Mi área ({sellArea})
+            </button>
+          </div>
+        )}
+        {effLoc === WAREHOUSE ? (
+          <p className="muted">
+            Las entradas ingresan al <strong>almacén central</strong> y se <strong>suman</strong> a la
+            existencia actual (no la reemplazan). Desde el almacén se reparte a las áreas con “Salida a área”.
+          </p>
+        ) : (
+          <p className="muted">
+            La mercancía entra directo a tu área <strong>{sellArea}</strong> y se <strong>suma</strong> a
+            su existencia (no pasa por el almacén). Queda registrada con su ubicación en los movimientos.
+          </p>
+        )}
         <p className="muted">
           Para cargar muchos productos a la vez, usa <strong>⬆ Importar Excel</strong>.
           Columnas: {entryTemplateHeaders(hasModule(LICENSE_MODULES.WHOLESALE)).join(', ')} (coteja por código).{' '}
@@ -264,7 +300,7 @@ export function EntryScreen() {
             <button key={p.id} className="product-row" onClick={() => addLine(p)}>
               <div className="product-row__main">
                 <strong>{p.name}</strong>
-                <span className="muted">{p.code ? `${p.code} · ` : ''}almacén {Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)} {p.unit}</span>
+                <span className="muted">{p.code ? `${p.code} · ` : ''}{locationLabel(effLoc)} {locStock[p.id] ?? 0} {p.unit}</span>
               </div>
               <span className="muted">costo {formatMoney(p.cost, baseCurrency)}</span>
             </button>
@@ -285,8 +321,8 @@ export function EntryScreen() {
                   <button className="link-del" onClick={() => removeLine(l.productId)}>quitar</button>
                 </div>
                 <p className="muted">
-                  Almacén actual: {warehouseStock[l.productId] ?? 0} {l.unit}
-                  {Number(l.qty) > 0 && ` → quedará: ${round2((warehouseStock[l.productId] ?? 0) + Number(l.qty))} ${l.unit}`}
+                  {locationLabel(effLoc)} actual: {locStock[l.productId] ?? 0} {l.unit}
+                  {Number(l.qty) > 0 && ` → quedará: ${round2((locStock[l.productId] ?? 0) + Number(l.qty))} ${l.unit}`}
                   {l.tiers && hasModule(LICENSE_MODULES.WHOLESALE) && (
                     <span className="ok-text"> · escalas nuevas: {tiersLabel(l.tiers) || '(se quitan)'}</span>
                   )}
