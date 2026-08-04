@@ -2669,19 +2669,34 @@ input[type='file'] {
   overflow: hidden;
 }
 .menu-tile:active { transform: scale(0.97); border-color: var(--primary); }
-/* Carta con foto (Fase 8 - B5): imagen a sangre arriba + texto con margen abajo.
+/* Contenedor del texto del mosaico (nombre/precio/stock apilados). Sin foto se
+   comporta igual que antes; con foto va a la derecha de la miniatura. */
+.menu-tile__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+}
+/* Carta con foto (Fase 8 - B5): mosaico COMPACTO horizontal — miniatura pequeña
+   a la izquierda + texto a la derecha, así ocupa poco y caben muchos productos.
    Sin foto, el mosaico no lleva la clase --img y queda idéntico a hoy. */
-.menu-tile--img { padding: 0 0 10px; }
-.menu-tile--img .menu-tile__name { padding: 6px 22px 0 10px; }
-.menu-tile--img .menu-tile__price,
-.menu-tile--img .menu-tile__stock { padding-left: 10px; }
+.menu-tile--img {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+}
+.menu-tile--img .menu-tile__body { width: auto; flex: 1; }
+.menu-tile--img .menu-tile__name { padding-right: 18px; } /* hueco para el badge */
 .menu-tile__img {
   position: relative;
-  display: block;
-  width: 100%;
-  height: 96px;
-  background: #ffffff; /* look e-commerce: la miniatura cuadrada blanca encaja */
-  border-bottom: 1px solid var(--border);
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #ffffff; /* la miniatura cuadrada blanca encaja (look e-commerce) */
   overflow: hidden;
 }
 .menu-tile__img img {

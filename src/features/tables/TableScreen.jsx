@@ -729,9 +729,11 @@ export function TableScreen() {
                   {photo && (
                     <span className="menu-tile__img"><img src={photo} alt="" loading="lazy" /></span>
                   )}
-                  <span className="menu-tile__name">{p.name}</span>
-                  <span className="menu-tile__price">{formatMoney(p.price, baseCurrency)}</span>
-                  <span className={`menu-tile__stock ${left <= 3 ? 'is-low' : ''}`}>{left} {p.unit}</span>
+                  <span className="menu-tile__body">
+                    <span className="menu-tile__name">{p.name}</span>
+                    <span className="menu-tile__price">{formatMoney(p.price, baseCurrency)}</span>
+                    <span className={`menu-tile__stock ${left <= 3 ? 'is-low' : ''}`}>{left} {p.unit}</span>
+                  </span>
                 </button>
               )
             })}
