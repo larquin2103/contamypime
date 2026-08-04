@@ -77,6 +77,25 @@
   background: rgba(15, 40, 75, 0.05);
 }
 
+/* Modo claro: el "chrome" fijo (cabecera, navegación inferior y barra de cobro)
+   era navy en AMBOS temas; su texto usa --text/--muted, que en claro son OSCUROS
+   → quedaba texto oscuro sobre navy (invisible: el TOTAL del pie no se leía). En
+   claro esas barras pasan a blanco esmerilado y su texto se lee; el separador lo
+   da el borde (--border). El texto y los íconos de dentro ya usan variables. */
+:root[data-theme="light"] .app-header { background: rgba(255, 255, 255, 0.85); }
+:root[data-theme="light"] .app-nav { background: rgba(255, 255, 255, 0.92); }
+:root[data-theme="light"] .pay-bar { background: rgba(255, 255, 255, 0.94); }
+
+/* Modo claro: la opción SELECCIONADA (moneda o método de pago) usaba un verde
+   translúcido al 15% sobre blanco → casi no se distinguía de la no seleccionada.
+   En claro se pinta verde SÓLIDO con texto blanco: la selección se ve nítida. */
+:root[data-theme="light"] .pay-currencies .btn--primary,
+:root[data-theme="light"] .tab.is-active {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+  color: #ffffff;
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
