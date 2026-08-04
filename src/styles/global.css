@@ -1909,10 +1909,15 @@ input[type='file'] {
   gap: 13px;
 }
 .home-avatar {
+  position: relative; /* ancla la <img> del avatar */
   width: 46px;
   height: 46px;
   flex: none;
   border-radius: 14px;
+  overflow: hidden; /* recorta la foto a las esquinas redondeadas */
+  border: none;
+  padding: 0;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1922,7 +1927,49 @@ input[type='file'] {
   background: linear-gradient(135deg, #23a85e, #157a42);
   box-shadow: 0 8px 18px -8px rgba(35, 168, 94, 0.8);
 }
+/* Foto del avatar: absoluta (fuera del flex) para llenar el cuadro sin desbordar. */
+.home-avatar img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .home-greeting { min-width: 0; }
+
+/* Editor del avatar (Fase 8 - B6): vista previa circular grande + acciones. */
+.avatar-editor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 10px;
+}
+.avatar-editor__preview {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #23a85e, #157a42);
+}
+.avatar-editor__preview img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .home-greeting__hi {
   display: block;
   font-size: 12px;

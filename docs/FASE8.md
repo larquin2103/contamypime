@@ -54,8 +54,10 @@ comportamiento actual**. Las imágenes van **gateadas** por un módulo de licenc
   `products`/`users` NO engordan (la foto vive aparte).
 - `imagesRepo`: `get`/`getDataUrl`/`set`/`clear`/`mapByType`. **Quitar = dataUrl vacío** (no borra;
   el delete está prohibido por las reglas de sync).
-- Añadido a `SYNC_COLLECTIONS`. Reglas Firestore ya lo cubren (wildcard). **Sin el módulo → cero
-  imágenes, colección vacía, cero costo.** (Infraestructura: sin pantalla propia; lo visible es B4.)
+- Añadido a `SYNC_COLLECTIONS`. Reglas Firestore ya lo cubren (wildcard). **Sin el módulo, las
+  imágenes de PRODUCTO y CARTA no existen (cero costo).** Excepción: los **avatares (B6) son BASE**
+  (decisión del dueño) y pueden existir sin el módulo — pero son pocos (uno por usuario), coste
+  despreciable. (Infraestructura: sin pantalla propia; lo visible llega en B4/B6.)
 
 ### B4 — Fotos de productos (módulo `imagenes`) — ✅ HECHO
 - `ProductForm`: bloque "Foto" (vista previa + Agregar/Cambiar/Quitar) con cámara o galería
@@ -74,8 +76,13 @@ comportamiento actual**. Las imágenes van **gateadas** por un módulo de licenc
 - Fotos en el "Agregar consumo" y, opcional, vista *carta* para clientes.
 - Sin fotos → los mosaicos de texto actuales.
 
-### B6 — Avatares de usuario (módulo `imagenes`)
-- El Home muestra la foto en vez de la inicial. Sin módulo → la inicial actual.
+### B6 — Avatares de usuario (BASE, NO gateado) — ✅ HECHO
+- **Decisión del dueño:** el avatar es una función **base**, NO gateada por `imagenes` — **todos
+  los roles** pueden tener su foto (con o sin licencia de imágenes).
+- En el Home, `.home-avatar` pasa de `<div>` a `<button>`: cada usuario toca **su propia** foto
+  para ponerla/cambiarla/quitarla (`AvatarEditor`). Usa el motor `fileToThumbnail(file, {fit:'cover'})`
+  para que la cara **llene** el círculo. Guarda en `imagesRepo` (`user:<id>`). Sin foto → la inicial
+  de siempre (idéntico a hoy). Quitar = `dataUrl` vacío (no borra). Sincroniza por `images`.
 
 ## Invariantes (cross-cutting)
 - Todo lo de imágenes tras `hasModule('imagenes')` → sin el módulo, la app queda **idéntica a

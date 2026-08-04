@@ -14,6 +14,9 @@ import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { countsRepo } from '../../repositories/countsRepo'
 import { configRepo } from '../../repositories/configRepo'
+import { imagesRepo } from '../../repositories/imagesRepo'
+import { fileToThumbnail } from '../../lib/image'
+import { useEscapeClose } from '../../lib/useEscapeClose'
 import { FOREIGN_CURRENCIES, ROLE_LABELS, COUNT_STATUS } from '../../db/constants'
 import { StartChecklist } from '../help/StartChecklist'
 import { WelcomeModal } from '../help/WelcomeModal'
@@ -136,6 +139,79 @@ function RatesCard() {
   )
 }
 
+// Editor del avatar propio (Fase 8 - B6). BASE (no gateado): cualquier usuario
+// pone/cambia/quita SU foto. Usa el motor de imágenes con fit:'cover' para que
+// la cara llene el círculo. Quitar = dataUrl vacío (no borra; append-only).
+function AvatarEditor({ user, current, onClose }) {
+  const initial = (user.name || '?').trim().charAt(0).toUpperCase()
+  const [photo, setPhoto] = useState(current || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEscapeClose(onClose)
+
+  const pick = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permite volver a elegir el MISMO archivo
+    if (!file) return
+    setError('')
+    setBusy(true)
+    try {
+      const dataUrl = await fileToThumbnail(file, { fit: 'cover' })
+      setPhoto(dataUrl)
+    } catch (err) {
+      setError('No se pudo procesar la imagen: ' + err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const save = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      await imagesRepo.set('user', user.id, photo) // '' => quitar
+      onClose()
+    } catch (e) {
+      setError('Error: ' + e.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Tu foto" onClick={(e) => e.stopPropagation()}>
+        <h3>Tu foto</h3>
+        <div className="avatar-editor">
+          <div className="avatar-editor__preview">
+            {photo ? <img src={photo} alt="" /> : <span>{initial}</span>}
+          </div>
+          <div className="img-picker__actions">
+            <label className={`btn btn--ghost btn--sm ${busy ? 'is-disabled' : ''}`}>
+              {busy ? 'Procesando…' : (photo ? 'Cambiar' : 'Agregar')}
+              <input type="file" accept="image/*" onChange={pick} disabled={busy} hidden />
+            </label>
+            {photo && !busy && (
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => setPhoto('')}>
+                Quitar
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="muted">
+          <small>Tu foto es de este usuario y se sincroniza con la nube si la tienes. Cámara o galería.</small>
+        </p>
+        {error && <p className="error">{error}</p>}
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn--primary" disabled={busy} onClick={save}>
+            {busy ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Home() {
   const { user, isOwner, isManager, isElaborator } = useAuth()
   const { hasModule } = useLicense()
@@ -144,11 +220,22 @@ export function Home() {
   // Permiso independiente: el dueño autoriza al vendedor a dar entradas.
   const sellerEntries = useLiveQuery(() => configRepo.get('sellerEntries', false), [], false)
   const initial = (user.name || '?').trim().charAt(0).toUpperCase()
+  // Avatar del propio usuario (Fase 8 - B6). Es BASE (no lo gatea ningún módulo):
+  // todos los roles pueden tener su foto. Si no hay, se muestra la inicial.
+  const avatar = useLiveQuery(() => imagesRepo.getDataUrl('user', user.id), [user.id], '')
+  const [editingAvatar, setEditingAvatar] = useState(false)
 
   return (
     <div className="home">
       <header className="home-header">
-        <div className="home-avatar">{initial}</div>
+        <button
+          className="home-avatar"
+          onClick={() => setEditingAvatar(true)}
+          aria-label="Cambiar tu foto"
+          title="Cambiar tu foto"
+        >
+          {avatar ? <img src={avatar} alt="" /> : initial}
+        </button>
         <div className="home-greeting">
           <span className="home-greeting__hi">Bienvenido de nuevo</span>
           <div className="home-greeting__row">
@@ -157,6 +244,10 @@ export function Home() {
           </div>
         </div>
       </header>
+
+      {editingAvatar && (
+        <AvatarEditor user={user} current={avatar} onClose={() => setEditingAvatar(false)} />
+      )}
 
       {isManager && <WelcomeModal />}
       <CountNotice userId={user.id} />
