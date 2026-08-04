@@ -1,10 +1,17 @@
-// Redimension + compresion de imagenes EN EL CLIENTE (Fase 8 - B3, modulo
-// 'imagenes'). Convierte un File (camara o galeria) en una MINIATURA JPEG cuyo
-// lado mayor es <= maxPx y que pesa <= maxBytes, devuelta como dataUrl base64.
+// Redimension + compresion de imagenes EN EL CLIENTE (Fase 8, modulo 'imagenes').
+// Convierte un File (camara o galeria) en una MINIATURA CUADRADA (look tienda
+// e-commerce): lienzo cuadrado, imagen centrada, devuelta como dataUrl JPEG que
+// pesa <= maxBytes. Es reutilizable para catalogo, carta de mesas y avatares.
 //
 // Objetivo: fotos ligeras que caben en un documento de Firestore y sincronizan
 // sin costo apreciable (plan gratis). TODO ocurre en el dispositivo: no se sube
 // nada a ningun servidor ni se usa Firebase Storage.
+//
+// `fit`:
+//   'contain' (default) -> la foto entra COMPLETA sobre el fondo (sin recortar).
+//                          Ideal para productos/carta: el dueño no edita nada.
+//   'cover'             -> la foto LLENA el cuadrado y se recorta el sobrante.
+//                          Ideal para avatares (se ven llenos dentro del circulo).
 
 // Bytes aproximados del contenido base64 de un dataUrl (sin la cabecera).
 function dataUrlBytes(dataUrl) {
@@ -21,7 +28,6 @@ async function loadDrawable(file) {
     try {
       return await createImageBitmap(file, { imageOrientation: 'from-image' })
     } catch {
-      /* algunos navegadores no aceptan las opciones: reintentar sin ellas */
       try { return await createImageBitmap(file) } catch { /* cae al <img> */ }
     }
   }
@@ -34,33 +40,46 @@ async function loadDrawable(file) {
   })
 }
 
-export async function fileToThumbnail(file, { maxPx = 256, maxBytes = 40 * 1024 } = {}) {
+export async function fileToThumbnail(file, {
+  size = 256,             // lado del cuadrado resultante (px)
+  maxBytes = 40 * 1024,   // tope de peso (para caber en Firestore, plan gratis)
+  fit = 'contain',        // 'contain' (foto completa) | 'cover' (llena y recorta)
+  background = '#ffffff'  // fondo del cuadrado (blanco = look e-commerce)
+} = {}) {
   if (!file) throw new Error('No hay archivo')
   const src = await loadDrawable(file)
   const iw = src.naturalWidth || src.width
   const ih = src.naturalHeight || src.height
   if (!iw || !ih) throw new Error('Imagen inválida')
 
-  // Escala manteniendo la proporcion: el lado mayor queda en maxPx (nunca amplia).
-  const scale = Math.min(1, maxPx / Math.max(iw, ih))
-  const w = Math.max(1, Math.round(iw * scale))
-  const h = Math.max(1, Math.round(ih * scale))
-
+  // Lienzo CUADRADO. No agrandamos por encima del original (evita fotos borrosas
+  // y peso inutil): el lado es como mucho el mayor de la imagen original.
+  const S = Math.max(1, Math.min(size, Math.max(iw, ih)))
   const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
+  canvas.width = S
+  canvas.height = S
   const ctx = canvas.getContext('2d')
-  // Fondo blanco: los PNG/transparentes no quedan negros al pasar a JPEG.
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, w, h)
-  ctx.drawImage(src, 0, 0, w, h)
+  ctx.fillStyle = background
+  ctx.fillRect(0, 0, S, S)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+
+  // Escala segun el modo y centra dentro del cuadrado.
+  const scale = fit === 'cover'
+    ? Math.max(S / iw, S / ih)   // llena el cuadrado (recorta lo que sobra)
+    : Math.min(S / iw, S / ih)   // cabe entera dentro del cuadrado
+  const dw = Math.round(iw * scale)
+  const dh = Math.round(ih * scale)
+  const dx = Math.round((S - dw) / 2)
+  const dy = Math.round((S - dh) / 2)
+  ctx.drawImage(src, dx, dy, dw, dh)
   if (typeof src.close === 'function') src.close() // liberar el ImageBitmap
 
   // Baja la calidad hasta caber en maxBytes (o hasta un minimo razonable).
-  let q = 0.82
+  let q = 0.85
   let dataUrl = canvas.toDataURL('image/jpeg', q)
   while (dataUrlBytes(dataUrl) > maxBytes && q > 0.3) {
-    q -= 0.12
+    q -= 0.1
     dataUrl = canvas.toDataURL('image/jpeg', q)
   }
   return dataUrl
