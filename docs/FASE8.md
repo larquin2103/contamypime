@@ -72,9 +72,14 @@ comportamiento actual**. Las imágenes van **gateadas** por un módulo de licenc
 - Alcance: Catálogo + formulario. El **POS de ventas NO se tocó** (ruta de producción); pendiente
   como añadido opcional si el dueño lo pide. Las fotos de Mesas van en B5.
 
-### B5 — Carta de menú con fotos en Mesas (módulo `mesas` + `imagenes`)
-- Fotos en el "Agregar consumo" y, opcional, vista *carta* para clientes.
-- Sin fotos → los mosaicos de texto actuales.
+### B5 — Carta de menú con fotos en Mesas (módulo `mesas` + `imagenes`) — ✅ HECHO
+- `TableScreen`: cada mosaico de la carta ("toca para agregar") lleva la **foto del producto**
+  arriba (a sangre, look de carta e-commerce) cuando hay `imagenes` y el producto tiene foto.
+  Reutiliza la MISMA foto del catálogo (`refType: 'product'`, un solo `mapByType('product')`): la
+  que se pone en B4 aparece sola aquí, sin almacenamiento duplicado.
+- **Doble gate:** requiere estar en Mesas (`mesas`, ya gateado) **y** `imagenes`. Sin `imagenes` →
+  el mosaico queda con el **texto de siempre** (clase `--img` ausente, DOM idéntico a hoy).
+- El contador (badge) queda por encima de la foto (`z-index`). Hooks antes del return condicional.
 
 ### B6 — Avatares de usuario (BASE, NO gateado) — ✅ HECHO
 - **Decisión del dueño:** el avatar es una función **base**, NO gateada por `imagenes` — **todos

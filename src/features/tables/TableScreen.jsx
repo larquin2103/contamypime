@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../db/db'
 import { ordersRepo } from '../../repositories/ordersRepo'
 import { productsRepo } from '../../repositories/productsRepo'
+import { imagesRepo } from '../../repositories/imagesRepo'
 import { salesRepo } from '../../repositories/salesRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { usersRepo } from '../../repositories/usersRepo'
@@ -58,6 +59,15 @@ export function TableScreen() {
   // Encabezado (nombre del negocio) y pie del ticket, configurables en Ajustes.
   const ticketHeader = useLiveQuery(() => configRepo.get('ticketHeader', ''), [], '')
   const ticketFooter = useLiveQuery(() => configRepo.get('ticketFooter', ''), [], '')
+  // Fotos de la carta (Fase 8 - B5, módulo 'imagenes' sobre 'mesas'). Un solo
+  // mapa refId->dataUrl para pintar sin N consultas. Sin el módulo: mapa vacío
+  // -> la carta queda con los mosaicos de texto de siempre.
+  const canImages = hasModule(LICENSE_MODULES.IMAGES)
+  const menuImgs = useLiveQuery(
+    () => (canImages ? imagesRepo.mapByType('product') : Promise.resolve(new Map())),
+    [canImages],
+    new Map()
+  )
 
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('') // filtro de categoria (vacio = todas)
@@ -712,9 +722,13 @@ export function TableScreen() {
             {filtered.map((p) => {
               const n = inOrder(p.id)
               const left = stockOf(p)
+              const photo = canImages ? menuImgs.get(p.id) : ''
               return (
-                <button key={p.id} className="menu-tile" onClick={() => addOne(p)}>
+                <button key={p.id} className={`menu-tile ${photo ? 'menu-tile--img' : ''}`} onClick={() => addOne(p)}>
                   {n > 0 && <span className="menu-tile__badge">{n}</span>}
+                  {photo && (
+                    <span className="menu-tile__img"><img src={photo} alt="" loading="lazy" /></span>
+                  )}
                   <span className="menu-tile__name">{p.name}</span>
                   <span className="menu-tile__price">{formatMoney(p.price, baseCurrency)}</span>
                   <span className={`menu-tile__stock ${left <= 3 ? 'is-low' : ''}`}>{left} {p.unit}</span>

@@ -2669,6 +2669,30 @@ input[type='file'] {
   overflow: hidden;
 }
 .menu-tile:active { transform: scale(0.97); border-color: var(--primary); }
+/* Carta con foto (Fase 8 - B5): imagen a sangre arriba + texto con margen abajo.
+   Sin foto, el mosaico no lleva la clase --img y queda idéntico a hoy. */
+.menu-tile--img { padding: 0 0 10px; }
+.menu-tile--img .menu-tile__name { padding: 6px 22px 0 10px; }
+.menu-tile--img .menu-tile__price,
+.menu-tile--img .menu-tile__stock { padding-left: 10px; }
+.menu-tile__img {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 96px;
+  background: #ffffff; /* look e-commerce: la miniatura cuadrada blanca encaja */
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+.menu-tile__img img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
 .menu-tile__name {
   font-weight: 600;
   font-size: 0.88rem;
@@ -2684,6 +2708,7 @@ input[type='file'] {
   position: absolute;
   top: 6px;
   right: 6px;
+  z-index: 2; /* sobre la foto de la carta (menu-tile__img) */
   min-width: 20px;
   height: 20px;
   padding: 0 5px;
