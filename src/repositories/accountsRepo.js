@@ -55,13 +55,17 @@ export async function addAccountMovementRaw({
   concept = '',
   note = '',
   userId = null,
-  createdAt = null
+  createdAt = null,
+  // Id opcional. Por defecto aleatorio (comportamiento de siempre para ventas y
+  // extracciones). El backfill lo pasa DETERMINISTA para que, si dos dispositivos
+  // lo corren antes de sincronizar, generen el MISMO doc y la sync no duplique.
+  id = null
 }) {
   const amt = round2(Number(amount) || 0)
   if (amt <= 0) return null
-  const id = newId()
+  const movId = id || newId()
   await db.accountMovements.add({
-    id,
+    id: movId,
     accountId,
     direction,
     amount: amt,
@@ -73,7 +77,7 @@ export async function addAccountMovementRaw({
     userId,
     createdAt: createdAt || now()
   })
-  return id
+  return movId
 }
 
 // Acredita a la tesoreria el INGRESO de UNA venta (efectivo/transferencia/mixto
@@ -86,11 +90,17 @@ export async function addAccountMovementRaw({
 // Pensada para llamarse DENTRO de una transaccion con db.accounts + db.accountMovements.
 async function creditSaleToTreasury(s, { userId = null } = {}) {
   const concept = 'own'
+  // Id DETERMINISTA por "pierna" del cobro (bf:<venta>:<n>): si dos dispositivos
+  // corren el backfill antes de sincronizar, generan el MISMO doc -> la sync los
+  // fusiona (LWW), sin duplicar el ingreso. El orden de las move() es fijo para
+  // una misma venta, asi que la numeracion coincide en todos los dispositivos.
+  let leg = 0
   const move = async (method, currency, amount, direction = 'credit') => {
     const amt = Number(amount) || 0
     if (amt <= 0) return
     const accId = await ensureSystemAccount(method, currency || 'MN')
     await addAccountMovementRaw({
+      id: `bf:${s.id}:${leg++}`,
       accountId: accId,
       direction,
       amount: amt,
