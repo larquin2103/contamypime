@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
 import { productsRepo } from '../../repositories/productsRepo'
+import { imagesRepo } from '../../repositories/imagesRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
@@ -27,6 +28,14 @@ export function Catalog() {
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   // Bloque A (mayorista): permiso del dueño para que el vendedor opere el almacén.
   const warehouseAllowed = useLiveQuery(() => configRepo.get('sellerWarehouseSale', false), [], false)
+  // Fotos de producto (Fase 8 - B4, módulo 'imagenes'). Un solo Map refId->dataUrl
+  // para pintar las miniaturas sin una consulta por fila. Sin el módulo: Map vacío.
+  const canImages = hasModule(LICENSE_MODULES.IMAGES)
+  const productImgs = useLiveQuery(
+    () => (canImages ? imagesRepo.mapByType('product') : Promise.resolve(new Map())),
+    [canImages],
+    new Map()
+  )
 
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState(null) // producto en edicion
@@ -144,10 +153,17 @@ export function Catalog() {
         {shown.map((p) => (
           <button
             key={p.id}
-            className="product-row"
+            className={`product-row ${canImages ? 'product-row--thumb' : ''}`}
             onClick={() => isManager && setEditing(p)}
             disabled={!isManager}
           >
+            {canImages && (
+              <div className="product-thumb">
+                {productImgs.get(p.id)
+                  ? <img src={productImgs.get(p.id)} alt="" loading="lazy" />
+                  : <span className="product-thumb__ph">📦</span>}
+              </div>
+            )}
             <div className="product-row__main">
               <strong>{p.name}</strong>
               <span className="muted">

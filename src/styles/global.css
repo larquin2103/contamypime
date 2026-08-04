@@ -929,6 +929,70 @@ input[type='file'] {
   margin-bottom: 10px;
 }
 
+/* ----- Fotos de producto (Fase 8 - B4, módulo 'imagenes') ----- */
+/* Selector de foto en el formulario: vista previa + acciones. */
+.img-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.img-picker__preview {
+  width: 72px;
+  height: 72px;
+  flex: none;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.img-picker__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.img-picker__ph {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.img-picker__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* <input type=file> oculto dentro de un <label class=btn>: el label abre el
+   selector. Si está "procesando", el label se ve deshabilitado. */
+.btn.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Miniatura en la lista del catálogo. Solo se añade cuando hay módulo (clase
+   modificadora --thumb), así el resto de pantallas que usan .product-row__main
+   no se ven afectadas. Sin foto: un marcador neutro. */
+.product-row--thumb .product-row__main { flex: 1; min-width: 0; }
+.product-thumb {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+.product-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.product-thumb__ph { opacity: 0.7; }
+
 /* ----- Entradas de mercancia ----- */
 .entry-lines {
   display: flex;

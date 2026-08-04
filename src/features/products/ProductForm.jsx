@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
+import { imagesRepo } from '../../repositories/imagesRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { UNITS, UNIT_LABELS, NO_AREA_LABEL, WAREHOUSE, locationLabel } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
+import { fileToThumbnail } from '../../lib/image'
 import { normalizeTiers } from '../../lib/priceTiers'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 
@@ -33,9 +35,44 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
   const [tiers, setTiers] = useState(() =>
     (product?.priceTiers || []).map((t) => ({ minQty: String(t.minQty), price: String(t.price) }))
   )
+  // Foto del producto (Fase 8 - B4, módulo 'imagenes'). Miniatura JPEG en la
+  // colección `images` (aparte del producto). Sin el módulo, nada de esto se
+  // muestra ni se guarda -> el formulario queda idéntico a hoy.
+  const canImages = hasModule(LICENSE_MODULES.IMAGES)
+  const [photo, setPhoto] = useState('') // dataUrl actual (vacío = sin foto)
+  const [photoTouched, setPhotoTouched] = useState(false) // ¿el usuario la cambió?
+  const [imgBusy, setImgBusy] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   useEscapeClose(onClose)
+
+  // Carga la foto existente al abrir (solo en edición y con el módulo activo).
+  useEffect(() => {
+    let alive = true
+    if (canImages && editing) {
+      imagesRepo.getDataUrl('product', product.id).then((d) => { if (alive) setPhoto(d) })
+    }
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const onPickPhoto = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permite volver a elegir el MISMO archivo
+    if (!file) return
+    setError('')
+    setImgBusy(true)
+    try {
+      const dataUrl = await fileToThumbnail(file)
+      setPhoto(dataUrl)
+      setPhotoTouched(true)
+    } catch (err) {
+      setError('No se pudo procesar la imagen: ' + err.message)
+    } finally {
+      setImgBusy(false)
+    }
+  }
+  const removePhoto = () => { setPhoto(''); setPhotoTouched(true) }
 
   const setTier = (i, field, value) =>
     setTiers((prev) => prev.map((t, j) => (j === i ? { ...t, [field]: value } : t)))
@@ -81,6 +118,8 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
         await productsRepo.update(product.id, { code, name, categoryId, area, unit, cost, minStock: Number(minStock) || 0 })
         await productsRepo.changePrice(product.id, price, { userId: user.id })
         if (canTiers) await productsRepo.changeTiers(product.id, draftTiers, { userId: user.id })
+        // Foto: solo si el módulo está activo y el usuario la tocó (vacío = quitar).
+        if (canImages && photoTouched) await imagesRepo.set('product', product.id, photo)
       } else {
         const newProductId = await productsRepo.create({
           code,
@@ -95,6 +134,8 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
           priceTiers: canTiers ? draftTiers : [],
           userId: user.id
         })
+        // La foto se guarda YA con el id del producto recién creado (aparte).
+        if (canImages && photoTouched && photo) await imagesRepo.set('product', newProductId, photo)
         if (onCreated) onCreated(newProductId)
       }
       onClose()
@@ -108,6 +149,34 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={editing ? 'Editar producto' : 'Nuevo producto'} onClick={(e) => e.stopPropagation()}>
         <h3>{editing ? 'Editar producto' : 'Nuevo producto'}</h3>
+
+        {/* Foto del producto (módulo 'imagenes'). Sin el módulo no aparece nada. */}
+        {canImages && (
+          <div className="field">
+            <span>Foto</span>
+            <div className="img-picker">
+              <div className="img-picker__preview">
+                {photo
+                  ? <img src={photo} alt="" />
+                  : <span className="img-picker__ph">Sin foto</span>}
+              </div>
+              <div className="img-picker__actions">
+                <label className={`btn btn--ghost btn--sm ${imgBusy ? 'is-disabled' : ''}`}>
+                  {imgBusy ? 'Procesando…' : (photo ? 'Cambiar' : 'Agregar')}
+                  <input type="file" accept="image/*" onChange={onPickPhoto} disabled={imgBusy} hidden />
+                </label>
+                {photo && !imgBusy && (
+                  <button type="button" className="btn btn--ghost btn--sm" onClick={removePhoto}>
+                    Quitar
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="muted">
+              <small>Cámara o galería. Se guarda una miniatura (≤256 px) en este negocio; se sincroniza con la nube si la tienes.</small>
+            </p>
+          </div>
+        )}
 
         <label className="field">
           <span>Nombre *</span>

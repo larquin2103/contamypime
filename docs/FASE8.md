@@ -57,9 +57,18 @@ comportamiento actual**. Las imágenes van **gateadas** por un módulo de licenc
 - Añadido a `SYNC_COLLECTIONS`. Reglas Firestore ya lo cubren (wildcard). **Sin el módulo → cero
   imágenes, colección vacía, cero costo.** (Infraestructura: sin pantalla propia; lo visible es B4.)
 
-### B4 — Fotos de productos (módulo `imagenes`)
-- En Catálogo/ProductForm: agregar/reemplazar/quitar foto. Miniatura en listas y búsqueda.
-- Sin módulo o sin foto → el ícono actual (idéntico a hoy).
+### B4 — Fotos de productos (módulo `imagenes`) — ✅ HECHO
+- `ProductForm`: bloque "Foto" (vista previa + Agregar/Cambiar/Quitar) con cámara o galería
+  (`<input type="file" accept="image/*">`), compresión vía `lib/image` y guardado en `imagesRepo`
+  (`product:<id>`). En alta, la foto se guarda con el id del producto recién creado. Editar sin
+  tocar la foto NO la reescribe. Quitar = `dataUrl` vacío (no borra).
+- `Catalog`: miniatura por fila (un solo `mapByType('product')`, sin N consultas). Clase
+  modificadora `product-row--thumb` → **no** toca `.product-row__main` global (POS y demás
+  pantallas intactas). Sin foto → marcador neutro 📦.
+- **Todo gateado por `hasModule('imagenes')`**: sin el módulo, ProductForm y Catálogo quedan
+  **idénticos a hoy** (DOM sin cambios, cero consultas de imágenes).
+- Alcance: Catálogo + formulario. El **POS de ventas NO se tocó** (ruta de producción); pendiente
+  como añadido opcional si el dueño lo pide. Las fotos de Mesas van en B5.
 
 ### B5 — Carta de menú con fotos en Mesas (módulo `mesas` + `imagenes`)
 - Fotos en el "Agregar consumo" y, opcional, vista *carta* para clientes.
