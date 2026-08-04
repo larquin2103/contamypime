@@ -1547,6 +1547,20 @@ input[type='file'] {
   align-items: center;
   gap: 8px;
 }
+/* Conmutador de tema: solo el icono, sin chrome (igual que el badge de sync).
+   Va a la izquierda de la nube; el color sigue al texto de la cabecera. */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--icon);
+  line-height: 1;
+}
+
 /* Sin position: el panel se ancla a .app-header (ver arriba), no al icono. */
 .sync-wrap { display: inline-flex; }
 .sync-badge {

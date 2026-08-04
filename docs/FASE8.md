@@ -21,7 +21,10 @@ comportamiento actual**. Las imágenes van **gateadas** por un módulo de licenc
 - Paleta clara sobreescribiendo variables bajo `:root[data-theme="light"]`; el oscuro sigue
   siendo `:root` (default, intacto). Preferencia en **localStorage** (`mc_theme`, por
   dispositivo, no sincroniza), aplicada en `main.jsx` **antes de pintar** (sin parpadeo).
-- Toggle en Ajustes. El **ticket térmico** queda siempre negro-sobre-blanco (impresión).
+- Toggle en la **cabecera**, a la izquierda de la nube de sync: **solo el icono** del tema
+  actual (🌙 oscuro / ☀️ claro) y accesible a **todos los roles** (la preferencia es local del
+  dispositivo, no del negocio; por eso NO vive en Ajustes, que es del dueño). El **ticket
+  térmico** queda siempre negro-sobre-blanco (impresión).
 - Auditar colores *hardcoded* que asumen fondo oscuro → pasarlos a variables.
 
 ### B2 — Cambio de rol dinámico (base · riesgo alto → salvaguardas)

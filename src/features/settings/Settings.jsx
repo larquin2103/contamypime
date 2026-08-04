@@ -15,7 +15,6 @@ import { formatDateTime } from '../../lib/dates'
 import { getStorageInfo } from '../../lib/storage'
 import { licenseModules, LICENSE_MODULES, LICENSE_MODULE_LABELS } from '../../lib/license'
 import { TablesSettings } from '../tables/TablesSettings'
-import { getTheme, setTheme } from '../../lib/theme'
 
 export function Settings() {
   const { user, isOwner } = useAuth()
@@ -33,7 +32,6 @@ export function Settings() {
   return (
     <div className="screen">
       <h2>Ajustes</h2>
-      <ThemeSection />
       <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
       <AreasSection />
@@ -50,38 +48,6 @@ export function Settings() {
       <SecuritySection userId={user.id} />
       <LicenseSection />
     </div>
-  )
-}
-
-// Fase 8 - B1: tema claro/oscuro. Preferencia LOCAL del dispositivo (localStorage);
-// NO se sincroniza. El toggle aplica el tema al instante (sin recargar).
-function ThemeSection() {
-  const [theme, setThemeState] = useState(getTheme())
-  const choose = (t) => setThemeState(setTheme(t))
-  return (
-    <section className="card">
-      <h3>Apariencia</h3>
-      <p className="muted">
-        Tema de la app en <strong>este dispositivo</strong> (preferencia local, no se sincroniza).
-      </p>
-      <div className="kv">
-        <span className="muted">Tema</span>
-        <span className="pay-currencies" style={{ margin: 0 }}>
-          <button
-            className={`btn btn--sm ${theme === 'dark' ? 'btn--primary' : 'btn--ghost'}`}
-            onClick={() => choose('dark')}
-          >
-            🌙 Oscuro
-          </button>
-          <button
-            className={`btn btn--sm ${theme === 'light' ? 'btn--primary' : 'btn--ghost'}`}
-            onClick={() => choose('light')}
-          >
-            ☀️ Claro
-          </button>
-        </span>
-      </div>
-    </section>
   )
 }
 

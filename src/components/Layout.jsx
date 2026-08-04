@@ -1,10 +1,31 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Link } from 'react-router-dom'
-import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, HelpCircle } from 'lucide-react'
+import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, HelpCircle, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../app/providers/AuthProvider'
 import { useShift } from '../app/providers/ShiftProvider'
 import { useSync } from '../app/providers/SyncProvider'
 import { useLicense } from '../app/providers/LicenseProvider'
+import { getTheme, setTheme } from '../lib/theme'
+
+// Conmutador de tema (Fase 8 - B1): en la cabecera, a la IZQUIERDA de la nube de
+// sync y accesible a TODOS los roles (la preferencia es local del dispositivo, no
+// sincroniza; por eso vive aquí y no en Ajustes, que es solo del dueño). Muestra
+// SOLO el icono del tema ACTUAL —luna si oscuro, sol si claro— y al tocarlo alterna.
+function ThemeToggle() {
+  const [theme, setThemeState] = useState(getTheme())
+  const isLight = theme === 'light'
+  const toggle = () => setThemeState(setTheme(isLight ? 'dark' : 'light'))
+  return (
+    <button
+      className="theme-toggle"
+      onClick={toggle}
+      aria-label={isLight ? 'Cambiar a tema oscuro' : 'Cambiar a tema claro'}
+      title={isLight ? 'Tema claro — tocar para oscuro' : 'Tema oscuro — tocar para claro'}
+    >
+      {isLight ? <Sun size={18} strokeWidth={2} /> : <Moon size={18} strokeWidth={2} />}
+    </button>
+  )
+}
 
 // El verde solo es "de verdad" si hubo una bajada confirmada por el servidor
 // hace menos de esto. Con el pull de respaldo cada 45s, 120s deja margen para
@@ -140,6 +161,7 @@ export function Layout({ children }) {
       <header className="app-header">
         <span className="brand brand--sm">MypiCuadre</span>
         <div className="app-header__right">
+          <ThemeToggle />
           <SyncBadge />
           <Link className="btn btn--ghost btn--sm app-header__help" to="/help" aria-label="Ayuda" title="Ayuda">
             <HelpCircle size={16} strokeWidth={2} /> Ayuda
