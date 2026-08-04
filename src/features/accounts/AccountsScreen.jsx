@@ -36,6 +36,8 @@ export function AccountsScreen() {
   const partnerBal = useLiveQuery(() => partnersRepo.balances(), [], {})
   // Opcion B: ingresos/egresos por concepto (de que actividad vino el dinero).
   const byConcept = useLiveQuery(() => accountsRepo.byConcept(), [], { credits: {}, debits: {} })
+  // Cobros de mesa anteriores al fix que aun no entraron a tesoreria (backfill).
+  const pendingMesa = useLiveQuery(() => accountsRepo.pendingMesaIncomeCount(), [], 0)
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
 
@@ -106,6 +108,13 @@ export function AccountsScreen() {
         </button>
       )}
 
+      {/* Regularizar (backfill) ingresos de mesa anteriores al fix. Solo aparece
+          si hay pendientes y el usuario puede modificar cuentas; se oculta al
+          terminar. Idempotente: seguro de ejecutar. */}
+      {can('accounts') && pendingMesa > 0 && (
+        <MesaBackfill pending={pendingMesa} userId={user.id} />
+      )}
+
       <UnifiedPartners partners={partners} partnerBal={partnerBal} onGo={() => navigate('/partners')} />
       <IncomeByConcept byConcept={byConcept} />
 
@@ -166,6 +175,49 @@ function IncomeByConcept({ byConcept }) {
           <strong className="warn-text">−{formatMoney(debits[k], 'MN')}</strong>
         </div>
       ))}
+    </section>
+  )
+}
+
+// Regularizacion (backfill) de los cobros de mesa que no entraron a tesoreria
+// antes del fix. Idempotente (no duplica); crea cada ingreso con la fecha
+// original de su venta. Solo se muestra si hay pendientes.
+function MesaBackfill({ pending, userId }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const run = async () => {
+    if (!confirm(`Se creará el ingreso en tesorería de ${pending} cobro(s) de mesa anteriores, con su fecha original. Es seguro y no duplica. ¿Continuar?`)) return
+    setBusy(true)
+    setResult(null)
+    try {
+      const r = await accountsRepo.backfillMesaSaleIncome({ userId })
+      setResult(r)
+    } catch (e) {
+      setResult({ error: e.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="card card--warn">
+      <h3>Regularizar ingresos de mesas</h3>
+      <p className="muted">
+        Hay <strong>{pending}</strong> cobro(s) de mesa anteriores que no entraron a las cuentas
+        (ya se corrigió para que entren solos). Al regularizar se crea su ingreso con la
+        <strong> fecha original</strong>. Es seguro: no duplica si lo repites.
+      </p>
+      {result && !result.error && (
+        <p className="ok-text">
+          ✓ Regularizados {result.credited} cobro(s)
+          {result.skipped ? ` · ${result.skipped} ya estaban al día` : ''}.
+        </p>
+      )}
+      {result?.error && <p className="error">Error: {result.error}</p>}
+      <button className="btn btn--primary btn--block" disabled={busy} onClick={run}>
+        {busy ? 'Regularizando…' : `Regularizar ${pending} cobro(s)`}
+      </button>
     </section>
   )
 }

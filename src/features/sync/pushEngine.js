@@ -17,6 +17,12 @@ import { SYNC_COLLECTIONS, LOCAL_CONFIG_KEYS, syncTs } from './collections'
 // ---------------------------------------------------------------------------
 
 const BATCH = 400 // limite Firestore: 500 ops por lote
+// Las imagenes (miniaturas ~40 KB) pesan mucho mas que un registro normal (bytes).
+// En lotes de 400 el commit podria acercarse al tope de TAMANO de un commit de
+// Firestore. Solo para 'images' usamos lotes pequenos (50 -> ~2 MB), muy por
+// debajo del limite; el resto de colecciones sigue en 400, sin cambio alguno.
+const IMAGE_BATCH = 50
+const batchSizeFor = (name) => (name === 'images' ? IMAGE_BATCH : BATCH)
 const cursorKey = (name) => `push:${name}`
 
 async function getCursor(name) {
@@ -57,8 +63,9 @@ export async function pushChanges() {
     if (!changed.length) continue
 
     let maxTs = cursor
-    for (let i = 0; i < changed.length; i += BATCH) {
-      const slice = changed.slice(i, i + BATCH)
+    const step = batchSizeFor(col.name)
+    for (let i = 0; i < changed.length; i += step) {
+      const slice = changed.slice(i, i + step)
       const batch = writeBatch(fs)
       for (const { r, ts } of slice) {
         const id = String(r[col.pk])
