@@ -51,6 +51,15 @@ export const usersRepo = {
     await db.users.update(id, { pinHash: hash, pinSalt: salt, updatedAt: now() })
   },
 
+  // Renombra un usuario (Fase 8 - B2). El nombre es solo etiqueta: NO es la
+  // identidad del negocio (esa es el uid/businessId), por eso se puede cambiar a
+  // cualquiera, incluido el dueño. Actualiza updatedAt para que sincronice.
+  async setName(id, name) {
+    const clean = String(name || '').trim()
+    if (!clean) throw new Error('El nombre no puede estar vacío')
+    await db.users.update(id, { name: clean, updatedAt: now() })
+  },
+
   // Borrado logico: nunca se elimina un usuario (auditoria).
   async setActive(id, active) {
     await db.users.update(id, { active, updatedAt: now() })

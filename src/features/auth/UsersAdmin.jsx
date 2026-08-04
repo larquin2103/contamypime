@@ -18,7 +18,7 @@ export function UsersAdmin() {
   const users = useLiveQuery(() => usersRepo.list(), [], [])
   const [showForm, setShowForm] = useState(false)
   const [resetting, setResetting] = useState(null) // usuario al que se le resetea el PIN
-  const [changingRole, setChangingRole] = useState(null) // usuario al que se le cambia el rol
+  const [editing, setEditing] = useState(null) // usuario al que se le edita nombre/rol
 
   if (!isOwner) {
     return (
@@ -72,12 +72,10 @@ export function UsersAdmin() {
                 <span className="muted"><small>#{u.id.slice(0, 6)} · creado {formatDateTime(u.createdAt)}</small></span>
               </div>
               <div className="item-actions">
-                {/* El rol del DUEÑO es intocable (identidad del negocio): sin botón. */}
-                {u.role !== ROLES.OWNER && (
-                  <button className="btn btn--ghost btn--sm" onClick={() => setChangingRole(u)}>
-                    Rol
-                  </button>
-                )}
+                {/* Editar nombre (todos, incluido el dueño) y —si no es dueño— el rol. */}
+                <button className="btn btn--ghost btn--sm" onClick={() => setEditing(u)}>
+                  Editar
+                </button>
                 <button className="btn btn--ghost btn--sm" onClick={() => setResetting(u)}>
                   PIN
                 </button>
@@ -94,47 +92,68 @@ export function UsersAdmin() {
 
       {showForm && <NewUserForm onClose={() => setShowForm(false)} />}
       {resetting && <ResetPinForm user={resetting} onClose={() => setResetting(null)} />}
-      {changingRole && <ChangeRoleForm user={changingRole} onClose={() => setChangingRole(null)} />}
+      {editing && <EditUserForm user={editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }
 
-// Cambia el rol de un usuario que NO es el dueño (Fase 8 - B2). Destinos:
-// Vendedor / Administrativo / Elaboración (este último solo si el módulo está
-// activo, o si el usuario ya lo tiene, para poder sacarlo de él). Sin PIN: basta
-// confirmar, igual que desactivar un usuario o resetear su PIN. Se BLOQUEA si el
-// usuario tiene un turno abierto (hay que cerrarlo o forzarlo antes). El cambio
-// se registra en auditoría y toma efecto cuando el usuario vuelve a entrar/recarga.
-function ChangeRoleForm({ user, onClose }) {
+// Edita NOMBRE y ROL de un usuario (Fase 8 - B2). El nombre se puede cambiar a
+// cualquiera (incluido el dueño): es solo etiqueta, no la identidad del negocio.
+// El ROL solo se ofrece si NO es dueño (su rol es intocable) y con destinos
+// Vendedor / Administrativo / Elaboración (esta última solo con su módulo, o si
+// el usuario ya la tiene, para poder sacarlo de ella). Sin PIN: basta confirmar,
+// igual que desactivar un usuario o resetear su PIN. El cambio de ROL se BLOQUEA
+// si el usuario tiene un turno abierto (el de NOMBRE no: es cosmético). Los
+// cambios toman efecto cuando el usuario vuelve a entrar/recarga; el rol queda
+// registrado en auditoría (setRole).
+function EditUserForm({ user, onClose }) {
   const { user: actor } = useAuth()
   const { hasModule } = useLicense()
+  const [name, setName] = useState(user.name)
   const [role, setRole] = useState(user.role)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   useEscapeClose(onClose)
 
-  // Turno abierto del usuario (reactivo): si lo tiene, no se permite el cambio.
-  const openShift = useLiveQuery(() => shiftsRepo.getActiveFor(user.id), [user.id], undefined)
-  const blocked = !!openShift
+  const canRole = user.role !== ROLES.OWNER
+  // Turno abierto del usuario (reactivo): si lo tiene, no se permite CAMBIAR EL ROL.
+  const openShift = useLiveQuery(
+    () => (canRole ? shiftsRepo.getActiveFor(user.id) : Promise.resolve(null)),
+    [user.id, canRole],
+    undefined
+  )
+  const roleBlocked = canRole && !!openShift
 
   // Destinos posibles. Elaboración solo con su módulo (o si el usuario ya lo es,
   // para permitir moverlo FUERA de ese rol aunque el módulo se haya apagado).
-  const options = [ROLES.SELLER, ROLES.ADMIN]
+  const roleOptions = [ROLES.SELLER, ROLES.ADMIN]
   if (hasModule(LICENSE_MODULES.ELABORATION) || user.role === ROLES.ELABORATION) {
-    options.push(ROLES.ELABORATION)
+    roleOptions.push(ROLES.ELABORATION)
   }
-  const changed = role !== user.role
+
+  const cleanName = name.trim()
+  const nameChanged = cleanName.length > 0 && cleanName !== user.name
+  const roleChanged = canRole && role !== user.role
+  const canSave = !busy && (nameChanged || roleChanged) && !!cleanName
 
   const save = async () => {
     setError('')
-    if (!changed) return
-    // Chequeo AUTORITATIVO del turno (por si la consulta reactiva aún carga).
-    const shift = await shiftsRepo.getActiveFor(user.id)
-    if (shift) return setError('Este usuario tiene un turno abierto. Ciérralo o fuérzalo antes de cambiar su rol.')
-    if (!confirm(`¿Cambiar el rol de "${user.name}" de ${ROLE_LABELS[user.role]} a ${ROLE_LABELS[role]}?`)) return
+    if (!cleanName) return setError('Escribe un nombre')
+    if (!nameChanged && !roleChanged) return
+    // El cambio de ROL exige que no haya turno abierto (chequeo AUTORITATIVO por
+    // si la consulta reactiva aún carga). El de NOMBRE nunca se bloquea.
+    if (roleChanged) {
+      const shift = await shiftsRepo.getActiveFor(user.id)
+      if (shift) return setError('Tiene un turno abierto: ciérralo o fuérzalo antes de cambiar el rol. (Puedes cambiar solo el nombre dejando el rol igual.)')
+    }
+    const parts = []
+    if (nameChanged) parts.push(`nombre a "${cleanName}"`)
+    if (roleChanged) parts.push(`rol a ${ROLE_LABELS[role]}`)
+    if (!confirm(`¿Cambiar ${parts.join(' y ')} de "${user.name}"?`)) return
     setBusy(true)
     try {
-      await usersRepo.setRole(user.id, role, { actorId: actor.id })
+      if (nameChanged) await usersRepo.setName(user.id, cleanName)
+      if (roleChanged) await usersRepo.setRole(user.id, role, { actorId: actor.id })
       onClose()
     } catch (e) {
       setError('Error: ' + e.message)
@@ -144,51 +163,62 @@ function ChangeRoleForm({ user, onClose }) {
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={`Cambiar rol de ${user.name}`} onClick={(e) => e.stopPropagation()}>
-        <h3>Cambiar rol — {user.name}</h3>
-        <p className="muted">Rol actual: <strong>{ROLE_LABELS[user.role]}</strong>.</p>
-
-        {blocked && (
-          <p className="error">
-            Tiene un <strong>turno abierto</strong>. Ciérralo o fuérzalo antes de cambiar su rol.
-          </p>
-        )}
+      <div className="modal" role="dialog" aria-modal="true" aria-label={`Editar ${user.name}`} onClick={(e) => e.stopPropagation()}>
+        <h3>Editar — {user.name}</h3>
 
         <label className="field">
-          <span>Nuevo rol</span>
-          <select value={role} onChange={(e) => setRole(e.target.value)} disabled={blocked}>
-            {options.map((r) => (
-              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-            ))}
-          </select>
+          <span>Nombre</span>
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
         </label>
 
-        {changed && role === ROLES.ADMIN && (
+        {canRole ? (
+          <>
+            <label className="field">
+              <span>Rol</span>
+              <select value={role} onChange={(e) => setRole(e.target.value)} disabled={roleBlocked}>
+                {roleOptions.map((r) => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                ))}
+              </select>
+            </label>
+            {roleBlocked && (
+              <p className="error">
+                Tiene un <strong>turno abierto</strong>: para cambiar el rol, ciérralo o fuérzalo antes
+                (el nombre sí puedes cambiarlo).
+              </p>
+            )}
+            {roleChanged && role === ROLES.ADMIN && (
+              <p className="muted">
+                Como <strong>administrativo</strong> verá reportes, costos y el panel del dueño, y podrá
+                autorizar al vendedor, forzar cierres y aprobar conteos. No gestiona usuarios, licencia ni sincronización.
+              </p>
+            )}
+            {roleChanged && role === ROLES.ELABORATION && (
+              <p className="muted">
+                Operará solo el <strong>centro de elaboración</strong>; no verá el almacén central ni los datos del dueño.
+              </p>
+            )}
+            {roleChanged && role === ROLES.SELLER && (
+              <p className="muted">
+                Como <strong>vendedor</strong> solo vende en su turno; no ve costos ni datos del dueño.
+              </p>
+            )}
+          </>
+        ) : (
           <p className="muted">
-            Como <strong>administrativo</strong> verá reportes, costos y el panel del dueño, y podrá
-            autorizar al vendedor, forzar cierres y aprobar conteos. No gestiona usuarios, licencia ni sincronización.
-          </p>
-        )}
-        {changed && role === ROLES.ELABORATION && (
-          <p className="muted">
-            Operará solo el <strong>centro de elaboración</strong>; no verá el almacén central ni los datos del dueño.
-          </p>
-        )}
-        {changed && role === ROLES.SELLER && (
-          <p className="muted">
-            Como <strong>vendedor</strong> solo vende en su turno; no ve costos ni datos del dueño.
+            Es el <strong>dueño</strong>: su rol no se cambia (identidad del negocio). Solo el nombre.
           </p>
         )}
 
         <p className="muted">
-          <small>El cambio toma efecto cuando el usuario vuelva a iniciar sesión o recargue la app.</small>
+          <small>Los cambios toman efecto cuando el usuario vuelva a iniciar sesión o recargue la app.</small>
         </p>
         {error && <p className="error">{error}</p>}
 
         <div className="modal__actions">
           <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn btn--primary" disabled={busy || !changed || blocked} onClick={save}>
-            {busy ? 'Guardando...' : 'Cambiar rol'}
+          <button className="btn btn--primary" disabled={!canSave} onClick={save}>
+            {busy ? 'Guardando...' : 'Guardar'}
           </button>
         </div>
       </div>
