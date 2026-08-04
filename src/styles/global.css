@@ -953,7 +953,9 @@ input[type='file'] {
    a su tamaño intrínseco). Así llena la caja y object-fit la recorta y centra. */
 .img-picker__preview img {
   position: absolute;
-  inset: 0;
+  /* longhand (no `inset`): compatible con WebView/Chrome antiguos de Android. */
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -996,7 +998,9 @@ input[type='file'] {
 /* Absoluta: se libra del min-width:auto del flex y llena la caja (ver preview). */
 .product-thumb img {
   position: absolute;
-  inset: 0;
+  /* longhand (no `inset`): compatible con WebView/Chrome antiguos de Android. */
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
