@@ -4,6 +4,11 @@ import { now } from '../lib/dates'
 import { hashPin, verifyPin, normalizeRecoveryCode } from '../lib/pin'
 import { ROLES } from '../db/constants'
 
+// Roles OPERATIVOS a los que se puede mover un usuario (Fase 8 - B2). El DUEÑO
+// queda fuera a propósito: su rol es la identidad del negocio (uid = businessId,
+// licencia, código de recuperación) y ni se cambia ni se asigna a nadie.
+const ASSIGNABLE_ROLES = [ROLES.SELLER, ROLES.ADMIN, ROLES.ELABORATION]
+
 // Usuarios y autenticacion por PIN.
 export const usersRepo = {
   async count() {
@@ -49,6 +54,37 @@ export const usersRepo = {
   // Borrado logico: nunca se elimina un usuario (auditoria).
   async setActive(id, active) {
     await db.users.update(id, { active, updatedAt: now() })
+  },
+
+  // Cambia el rol de un usuario (Fase 8 - B2). Solo lo invoca la pantalla de
+  // Usuarios (dueño). Las REGLAS DURAS viven aqui, en la capa de datos, no solo
+  // en la UI: el rol de DUEÑO nunca se cambia ni se asigna, y solo se permite
+  // mover entre roles operativos. Escribe rol + updatedAt y deja constancia
+  // INMUTABLE en auditEvents (rol anterior -> nuevo). Todo en una transaccion;
+  // sincroniza como cualquier cambio (users y auditEvents estan en SYNC_COLLECTIONS).
+  // El gate del modulo 'elaboracion' se aplica en la UI (igual que en el alta).
+  async setRole(id, newRole, { actorId = null, note = '' } = {}) {
+    if (!ASSIGNABLE_ROLES.includes(newRole)) throw new Error('Rol no válido')
+    const ts = now()
+    await db.transaction('rw', db.users, db.auditEvents, async () => {
+      const u = await db.users.get(id)
+      if (!u) throw new Error('Usuario no encontrado')
+      if (u.role === ROLES.OWNER) throw new Error('El rol de dueño no se puede cambiar')
+      if (u.role === newRole) return // sin cambios: no se toca nada ni se audita
+      await db.users.update(id, { role: newRole, updatedAt: ts })
+      await db.auditEvents.add({
+        id: newId(),
+        entity: 'user',
+        entityId: id,
+        action: 'role_change',
+        name: u.name,
+        fromRole: u.role,
+        toRole: newRole,
+        userId: actorId,
+        note: String(note || '').trim(),
+        createdAt: ts
+      })
+    })
   },
 
   // Devuelve el usuario si el PIN coincide y esta activo; si no, null.

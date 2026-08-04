@@ -27,11 +27,22 @@ comportamiento actual**. Las imágenes van **gateadas** por un módulo de licenc
   térmico** queda siempre negro-sobre-blanco (impresión).
 - Auditar colores *hardcoded* que asumen fondo oscuro → pasarlos a variables.
 
-### B2 — Cambio de rol dinámico (base · riesgo alto → salvaguardas)
-- En `UsersAdmin` (solo dueño): acción "Cambiar rol". Destinos: vendedor / admin / elaborador
-  (este último solo con su módulo). **Nunca** OWNER; **no** se toca a quien sea OWNER.
-- `usersRepo.setRole` + registro en `auditEvents`. Sincroniza. El `AuthProvider` relee el rol
-  real de la BD al iniciar sesión (aviso: un usuario conectado toma el nuevo rol al recargar).
+### B2 — Cambio de rol dinámico (base · riesgo alto → salvaguardas) — ✅ HECHO
+- En `UsersAdmin` (solo dueño): botón "Rol" por usuario → modal `ChangeRoleForm`. Destinos:
+  vendedor / admin / elaboración (este último solo con su módulo, o si el usuario ya lo tiene,
+  para poder sacarlo de él). **Nunca** OWNER; el dueño no tiene botón "Rol" y no es un destino.
+- **Doble candado OWNER:** la UI lo excluye **y** `usersRepo.setRole` lo rechaza en la capa de
+  datos (`ASSIGNABLE_ROLES` = seller/admin/elaboration; lanza error si el objetivo es OWNER).
+- **Decisiones (validadas con el dueño):** SIN PIN — solo confirmación (como desactivar/resetear
+  PIN); **se BLOQUEA** el cambio si el usuario tiene un **turno abierto** (cerrar/forzar antes;
+  chequeo reactivo + autoritativo en `save()`).
+- `usersRepo.setRole` transaccional: rol + `updatedAt` + evento inmutable en `auditEvents`
+  (`entity:'user'`, `action:'role_change'`, `fromRole`→`toRole`). Sincroniza (`users` y
+  `auditEvents` ya en `SYNC_COLLECTIONS`). El `AuthProvider` ya relee el rol real de la BD al
+  montar → el afectado toma el rol nuevo al reiniciar sesión/recargar (en su sesión viva, hasta
+  recargar, sigue el rol viejo).
+- Pendiente opcional: el evento `role_change` se guarda pero aún NO se muestra en la pantalla
+  Auditoría (que hoy solo lista bajas de catálogo). Se puede añadir una vista "Cambios de rol".
 
 ### B3 — Infraestructura de imágenes (módulo `imagenes` · riesgo medio)
 - Captura **cámara/galería** (`<input type="file" accept="image/*" capture>`), **redimensión +
