@@ -958,9 +958,10 @@ input[type='file'] {
   left: 0;
   width: 100%;
   height: 100%;
-  /* La miniatura ya viene CUADRADA con la foto centrada sobre blanco (lib/image),
-     así que llena el recuadro sin recortar el producto ni dejar margen. */
-  object-fit: cover;
+  /* La miniatura ya viene CUADRADA con la foto centrada sobre blanco (lib/image);
+     en un recuadro también cuadrado, 'contain' la llena sin recortar ni dejar
+     margen. Y una foto vieja (no cuadrada) se ve ENTERA, sin recortarse. */
+  object-fit: contain;
   display: block;
 }
 .img-picker__ph {
@@ -1005,9 +1006,10 @@ input[type='file'] {
   left: 0;
   width: 100%;
   height: 100%;
-  /* La miniatura ya viene CUADRADA con la foto centrada sobre blanco (lib/image),
-     así que llena el recuadro sin recortar el producto ni dejar margen. */
-  object-fit: cover;
+  /* La miniatura ya viene CUADRADA con la foto centrada sobre blanco (lib/image);
+     en un recuadro también cuadrado, 'contain' la llena sin recortar ni dejar
+     margen. Y una foto vieja (no cuadrada) se ve ENTERA, sin recortarse. */
+  object-fit: contain;
   display: block;
 }
 .product-thumb__ph { opacity: 0.7; }
