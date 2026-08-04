@@ -718,7 +718,7 @@ export function TableScreen() {
 
           {filtered.length === 0 && <p className="muted">Sin productos con existencia en {order.area}.</p>}
 
-          <div className="menu-grid">
+          <div className={`menu-grid ${canImages ? 'menu-grid--img' : ''}`}>
             {filtered.map((p) => {
               const n = inOrder(p.id)
               const left = stockOf(p)

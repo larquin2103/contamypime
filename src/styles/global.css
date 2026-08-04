@@ -2652,6 +2652,11 @@ input[type='file'] {
   grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 8px;
 }
+/* Con fotos, los mosaicos son horizontales (miniatura + texto): se necesitan
+   columnas más anchas para que el nombre no se parta a mitad de palabra. */
+.menu-grid--img {
+  grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
+}
 .menu-tile {
   position: relative;
   display: flex;
@@ -2688,7 +2693,13 @@ input[type='file'] {
   padding: 8px;
 }
 .menu-tile--img .menu-tile__body { width: auto; flex: 1; }
-.menu-tile--img .menu-tile__name { padding-right: 18px; } /* hueco para el badge */
+/* Corta por palabras (no por letras) y solo parte una palabra si de verdad no
+   cabe: así "Aceite vegetal 1L" se ve entero en 1-2 líneas, no "Aceit e". */
+.menu-tile--img .menu-tile__name {
+  padding-right: 18px; /* hueco para el badge */
+  overflow-wrap: break-word;
+  word-break: normal;
+}
 .menu-tile__img {
   position: relative;
   flex: none;
