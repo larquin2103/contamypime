@@ -958,7 +958,10 @@ input[type='file'] {
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* contain (no cover): muestra la imagen COMPLETA sin recortar, para que el
+     dueño no tenga que editar/recortar sus fotos. El sobrante usa el fondo del
+     recuadro (se adapta al tema). Sirve cualquier proporción de foto. */
+  object-fit: contain;
   display: block;
 }
 .img-picker__ph {
@@ -1003,7 +1006,10 @@ input[type='file'] {
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* contain (no cover): muestra la imagen COMPLETA sin recortar, para que el
+     dueño no tenga que editar/recortar sus fotos. El sobrante usa el fondo del
+     recuadro (se adapta al tema). Sirve cualquier proporción de foto. */
+  object-fit: contain;
   display: block;
 }
 .product-thumb__ph { opacity: 0.7; }
