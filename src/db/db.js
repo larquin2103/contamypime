@@ -125,3 +125,14 @@ db.version(10).stores({
 db.version(11).stores({
   mermas: 'id, productId, location, userId, createdAt'
 })
+
+// Fase 8 - B3 (modulo 'imagenes'): miniaturas de productos, usuarios y carta de
+// mesas. UNA imagen por referencia, con id DETERMINISTA `img:<refType>:<refId>`
+// para que dos dispositivos NO la dupliquen; la sync "ultima escritura gana"
+// fusiona por `updatedAt`. Guarda un `dataUrl` JPEG <=256px (<40 KB) -> cabe en
+// Firestore y sincroniza sin costo (plan gratis). "Quitar" no borra (el delete
+// esta prohibido por las reglas): deja `dataUrl` vacio. Los docs de products/
+// users NO engordan: la foto vive aparte. Migracion aditiva: solo una tabla vacia.
+db.version(12).stores({
+  images: 'id, refType, updatedAt'
+})

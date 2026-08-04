@@ -32,7 +32,11 @@ export const SYNC_COLLECTIONS = [
   // que dos dispositivos (camarero y caja) atendiendo la misma mesa FUSIONAN
   // sus adiciones en vez de pisarse (que es lo que pasaria con un array).
   { name: 'orders', pk: 'id' },
-  { name: 'orderItems', pk: 'id' }
+  { name: 'orderItems', pk: 'id' },
+  // Modulo 'imagenes': miniaturas (producto/usuario/carta). Id determinista por
+  // referencia -> dos dispositivos no duplican; LWW por updatedAt. Sin el modulo
+  // no se crea ninguna, la coleccion queda vacia y no hay costo de sync/storage.
+  { name: 'images', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

@@ -44,12 +44,18 @@ comportamiento actual**. Las imágenes van **gateadas** por un módulo de licenc
 - Pendiente opcional: el evento `role_change` se guarda pero aún NO se muestra en la pantalla
   Auditoría (que hoy solo lista bajas de catálogo). Se puede añadir una vista "Cambios de rol".
 
-### B3 — Infraestructura de imágenes (módulo `imagenes` · riesgo medio)
-- Captura **cámara/galería** (`<input type="file" accept="image/*" capture>`), **redimensión +
-  compresión en el cliente** (canvas → ≤256 px, JPEG, <40 KB).
-- Nueva tabla Dexie **v12 `images`** `{ id, refType, refId, dataUrl, updatedAt }` (una por
-  producto/usuario). Se añade a `SYNC_COLLECTIONS`. Los docs de `products`/`users` NO engordan.
-- Reglas Firestore ya cubren la colección (wildcard). Sin el módulo → cero imágenes, cero costo.
+### B3 — Infraestructura de imágenes (módulo `imagenes` · riesgo medio) — ✅ HECHO
+- Módulo de licencia nuevo `imagenes` (`LICENSE_MODULES.IMAGES`) + su etiqueta. Base para B4/B5/B6.
+- `lib/image.js` → `fileToThumbnail(file)`: redimensión + compresión **en el cliente** (canvas →
+  lado mayor ≤256 px, JPEG, itera calidad hasta <40 KB). Fondo blanco (evita PNG transparentes en
+  negro). Todo local; NO usa Firebase Storage.
+- Dexie **v12 `images`** (`id, refType, updatedAt`), migración aditiva. Id **determinista**
+  `img:<refType>:<refId>` → dos dispositivos no duplican; LWW por `updatedAt`. Los docs de
+  `products`/`users` NO engordan (la foto vive aparte).
+- `imagesRepo`: `get`/`getDataUrl`/`set`/`clear`/`mapByType`. **Quitar = dataUrl vacío** (no borra;
+  el delete está prohibido por las reglas de sync).
+- Añadido a `SYNC_COLLECTIONS`. Reglas Firestore ya lo cubren (wildcard). **Sin el módulo → cero
+  imágenes, colección vacía, cero costo.** (Infraestructura: sin pantalla propia; lo visible es B4.)
 
 ### B4 — Fotos de productos (módulo `imagenes`)
 - En Catálogo/ProductForm: agregar/reemplazar/quitar foto. Miniatura en listas y búsqueda.

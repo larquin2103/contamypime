@@ -26,14 +26,16 @@ export const LICENSE_MODULES = {
   WHOLESALE: 'mayorista', // venta desde almacen central + precios por escala
   ACCOUNTS: 'cuentas', // proveedores/acreedores + cuentas de tesoreria
   ELABORATION: 'elaboracion', // centro de elaboracion intermedio (almacen->elab->area)
-  TABLES: 'mesas' // mesas con cuenta abierta por area (cafeteria/restaurante)
+  TABLES: 'mesas', // mesas con cuenta abierta por area (cafeteria/restaurante)
+  IMAGES: 'imagenes' // fotos: catalogo, carta de mesas y avatares (miniaturas sync)
 }
 
 export const LICENSE_MODULE_LABELS = {
   mayorista: 'Ventas mayoristas',
   cuentas: 'Cuentas y proveedores',
   elaboracion: 'Centro de elaboración',
-  mesas: 'Mesas y cuentas'
+  mesas: 'Mesas y cuentas',
+  imagenes: 'Imágenes y fotos'
 }
 
 // Lista de modulos de un payload (tolerante a licencias viejas sin el campo).
