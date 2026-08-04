@@ -9,8 +9,13 @@ import App from './App.jsx'
 import { ensureSeed } from './db/seed'
 import { requestPersistentStorage } from './lib/storage'
 import { installErrorLogging } from './lib/errorLog'
+import { getTheme, applyTheme } from './lib/theme'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import './styles/global.css'
+
+// Fase 8 - B1: aplica el tema guardado (claro/oscuro) ANTES de pintar, para que
+// no haya parpadeo. Default 'dark' (clasico) si no hay preferencia guardada.
+applyTheme(getTheme())
 
 // Bloque 33: captura global de errores (window/promesas) al log local.
 installErrorLogging()

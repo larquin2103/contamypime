@@ -23,6 +23,60 @@
   --gap: 14px;
 }
 
+/* ===== Tema CLARO (opt-in, Fase 8 - B1) =====================================
+   Se activa con data-theme="light" en <html> (lib/theme.js). El tema OSCURO es
+   el :root de arriba y queda INTACTO: sin data-theme="light" todo es idéntico a
+   hoy. Aquí SOLO se sobreescribe para el modo claro. El ticket térmico
+   (.thermal / @media print) es siempre negro-sobre-blanco y no depende del tema. */
+:root[data-theme="light"] {
+  --bg: #eef2f8;
+  --bg-grad-top: #ffffff;
+  --bg-grad-bottom: #e9eef6;
+  --surface: #ffffff;
+  --surface-hi: #f6f9fc;
+  --surface-2: #e7edf5;
+  --primary: #1e9e57;
+  --primary-600: #17864a;
+  --accent-light: #17864a;
+  --on-accent: #ffffff;
+  --text: #12263f;
+  --muted: #55708d;
+  --text-3: #64789a;
+  --text-faint: #8395ad;
+  --icon: #35506f;
+  --border: rgba(15, 40, 75, 0.14);
+  --border-soft: rgba(15, 40, 75, 0.08);
+  --danger: #d64545;
+  --warn: #b7791f;
+  --ok: #17864a;
+}
+
+/* Modo claro: textos de estado que en oscuro eran CLAROS (sobre fondos
+   translúcidos) se oscurecen para tener contraste sobre la página blanca. */
+:root[data-theme="light"] .chip.is-ok { color: #15803d; background: rgba(34, 197, 94, 0.16); }
+:root[data-theme="light"] .chip.is-dup { color: #b45309; background: rgba(251, 191, 36, 0.20); }
+:root[data-theme="light"] .chip.is-error { color: #b91c1c; background: rgba(239, 68, 68, 0.14); }
+:root[data-theme="light"] .flag--warn { color: #b45309; }
+:root[data-theme="light"] .transfer-warn--neg { color: #b91c1c; }
+:root[data-theme="light"] .transfer-warn--pos { color: #b45309; }
+:root[data-theme="light"] .home-badge { color: #15803d; }
+:root[data-theme="light"] .highlight--accent .highlight__text span { color: #2f7d55; }
+
+/* Modo claro: superficies "tile" que usaban un overlay BLANCO (invisible sobre
+   blanco) pasan a un overlay OSCURO sutil para conservar su relieve. */
+:root[data-theme="light"] .help-item__tile,
+:root[data-theme="light"] .handoff-summary,
+:root[data-theme="light"] .highlight__tile,
+:root[data-theme="light"] .action-tile,
+:root[data-theme="light"] .rate-cell,
+:root[data-theme="light"] .pos-nav__back,
+:root[data-theme="light"] .pos-nav__action,
+:root[data-theme="light"] .cart-line__tile,
+:root[data-theme="light"] .qty-ctrl button,
+:root[data-theme="light"] .tab {
+  background: rgba(15, 40, 75, 0.05);
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
