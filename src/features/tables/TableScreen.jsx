@@ -270,7 +270,12 @@ export function TableScreen() {
         subtotal,
         serviceChargePct: pct,
         serviceChargeAmount: service,
-        serviceWaivedBy: waived ? user.id : null
+        serviceWaivedBy: waived ? user.id : null,
+        // Módulo 'cuentas': la venta de mesa acredita la tesorería como INGRESO,
+        // igual que la venta de mostrador (mismo criterio de licencia). Sin el
+        // módulo -> false (no crea movimientos de cuenta). Antes faltaba y por
+        // eso los cobros de mesa no aparecían en las cuentas.
+        creditAccounts: hasModule(LICENSE_MODULES.ACCOUNTS)
       }
       let payload
       if (payMethod === PAYMENT_METHODS.MIXED) {
