@@ -2,6 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
+import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, PARTNER_MOVEMENT_TYPES, PARTNER_TYPES, WAREHOUSE } from '../db/constants'
 import { addAccountMovementRaw } from './accountsRepo'
 
@@ -181,9 +182,9 @@ export const partnersRepo = {
         })
         const p = await db.products.get(it.productId)
         const byLoc = { ...(p.stockByLocation || {}) }
-        byLoc[WAREHOUSE] = Number(byLoc[WAREHOUSE] || 0) - it.qty
+        byLoc[WAREHOUSE] = cleanQty(Number(byLoc[WAREHOUSE] || 0) - it.qty)
         await db.products.update(it.productId, {
-          stock: Number(p.stock || 0) - it.qty,
+          stock: cleanQty(Number(p.stock || 0) - it.qty),
           stockByLocation: byLoc,
           updatedAt: ts
         })

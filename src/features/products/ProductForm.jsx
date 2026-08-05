@@ -8,6 +8,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { fileToThumbnail } from '../../lib/image'
+import { cleanQty } from '../../lib/qty'
 import { normalizeTiers } from '../../lib/priceTiers'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 
@@ -229,15 +230,15 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
             <span>Existencias por ubicación</span>
             <div className="kv-list">
               {Object.entries(product.stockByLocation)
-                .filter(([, q]) => Number(q) !== 0)
+                .filter(([, q]) => cleanQty(q) !== 0)
                 .sort(([a], [b]) => (a === WAREHOUSE ? -1 : b === WAREHOUSE ? 1 : a.localeCompare(b)))
                 .map(([loc, q]) => (
                   <div key={loc} className="kv">
                     <span className="muted">{locationLabel(loc)}</span>
-                    <strong>{Number(q)} {product.unit}</strong>
+                    <strong>{cleanQty(q)} {product.unit}</strong>
                   </div>
                 ))}
-              {Object.values(product.stockByLocation).every((q) => Number(q) === 0) && (
+              {Object.values(product.stockByLocation).every((q) => cleanQty(q) === 0) && (
                 <p className="muted">Sin existencias.</p>
               )}
             </div>

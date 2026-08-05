@@ -1,5 +1,6 @@
 import { db } from '../../db/db'
 import { WAREHOUSE } from '../../db/constants'
+import { cleanQty } from '../../lib/qty'
 import { LOCAL_CONFIG_KEYS, syncTs } from './collections'
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,11 @@ export async function recomputeStock(productIds) {
       total += q
       byLoc[loc] = Number(byLoc[loc] || 0) + q
     }
+    // La suma de fracciones (pesos) deja residuos de punto flotante: se limpian
+    // a 3 decimales para que un 0 real no quede como 2.66e-15 ni un 2.5 como
+    // 2.4999999996. Es un valor DERIVADO: no toca updatedAt (no rebota la sync).
+    total = cleanQty(total)
+    for (const loc of Object.keys(byLoc)) byLoc[loc] = cleanQty(byLoc[loc])
     const p = await db.products.get(pid)
     if (p && (Number(p.stock) !== total ||
         JSON.stringify(p.stockByLocation || {}) !== JSON.stringify(byLoc))) {

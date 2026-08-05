@@ -2,6 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
+import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, ORDER_STATUS } from '../db/constants'
 
 // ---------------------------------------------------------------------------
@@ -25,7 +26,9 @@ import { MOVEMENT_TYPES, ORDER_STATUS } from '../db/constants'
 async function stockAtLoc(productId, location) {
   const movs = await db.stockMovements
     .where('[productId+location]').equals([productId, location]).toArray()
-  return movs.reduce((a, m) => a + Number(m.qty || 0), 0)
+  // Limpia el residuo de punto flotante (pesos): un 0 real no debe quedar como
+  // 2.66e-15 y hacer que se "pueda" agregar lo que no hay.
+  return cleanQty(movs.reduce((a, m) => a + Number(m.qty || 0), 0))
 }
 
 export const ordersRepo = {
@@ -204,9 +207,9 @@ export const ordersRepo = {
       const p = await db.products.get(product.id)
       if (p) {
         const byLoc = { ...(p.stockByLocation || {}) }
-        byLoc[loc] = Number(byLoc[loc] || 0) - q
+        byLoc[loc] = cleanQty(Number(byLoc[loc] || 0) - q)
         await db.products.update(product.id, {
-          stock: Number(p.stock || 0) - q,
+          stock: cleanQty(Number(p.stock || 0) - q),
           stockByLocation: byLoc,
           updatedAt: ts
         })
@@ -254,9 +257,9 @@ export const ordersRepo = {
       const p = await db.products.get(item.productId)
       if (p) {
         const byLoc = { ...(p.stockByLocation || {}) }
-        byLoc[loc] = Number(byLoc[loc] || 0) + item.qty
+        byLoc[loc] = cleanQty(Number(byLoc[loc] || 0) + item.qty)
         await db.products.update(item.productId, {
-          stock: Number(p.stock || 0) + item.qty,
+          stock: cleanQty(Number(p.stock || 0) + item.qty),
           stockByLocation: byLoc,
           updatedAt: ts
         })

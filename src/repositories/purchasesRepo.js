@@ -2,6 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
+import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 
 // Entradas de mercancia (compras). Aumentan la existencia y dejan el
@@ -65,9 +66,9 @@ export const purchasesRepo = {
         const p = await db.products.get(it.productId)
         if (p) {
           const byLoc = { ...(p.stockByLocation || {}) }
-          byLoc[loc] = Number(byLoc[loc] || 0) + qty
+          byLoc[loc] = cleanQty(Number(byLoc[loc] || 0) + qty)
           await db.products.update(it.productId, {
-            stock: Number(p.stock || 0) + qty,
+            stock: cleanQty(Number(p.stock || 0) + qty),
             stockByLocation: byLoc,
             cost: it.unitCost, // ultimo costo de compra
             updatedAt: ts

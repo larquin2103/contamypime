@@ -14,6 +14,7 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { normalizeTiers, tierFor, tierPriceFor } from '../../lib/priceTiers'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney, baseToForeign, foreignToBase } from '../../lib/currency'
+import { cleanQty } from '../../lib/qty'
 import { parseSms } from '../../lib/sms'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, WAREHOUSE } from '../../db/constants'
 
@@ -82,9 +83,11 @@ export function SalesScreen() {
   const sellLoc = sellArea && !(canPickSource && fromWarehouse) ? sellArea : WAREHOUSE
 
   const availAt = (p, loc) =>
-    loc === WAREHOUSE
-      ? Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
-      : Number(p.stockByLocation?.[loc] || 0)
+    cleanQty(
+      loc === WAREHOUSE
+        ? Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
+        : Number(p.stockByLocation?.[loc] || 0)
+    )
   const availOf = (p) => availAt(p, sellLoc)
 
   // Al cambiar el origen se revalida el carrito contra la nueva ubicación (el
@@ -259,6 +262,7 @@ export function SalesScreen() {
 
   const charge = async () => {
     setConfirming(true)
+    try {
     const items = cart.map((l) => {
       const unitPrice = priceOf(l) // congela el precio de escala si aplico
       const tier = tierFor(l.tiers, l.qty)
@@ -343,7 +347,14 @@ export function SalesScreen() {
     // A) La venta ya está en la base local; pedimos subirla enseguida.
     nudgePush()
     resetCheckout()
-    setConfirming(false)
+    } catch (e) {
+      // El refuerzo de stock (venta de área) lanza si el área quedó sin
+      // existencia (p.ej. otra venta en paralelo): se avisa y NO se limpia el
+      // carrito, para poder corregir. En operación normal la UI ya lo evita.
+      alert('No se pudo cobrar: ' + (e?.message || e))
+    } finally {
+      setConfirming(false)
+    }
   }
 
   return (

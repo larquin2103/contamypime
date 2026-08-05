@@ -2,6 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
+import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, WAREHOUSE, locationLabel } from '../db/constants'
 
 // Mermas: rebaja de inventario por deterioro/perdida. NO es una venta (no entra
@@ -64,9 +65,9 @@ export const mermasRepo = {
       })
       // Cache por ubicacion (se actualiza en la misma transaccion).
       const byLoc = { ...(p.stockByLocation || {}) }
-      byLoc[loc] = Number(byLoc[loc] || 0) - q
+      byLoc[loc] = cleanQty(Number(byLoc[loc] || 0) - q)
       await db.products.update(productId, {
-        stock: Number(p.stock || 0) - q,
+        stock: cleanQty(Number(p.stock || 0) - q),
         stockByLocation: byLoc,
         updatedAt: ts
       })

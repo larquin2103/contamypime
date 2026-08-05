@@ -1,6 +1,7 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
+import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 
 // Libro mayor de inventario (append-only). El stock REAL se deriva de aqui;
@@ -43,9 +44,9 @@ export const stockRepo = {
       const p = await db.products.get(productId)
       if (p) {
         const byLoc = { ...(p.stockByLocation || {}) }
-        byLoc[loc] = Number(byLoc[loc] || 0) + delta
+        byLoc[loc] = cleanQty(Number(byLoc[loc] || 0) + delta)
         await db.products.update(productId, {
-          stock: Number(p.stock || 0) + delta,
+          stock: cleanQty(Number(p.stock || 0) + delta),
           stockByLocation: byLoc,
           updatedAt: ts
         })
@@ -71,7 +72,7 @@ export const stockRepo = {
   async stockAt(productId, location = WAREHOUSE) {
     const movs = await db.stockMovements
       .where('[productId+location]').equals([productId, location || WAREHOUSE]).toArray()
-    return movs.reduce((a, m) => a + Number(m.qty || 0), 0)
+    return cleanQty(movs.reduce((a, m) => a + Number(m.qty || 0), 0))
   },
 
   // Mapa { ubicacion: cantidad } de un producto, derivado del libro mayor.
@@ -82,6 +83,7 @@ export const stockRepo = {
       const loc = m.location || WAREHOUSE
       map[loc] = Number(map[loc] || 0) + Number(m.qty || 0)
     }
+    for (const loc of Object.keys(map)) map[loc] = cleanQty(map[loc])
     return map
   },
 

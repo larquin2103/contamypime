@@ -2,6 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
+import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, PARTNER_MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 import { ensureSystemAccount, addAccountMovementRaw } from './accountsRepo'
 
@@ -125,6 +126,20 @@ export const salesRepo = {
         // doble rebaja. La consignacion SI se procesa: es una deuda que nace
         // de la VENTA (cobro), no del movimiento de inventario.
         if (!skipStock) {
+          // Refuerzo de la venta de AREA: antes de rebajar, revalida contra el
+          // libro mayor (la fuente de verdad) DENTRO de la transaccion que el
+          // area tenga existencia suficiente. La UI ya lo bloquea; esto es el
+          // candado de ultima instancia (igual que en mesas), por si el carrito
+          // quedo obsoleto (otra venta en paralelo). El almacen central
+          // (dueño / venta mayorista) conserva el comportamiento clasico.
+          if (loc !== WAREHOUSE) {
+            const movs = await db.stockMovements
+              .where('[productId+location]').equals([it.productId, loc]).toArray()
+            const avail = cleanQty(movs.reduce((a, m) => a + Number(m.qty || 0), 0))
+            if (avail < qty) {
+              throw new Error(`Solo hay ${avail} ${it.unit || ''} de ${it.name} en tu área`)
+            }
+          }
           await db.stockMovements.add({
             id: newId(),
             productId: it.productId,
@@ -144,9 +159,9 @@ export const salesRepo = {
         if (p) {
           if (!skipStock) {
             const byLoc = { ...(p.stockByLocation || {}) }
-            byLoc[loc] = Number(byLoc[loc] || 0) - qty
+            byLoc[loc] = cleanQty(Number(byLoc[loc] || 0) - qty)
             await db.products.update(it.productId, {
-              stock: Number(p.stock || 0) - qty,
+              stock: cleanQty(Number(p.stock || 0) - qty),
               stockByLocation: byLoc,
               updatedAt: ts
             })
