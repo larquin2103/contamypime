@@ -1853,7 +1853,11 @@ input[type='file'] {
   align-items: center;
   margin-bottom: 6px;
 }
-.sale-items { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+/* La tabla de artículos puede tener nombres largos o cifras anchas: se envuelve
+   en un contenedor con scroll horizontal PROPIO para que se deslice dentro de la
+   tarjeta en lugar de desbordar la pantalla. */
+.sale-items__scroll { overflow-x: auto; }
+.sale-items { width: 100%; min-width: 320px; border-collapse: collapse; font-size: 0.85rem; }
 .sale-items th {
   text-align: left;
   color: var(--muted);
@@ -1862,7 +1866,9 @@ input[type='file'] {
   padding: 2px 4px;
 }
 .sale-items td { padding: 3px 4px; }
-.sale-items .num { text-align: right; }
+/* La descripción cede y envuelve; los números no se parten a media cifra. */
+.sale-items td:first-child, .sale-items th:first-child { overflow-wrap: anywhere; }
+.sale-items .num { text-align: right; white-space: nowrap; }
 .sale-card__foot {
   display: flex;
   justify-content: flex-end;
@@ -2480,7 +2486,11 @@ input[type='file'] {
    la simetria "de diseñador": la vista se lee como una tabla limpia. */
 .order-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--stepper-w, 116px) var(--total-w, 96px) 34px;
+  /* El importe usa `max-content` (con un minimo) para que crezca con la cifra:
+     un total largo como "3,000.00 MN" ya no se sale de una columna fija ni se
+     superpone al boton "+" del stepper. El nombre (1fr) cede el ancho y, si hace
+     falta, envuelve. */
+  grid-template-columns: minmax(0, 1fr) var(--stepper-w, 116px) minmax(var(--total-w, 96px), max-content) 34px;
   align-items: center;
   column-gap: 10px;
   padding: 10px 0;

@@ -61,6 +61,7 @@ export function ShiftSalesSummary({ shiftId }) {
               <span className="muted">{formatDateTime(s.createdAt)}</span>
               <span className="badge badge--muted">{isMixed ? 'Mixto' : isCash ? 'Efectivo' : 'Transferencia'}</span>
             </div>
+            <div className="sale-items__scroll">
             <table className="sale-items">
               <thead>
                 <tr>
@@ -83,6 +84,7 @@ export function ShiftSalesSummary({ shiftId }) {
                 ))}
               </tbody>
             </table>
+            </div>
             <div className="sale-card__foot">
               <span>Cobrado <strong>{formatMoney(cobrado, cur)}</strong></span>
               {vuelto > 0 && <span>Vuelto <strong>{formatMoney(vuelto, vueltoCur)}</strong></span>}
