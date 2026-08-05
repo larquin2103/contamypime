@@ -4,6 +4,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useSync } from '../../app/providers/SyncProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { isFirebaseConfigured } from '../../lib/firebase'
+import { PasswordInput } from '../../components/PasswordInput'
 import {
   observeAuth,
   createBusinessAccount,
@@ -187,8 +188,7 @@ export function CloudScreen() {
             </label>
             <label className="field">
               <span>Contraseña {mode === 'create' && '(mínimo 6 caracteres)'}</span>
-              <input
-                type="password"
+              <PasswordInput
                 autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
                 value={form.password}
                 onChange={upd('password')}

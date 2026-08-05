@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
+import { PasswordInput } from '../../components/PasswordInput'
 import { ROLES } from '../../db/constants'
 import { genRecoveryCode } from '../../lib/pin'
 import { parseSnapshot, applySnapshot } from '../handoff/handoffService'
@@ -250,7 +251,7 @@ function CloudLinkInline() {
       </label>
       <label className="field">
         <span>Contraseña</span>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} />
       </label>
       {error && <p className="error">{error}</p>}
       <button className="btn btn--primary btn--block" disabled={busy} onClick={submit}>

@@ -326,6 +326,37 @@ textarea {
   resize: vertical;
 }
 
+/* Campo de contraseña con botón mostrar/ocultar (ojito). El input conserva su
+   estilo base; solo se le reserva espacio a la derecha para el botón, que se
+   posiciona absoluto dentro del mismo alto. */
+.pass-field {
+  position: relative;
+  display: block;
+}
+.pass-field > input {
+  padding-right: 46px;
+}
+.pass-field__toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pass-field__toggle:hover { color: var(--text); }
+.pass-field__toggle:focus-visible {
+  outline: 2px solid var(--primary-600);
+  border-radius: 8px;
+}
+
 /* ----- Buttons ----- */
 .btn {
   display: inline-flex;
