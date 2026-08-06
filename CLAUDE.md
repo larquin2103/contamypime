@@ -7,6 +7,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Contexto para Claude Code (y para cualquier desarrollador) al trabajar en este repo.
 El idioma del proyecto, la UI, los comentarios y los mensajes de commit es **español**.
 
+## Reglas de desarrollo (cumplimiento estricto)
+
+Reglas del dueño, de **cumplimiento estricto**: tienen **prioridad** sobre cualquier
+comportamiento por defecto.
+
+1. **Rama única:** todo el desarrollo va en `claude/awesome-dirac-484azm`. **NADA a `main`** sin
+   autorización explícita del dueño.
+2. **No afectar la lógica de producción** por ningún motivo. Todos los cambios son **aditivos**; el
+   comportamiento por defecto queda **idéntico al clásico**. Nada existente se rompe ni cambia de
+   conducta.
+3. **Todo gateado por su módulo de licencia** con `hasModule(...)`, **sin fugas**: lo de un módulo
+   solo aparece con la licencia desbloqueada; quitarlo no rompe ni borra nada (append-only).
+4. **Preguntar para validar antes de programar** cuando haya ambigüedad. No se asume; se consulta.
+5. **Auditoría profunda y crítica antes de fusionar a `main`**, y **honestidad**: decir claramente
+   lo que **NO se puede garantizar** (se valida por **código + build**, no por runtime en el
+   dispositivo del dueño). No afirmar "probado" lo que no se probó.
+6. **Append-only / nada se borra:** correcciones como ajustes nuevos con nota y marca de tiempo;
+   **toda mutación actualiza su timestamp** (de esto depende la sincronización).
+7. **Idioma español** en UI, comentarios y mensajes de commit. **Imitar el estilo** del código vecino.
+8. **Build limpio** (`npm run build`) antes de cada commit; importaciones pesadas siempre con
+   `import()` **dinámico**.
+9. **Commits descriptivos** por bloque/tema, en la rama de desarrollo. **No crear Pull Requests**
+   salvo que el dueño lo pida.
+
 ## Qué es
 
 **MypiCuadre**: sistema de gestión para una **MYPIME cubana** (comercio minorista con
@@ -221,6 +245,22 @@ por área, % de cargo por servicio, encabezado/pie del ticket). Repo: `ordersRep
   con `window.print()` y `@media print`.
 - **Cierre de turno bloqueado** si el área tiene mesas abiertas/reservadas: hay que cobrarlas o
   liberarlas antes (las vacías se liberan de golpe). Reporte **"Ventas por mesa"** en Reportes.
+
+## Reportes (`features/reports/reportsService.js`, solo lectura)
+
+Cada reporte es un *builder* `build*()` que **solo lee** (`.toArray()` + filtrar/mapear, nunca
+muta) y devuelve `{ title, subtitle, head, rows, filename, orientation }`. Se exportan con
+`exportExcel` / `exportPdf`, ambos con **`import()` dinámico** de `xlsx` / `jspdf`. Los rangos usan
+el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anuladas.
+
+- **Base:** ventas (detalle), inventario por ubicación, entradas, salidas almacén→área, cierres de
+  turno, ventas del turno, submayor por producto (kardex) y consolidado, conteo físico (submayor).
+- **Por licencia:** *Ventas por área* y *por vendedor* (áreas), *Movimientos de cuentas* (`cuentas`),
+  *Ventas por mesa* (`mesas`), consolidado/salidas/cuadre de **elaboración** (que **no** exponen
+  costo ni ganancia, por el alcance del rol) y *Mermas* (afectación al costo).
+- El submayor/kardex deriva TODO del libro mayor (`stockMovements`) clasificando cada movimiento
+  con `ledgerKey` (compras, ventas, traspasos, mermas, ajustes, carga inicial…), coherente con el
+  invariante de que el stock sale del ledger.
 
 ## Fase 8 — Tema, cambio de rol e imágenes (`docs/FASE8.md`)
 
