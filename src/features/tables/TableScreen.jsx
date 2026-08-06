@@ -14,7 +14,7 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
-import { formatMoney, round2 } from '../../lib/currency'
+import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
 import { Trash2 } from 'lucide-react'
@@ -261,7 +261,10 @@ export function TableScreen() {
             unitPrice: i.unitPrice,
             unitCost: i.unitCost,
             lineTotal: Number(i.lineTotal || 0),
-            area: i.area
+            area: i.area,
+            // Congelado de divisa (modulo 'divisas'): si la linea era en divisa,
+            // la venta hereda moneda + tasa (unitPrice/lineTotal quedan en MN).
+            ...(i.priceCurrency ? { priceCurrency: i.priceCurrency, priceRate: i.priceRate } : {})
           })
         }
       }
@@ -723,15 +726,20 @@ export function TableScreen() {
               const n = inOrder(p.id)
               const left = stockOf(p)
               const photo = canImages ? menuImgs.get(p.id) : ''
+              // Modulo 'divisas': producto en divisa sin tasa -> no se puede
+              // convertir a MN; se muestra pero no se puede agregar.
+              const noRate = isForeignPriced(p, baseCurrency) && !(rateOf(p.priceCurrency) > 0)
               return (
-                <button key={p.id} className={`menu-tile ${photo ? 'menu-tile--img' : ''}`} onClick={() => addOne(p)}>
+                <button key={p.id} className={`menu-tile ${photo ? 'menu-tile--img' : ''}`} onClick={() => addOne(p)} disabled={noRate}>
                   {n > 0 && <span className="menu-tile__badge">{n}</span>}
                   {photo && (
                     <span className="menu-tile__img"><img src={photo} alt="" loading="lazy" /></span>
                   )}
                   <span className="menu-tile__body">
                     <span className="menu-tile__name">{p.name}</span>
-                    <span className="menu-tile__price">{formatMoney(p.price, baseCurrency)}</span>
+                    <span className="menu-tile__price">
+                      {noRate ? `Falta tasa ${p.priceCurrency}` : formatMoney(p.price, p.priceCurrency || baseCurrency)}
+                    </span>
                     <span className={`menu-tile__stock ${left <= 3 ? 'is-low' : ''}`}>{left} {p.unit}</span>
                   </span>
                 </button>

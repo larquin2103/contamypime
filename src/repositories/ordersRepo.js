@@ -1,8 +1,9 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
-import { round2 } from '../lib/currency'
+import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
+import { ratesRepo } from './ratesRepo'
 import { MOVEMENT_TYPES, ORDER_STATUS } from '../db/constants'
 
 // ---------------------------------------------------------------------------
@@ -167,9 +168,25 @@ export const ordersRepo = {
       throw new Error(`Solo hay ${available} ${product.unit} de ${product.name} en el area`)
     }
 
+    // Modulo 'divisas': si el producto fija su precio en divisa, precio y costo se
+    // convierten a la base (MN) con la tasa vigente y se congela (moneda + tasa)
+    // en la linea. La tasa se lee AQUI (no en la pantalla) porque decrementOne
+    // re-llama a addItem con el producto real. El resto del flujo de mesas opera
+    // en MN, igual que siempre. Un producto en la base NO entra por este camino.
+    const foreign = isForeignPriced(product)
+    let priceRate = 1
+    if (foreign) {
+      priceRate = await ratesRepo.currentRateFor(product.priceCurrency)
+      if (!(priceRate > 0)) {
+        throw new Error(`Define la tasa de ${product.priceCurrency} antes de vender productos en esa moneda.`)
+      }
+    }
+    const toMN = (v) => (foreign ? foreignToBase(v, priceRate) : (Number(v) || 0))
+
     const id = newId()
     const ts = now()
-    const unitPrice = Number(product.price) || 0
+    const unitPrice = toMN(product.price)
+    const unitCost = toMN(product.cost)
     await db.transaction('rw', db.orderItems, db.orders, db.stockMovements, db.products, async () => {
       await db.orderItems.add({
         id,
@@ -178,14 +195,17 @@ export const ordersRepo = {
         name: product.name, // snapshot: el nombre del ticket no cambia despues
         unit: product.unit,
         qty: q,
-        unitPrice, // precio CONGELADO en la linea
-        unitCost: Number(product.cost) || 0,
+        unitPrice, // precio CONGELADO en la linea (en MN)
+        unitCost,
         lineTotal: round2(q * unitPrice),
         area: loc,
         createdBy: userId,
         voided: false,
         createdAt: ts,
-        updatedAt: ts
+        updatedAt: ts,
+        // Congelado de divisa (solo productos en divisa): moneda y tasa usadas
+        // para derivar el MN; viajan a la venta al cobrar como snapshot.
+        ...(foreign ? { priceCurrency: product.priceCurrency, priceRate } : {})
       })
       // Salida del libro mayor ligada al PEDIDO. Se usa SALE_OUT porque es
       // consumo vendido: asi el submayor y los reportes de inventario lo
@@ -197,7 +217,7 @@ export const ordersRepo = {
         type: MOVEMENT_TYPES.SALE_OUT,
         refType: 'order',
         refId: orderId,
-        unitCost: Number(product.cost) || 0,
+        unitCost, // MN (convertido si el producto es en divisa)
         shiftId: shiftId || order.shiftId,
         userId,
         note: `Mesa ${order.table}`,

@@ -1,7 +1,7 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
-import { round2 } from '../lib/currency'
+import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, WAREHOUSE, locationLabel } from '../db/constants'
 
@@ -17,7 +17,7 @@ import { MOVEMENT_TYPES, WAREHOUSE, locationLabel } from '../db/constants'
 //  - POR UBICACION: sale de la ubicacion elegida (almacen central o un area),
 //    validando que haya existencia suficiente en ella.
 export const mermasRepo = {
-  async create({ productId, qty, location = WAREHOUSE, reason = '', userId = null }) {
+  async create({ productId, qty, location = WAREHOUSE, reason = '', userId = null, priceRate = null }) {
     const q = Math.abs(Number(qty))
     if (!(q > 0)) throw new Error('Cantidad no valida')
     const loc = String(location || WAREHOUSE)
@@ -30,9 +30,18 @@ export const mermasRepo = {
       if (q > avail) {
         throw new Error(`Solo hay ${avail} ${p.unit} de ${p.name} en ${locationLabel(loc)}`)
       }
-      const salePrice = Number(p.price) || 0
-      const unitCost = Number(p.cost) || 0
-      // Snapshot para el reporte de afectacion (append-only).
+      // Modulo 'divisas': si el producto se fija en divisa, precio y costo se
+      // convierten a la base (MN) con la tasa que pasa la pantalla; asi la
+      // afectacion del reporte (en MN) queda valorada correcta. Se congela
+      // moneda + tasa + originales. Un producto en la base se comporta igual.
+      const foreign = isForeignPriced(p)
+      if (foreign && !(priceRate > 0)) {
+        throw new Error(`Define la tasa de ${p.priceCurrency} antes de registrar mermas de este producto.`)
+      }
+      const rate = foreign ? priceRate : 1
+      const salePrice = foreign ? foreignToBase(Number(p.price) || 0, rate) : (Number(p.price) || 0)
+      const unitCost = foreign ? foreignToBase(Number(p.cost) || 0, rate) : (Number(p.cost) || 0)
+      // Snapshot para el reporte de afectacion (append-only). Los importes van en MN.
       await db.mermas.add({
         id,
         productId,
@@ -40,10 +49,12 @@ export const mermasRepo = {
         unit: p.unit,
         location: loc,
         qty: q,
-        salePrice, // precio al que estaba a la venta (valor no realizable)
-        unitCost, // costo unitario (afectacion real al dueño)
+        salePrice, // precio de venta en MN (valor no realizable)
+        unitCost, // costo unitario en MN (afectacion real al dueño)
         costTotal: round2(q * unitCost), // importe del costo = perdida
         saleTotal: round2(q * salePrice), // precio de venta que se deja de cobrar
+        // Congelado de divisa: moneda, tasa y originales (trazabilidad; el reporte usa MN).
+        ...(foreign ? { priceCurrency: p.priceCurrency, priceRate: rate, salePriceForeign: Number(p.price) || 0, unitCostForeign: Number(p.cost) || 0 } : {}),
         reason: String(reason || '').trim(),
         userId,
         createdAt: ts,

@@ -32,6 +32,14 @@ export const ratesRepo = {
     return latest
   },
 
+  // Tasa vigente (numero) de UNA moneda, o 0 si no hay. La usan los repos que
+  // convierten precios en divisa a la base (modulo 'divisas') sin contexto React
+  // (p.ej. ordersRepo.addItem, que puede llamarse desde varios sitios).
+  async currentRateFor(currency) {
+    const all = await this.currentRates()
+    return Number(all[currency]?.rate || 0)
+  },
+
   // Historial de una moneda, mas reciente primero.
   async history(currency) {
     const rows = await db.exchangeRates.where('currency').equals(currency).toArray()
