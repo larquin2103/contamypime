@@ -19,6 +19,12 @@ export function baseToForeign(amount, rate) {
   return round2(Number(amount) / r)
 }
 
+// Modulo 'divisas': ¿el producto fija su precio/costo en una divisa distinta a
+// la base? Un producto sin `priceCurrency` (o igual a la base) es clasico (MN).
+export function isForeignPriced(product, base = 'MN') {
+  return !!(product && product.priceCurrency && product.priceCurrency !== base)
+}
+
 // Formato de dinero para mostrar.
 export function formatMoney(amount, currency = 'MN') {
   const n = round2(amount || 0)

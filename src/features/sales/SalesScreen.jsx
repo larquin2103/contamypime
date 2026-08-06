@@ -13,7 +13,7 @@ import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { normalizeTiers, tierFor, tierPriceFor } from '../../lib/priceTiers'
 import { matchesQuery } from '../../lib/search'
-import { round2, formatMoney, baseToForeign, foreignToBase } from '../../lib/currency'
+import { round2, formatMoney, baseToForeign, foreignToBase, isForeignPriced } from '../../lib/currency'
 import { cleanQty } from '../../lib/qty'
 import { parseSms } from '../../lib/sms'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, WAREHOUSE } from '../../db/constants'
@@ -118,6 +118,18 @@ export function SalesScreen() {
   const addToCart = (p) => {
     const avail = availOf(p)
     if (avail <= 0) return // sin existencia en el área: no disponible para venta
+    // Modulo 'divisas': si el producto fija su precio en una divisa, se convierte
+    // a la moneda base (MN) AQUI con la tasa vigente. De aqui en adelante todo el
+    // POS (total, cobro, cuadre) opera en MN, igual que siempre. Se congela la
+    // moneda y la tasa usadas para dejar constancia reproducible en la venta.
+    // Un producto en la base NO entra por este camino (comportamiento clasico).
+    const foreign = isForeignPriced(p, baseCurrency)
+    const priceRate = foreign ? rateOf(p.priceCurrency) : 1
+    if (foreign && !(priceRate > 0)) {
+      alert(`Define la tasa de ${p.priceCurrency} en Ajustes antes de vender productos en esa moneda.`)
+      return
+    }
+    const toMN = (v) => (foreign ? foreignToBase(v, priceRate) : v)
     setCart((prev) => {
       const i = prev.findIndex((l) => l.productId === p.id)
       if (i >= 0) {
@@ -131,14 +143,22 @@ export function SalesScreen() {
           productId: p.id,
           name: p.name,
           unit: p.unit,
-          unitPrice: p.price,
-          unitCost: p.cost,
+          unitPrice: toMN(p.price),
+          unitCost: toMN(p.cost),
           // Escalas mayoristas (Bloque B): el precio unitario baja solo al
-          // alcanzar la cantidad de cada escala. Sin modulo, no aplican.
-          tiers: hasModule(LICENSE_MODULES.WHOLESALE) ? normalizeTiers(p.priceTiers) : [],
+          // alcanzar la cantidad de cada escala. Sin modulo, no aplican. Si el
+          // producto es en divisa, cada escala tambien se convierte a MN.
+          tiers: hasModule(LICENSE_MODULES.WHOLESALE)
+            ? (foreign
+                ? normalizeTiers(p.priceTiers).map((t) => ({ ...t, price: foreignToBase(t.price, priceRate) }))
+                : normalizeTiers(p.priceTiers))
+            : [],
           area: p.area || '',
           qty: 1,
-          stock: avail
+          stock: avail,
+          // Congelado de divisa (SOLO productos en divisa): moneda y tasa usadas
+          // para derivar el MN; viajan a la venta como snapshot reproducible.
+          ...(foreign ? { priceCurrency: p.priceCurrency, priceRate } : {})
         }
       ]
     })
@@ -277,6 +297,10 @@ export function SalesScreen() {
         ...(tier ? { basePrice: l.unitPrice, tierMinQty: tier.minQty } : {}),
         unitCost: l.unitCost,
         area: l.area || '',
+        // Congelado de divisa (modulo 'divisas'): moneda y tasa con que se derivo
+        // el MN de esta linea. unitPrice/lineTotal quedan en MN (canonico); el
+        // equivalente en divisa se reconstruye con esta tasa. Ausente = venta en base.
+        ...(l.priceCurrency ? { priceCurrency: l.priceCurrency, priceRate: l.priceRate } : {}),
         lineTotal: round2(unitPrice * l.qty)
       }
     })
@@ -422,12 +446,16 @@ export function SalesScreen() {
           {results.map((p) => {
             const avail = availOf(p)
             const out = avail <= 0
+            // Modulo 'divisas': un producto en divisa sin tasa definida no se puede
+            // convertir a MN -> se muestra pero no se puede agregar (aviso claro).
+            const foreign = isForeignPriced(p, baseCurrency)
+            const noRate = foreign && !(rateOf(p.priceCurrency) > 0)
             return (
               <button
                 key={p.id}
                 className="product-row"
                 onClick={() => addToCart(p)}
-                disabled={out}
+                disabled={out || noRate}
               >
                 <div className="product-row__main">
                   <strong>{p.name}</strong>
@@ -435,10 +463,12 @@ export function SalesScreen() {
                     {p.code ? `${p.code} · ` : ''}
                     {out
                       ? <span className="badge-out">{sellLoc === WAREHOUSE ? 'Agotado' : 'Sin stock en tu área'}</span>
-                      : `${avail} ${p.unit}`}
+                      : noRate
+                        ? <span className="badge-out">Falta tasa {p.priceCurrency}</span>
+                        : `${avail} ${p.unit}`}
                   </span>
                 </div>
-                <span className="price">{formatMoney(p.price, baseCurrency)}</span>
+                <span className="price">{formatMoney(p.price, p.priceCurrency || baseCurrency)}</span>
               </button>
             )
           })}
@@ -461,6 +491,9 @@ export function SalesScreen() {
                   <strong>{l.name}</strong>
                   <span className="muted">
                     {formatMoney(effPrice, baseCurrency)} × {l.qty} {l.unit}
+                    {l.priceCurrency && (
+                      <span className="ok-text"> · {formatMoney(baseToForeign(effPrice, l.priceRate), l.priceCurrency)}</span>
+                    )}
                     {tierApplied && (
                       <span className="ok-text"> · mayorista (normal {formatMoney(l.unitPrice, baseCurrency)})</span>
                     )}
