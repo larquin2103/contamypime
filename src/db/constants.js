@@ -53,6 +53,12 @@ export const CASH_CURRENCIES = CURRENCIES.filter((c) => c.cash).map((c) => c.cod
 // Monedas para pago por TRANSFERENCIA (Fase 2): bancaria en MN y electronica MLC.
 export const TRANSFER_CURRENCIES = ['MN', 'MLC']
 
+// Modulo 'divisas': divisas en que se puede FIJAR el precio/costo de un producto.
+// La base (MN) NO se convierte; una divisa se convierte a MN a la tasa vigente y
+// el equivalente se congela por venta. Un producto SIN moneda propia se comporta
+// como la base (clasico). Ampliable (p.ej. 'MLC') sin tocar el modelo de datos.
+export const FOREIGN_PRICE_CURRENCIES = ['USD']
+
 // Metodos de pago de una venta.
 export const PAYMENT_METHODS = {
   CASH: 'cash',

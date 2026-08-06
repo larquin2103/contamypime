@@ -31,7 +31,7 @@ export const productsRepo = {
 
   // Crea producto. Si openingStock > 0, registra el movimiento de apertura
   // (queda trazado en el libro mayor, nunca se inyecta el stock "a mano").
-  async create({ code, name, categoryId, unit, price, cost, minStock = 0, openingStock = 0, area = '', priceTiers = [], userId = null }) {
+  async create({ code, name, categoryId, unit, price, cost, minStock = 0, openingStock = 0, area = '', priceTiers = [], priceCurrency = null, userId = null }) {
     const id = newId()
     const ts = now()
     await db.products.add({
@@ -50,7 +50,10 @@ export const productsRepo = {
       minStock: Number(minStock) || 0,
       active: true,
       createdAt: ts,
-      updatedAt: ts
+      updatedAt: ts,
+      // Modulo 'divisas': moneda en que se fijan precio/costo. Ausente = base (MN),
+      // comportamiento clasico; solo se escribe cuando se indica una divisa propia.
+      ...(priceCurrency ? { priceCurrency: String(priceCurrency) } : {})
     })
     if (Number(openingStock) > 0) {
       await stockRepo.record({
@@ -78,6 +81,8 @@ export const productsRepo = {
     if (fields.price != null) patch.price = Number(fields.price) || 0
     if (fields.cost != null) patch.cost = Number(fields.cost) || 0
     if (fields.area != null) patch.area = String(fields.area).trim()
+    // Modulo 'divisas': moneda del precio/costo (base o divisa). Se guarda tal cual.
+    if (fields.priceCurrency != null) patch.priceCurrency = String(fields.priceCurrency)
     // Las escalas se cambian con changeTiers (historial); aqui solo se filtra.
     delete patch.priceTiers
     await db.products.update(id, patch)
@@ -134,6 +139,8 @@ export const productsRepo = {
         productId: id,
         oldPrice: p.price,
         newPrice: np,
+        // Modulo 'divisas': moneda en que esta expresado este precio (snapshot).
+        currency: p.priceCurrency || null,
         userId,
         shiftId,
         note,

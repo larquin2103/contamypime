@@ -3,8 +3,9 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
 import { imagesRepo } from '../../repositories/imagesRepo'
 import { configRepo } from '../../repositories/configRepo'
-import { UNITS, UNIT_LABELS, NO_AREA_LABEL, WAREHOUSE, locationLabel } from '../../db/constants'
+import { UNITS, UNIT_LABELS, NO_AREA_LABEL, WAREHOUSE, locationLabel, FOREIGN_PRICE_CURRENCIES } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { fileToThumbnail } from '../../lib/image'
@@ -16,6 +17,7 @@ import { useEscapeClose } from '../../lib/useEscapeClose'
 // mercancia por el vendedor llega en el Bloque 7).
 export function ProductForm({ product, categories, onClose, onCreated, hideOpeningStock = false }) {
   const { user, isOwner } = useAuth()
+  const { baseCurrency } = useCurrency()
   const editing = !!product
   // Eliminar del catalogo: SOLO el dueño, con confirmacion. Es borrado logico.
   const [confirmDel, setConfirmDel] = useState(false)
@@ -27,12 +29,17 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
   const [unit, setUnit] = useState(product?.unit ?? UNITS[0])
   const [price, setPrice] = useState(product?.price ?? '')
   const [cost, setCost] = useState(product?.cost ?? '')
+  // Modulo 'divisas': moneda en que el dueño teclea precio/costo (base o divisa).
+  // Ausente en el producto = base (comportamiento clasico).
+  const [priceCurrency, setPriceCurrency] = useState(product?.priceCurrency || baseCurrency)
   const [minStock, setMinStock] = useState(product?.minStock ?? '')
   const [openingStock, setOpeningStock] = useState('')
   // Escalas mayoristas (Bloque B): filas { minQty, price } editables. Solo se
   // muestran/guardan si la licencia trae el modulo 'mayorista'.
   const { hasModule } = useLicense()
   const canTiers = hasModule(LICENSE_MODULES.WHOLESALE)
+  // Modulo 'divisas': habilita fijar el precio/costo del producto en una divisa.
+  const canCurrency = hasModule(LICENSE_MODULES.MULTICURRENCY)
   const [tiers, setTiers] = useState(() =>
     (product?.priceTiers || []).map((t) => ({ minQty: String(t.minQty), price: String(t.price) }))
   )
@@ -116,7 +123,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
     try {
       if (editing) {
         // El precio se cambia aparte para que quede en el historial.
-        await productsRepo.update(product.id, { code, name, categoryId, area, unit, cost, minStock: Number(minStock) || 0 })
+        await productsRepo.update(product.id, { code, name, categoryId, area, unit, cost, minStock: Number(minStock) || 0, ...(canCurrency ? { priceCurrency } : {}) })
         await productsRepo.changePrice(product.id, price, { userId: user.id })
         if (canTiers) await productsRepo.changeTiers(product.id, draftTiers, { userId: user.id })
         // Foto: solo si el módulo está activo y el usuario la tocó (vacío = quitar).
@@ -133,6 +140,9 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
           minStock: Number(minStock) || 0,
           openingStock: hideOpeningStock ? 0 : openingStock,
           priceTiers: canTiers ? draftTiers : [],
+          // Solo se marca la divisa cuando difiere de la base (nuevos productos en
+          // base quedan sin el campo -> identicos al clasico).
+          priceCurrency: canCurrency && priceCurrency !== baseCurrency ? priceCurrency : undefined,
           userId: user.id
         })
         // La foto se guarda YA con el id del producto recién creado (aparte).
@@ -245,9 +255,22 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
           </div>
         )}
 
+        {/* Moneda del precio (módulo 'divisas'). Sin el módulo no aparece nada y
+            el precio/costo se entienden en la moneda base, como siempre. */}
+        {canCurrency && (
+          <label className="field">
+            <span>Moneda del precio</span>
+            <select value={priceCurrency} onChange={(e) => setPriceCurrency(e.target.value)}>
+              {Array.from(new Set([baseCurrency, ...FOREIGN_PRICE_CURRENCIES])).map((c) => (
+                <option key={c} value={c}>{c === baseCurrency ? `${c} (base)` : c}</option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <div className="form-row">
           <label className="field">
-            <span>Precio venta *</span>
+            <span>Precio venta{canCurrency && priceCurrency !== baseCurrency ? ` (${priceCurrency})` : ''} *</span>
             <input
               type="number"
               inputMode="decimal"
@@ -256,7 +279,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
             />
           </label>
           <label className="field">
-            <span>Costo</span>
+            <span>Costo{canCurrency && priceCurrency !== baseCurrency ? ` (${priceCurrency})` : ''}</span>
             <input
               type="number"
               inputMode="decimal"
@@ -265,6 +288,14 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
             />
           </label>
         </div>
+        {canCurrency && priceCurrency !== baseCurrency && (
+          <p className="muted">
+            <small>
+              Precio y costo en <strong>{priceCurrency}</strong>. Al cobrar, el equivalente
+              en {baseCurrency} se calcula con la tasa vigente y se congela en la venta.
+            </small>
+          </p>
+        )}
 
         {canTiers && (
           <div className="field">
