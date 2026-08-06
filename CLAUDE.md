@@ -180,6 +180,11 @@ repo `mermasRepo`. Es una **función base** (no gateada por licencia); solo la u
 - **Reporte "Mermas"** (Reportes, Excel/PDF): fecha, producto, ubicación, cantidad, precio de
   venta, costo unitario, **importe del costo (afectación = cant × costo)** y motivo; con totales
   de afectación y de precio de venta perdido. En el submayor cuenta como "otras salidas".
+- **Nota de robustez:** la validación de existencia usa la **caché** (`stockByLocation`), no una
+  re-derivación del libro mayor dentro de la transacción (a diferencia de `salesRepo`, que
+  revalida contra el ledger como *candado de última instancia*). Es seguro porque las mermas solo
+  las hace el **mando** (sin ventas en paralelo compitiendo por ese stock); si en el futuro se
+  abriera a actores concurrentes, convendría revalidar contra el ledger.
 
 ## Permisos del vendedor (independientes de módulos)
 
@@ -392,6 +397,9 @@ y ligera contra Firestore (NO se migró a RxDB). Carpeta `src/features/sync/`.
   y la app pasa sola al login).
 - **Conflictos:** si tras sincronizar hay 2+ turnos abiertos a la vez, el Home avisa al dueño.
 - **Seguridad:** `firestore.rules` → `auth.uid == businessId`, append-only (delete prohibido).
+  **Matiz de robustez:** las reglas bloquean el `delete` pero **permiten `update`** (lo necesita la
+  fusión LWW) y **no** imponen inmutabilidad por campo; la disciplina append-only (correcciones =
+  registros nuevos, nunca editar/borrar) vive en la **capa de app**, no en las reglas.
 
 **Activación (consola + CLI, una vez):** Firestore Database → Crear (modo producción);
 Auth Email/Password activado; `firebase deploy --only firestore:rules`; luego en la app
