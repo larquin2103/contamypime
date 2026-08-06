@@ -112,9 +112,13 @@ Un punto de venta puede dividirse en **áreas** (ej: Víveres, Carnicería), cad
   La caja inicial se hereda del **último cierre de la misma área** (`lastClosedCash(area)`).
 - **Catálogo global, cobro por área:** cada producto tiene un campo `area` (índice en `products`,
   Dexie v4). Todos los vendedores ven todo el catálogo; lo que venden entra en **su** caja.
-- **Ventas cruzadas (sustitución):** si un vendedor cobra un producto de otra área, la venta se
-  marca (`sale.hasCrossArea`, `item.area` snapshot por línea). El dueño la ve en el panel
-  (pestaña *Áreas*) y en todos los reportes (Ventas, Cierres, Inventario, *Ventas por área*).
+- **Venta solo del área (el Bloque 20 supera al 19):** con el stock por ubicación, cada vendedor
+  **solo puede vender lo que hay en SU área**. La venta rebaja de la ubicación del turno y
+  `salesRepo.create` **revalida la existencia contra el libro mayor dentro de la misma
+  transacción** (candado de última instancia). La antigua **"venta cruzada" quedó retirada**:
+  `sale.hasCrossArea` se escribe siempre `false` en ventas nuevas (solo sobrevive como dato
+  **histórico** de ventas previas); el snapshot `item.area` por línea sí se conserva. El
+  dueño/admin sin área abierto (como "Almacén central") vende del **almacén**.
 - **Sin áreas configuradas:** la app opera como un solo punto (comportamiento clásico).
 - **Degradación de licencia:** quitar un área de la lista **no borra** productos ni ventas
   (append-only); solo deja de ofrecerse para nuevos turnos.
@@ -254,7 +258,9 @@ Versiones en `src/db/db.js`:
 - **v2**: `counts` (conteo físico).
 - **v3**: `syncState` (cursores de sincronización `push:<colección>`).
 - **v4**: índice `area` en `products` (áreas de venta, Bloque 19). `shifts.area`, `sales.area`,
-  `sales.hasCrossArea` e `items[].area` son campos nuevos (no requieren índice).
+  `sales.hasCrossArea` e `items[].area` son campos nuevos (no requieren índice). Nota: desde el
+  Bloque 20, `sales.hasCrossArea` se escribe siempre `false` (la venta cruzada quedó retirada); el
+  campo persiste solo para ventas históricas.
 - **v5**: `transfers` (salidas almacén→área, Bloque 20). `stockMovements` y `products` ganan
   dimensión `location` (almacén o área). Migración: establece `location = '__almacen'` en
   movimientos previos, inicializa `stockByLocation` en productos.
@@ -331,8 +337,9 @@ y ligera contra Firestore (NO se migró a RxDB). Carpeta `src/features/sync/`.
 - **`collections.js`**: colecciones a sincronizar, `LOCAL_CONFIG_KEYS` (no viajan a la nube)
   y `syncTs(rec)` (mayor marca de tiempo del registro).
 - **`pushEngine.js`** (subida): por colección, cursor de marca de agua en `syncState`; sube
-  solo lo cambiado, en lotes de 400. **No espera confirmación del servidor** (Firestore
-  guarda en cache persistente y entrega al reconectar) → no se cuelga offline.
+  solo lo cambiado, en lotes de 400 (**50 para `images`**, que pesan más). **No espera
+  confirmación del servidor** (Firestore guarda en cache persistente y entrega al reconectar)
+  → no se cuelga offline.
 - **`pullEngine.js`** (bajada): fusión **última escritura gana** (LWW) por `syncTs`; tras
   fusionar movimientos/productos **recalcula `products.stock` desde el libro mayor**
   (sin tocar `updatedAt`) → ventas paralelas offline no se pisan el stock.
