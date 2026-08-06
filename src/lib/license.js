@@ -27,7 +27,8 @@ export const LICENSE_MODULES = {
   ACCOUNTS: 'cuentas', // proveedores/acreedores + cuentas de tesoreria
   ELABORATION: 'elaboracion', // centro de elaboracion intermedio (almacen->elab->area)
   TABLES: 'mesas', // mesas con cuenta abierta por area (cafeteria/restaurante)
-  IMAGES: 'imagenes' // fotos: catalogo, carta de mesas y avatares (miniaturas sync)
+  IMAGES: 'imagenes', // fotos: catalogo, carta de mesas y avatares (miniaturas sync)
+  MULTICURRENCY: 'divisas' // precio/costo por producto en divisa (USD); el MN se deriva a la tasa (base interna MN)
 }
 
 export const LICENSE_MODULE_LABELS = {
@@ -35,7 +36,8 @@ export const LICENSE_MODULE_LABELS = {
   cuentas: 'Cuentas y proveedores',
   elaboracion: 'Centro de elaboración',
   mesas: 'Mesas y cuentas',
-  imagenes: 'Imágenes y fotos'
+  imagenes: 'Imágenes y fotos',
+  divisas: 'Precios en divisas'
 }
 
 // Lista de modulos de un payload (tolerante a licencias viejas sin el campo).
