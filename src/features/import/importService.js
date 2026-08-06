@@ -1,5 +1,5 @@
 import { normalize } from '../../lib/search'
-import { UNITS } from '../../db/constants'
+import { UNITS, FOREIGN_PRICE_CURRENCIES } from '../../db/constants'
 import { parseTiersText } from '../../lib/priceTiers'
 import { productsRepo } from '../../repositories/productsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
@@ -12,6 +12,7 @@ import { configRepo } from '../../repositories/configRepo'
 // areas con "Salida a area"). `Escalas mayorista` (opcional, modulo mayorista):
 // precios por unidad segun cantidad, formato "20:100; 50:60".
 const TIER_HEADER = 'Escalas mayorista'
+const CURRENCY_HEADER = 'Moneda' // modulo 'divisas': moneda del precio/costo (MN/USD)
 
 export const TEMPLATE_HEADERS = [
   'Codigo',
@@ -25,10 +26,13 @@ export const TEMPLATE_HEADERS = [
 ]
 
 // Columnas de la plantilla segun el modulo: la de escalas mayoristas solo se
-// ofrece si la licencia trae el modulo 'mayorista' (asi no se filtra a los
-// clientes en produccion).
-export function templateHeaders(withTiers = false) {
-  return withTiers ? [...TEMPLATE_HEADERS, TIER_HEADER] : TEMPLATE_HEADERS
+// ofrece si la licencia trae 'mayorista'; la de Moneda solo con 'divisas' (asi
+// no se filtran a los clientes en produccion).
+export function templateHeaders(withTiers = false, withCurrency = false) {
+  const h = [...TEMPLATE_HEADERS]
+  if (withCurrency) h.push(CURRENCY_HEADER)
+  if (withTiers) h.push(TIER_HEADER)
+  return h
 }
 
 const TEMPLATE_EXAMPLE = [
@@ -42,10 +46,17 @@ async function loadXLSX() {
 }
 
 // --- Plantilla descargable (.xlsx) ---
-export async function buildTemplateBlob({ withTiers = false } = {}) {
+export async function buildTemplateBlob({ withTiers = false, withCurrency = false } = {}) {
   const XLSX = await loadXLSX()
-  const head = templateHeaders(withTiers)
-  const example = TEMPLATE_EXAMPLE.map((r, i) => (withTiers ? [...r, i === 1 ? '20:4.5; 50:4' : ''] : r))
+  const head = templateHeaders(withTiers, withCurrency)
+  // El orden de los valores del ejemplo sigue al de templateHeaders: primero
+  // Moneda (si aplica) y luego Escalas. El 2do producto va en USD como muestra.
+  const example = TEMPLATE_EXAMPLE.map((r, i) => {
+    const row = [...r]
+    if (withCurrency) row.push(i === 1 ? 'USD' : 'MN')
+    if (withTiers) row.push(i === 1 ? '20:4.5; 50:4' : '')
+    return row
+  })
   const ws = XLSX.utils.aoa_to_sheet([head, ...example])
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Productos')
@@ -95,13 +106,15 @@ function extractRow(obj) {
     price: parseNum(get(['precio venta', 'precio', 'precio de venta', 'pvp', 'venta'])),
     cost: parseNum(get(['costo', 'coste', 'cost'])) ?? 0,
     stock: parseNum(get(['existencia inicial', 'existencia', 'stock', 'cantidad', 'inventario'])) ?? 0,
-    tiersText: String(get(['escalas mayorista', 'escalas', 'mayorista', 'precios mayorista'])).trim()
+    tiersText: String(get(['escalas mayorista', 'escalas', 'mayorista', 'precios mayorista'])).trim(),
+    // Modulo 'divisas': moneda del precio/costo de la fila (MN/USD). Vacio = base.
+    currency: String(get(['moneda', 'currency', 'divisa'])).trim().toUpperCase()
   }
 }
 
 // Lee el archivo (.xlsx/.csv) y valida cada fila contra el catalogo existente.
 // Devuelve filas con estado: ok | dup (duplicado, se omite) | error.
-export async function parseAndValidate(buffer, { existingProducts }) {
+export async function parseAndValidate(buffer, { existingProducts, withCurrency = false }) {
   const XLSX = await loadXLSX()
   const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
   const ws = wb.Sheets[wb.SheetNames[0]]
@@ -123,6 +136,15 @@ export async function parseAndValidate(buffer, { existingProducts }) {
     const tiersParsed = parseTiersText(draft.tiersText)
     if (!tiersParsed.ok) errors.push('Escalas invalidas (formato 20:100; 50:60)')
     draft.tiers = tiersParsed.tiers
+
+    // Modulo 'divisas': valida/normaliza la moneda SOLO con el modulo activo. Sin
+    // el, la columna Moneda se ignora (clasico). Vacia o base = sin priceCurrency;
+    // una divisa reconocida marca el producto; cualquier otra cosa es error.
+    if (withCurrency && draft.currency && !['MN', ...FOREIGN_PRICE_CURRENCIES].includes(draft.currency)) {
+      errors.push('Moneda invalida (MN/USD)')
+    }
+    draft.priceCurrency =
+      withCurrency && FOREIGN_PRICE_CURRENCIES.includes(draft.currency) ? draft.currency : null
 
     let status = errors.length ? 'error' : 'ok'
     let dupReason = ''
@@ -200,6 +222,9 @@ export async function commitImport(okRows, { userId, withTiers = false }) {
       cost: r.draft.cost,
       openingStock: r.draft.stock,
       priceTiers: withTiers ? (r.draft.tiers || []) : [],
+      // Modulo 'divisas': ya viene gateado por parseAndValidate (solo se fija con
+      // el modulo y una divisa reconocida); si no, undefined -> base clasica.
+      priceCurrency: r.draft.priceCurrency || undefined,
       userId
     })
     created++

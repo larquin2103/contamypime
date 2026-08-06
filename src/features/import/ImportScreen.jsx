@@ -21,6 +21,7 @@ export function ImportScreen() {
   const { user, isManager } = useAuth()
   const { hasModule } = useLicense()
   const withTiers = hasModule(LICENSE_MODULES.WHOLESALE)
+  const withCurrency = hasModule(LICENSE_MODULES.MULTICURRENCY)
   const navigate = useNavigate()
   const fileRef = useRef(null)
   const [result, setResult] = useState(null) // { rows, summary, fileName }
@@ -38,7 +39,7 @@ export function ImportScreen() {
   }
 
   const downloadTemplate = async () => {
-    const blob = await buildTemplateBlob({ withTiers })
+    const blob = await buildTemplateBlob({ withTiers, withCurrency })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -55,7 +56,7 @@ export function ImportScreen() {
     try {
       const buffer = await file.arrayBuffer()
       const existingProducts = await productsRepo.list()
-      const res = await parseAndValidate(buffer, { existingProducts })
+      const res = await parseAndValidate(buffer, { existingProducts, withCurrency })
       setResult({ ...res, fileName: file.name })
     } catch (err) {
       setError('No se pudo leer el archivo: ' + err.message)
@@ -106,7 +107,7 @@ export function ImportScreen() {
       <section className="card">
         <h3>1. Descarga la plantilla</h3>
         <p className="muted">
-          Columnas: {templateHeaders(withTiers).join(', ')}. Llenala con tu inventario (Excel, lista, cuaderno).
+          Columnas: {templateHeaders(withTiers, withCurrency).join(', ')}. Llenala con tu inventario (Excel, lista, cuaderno).
         </p>
         <button className="btn btn--block" onClick={downloadTemplate}>
           ⬇ Descargar plantilla Excel
@@ -159,7 +160,7 @@ function Preview({ result, onConfirm, busy }) {
                 <strong>{r.draft.name || <em className="muted">(sin nombre)</em>}</strong>
                 <span className="muted">
                   {r.draft.code ? `${r.draft.code} · ` : ''}
-                  {r.draft.unit || '?'} · {r.draft.price ?? '—'}
+                  {r.draft.unit || '?'} · {r.draft.price ?? '—'}{r.draft.priceCurrency ? ` ${r.draft.priceCurrency}` : ''}
                   {r.draft.category ? ` · ${r.draft.category}` : ''}
                   {r.draft.area ? ` · área: ${r.draft.area}` : ''}
                 </span>
