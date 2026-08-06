@@ -1,4 +1,8 @@
-# CLAUDE.md — Guía del proyecto MypiCuadre
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Guía del proyecto MypiCuadre
 
 Contexto para Claude Code (y para cualquier desarrollador) al trabajar en este repo.
 El idioma del proyecto, la UI, los comentarios y los mensajes de commit es **español**.
@@ -54,7 +58,7 @@ src/
 │   ├── partners/ accounts/   # módulo 'cuentas' (proveedores/terceros + tesorería)
 │   ├── license/ backup/ errors/  # activación, respaldo local, registro de errores
 ├── components/               # UI compartida (PinInput, Layout, CashInputs, ...)
-├── lib/                      # utilidades puras (ids, pin, currency, dates, search, firebase)
+├── lib/                      # utilidades puras (ids, pin, currency, dates, search, firebase, theme, image)
 └── styles/global.css         # estilos globales (tema oscuro, clases .card .btn .field ...)
 ```
 
@@ -90,6 +94,9 @@ Importaciones pesadas (xlsx/jspdf/firebase) siempre con `import()` dinámico.
   `usersRepo.verifyManagerPin`) — salvo que el dueño active el permiso mayorista
   `sellerSelfAuthorize`, con el que el vendedor las confirma (y el retiro al cerrar turno) con
   **su propio PIN**. **NO** hace entradas, NO cambia precios, NO ve costos, NO crea usuarios.
+- **Elaboración (ELABORATION, módulo `elaboracion`)**: rol **acotado** al centro de elaboración
+  (transforma productos y hace salidas a los puntos de venta). NO ve el almacén central ni los
+  datos del dueño; no abre turnos de venta. Solo existe con el módulo `elaboracion`.
 - **Regla de oro:** solo el vendedor con **su turno abierto** puede vender (ni el dueño sin turno).
   Desde el Bloque 19, **varios vendedores pueden tener turno a la vez** (uno por área); el turno
   es por vendedor (`shiftsRepo.getActiveFor(sellerId)`), no global.
@@ -181,6 +188,8 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
 - **`elaboracion`** — centro de elaboración intermedio (almacén → elaboración → área) con su
   rol acotado `ELABORATION`.
 - **`mesas`** — cuentas abiertas por mesa dentro de un área (cafetería/restaurante). Ver abajo.
+- **`imagenes`** — miniaturas sincronizadas (fotos de producto + carta de mesas). Ver "Fase 8".
+  Nota: los **avatares** de usuario son **base** (no gateados), no cuentan como este módulo.
 
 ## Mesas (módulo `mesas`)
 
@@ -209,6 +218,34 @@ por área, % de cargo por servicio, encabezado/pie del ticket). Repo: `ordersRep
 - **Cierre de turno bloqueado** si el área tiene mesas abiertas/reservadas: hay que cobrarlas o
   liberarlas antes (las vacías se liberan de golpe). Reporte **"Ventas por mesa"** en Reportes.
 
+## Fase 8 — Tema, cambio de rol e imágenes (`docs/FASE8.md`)
+
+Mejoras visuales y de gestión. Regla transversal: **default = comportamiento actual**; todo lo
+de imágenes va gateado (salvo los avatares, que son base).
+
+- **Tema claro/oscuro (B1, base):** `src/lib/theme.js`. La preferencia vive en **localStorage**
+  (`mc_theme`) — **local del dispositivo, NO sincroniza** — y se aplica en `main.jsx` **antes de
+  pintar** (sin parpadeo) poniendo `data-theme` en `<html>`. El **oscuro es el default** (`:root`
+  base, intacto); el claro **sobreescribe variables** bajo `:root[data-theme="light"]` en
+  `styles/global.css`. Toggle en la cabecera (`Layout.jsx`), visible para **todos los roles**. El
+  **ticket térmico** queda siempre negro-sobre-blanco.
+- **Cambio de rol dinámico (B2, base):** en `UsersAdmin` (solo dueño) → `usersRepo.setRole`.
+  **Doble candado OWNER:** `ASSIGNABLE_ROLES = [SELLER, ADMIN, ELABORATION]` — el dueño nunca es
+  origen ni destino, y la capa de datos rechaza OWNER además de la UI. Sin PIN (solo confirmación);
+  **bloqueado si el usuario tiene turno abierto**. Transaccional: rol + `updatedAt` + evento
+  `role_change` en `auditEvents`. El `AuthProvider` relee el rol de la BD al montar → el afectado
+  toma el rol nuevo al **recargar** (su sesión viva sigue con el viejo hasta entonces).
+- **Imágenes (módulo `imagenes`, B3–B6):** **miniaturas sincronizadas**, NO Firebase Storage (se
+  mantiene en el plan gratis). `src/lib/image.js` → `fileToThumbnail(file, { fit })` comprime **en
+  el cliente** (canvas, lado mayor ≤256 px, JPEG **<40 KB**, fondo blanco). Dexie **v12 `images`**
+  con id **determinista** `img:<refType>:<refId>` (dos dispositivos no duplican; LWW por
+  `updatedAt`); la foto **vive aparte** (no engorda `products`/`users`). `imagesRepo`
+  (`get/getDataUrl/set/clear/mapByType`); **quitar = `dataUrl` vacío** (no borra). Cubre **fotos de
+  producto** (B4: `ProductForm` + miniatura en `Catalog`), **carta de mesas con foto** (B5:
+  `TableScreen` reutiliza la MISMA foto del producto) y **avatares de usuario** (B6: `Home`, cada
+  uno edita el suyo). **Gate:** producto y carta requieren `hasModule('imagenes')`; los **avatares
+  son BASE** (no gateados). Sin el módulo: cero storage/sync de fotos y DOM idéntico.
+
 ## Modelo de datos (Dexie)
 
 Versiones en `src/db/db.js`:
@@ -236,6 +273,9 @@ Versiones en `src/db/db.js`:
 - **v11**: `mermas` (deterioro/pérdida). Snapshot para el reporte de afectación (precio de venta
   y costo AL MOMENTO de la merma); el libro mayor lleva el movimiento `MERMA_OUT` que deriva el
   stock, como `purchases` acompaña a las entradas. Migración aditiva.
+- **v12**: `images` (módulo `imagenes`, Fase 8): miniaturas JPEG (`dataUrl` ≤256 px, <40 KB) de
+  producto/carta/avatar, con id determinista `img:<refType>:<refId>` (no duplican entre
+  dispositivos; LWW por `updatedAt`). Viven **aparte** de `products`/`users`. Migración aditiva.
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`.
@@ -268,10 +308,15 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   respaldo en el Home del dueño). Bloque 33 ✅ (resiliencia: ErrorBoundary global,
   registro local de errores en `errorLog` — Dexie v6, local, no sincroniza ni viaja en
   respaldos — y pantalla `/errors` para verlo/compartirlo). Bloques 34–39 pendientes.
+- **Fase 8 — Tema, cambio de rol e imágenes:** EN CURSO (plan en `docs/FASE8.md`). Tema
+  claro/oscuro (B1, base) ✅; cambio de rol dinámico (B2, base) ✅; módulo `imagenes` (B3–B6):
+  infraestructura ✅, fotos de producto ✅, carta de mesas con foto ✅, avatares de usuario (BASE)
+  ✅. Default = comportamiento actual; imágenes gateadas (salvo avatares).
 - **Módulos de licencia** (opcionales, ver sección "Módulos de licencia"): `mayorista` ✅
   (venta del almacén, escalas, pago mixto, conversión), `cuentas` ✅ (proveedores/terceros +
   tesorería), `elaboracion` ✅ (centro intermedio + rol acotado), `mesas` ✅ (cuentas por mesa,
-  ticket térmico y reporte "Ventas por mesa"). Cada uno gateado con `hasModule(...)`.
+  ticket térmico y reporte "Ventas por mesa"), `imagenes` ✅ (miniaturas sync: fotos de producto
+  y carta de mesas). Cada uno gateado con `hasModule(...)`.
 
 ## Fase 4 — Sincronización (cómo funciona)
 
