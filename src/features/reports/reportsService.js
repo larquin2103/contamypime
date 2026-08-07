@@ -1,6 +1,6 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
-import { round2, formatMoney } from '../../lib/currency'
+import { round2, formatMoney, foreignToBase, isForeignPriced } from '../../lib/currency'
 import {
   SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
   areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION
@@ -8,6 +8,7 @@ import {
 import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { accountsRepo } from '../../repositories/accountsRepo'
+import { ratesRepo } from '../../repositories/ratesRepo'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
@@ -49,6 +50,22 @@ function changeOf(s) {
   const amount = s.paymentMethod === 'transfer' ? 0 : round2(Number(s.change || 0))
   const currency = s.changeCurrency || payCurrencyOf(s)
   return { amount, currency }
+}
+
+// Modulo 'divisas': precio/costo de un producto en MN para los reportes. Si el
+// producto fija su precio en divisa, se valora a la TASA VIGENTE (los reportes
+// son en MN, base interna); si no, devuelve el numero tal cual -> reportes
+// identicos al clasico. Null-safe (producto ausente -> 0). Carga las tasas una
+// sola vez por reporte.
+async function baseValuer() {
+  const rates = await ratesRepo.currentRates()
+  const rateFor = (cur) => Number(rates?.[cur]?.rate || 0)
+  const mn = (p, field) => {
+    if (!p) return 0
+    const v = Number(p[field]) || 0
+    return isForeignPriced(p) ? foreignToBase(v, rateFor(p.priceCurrency)) : v
+  }
+  return { price: (p) => mn(p, 'price'), cost: (p) => mn(p, 'cost') }
 }
 
 // --- Builders: cada uno devuelve { title, subtitle, head, rows, filename } ---
@@ -116,6 +133,8 @@ export async function buildInventoryReport() {
   // Columnas dinamicas: almacen (+ elaboracion si esta activa) + cada area.
   const locCols = [WAREHOUSE, ...(elab.enabled ? [ELABORATION] : []), ...areas]
   const stockAt = (p, loc) => round2(Number(p.stockByLocation?.[loc] || 0))
+  // Modulo 'divisas': costo/precio en MN (tasa vigente) si el producto es en divisa.
+  const mnv = await baseValuer()
 
   const rows = products.map((p) => [
     p.code || '',
@@ -124,11 +143,11 @@ export async function buildInventoryReport() {
     p.unit,
     ...locCols.map((loc) => stockAt(p, loc)),
     round2(p.stock),
-    round2(p.cost),
-    round2(p.price),
-    round2(p.stock * p.cost)
+    round2(mnv.cost(p)),
+    round2(mnv.price(p)),
+    round2(p.stock * mnv.cost(p))
   ])
-  const valorTotal = round2(products.reduce((a, p) => a + p.stock * p.cost, 0))
+  const valorTotal = round2(products.reduce((a, p) => a + p.stock * mnv.cost(p), 0))
   const tail = new Array(4 + locCols.length).fill('')
   rows.push([...tail, '', 'VALOR INVENTARIO', valorTotal])
   return {
@@ -149,6 +168,7 @@ export async function buildInventoryReport() {
 export async function buildEntriesReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const prods = await productMap()
+  const mnv = await baseValuer() // modulo 'divisas': precio de venta en MN
   const purchases = (await db.purchases.toArray())
     .filter((p) => inRange(p.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
@@ -166,7 +186,7 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
         round2(it.qty),
         it.unit || '',
         round2(it.unitCost || 0),
-        round2(prods[it.productId]?.price ?? 0), // precio de venta actual
+        round2(mnv.price(prods[it.productId])), // precio de venta actual (MN)
         round2(it.lineTotal ?? Number(it.qty) * Number(it.unitCost || 0)),
         pu.supplier || '',
         names[pu.userId] || 'dueño'
@@ -190,6 +210,7 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
 export async function buildTransfersReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const prods = await productMap()
+  const mnv = await baseValuer() // modulo 'divisas': precio/valor en MN
   const elab = await configRepo.getElaboration()
   // Con elaboración activa, los traspasos pueden salir del almacén O de
   // elaboración: se añade una columna "Origen". Sin ella, el reporte queda
@@ -203,7 +224,7 @@ export async function buildTransfersReport({ from = null, to = null } = {}) {
   let totalVal = 0
   for (const t of transfers) {
     for (const it of t.items || []) {
-      const price = round2(prods[it.productId]?.price ?? 0)
+      const price = round2(mnv.price(prods[it.productId]))
       const valor = round2(price * Number(it.qty || 0))
       totalVal += valor
       const base = [formatDateTime(t.createdAt)]
@@ -521,6 +542,7 @@ export async function buildAccountsReport({ from = null, to = null } = {}) {
 export async function buildCountReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const prods = await productMap() // para el costo -> valor de la merma
+  const mnv = await baseValuer() // modulo 'divisas': costo en MN (tasa vigente)
   const dateOf = (c) => c.approvedAt || c.submittedAt || c.createdAt
 
   // Todos los conteos aprobados, agrupados por ubicacion y ordenados en el tiempo,
@@ -581,7 +603,7 @@ export async function buildCountReport({ from = null, to = null } = {}) {
       const fisico = round2(Number(it.physicalQty || 0))
       const dif = round2(fisico - teorico)
       if (dif !== 0) nDif += 1
-      const cost = Number(prods[it.productId]?.cost || 0)
+      const cost = mnv.cost(prods[it.productId]) // MN (convertido si es en divisa)
       mermaVal = round2(mermaVal + dif * cost) // dif<0 (merma) resta; sobrante suma
       const estado = dif === 0 ? 'Cuadra' : dif < 0 ? 'Merma' : 'Sobrante'
       rows.push([
@@ -861,7 +883,8 @@ export async function buildProductLedger({ productId = '', location = '', from =
     win.push(m)
   }
 
-  const cost = Number(p.cost || 0)
+  const mnv = await baseValuer() // modulo 'divisas': costo en MN (tasa vigente)
+  const cost = mnv.cost(p)
   const val = (n) => formatMoney(round2(n * cost))
   const rows = []
   let saldo = round2(apertura)
@@ -928,10 +951,11 @@ export async function buildProductsLedgerSummary({ productIds = [], location = '
   const rows = []
   const tot = emptyLedger()
   let tVal = 0
+  const mnv = await baseValuer() // modulo 'divisas': costo en MN (tasa vigente)
   for (const p of selected) {
     const a = acc[p.id]
     const existencia = round2(a.apertura + ledgerNet(a.g))
-    const cost = Number(p.cost || 0)
+    const cost = mnv.cost(p)
     for (const k of LEDGER_KEYS) tot[k] = round2(tot[k] + a.g[k])
     tVal = round2(tVal + existencia * cost)
     rows.push([p.name, p.unit, round2(a.apertura), ...ledgerMidCols(a.g, detail), existencia,
