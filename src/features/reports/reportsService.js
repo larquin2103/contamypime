@@ -135,6 +135,9 @@ export async function buildInventoryReport() {
   const stockAt = (p, loc) => round2(Number(p.stockByLocation?.[loc] || 0))
   // Modulo 'divisas': costo/precio en MN (tasa vigente) si el producto es en divisa.
   const mnv = await baseValuer()
+  // Columna extra "Precio USD" SOLO si hay productos en divisa (si no, el reporte
+  // queda identico al clasico). Muestra el precio nativo de los que se venden en USD.
+  const hasForeign = products.some((p) => isForeignPriced(p))
 
   const rows = products.map((p) => [
     p.code || '',
@@ -145,7 +148,10 @@ export async function buildInventoryReport() {
     round2(p.stock),
     round2(mnv.cost(p)),
     round2(mnv.price(p)),
-    round2(p.stock * mnv.cost(p))
+    round2(p.stock * mnv.cost(p)),
+    // Precio en su divisa nativa (USD) para los productos que se venden en divisa;
+    // vacio para los de la base. La columna solo existe si hay alguno (hasForeign).
+    ...(hasForeign ? [isForeignPriced(p) ? round2(Number(p.price) || 0) : ''] : [])
   ])
   const valorTotal = round2(products.reduce((a, p) => a + p.stock * mnv.cost(p), 0))
   const tail = new Array(4 + locCols.length).fill('')
@@ -156,7 +162,8 @@ export async function buildInventoryReport() {
     head: [
       'Codigo', 'Producto', 'Categoria', 'Unidad',
       WAREHOUSE_LABEL, ...(elab.enabled ? [elab.name] : []), ...areas.map((a) => areaLabel(a)),
-      'Total', 'Costo', 'Precio', 'Valor (total*costo)'
+      'Total', 'Costo', 'Precio', 'Valor (total*costo)',
+      ...(hasForeign ? ['Precio USD'] : [])
     ],
     rows,
     filename: 'inventario'
