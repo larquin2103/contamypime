@@ -223,6 +223,8 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
 - **`mesas`** — cuentas abiertas por mesa dentro de un área (cafetería/restaurante). Ver abajo.
 - **`imagenes`** — miniaturas sincronizadas (fotos de producto + carta de mesas). Ver "Fase 8".
   Nota: los **avatares** de usuario son **base** (no gateados), no cuentan como este módulo.
+- **`divisas`** — precios de catálogo en **divisa** (USD): el dueño fija precio/costo en USD y el
+  cliente paga en USD o MN (MN = USD × tasa vigente). OFF por defecto. Ver "Divisas" abajo.
 
 ## Mesas (módulo `mesas`)
 
@@ -251,6 +253,44 @@ por área, % de cargo por servicio, encabezado/pie del ticket). Repo: `ordersRep
 - **Cierre de turno bloqueado** si el área tiene mesas abiertas/reservadas: hay que cobrarlas o
   liberarlas antes (las vacías se liberan de golpe). Reporte **"Ventas por mesa"** en Reportes.
 
+## Divisas (módulo `divisas`)
+
+Precios de catálogo en **divisa** (USD). Gateado por la licencia `divisas` (OFF por defecto); sin
+él —o sin productos en divisa— la app queda **idéntica a la clásica**. Diseño validado con el dueño:
+el precio **flota en USD** y el **MN se deriva al cobrar** con la tasa vigente (conversión inversa:
+`MN = USD × tasa`). **MN sigue siendo la base interna**; USD es solo la capa **visible**.
+
+- **Por producto (mixto):** cada producto puede fijarse en su moneda con el campo `priceCurrency`
+  en `products` (p.ej. `USD`). Sin el campo = MN = comportamiento clásico. Helper
+  `isForeignPriced(product, base)` en `src/lib/currency.js`. Es un campo **sin índice y sin
+  migración** Dexie (opcional, como `sales.area`).
+- **Autoría gateada:** el selector *"Moneda del precio"* en `ProductForm` y la columna *"Moneda"*
+  opcional de la importación solo aparecen con `hasModule('divisas')`. El precio/costo se guardan
+  tal cual (en USD); nada se convierte al guardar.
+- **POS (venta directa):** al agregar al carrito se convierte USD→MN con la **tasa vigente** y se
+  **congela por línea** el par `priceCurrency`/`priceRate` (junto al precio, que ya se congelaba).
+  Sin tasa definida no deja vender (aviso "Falta tasa"). El resto del cobro (efectivo/transf./mixto)
+  no cambia: siempre cuadra en MN.
+- **Mesas y mermas:** igual. `ordersRepo.addItem` lee la tasa internamente y congela el par por
+  línea; las mermas valoran la afectación (costo) en MN a la tasa vigente. Sin tasa, ambas bloquean.
+- **Ticket de mesas (impresión):** si el cobro fue en **divisa** (USD), el ticket térmico muestra el
+  **monto pagado en esa moneda** (efectivo: total/pagó/vuelto; transferencia: pagó), leyendo los
+  importes **congelados** de la venta —el **mismo cálculo que muestra el turno** (`ShiftSalesSummary`)—.
+  Gateado por `divisas` y solo si la moneda del cobro ≠ base; sin eso, el ticket queda **idéntico**
+  al clásico. El pago mixto ya listaba cada parte en su moneda (base de `mesas`) y se conserva.
+- **Reportes (valor en MN + columnas USD de referencia):** los reportes se **valoran en MN**
+  respetando `priceCurrency`, y —**solo con el módulo activo y si hay productos en divisa**— ganan
+  columnas de **referencia en USD** (precio, importe, costo y sus **totales**) y el inventario pasa
+  a horizontal. Cada builder recibe `divisas`; cada columna/total cuelga de
+  `hasForeign = divisas && <hay algún ítem en divisa>`. Sin eso: columnas, filas y orientación
+  **idénticas** al clásico.
+- **Conversión data-driven (degradación segura, decisión del dueño):** la **conversión** USD→MN se
+  hace **siempre** que la línea/el producto tenga `priceCurrency` (con o sin módulo), para que
+  **quitar la licencia no distorsione** ventas ni productos ya en divisa (se siguen valorando bien
+  en MN). Lo que el módulo gatea es la **autoría** (elegir divisa) y la **presentación** (columnas
+  USD y el monto en divisa del ticket). Quitar `divisas` no rompe ni borra nada (append-only): solo
+  desaparecen esas columnas/el monto en divisa y la opción de fijar nuevos productos en divisa.
+
 ## Reportes (`features/reports/reportsService.js`, solo lectura)
 
 Cada reporte es un *builder* `build*()` que **solo lee** (`.toArray()` + filtrar/mapear, nunca
@@ -263,6 +303,9 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
 - **Por licencia:** *Ventas por área* y *por vendedor* (áreas), *Movimientos de cuentas* (`cuentas`),
   *Ventas por mesa* (`mesas`), consolidado/salidas/cuadre de **elaboración** (que **no** exponen
   costo ni ganancia, por el alcance del rol) y *Mermas* (afectación al costo).
+- **Columnas USD (módulo `divisas`):** todos los reportes con importes/costos ganan columnas de
+  **referencia en USD** (precio, importe, costo y sus totales) SOLO con el módulo activo y si hay
+  productos en divisa; sin eso, columnas y filas **idénticas** al clásico. Ver "Divisas".
 - El submayor/kardex deriva TODO del libro mayor (`stockMovements`) clasificando cada movimiento
   con `ledgerKey` (compras, ventas, traspasos, mermas, ajustes, carga inicial…), coherente con el
   invariante de que el stock sale del ledger.
@@ -329,7 +372,10 @@ Versiones en `src/db/db.js`:
   dispositivos; LWW por `updatedAt`). Viven **aparte** de `products`/`users`. Migración aditiva.
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
-vale 1 unidad de la moneda", append-only en `exchangeRates`.
+vale 1 unidad de la moneda", append-only en `exchangeRates`. El módulo `divisas` añade el campo
+`priceCurrency` a `products` (moneda del precio, p.ej. `USD`) y el par congelado
+`priceCurrency`/`priceRate` a las líneas de venta — **sin índice y sin migración Dexie** (campos
+nuevos opcionales, como `sales.area`). Sin el campo, el producto es MN = clásico.
 
 **Cuadre de turno:** semáforo 🟢/🟡/🔴 con umbrales configurables; conteo por denominación
 de billetes; efectivo vs transferencias separados. El dueño puede forzar el cierre de un
@@ -367,7 +413,8 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   (venta del almacén, escalas, pago mixto, conversión), `cuentas` ✅ (proveedores/terceros +
   tesorería), `elaboracion` ✅ (centro intermedio + rol acotado), `mesas` ✅ (cuentas por mesa,
   ticket térmico y reporte "Ventas por mesa"), `imagenes` ✅ (miniaturas sync: fotos de producto
-  y carta de mesas). Cada uno gateado con `hasModule(...)`.
+  y carta de mesas), `divisas` ✅ (precios de catálogo en USD; cobro en USD/MN a la tasa; ticket de
+  mesa y reportes con el monto/columnas en USD, todo gateado). Cada uno gateado con `hasModule(...)`.
 
 ## Fase 4 — Sincronización (cómo funciona)
 
