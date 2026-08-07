@@ -78,6 +78,14 @@ function foreignOf(it, mnAmount) {
   return baseToForeign(Number(mnAmount || 0), rate)
 }
 
+// Importe en DIVISA de una linea = precio en divisa (ya redondeado) x cantidad,
+// para que en el reporte cuadre "Precio USD x Cantidad = Importe USD". Devuelve
+// '' si la linea no fue en divisa.
+function foreignLineTotal(it, unitPriceMN, qty) {
+  const pu = foreignOf(it, unitPriceMN)
+  return pu === '' ? '' : round2(pu * Number(qty || 0))
+}
+
 // --- Builders: cada uno devuelve { title, subtitle, head, rows, filename } ---
 
 // Reporte de ventas al DETALLE (una fila por producto vendido): fecha,
@@ -117,16 +125,16 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
         // Vuelto solo en la 1.ª línea de la venta (es por venta, no por producto).
         i === 0 && chg.amount > 0 ? formatMoney(chg.amount, chg.currency) : '',
         it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
-        ...(hasForeign ? [foreignOf(it, it.unitPrice)] : [])
+        ...(hasForeign ? [foreignOf(it, it.unitPrice), foreignLineTotal(it, it.unitPrice, it.qty)] : [])
       ])
       total += importe
     })
   }
-  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', '', '', '', ...(hasForeign ? [''] : [])])
+  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', '', '', '', ...(hasForeign ? ['', ''] : [])])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Vendedor', 'Área', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Metodo', 'Moneda', 'Vuelto', 'Mayorista', ...(hasForeign ? ['Precio USD'] : [])],
+    head: ['Fecha', 'Vendedor', 'Área', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Metodo', 'Moneda', 'Vuelto', 'Mayorista', ...(hasForeign ? ['Precio USD', 'Importe USD'] : [])],
     rows,
     orientation: 'landscape',
     filename: 'ventas'
@@ -162,9 +170,13 @@ export async function buildInventoryReport() {
     round2(mnv.cost(p)),
     round2(mnv.price(p)),
     round2(p.stock * mnv.cost(p)),
-    // Precio en su divisa nativa (USD) para los productos que se venden en divisa;
-    // vacio para los de la base. La columna solo existe si hay alguno (hasForeign).
-    ...(hasForeign ? [isForeignPriced(p) ? round2(Number(p.price) || 0) : ''] : [])
+    // Columnas en su divisa NATIVA (USD) para los productos que se venden en
+    // divisa; vacias para los de la base. Solo existen si hay alguno (hasForeign).
+    ...(hasForeign ? [
+      isForeignPriced(p) ? round2(Number(p.price) || 0) : '', // Precio USD
+      isForeignPriced(p) ? round2(Number(p.cost) || 0) : '', // Costo USD
+      isForeignPriced(p) ? round2(Number(p.stock || 0) * (Number(p.cost) || 0)) : '' // Valor costo USD
+    ] : [])
   ])
   const valorTotal = round2(products.reduce((a, p) => a + p.stock * mnv.cost(p), 0))
   const tail = new Array(4 + locCols.length).fill('')
@@ -176,7 +188,7 @@ export async function buildInventoryReport() {
       'Codigo', 'Producto', 'Categoria', 'Unidad',
       WAREHOUSE_LABEL, ...(elab.enabled ? [elab.name] : []), ...areas.map((a) => areaLabel(a)),
       'Total', 'Costo', 'Precio', 'Valor (total*costo)',
-      ...(hasForeign ? ['Precio USD'] : [])
+      ...(hasForeign ? ['Precio USD', 'Costo USD', 'Valor costo USD'] : [])
     ],
     rows,
     ...(hasForeign ? { orientation: 'landscape' } : {}),
@@ -398,7 +410,7 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
     a.lines.sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1))
     for (const l of a.lines) {
       rows.push([originLabel(area), formatDateTime(l.createdAt), l.seller, l.name, l.unit, l.qty, l.price, l.importe, l.ganancia,
-        ...(hasForeign ? [foreignOf(l, l.price), foreignOf(l, l.ganancia)] : [])])
+        ...(hasForeign ? [foreignOf(l, l.price), foreignLineTotal(l, l.price, l.qty), foreignOf(l, l.ganancia)] : [])])
     }
     rows.push([originLabel(area), 'SUBTOTAL', `${a.count} venta(s)`, '', '', '', '', round2(a.revenue), round2(a.profit)])
     gRev += a.revenue; gProf += a.profit; gCount += a.count
@@ -418,7 +430,7 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
     title: 'Ventas por área',
     subtitle: rangeLabel(from, to),
     head: ['Área', 'Fecha', 'Vendedor', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Ganancia',
-      ...(hasForeign ? ['Precio USD', 'Ganancia USD'] : [])],
+      ...(hasForeign ? ['Precio USD', 'Importe USD', 'Ganancia USD'] : [])],
     rows,
     ...(hasForeign ? { orientation: 'landscape' } : {}),
     filename: 'areas'
@@ -476,7 +488,7 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
           round2(it.unitPrice ?? 0),
           importe,
           it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
-          ...(hasForeign ? [foreignOf(it, it.unitPrice)] : [])
+          ...(hasForeign ? [foreignOf(it, it.unitPrice), foreignLineTotal(it, it.unitPrice, it.qty)] : [])
         ])
         subQty = round2(subQty + Number(it.qty || 0))
         subTotal = round2(subTotal + importe)
@@ -491,7 +503,7 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
     title: 'Ventas por vendedor',
     subtitle: rangeLabel(from, to),
     head: ['Vendedor', 'Fecha', 'Origen', 'Producto', 'U/M', 'Cantidad', 'Precio', 'Importe', 'Mayorista',
-      ...(hasForeign ? ['Precio USD'] : [])],
+      ...(hasForeign ? ['Precio USD', 'Importe USD'] : [])],
     rows,
     ...(hasForeign ? { orientation: 'landscape' } : {}),
     filename: 'ventas_vendedor'
