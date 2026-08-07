@@ -327,7 +327,16 @@ export function TableScreen() {
       }
       const saleId = await salesRepo.create(payload)
       await ordersRepo.markClosed({ orderId: order.id, saleId, userId: user.id })
-      setDone({ subtotal, service, pct, total, method: payMethod })
+      // Modulo 'divisas': snapshot del cobro para el ticket (monto pagado en su
+      // moneda). Se toma del MISMO payload guardado en la venta -sin recalcular-
+      // para que el ticket muestre lo cobrado aun antes de releer la venta de la
+      // BD. Luego el ticket usa (sale || done.pay) como fuente.
+      const pay = payMethod === PAYMENT_METHODS.CASH
+        ? { paymentMethod: 'cash', cashCurrency: payload.paymentCurrency, cashAmount: payload.cashAmount, amountPaid: payload.amountPaid, change: payload.change, changeCurrency: payload.changeCurrency }
+        : payMethod === PAYMENT_METHODS.TRANSFER
+          ? { paymentMethod: 'transfer', transferCurrency: payload.transferCurrency, transferAmount: payload.transferAmount }
+          : { paymentMethod: 'mixed', payments: payload.payments, change: payload.change, changeCurrency: payload.changeCurrency }
+      setDone({ subtotal, service, pct, total, method: payMethod, pay })
       setPaying(false)
       if (nudgePush) nudgePush()
     } catch (e) {
@@ -365,9 +374,17 @@ export function TableScreen() {
       return [...map.values()]
     })()
     const folio = (sale?.id || order.id).slice(-6).toUpperCase()
-    const payLabel = sale?.paymentMethod === 'mixed'
+    // Fuente del cobro para el ticket: la venta inmutable si ya se releyo, o el
+    // snapshot del cobro recien hecho (done.pay) mientras la venta se carga.
+    const P = sale || done?.pay || {}
+    const payLabel = P.paymentMethod === 'mixed'
       ? 'Pago mixto'
-      : sale?.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'
+      : P.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'
+    // Modulo 'divisas' (GATEADO): si el cobro fue en divisa (USD), el ticket
+    // muestra el monto pagado en esa moneda (mismo calculo que el turno; montos
+    // ya congelados en la venta). Sin el modulo o si el cobro fue en MN, el
+    // ticket queda identico al clasico.
+    const foreignPay = hasModule(LICENSE_MODULES.MULTICURRENCY)
 
     return (
       <div className="screen">
@@ -397,9 +414,25 @@ export function TableScreen() {
           )}
           <div className="thermal__row thermal__total"><span>TOTAL</span><span>{formatMoney(d.total, baseCurrency)}</span></div>
           <div className="thermal__pay">{payLabel}</div>
-          {sale?.paymentMethod === 'mixed' && Array.isArray(sale.payments) && (
+          {/* Modulo 'divisas' (GATEADO): monto pagado en divisa (USD) — efectivo. */}
+          {foreignPay && P.paymentMethod === 'cash' && P.cashCurrency && P.cashCurrency !== baseCurrency && (
             <div className="thermal__parts">
-              {sale.payments.map((p, i) => (
+              <div className="thermal__row thermal__row--sm"><span>Total {P.cashCurrency}</span><span>{formatMoney(P.cashAmount, P.cashCurrency)}</span></div>
+              <div className="thermal__row thermal__row--sm"><span>Pagó {P.cashCurrency}</span><span>{formatMoney(P.amountPaid, P.cashCurrency)}</span></div>
+              {Number(P.change) > 0 && (
+                <div className="thermal__row thermal__row--sm"><span>Vuelto {P.changeCurrency}</span><span>{formatMoney(P.change, P.changeCurrency)}</span></div>
+              )}
+            </div>
+          )}
+          {/* Modulo 'divisas' (GATEADO): monto pagado en divisa (USD) — transferencia. */}
+          {foreignPay && P.paymentMethod === 'transfer' && P.transferCurrency && P.transferCurrency !== baseCurrency && (
+            <div className="thermal__parts">
+              <div className="thermal__row thermal__row--sm"><span>Pagó {P.transferCurrency}</span><span>{formatMoney(P.transferAmount, P.transferCurrency)}</span></div>
+            </div>
+          )}
+          {P.paymentMethod === 'mixed' && Array.isArray(P.payments) && (
+            <div className="thermal__parts">
+              {P.payments.map((p, i) => (
                 <div key={i} className="thermal__row thermal__row--sm">
                   <span>{p.method === 'transfer' ? 'Transf.' : 'Efec.'} {p.currency}</span>
                   <span>{formatMoney(p.amount, p.currency)}</span>
