@@ -42,7 +42,9 @@ export function ReportsScreen() {
   const run = async (key, builder, fmt) => {
     setBusy(`${key}-${fmt}`)
     try {
-      const report = await builder({ from, to })
+      // Modulo 'divisas': las columnas USD de los reportes se gatean por el módulo.
+      const divisas = hasModule(LICENSE_MODULES.MULTICURRENCY)
+      const report = await builder({ from, to, divisas })
       if (fmt === 'pdf') await exportPdf(report)
       else await exportExcel(report)
     } catch (e) {

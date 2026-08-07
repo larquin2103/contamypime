@@ -4,6 +4,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { WAREHOUSE, ELABORATION, locationLabel } from '../../db/constants'
 import { buildProductLedger, buildProductsLedgerSummary, exportExcel, exportPdf } from './reportsService'
@@ -14,6 +16,8 @@ import { buildProductLedger, buildProductsLedgerSummary, exportExcel, exportPdf 
 // Es SOLO LECTURA (deriva de stockMovements).
 export function ProductLedgerScreen() {
   const { isOwner } = useAuth()
+  const { hasModule } = useLicense()
+  const divisas = hasModule(LICENSE_MODULES.MULTICURRENCY)
   const products = useLiveQuery(() => productsRepo.list(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
@@ -48,9 +52,9 @@ export function ProductLedgerScreen() {
 
   const report = useLiveQuery(
     () => (scope === 'one'
-      ? buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued })
+      ? buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued, divisas })
       : buildProductsLedgerSummary({ productIds: selIds, location, from, to, valued })),
-    [scope, product?.id, selIds.join(','), location, from, to, mode, valued],
+    [scope, product?.id, selIds.join(','), location, from, to, mode, valued, divisas],
     undefined
   )
 
@@ -75,7 +79,7 @@ export function ProductLedgerScreen() {
       let rep = report
       if (fmt === 'excel') {
         rep = scope === 'one'
-          ? await buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued, detail: 'full' })
+          ? await buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued, detail: 'full', divisas })
           : await buildProductsLedgerSummary({ productIds: selIds, location, from, to, valued, detail: 'full' })
       }
       if (fmt === 'pdf') await exportPdf(rep)

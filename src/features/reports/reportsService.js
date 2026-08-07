@@ -91,18 +91,20 @@ function foreignLineTotal(it, unitPriceMN, qty) {
 // Reporte de ventas al DETALLE (una fila por producto vendido): fecha,
 // vendedor, area, descripcion, unidades, precio unitario e importe, con el
 // metodo de pago. Cada fila repite fecha/vendedor para poder filtrar en Excel.
-export async function buildSalesReport({ from = null, to = null } = {}) {
+export async function buildSalesReport({ from = null, to = null, divisas = false } = {}) {
   const names = await userMap()
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   const methodOf = (s) =>
     s.paymentMethod === 'mixed' ? 'Mixto' : s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'
-  // Modulo 'divisas': columna "Precio USD" solo si alguna linea se vendio en divisa.
-  const hasForeign = sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
+  // Modulo 'divisas' (GATEADO): columnas USD solo con el modulo activo Y si alguna
+  // linea se vendio en divisa. Sin el modulo -> reporte clasico byte-identico.
+  const hasForeign = divisas && sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
 
   const rows = []
   let total = 0
+  let totalUsd = 0
   for (const s of sales) {
     const seller = names[s.sellerId] || 'vendedor'
     const area = areaLabel(s.area)
@@ -111,6 +113,8 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
     const chg = changeOf(s) // vuelto (efectivo y sobrepago mixto), con su moneda
     ;(s.items || []).forEach((it, i) => {
       const importe = round2(it.lineTotal ?? it.unitPrice * it.qty)
+      const iu = hasForeign ? foreignLineTotal(it, it.unitPrice, it.qty) : ''
+      if (iu !== '') totalUsd = round2(totalUsd + iu)
       rows.push([
         formatDateTime(s.createdAt),
         seller,
@@ -125,12 +129,12 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
         // Vuelto solo en la 1.ª línea de la venta (es por venta, no por producto).
         i === 0 && chg.amount > 0 ? formatMoney(chg.amount, chg.currency) : '',
         it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
-        ...(hasForeign ? [foreignOf(it, it.unitPrice), foreignLineTotal(it, it.unitPrice, it.qty)] : [])
+        ...(hasForeign ? [foreignOf(it, it.unitPrice), iu] : [])
       ])
       total += importe
     })
   }
-  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', '', '', '', ...(hasForeign ? ['', ''] : [])])
+  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', '', '', '', ...(hasForeign ? ['', round2(totalUsd)] : [])])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
@@ -141,7 +145,7 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
   }
 }
 
-export async function buildInventoryReport() {
+export async function buildInventoryReport({ divisas = false } = {}) {
   const cats = await db.categories.toArray()
   const catName = {}
   for (const c of cats) catName[c.id] = c.name
@@ -156,9 +160,9 @@ export async function buildInventoryReport() {
   const stockAt = (p, loc) => round2(Number(p.stockByLocation?.[loc] || 0))
   // Modulo 'divisas': costo/precio en MN (tasa vigente) si el producto es en divisa.
   const mnv = await baseValuer()
-  // Columna extra "Precio USD" SOLO si hay productos en divisa (si no, el reporte
-  // queda identico al clasico). Muestra el precio nativo de los que se venden en USD.
-  const hasForeign = products.some((p) => isForeignPriced(p))
+  // Columnas USD SOLO con el modulo 'divisas' activo Y si hay productos en divisa
+  // (si no, el reporte queda identico al clasico). Precio/costo/valor nativos.
+  const hasForeign = divisas && products.some((p) => isForeignPriced(p))
 
   const rows = products.map((p) => [
     p.code || '',
@@ -179,8 +183,10 @@ export async function buildInventoryReport() {
     ] : [])
   ])
   const valorTotal = round2(products.reduce((a, p) => a + p.stock * mnv.cost(p), 0))
+  // Valor del inventario al COSTO en divisa nativa (solo productos en divisa).
+  const valorTotalUsd = round2(products.reduce((a, p) => a + (isForeignPriced(p) ? Number(p.stock || 0) * (Number(p.cost) || 0) : 0), 0))
   const tail = new Array(4 + locCols.length).fill('')
-  rows.push([...tail, '', 'VALOR INVENTARIO', valorTotal])
+  rows.push([...tail, '', 'VALOR INVENTARIO', valorTotal, ...(hasForeign ? ['', '', '', valorTotalUsd] : [])])
   return {
     title: 'Inventario por ubicación',
     subtitle: `Generado ${formatDateTime(new Date().toISOString())}`,
@@ -240,7 +246,7 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
 }
 
 // Salidas del almacen hacia las areas (trazabilidad append-only, Bloque 20).
-export async function buildTransfersReport({ from = null, to = null } = {}) {
+export async function buildTransfersReport({ from = null, to = null, divisas = false } = {}) {
   const names = await userMap()
   const prods = await productMap()
   const mnv = await baseValuer() // modulo 'divisas': precio/valor en MN
@@ -253,8 +259,9 @@ export async function buildTransfersReport({ from = null, to = null } = {}) {
   const transfers = (await db.transfers.toArray())
     .filter((t) => inRange(t.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-  // Modulo 'divisas': columna "Precio USD" solo si algun producto trasladado es en divisa.
-  const hasForeign = transfers.some((t) => (t.items || []).some((it) => isForeignPriced(prods[it.productId])))
+  // Modulo 'divisas' (GATEADO): columna "Precio USD" solo con el modulo activo Y
+  // si algun producto trasladado es en divisa. Sin el modulo -> clasico.
+  const hasForeign = divisas && transfers.some((t) => (t.items || []).some((it) => isForeignPriced(prods[it.productId])))
   const rows = []
   let totalVal = 0
   for (const t of transfers) {
@@ -361,13 +368,13 @@ export async function buildShiftsReport({ from = null, to = null } = {}) {
 // Ventas por area de venta (Fase 6 - Bloque 19): cuanto vendio y gano cada
 // VENDEDOR en cada area (quien hizo el turno en esa area), con subtotal por
 // area, y el detalle de ventas cruzadas (sustitucion) por vendedor.
-export async function buildAreaReport({ from = null, to = null } = {}) {
+export async function buildAreaReport({ from = null, to = null, divisas = false } = {}) {
   const names = await userMap()
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
-  // Modulo 'divisas': columnas "Precio USD" / "Ganancia USD" solo si alguna linea
-  // se vendio en divisa (si no, el reporte queda identico al clasico).
-  const hasForeign = sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
+  // Modulo 'divisas' (GATEADO): columnas USD solo con el modulo activo Y si alguna
+  // linea se vendio en divisa. Sin el modulo -> reporte clasico byte-identico.
+  const hasForeign = divisas && sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
 
   // Etiqueta del grupo: el almacen central usa su nombre propio (areaLabel
   // devolveria el centinela "__almacen"); las areas, su nombre.
@@ -380,7 +387,7 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
   const byArea = {}
   for (const s of sales) {
     const area = s.sourceLocation || String(s.area || '')
-    const a = byArea[area] || (byArea[area] = { lines: [], revenue: 0, profit: 0, count: 0 })
+    const a = byArea[area] || (byArea[area] = { lines: [], revenue: 0, profit: 0, count: 0, revenueUsd: 0, profitUsd: 0 })
     a.count += 1
     for (const it of s.items || []) {
       const importe = round2(it.lineTotal ?? it.unitPrice * it.qty)
@@ -400,11 +407,16 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
       })
       a.revenue += importe
       a.profit += ganancia
+      // Totales en divisa (solo lineas en divisa; usa la tasa congelada de la venta).
+      if (hasForeign && it.priceCurrency && Number(it.priceRate) > 0) {
+        a.revenueUsd = round2(a.revenueUsd + foreignLineTotal(it, round2(it.unitPrice ?? 0), round2(it.qty)))
+        a.profitUsd = round2(a.profitUsd + foreignOf(it, ganancia))
+      }
     }
   }
 
   const rows = []
-  let gRev = 0, gProf = 0, gCount = 0
+  let gRev = 0, gProf = 0, gCount = 0, gRevUsd = 0, gProfUsd = 0
   const areasSorted = Object.entries(byArea).sort((x, y) => y[1].revenue - x[1].revenue)
   for (const [area, a] of areasSorted) {
     a.lines.sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1))
@@ -412,10 +424,13 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
       rows.push([originLabel(area), formatDateTime(l.createdAt), l.seller, l.name, l.unit, l.qty, l.price, l.importe, l.ganancia,
         ...(hasForeign ? [foreignOf(l, l.price), foreignLineTotal(l, l.price, l.qty), foreignOf(l, l.ganancia)] : [])])
     }
-    rows.push([originLabel(area), 'SUBTOTAL', `${a.count} venta(s)`, '', '', '', '', round2(a.revenue), round2(a.profit)])
+    rows.push([originLabel(area), 'SUBTOTAL', `${a.count} venta(s)`, '', '', '', '', round2(a.revenue), round2(a.profit),
+      ...(hasForeign ? ['', round2(a.revenueUsd), round2(a.profitUsd)] : [])])
     gRev += a.revenue; gProf += a.profit; gCount += a.count
+    gRevUsd = round2(gRevUsd + a.revenueUsd); gProfUsd = round2(gProfUsd + a.profitUsd)
   }
-  rows.push(['TOTAL', '', `${gCount} venta(s)`, '', '', '', '', round2(gRev), round2(gProf)])
+  rows.push(['TOTAL', '', `${gCount} venta(s)`, '', '', '', '', round2(gRev), round2(gProf),
+    ...(hasForeign ? ['', round2(gRevUsd), round2(gProfUsd)] : [])])
 
   // Bloque de ventas cruzadas (productos de OTRA area cobrados por un vendedor).
   const rep = await analyticsRepo.report({ from, to })
@@ -445,12 +460,13 @@ function rangeLabel(from, to) {
 // Ventas por VENDEDOR con detalle de productos (Bloque E): que vendio cada
 // vendedor, con fecha, producto, cantidad e importe por linea, y subtotal por
 // vendedor. Ordenado por vendedor y fecha.
-export async function buildSellerSalesReport({ from = null, to = null } = {}) {
+export async function buildSellerSalesReport({ from = null, to = null, divisas = false } = {}) {
   const names = await userMap()
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
-  // Modulo 'divisas': columna "Precio USD" solo si alguna linea se vendio en divisa.
-  const hasForeign = sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
+  // Modulo 'divisas' (GATEADO): columnas USD solo con el modulo activo Y si alguna
+  // linea se vendio en divisa. Sin el modulo -> reporte clasico byte-identico.
+  const hasForeign = divisas && sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
 
   // Agrupa por vendedor; dentro, las ventas en orden cronologico.
   const bySeller = {}
@@ -468,9 +484,11 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
 
   const rows = []
   let grandTotal = 0
+  let grandUsd = 0
   for (const sel of sellers) {
     let subQty = 0
     let subTotal = 0
+    let subUsd = 0
     for (const s of sel.list) {
       // Origen de la venta: el almacen central (venta mayorista) o el area del
       // turno. Asi el reporte muestra de donde salio cada producto que vendio.
@@ -478,6 +496,8 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
       const origin = originLoc === WAREHOUSE ? WAREHOUSE_LABEL : areaLabel(originLoc)
       for (const it of s.items || []) {
         const importe = round2(it.lineTotal ?? it.unitPrice * it.qty)
+        const iu = hasForeign ? foreignLineTotal(it, it.unitPrice, it.qty) : ''
+        if (iu !== '') subUsd = round2(subUsd + iu)
         rows.push([
           sel.name,
           formatDateTime(s.createdAt),
@@ -488,16 +508,19 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
           round2(it.unitPrice ?? 0),
           importe,
           it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
-          ...(hasForeign ? [foreignOf(it, it.unitPrice), foreignLineTotal(it, it.unitPrice, it.qty)] : [])
+          ...(hasForeign ? [foreignOf(it, it.unitPrice), iu] : [])
         ])
         subQty = round2(subQty + Number(it.qty || 0))
         subTotal = round2(subTotal + importe)
       }
     }
-    rows.push([sel.name, '', '', 'Subtotal vendedor', '', subQty, '', subTotal, ''])
+    rows.push([sel.name, '', '', 'Subtotal vendedor', '', subQty, '', subTotal, '',
+      ...(hasForeign ? ['', round2(subUsd)] : [])])
     grandTotal = round2(grandTotal + subTotal)
+    grandUsd = round2(grandUsd + subUsd)
   }
-  rows.push(['', '', '', 'TOTAL', '', '', '', grandTotal, ''])
+  rows.push(['', '', '', 'TOTAL', '', '', '', grandTotal, '',
+    ...(hasForeign ? ['', round2(grandUsd)] : [])])
 
   return {
     title: 'Ventas por vendedor',
@@ -906,7 +929,7 @@ const ledgerMidCols = (g, detail) => {
   return [entradas, round2(g.ventas), otras, round2(g.cargaIni), round2(g.ajustes)]
 }
 
-export async function buildProductLedger({ productId = '', location = '', from = null, to = null, mode = 'daily', valued = false, detail = 'basic' } = {}) {
+export async function buildProductLedger({ productId = '', location = '', from = null, to = null, mode = 'daily', valued = false, detail = 'basic', divisas = false } = {}) {
   const p = productId ? await db.products.get(productId) : null
   const locLabel = location ? locationLabel(location) : 'Todas las ubicaciones'
   const mh = ledgerMidHead(detail)
@@ -969,7 +992,9 @@ export async function buildProductLedger({ productId = '', location = '', from =
 
   return {
     title: 'Submayor por producto',
-    subtitle: `${p.name}${p.code ? ' · ' + p.code : ''} · ${locLabel} · ${rangeLabel(from, to)}`,
+    // Modulo 'divisas' (gateado): muestra el costo unitario en divisa nativa (USD)
+    // del producto. El resto del submayor sigue en MN (base interna).
+    subtitle: `${p.name}${p.code ? ' · ' + p.code : ''} · ${locLabel} · ${rangeLabel(from, to)}${divisas && isForeignPriced(p) ? ' · Costo USD: ' + round2(Number(p.cost) || 0) : ''}`,
     head: baseHead,
     rows,
     filename: 'submayor',
