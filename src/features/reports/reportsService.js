@@ -1,6 +1,6 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
-import { round2, formatMoney, foreignToBase, isForeignPriced } from '../../lib/currency'
+import { round2, formatMoney, foreignToBase, baseToForeign, isForeignPriced } from '../../lib/currency'
 import {
   SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
   areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION
@@ -68,6 +68,16 @@ async function baseValuer() {
   return { price: (p) => mn(p, 'price'), cost: (p) => mn(p, 'cost') }
 }
 
+// Modulo 'divisas': valor en DIVISA de un importe en MN de una LINEA de venta
+// congelada (`it` = item de sale.items). Usa la tasa CONGELADA en la venta
+// (it.priceRate), no la vigente -> historicamente fiel al momento del cobro.
+// Devuelve '' si la linea NO fue en divisa (asi la columna queda vacia).
+function foreignOf(it, mnAmount) {
+  const rate = Number(it?.priceRate || 0)
+  if (!it?.priceCurrency || !(rate > 0)) return ''
+  return baseToForeign(Number(mnAmount || 0), rate)
+}
+
 // --- Builders: cada uno devuelve { title, subtitle, head, rows, filename } ---
 
 // Reporte de ventas al DETALLE (una fila por producto vendido): fecha,
@@ -80,6 +90,8 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   const methodOf = (s) =>
     s.paymentMethod === 'mixed' ? 'Mixto' : s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'
+  // Modulo 'divisas': columna "Precio USD" solo si alguna linea se vendio en divisa.
+  const hasForeign = sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
 
   const rows = []
   let total = 0
@@ -104,16 +116,17 @@ export async function buildSalesReport({ from = null, to = null } = {}) {
         payCur,
         // Vuelto solo en la 1.ª línea de la venta (es por venta, no por producto).
         i === 0 && chg.amount > 0 ? formatMoney(chg.amount, chg.currency) : '',
-        it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : ''
+        it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
+        ...(hasForeign ? [foreignOf(it, it.unitPrice)] : [])
       ])
       total += importe
     })
   }
-  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', '', '', ''])
+  rows.push(['', '', '', '', '', '', 'TOTAL', round2(total), '', '', '', '', ...(hasForeign ? [''] : [])])
   return {
     title: 'Reporte de ventas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Vendedor', 'Área', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Metodo', 'Moneda', 'Vuelto', 'Mayorista'],
+    head: ['Fecha', 'Vendedor', 'Área', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Metodo', 'Moneda', 'Vuelto', 'Mayorista', ...(hasForeign ? ['Precio USD'] : [])],
     rows,
     orientation: 'landscape',
     filename: 'ventas'
@@ -166,6 +179,7 @@ export async function buildInventoryReport() {
       ...(hasForeign ? ['Precio USD'] : [])
     ],
     rows,
+    ...(hasForeign ? { orientation: 'landscape' } : {}),
     filename: 'inventario'
   }
 }
@@ -227,6 +241,8 @@ export async function buildTransfersReport({ from = null, to = null } = {}) {
   const transfers = (await db.transfers.toArray())
     .filter((t) => inRange(t.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  // Modulo 'divisas': columna "Precio USD" solo si algun producto trasladado es en divisa.
+  const hasForeign = transfers.some((t) => (t.items || []).some((it) => isForeignPriced(prods[it.productId])))
   const rows = []
   let totalVal = 0
   for (const t of transfers) {
@@ -244,7 +260,8 @@ export async function buildTransfersReport({ from = null, to = null } = {}) {
         it.unit || '',
         price,
         valor,
-        names[t.byUserId] || 'dueño'
+        names[t.byUserId] || 'dueño',
+        ...(hasForeign ? [isForeignPriced(prods[it.productId]) ? round2(Number(prods[it.productId].price) || 0) : ''] : [])
       ])
     }
   }
@@ -256,9 +273,11 @@ export async function buildTransfersReport({ from = null, to = null } = {}) {
     subtitle: rangeLabel(from, to),
     head: [
       'Fecha', ...(showOrigin ? ['Origen'] : []), showOrigin ? 'Destino' : 'Área destino',
-      'Producto', 'Cantidad', 'U/M', 'Precio', 'Valor', 'Registró'
+      'Producto', 'Cantidad', 'U/M', 'Precio', 'Valor', 'Registró',
+      ...(hasForeign ? ['Precio USD'] : [])
     ],
     rows,
+    ...(hasForeign ? { orientation: 'landscape' } : {}),
     filename: 'salidas_almacen'
   }
 }
@@ -334,6 +353,9 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
+  // Modulo 'divisas': columnas "Precio USD" / "Ganancia USD" solo si alguna linea
+  // se vendio en divisa (si no, el reporte queda identico al clasico).
+  const hasForeign = sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
 
   // Etiqueta del grupo: el almacen central usa su nombre propio (areaLabel
   // devolveria el centinela "__almacen"); las areas, su nombre.
@@ -359,7 +381,10 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
         qty: round2(it.qty),
         price: round2(it.unitPrice ?? 0),
         importe,
-        ganancia
+        ganancia,
+        // Congelado de divisa de la linea (para reconstruir precio/ganancia en USD).
+        priceCurrency: it.priceCurrency,
+        priceRate: it.priceRate
       })
       a.revenue += importe
       a.profit += ganancia
@@ -372,7 +397,8 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
   for (const [area, a] of areasSorted) {
     a.lines.sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1))
     for (const l of a.lines) {
-      rows.push([originLabel(area), formatDateTime(l.createdAt), l.seller, l.name, l.unit, l.qty, l.price, l.importe, l.ganancia])
+      rows.push([originLabel(area), formatDateTime(l.createdAt), l.seller, l.name, l.unit, l.qty, l.price, l.importe, l.ganancia,
+        ...(hasForeign ? [foreignOf(l, l.price), foreignOf(l, l.ganancia)] : [])])
     }
     rows.push([originLabel(area), 'SUBTOTAL', `${a.count} venta(s)`, '', '', '', '', round2(a.revenue), round2(a.profit)])
     gRev += a.revenue; gProf += a.profit; gCount += a.count
@@ -391,8 +417,10 @@ export async function buildAreaReport({ from = null, to = null } = {}) {
   return {
     title: 'Ventas por área',
     subtitle: rangeLabel(from, to),
-    head: ['Área', 'Fecha', 'Vendedor', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Ganancia'],
+    head: ['Área', 'Fecha', 'Vendedor', 'Descripción', 'U/M', 'Unidades', 'Precio', 'Importe', 'Ganancia',
+      ...(hasForeign ? ['Precio USD', 'Ganancia USD'] : [])],
     rows,
+    ...(hasForeign ? { orientation: 'landscape' } : {}),
     filename: 'areas'
   }
 }
@@ -409,6 +437,8 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && inRange(s.createdAt, from, to))
+  // Modulo 'divisas': columna "Precio USD" solo si alguna linea se vendio en divisa.
+  const hasForeign = sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
 
   // Agrupa por vendedor; dentro, las ventas en orden cronologico.
   const bySeller = {}
@@ -445,7 +475,8 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
           round2(it.qty),
           round2(it.unitPrice ?? 0),
           importe,
-          it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : ''
+          it.tierMinQty != null ? `Sí (≥${it.tierMinQty})` : '',
+          ...(hasForeign ? [foreignOf(it, it.unitPrice)] : [])
         ])
         subQty = round2(subQty + Number(it.qty || 0))
         subTotal = round2(subTotal + importe)
@@ -459,8 +490,10 @@ export async function buildSellerSalesReport({ from = null, to = null } = {}) {
   return {
     title: 'Ventas por vendedor',
     subtitle: rangeLabel(from, to),
-    head: ['Vendedor', 'Fecha', 'Origen', 'Producto', 'U/M', 'Cantidad', 'Precio', 'Importe', 'Mayorista'],
+    head: ['Vendedor', 'Fecha', 'Origen', 'Producto', 'U/M', 'Cantidad', 'Precio', 'Importe', 'Mayorista',
+      ...(hasForeign ? ['Precio USD'] : [])],
     rows,
+    ...(hasForeign ? { orientation: 'landscape' } : {}),
     filename: 'ventas_vendedor'
   }
 }
