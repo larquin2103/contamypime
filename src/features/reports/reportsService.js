@@ -204,13 +204,16 @@ export async function buildInventoryReport({ divisas = false } = {}) {
 
 // Entradas de mercancia (compras). Por defecto al almacen central; el vendedor
 // con permiso puede entrar directo a su area (se muestra en la columna Ubicacion).
-export async function buildEntriesReport({ from = null, to = null } = {}) {
+export async function buildEntriesReport({ from = null, to = null, divisas = false } = {}) {
   const names = await userMap()
   const prods = await productMap()
   const mnv = await baseValuer() // modulo 'divisas': precio de venta en MN
   const purchases = (await db.purchases.toArray())
     .filter((p) => inRange(p.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  // Modulo 'divisas' (GATEADO): "Precio venta USD" solo con el modulo Y si algun
+  // producto de una entrada es en divisa. Sin el modulo -> clasico byte-identico.
+  const hasForeign = divisas && purchases.some((pu) => (pu.items || []).some((it) => isForeignPriced(prods[it.productId])))
   const rows = []
   let total = 0
   for (const pu of purchases) {
@@ -228,7 +231,8 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
         round2(mnv.price(prods[it.productId])), // precio de venta actual (MN)
         round2(it.lineTotal ?? Number(it.qty) * Number(it.unitCost || 0)),
         pu.supplier || '',
-        names[pu.userId] || 'dueño'
+        names[pu.userId] || 'dueño',
+        ...(hasForeign ? [isForeignPriced(prods[it.productId]) ? round2(Number(prods[it.productId].price) || 0) : ''] : [])
       ])
     }
     total += Number(pu.totalBase || 0)
@@ -238,7 +242,8 @@ export async function buildEntriesReport({ from = null, to = null } = {}) {
   return {
     title: 'Entradas de mercancía',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Producto', 'Ubicación', 'Cantidad', 'U/M', 'Costo unit', 'Precio venta', 'Total', 'Proveedor', 'Registró'],
+    head: ['Fecha', 'Producto', 'Ubicación', 'Cantidad', 'U/M', 'Costo unit', 'Precio venta', 'Total', 'Proveedor', 'Registró',
+      ...(hasForeign ? ['Precio venta USD'] : [])],
     rows,
     orientation: 'landscape',
     filename: 'entradas'
@@ -614,7 +619,7 @@ export async function buildAccountsReport({ from = null, to = null } = {}) {
 // (= el "sistema" del conteo), fisico contado y diferencia (merma/sobrante). El
 // subtotal por conteo valora la diferencia con el costo. Incluye TODAS las
 // ubicaciones (areas y almacen), etiquetadas con locationLabel.
-export async function buildCountReport({ from = null, to = null } = {}) {
+export async function buildCountReport({ from = null, to = null, divisas = false } = {}) {
   const names = await userMap()
   const prods = await productMap() // para el costo -> valor de la merma
   const mnv = await baseValuer() // modulo 'divisas': costo en MN (tasa vigente)
@@ -641,12 +646,16 @@ export async function buildCountReport({ from = null, to = null } = {}) {
   const counts = approved
     .filter((c) => inRange(dateOf(c), from, to))
     .sort((a, b) => (dateOf(a) < dateOf(b) ? 1 : -1))
+  // Modulo 'divisas' (GATEADO): "Costo USD" y "Valor dif USD" solo con el modulo Y
+  // si algun producto contado es en divisa. Sin el modulo -> clasico byte-identico.
+  const hasForeign = divisas && counts.some((c) => (c.items || []).some((it) => isForeignPriced(prods[it.productId])))
 
   const allMoves = await db.stockMovements.toArray()
   const elab = await configRepo.getElaboration()
 
   const rows = []
   let grandMerma = 0
+  let grandMermaUsd = 0
   for (const c of counts) {
     const loc = c.location || WAREHOUSE
     const start = prevBoundary(c) // exclusivo; null = desde el inicio del historial
@@ -654,7 +663,7 @@ export async function buildCountReport({ from = null, to = null } = {}) {
     const fecha = formatDateTime(dateOf(c))
     const lugar = loc === ELABORATION ? elab.name : locationLabel(loc)
 
-    let nCounted = 0, nDif = 0, mermaVal = 0
+    let nCounted = 0, nDif = 0, mermaVal = 0, mermaValUsd = 0
     for (const it of c.items || []) {
       if (!it.counted) continue
       nCounted += 1
@@ -680,23 +689,29 @@ export async function buildCountReport({ from = null, to = null } = {}) {
       if (dif !== 0) nDif += 1
       const cost = mnv.cost(prods[it.productId]) // MN (convertido si es en divisa)
       mermaVal = round2(mermaVal + dif * cost) // dif<0 (merma) resta; sobrante suma
+      const costUsd = isForeignPriced(prods[it.productId]) ? round2(Number(prods[it.productId].cost) || 0) : ''
+      if (costUsd !== '') mermaValUsd = round2(mermaValUsd + dif * costUsd)
       const estado = dif === 0 ? 'Cuadra' : dif < 0 ? 'Merma' : 'Sobrante'
       rows.push([
         fecha, lugar, it.name, it.unit,
         inicial, round2(entradas), round2(ventas), round2(otrasSal), round2(cargaIni), round2(ajustes),
-        teorico, fisico, dif, estado
+        teorico, fisico, dif, estado,
+        ...(hasForeign ? [costUsd] : [])
       ])
     }
     grandMerma = round2(grandMerma + mermaVal)
+    grandMermaUsd = round2(grandMermaUsd + mermaValUsd)
     rows.push([
       '', '', `SUBTOTAL ${lugar} — ${nCounted} producto(s), ${nDif} con diferencia`,
-      '', '', '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(mermaVal)}`
+      '', '', '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(mermaVal)}`,
+      ...(hasForeign ? [`Valor dif USD: ${formatMoney(mermaValUsd, 'USD')}`] : [])
     ])
   }
   if (counts.length === 0) {
     rows.push(['Sin conteos aprobados en el periodo', '', '', '', '', '', '', '', '', '', '', '', '', ''])
   } else {
-    rows.push(['', '', 'TOTAL', '', '', '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(grandMerma)}`])
+    rows.push(['', '', 'TOTAL', '', '', '', '', '', '', '', '', '', '', `Valor dif: ${formatMoney(grandMerma)}`,
+      ...(hasForeign ? [`Valor dif USD: ${formatMoney(grandMermaUsd, 'USD')}`] : [])])
   }
 
   return {
@@ -705,7 +720,8 @@ export async function buildCountReport({ from = null, to = null } = {}) {
     head: [
       'Fecha', 'Lugar', 'Producto', 'U/M',
       'Inicial', 'Entradas', 'Ventas', 'Otras salidas', 'Carga inicial', 'Ajustes',
-      'Teórico', 'Físico', 'Diferencia', 'Estado'
+      'Teórico', 'Físico', 'Diferencia', 'Estado',
+      ...(hasForeign ? ['Costo USD'] : [])
     ],
     rows,
     orientation: 'landscape',
@@ -715,12 +731,16 @@ export async function buildCountReport({ from = null, to = null } = {}) {
 
 // Ventas de UN turno, por linea (para que el vendedor las exporte a PDF):
 // descripcion, unidad, cantidad, importe, metodo, cobrado y vuelto.
-export async function buildShiftSalesReport(shiftId, sellerName = '') {
+export async function buildShiftSalesReport(shiftId, sellerName = '', divisas = false) {
   const sales = (await db.sales.where('shiftId').equals(shiftId).toArray())
     .filter((s) => !s.voided)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  // Modulo 'divisas' (GATEADO): "Precio USD" / "Importe USD" solo con el modulo Y
+  // si alguna linea se vendio en divisa. Sin el modulo -> clasico byte-identico.
+  const hasForeign = divisas && sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
   const rows = []
   let total = 0
+  let totalUsd = 0
   for (const s of sales) {
     const isMixed = s.paymentMethod === 'mixed'
     const isCash = !isMixed && s.paymentMethod !== 'transfer'
@@ -743,6 +763,8 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
       const itArea = String(it.area || '')
       // Marca historica de venta cruzada (previa al Bloque 20).
       const cross = !s.sourceLocation && itArea && shiftArea && itArea !== shiftArea
+      const iu = hasForeign ? foreignLineTotal(it, it.unitPrice, it.qty) : ''
+      if (iu !== '') totalUsd = round2(totalUsd + iu)
       rows.push([
         i === 0 ? formatDateTime(s.createdAt) : '',
         it.name,
@@ -757,16 +779,18 @@ export async function buildShiftSalesReport(shiftId, sellerName = '') {
         i === 0 ? payCur : '',
         i === 0 ? round2(cobrado) : '',
         // Vuelto con su moneda (efectivo con cambio y sobrepago en mixto).
-        i === 0 && chg.amount > 0 ? formatMoney(chg.amount, chg.currency) : ''
+        i === 0 && chg.amount > 0 ? formatMoney(chg.amount, chg.currency) : '',
+        ...(hasForeign ? [foreignOf(it, it.unitPrice), iu] : [])
       ])
     })
     total += Number(s.totalBase || 0)
   }
-  rows.push(['', '', '', '', '', '', round2(total), '', 'TOTAL', '', '', ''])
+  rows.push(['', '', '', '', '', '', round2(total), '', 'TOTAL', '', '', '', ...(hasForeign ? ['', round2(totalUsd)] : [])])
   return {
     title: 'Ventas del turno',
     subtitle: `${sellerName ? sellerName + ' · ' : ''}Generado ${formatDateTime(new Date().toISOString())}`,
-    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Precio', 'Importe', 'Mayorista', 'Metodo', 'Moneda', 'Cobrado', 'Vuelto'],
+    head: ['Fecha', 'Producto', 'Área', 'U/M', 'Cant', 'Precio', 'Importe', 'Mayorista', 'Metodo', 'Moneda', 'Cobrado', 'Vuelto',
+      ...(hasForeign ? ['Precio USD', 'Importe USD'] : [])],
     rows,
     orientation: 'landscape',
     filename: 'ventas_turno'
@@ -1004,11 +1028,14 @@ export async function buildProductLedger({ productId = '', location = '', from =
 
 // Submayor CONSOLIDADO: una fila por producto con sus totales del período.
 // productIds vacío = todos los productos activos. Solo lectura.
-export async function buildProductsLedgerSummary({ productIds = [], location = '', from = null, to = null, valued = false, detail = 'basic' } = {}) {
+export async function buildProductsLedgerSummary({ productIds = [], location = '', from = null, to = null, valued = false, detail = 'basic', divisas = false } = {}) {
   const active = (await db.products.toArray()).filter((p) => p.active)
   const idSet = productIds && productIds.length ? new Set(productIds) : null
   const selected = (idSet ? active.filter((p) => idSet.has(p.id)) : active)
     .sort((a, b) => a.name.localeCompare(b.name))
+  // Modulo 'divisas' (GATEADO): "Costo USD" (y "Valor USD" si se valora) solo con el
+  // modulo Y si algun producto seleccionado es en divisa. Sin el modulo -> clasico.
+  const hasForeign = divisas && selected.some((p) => isForeignPriced(p))
   const acc = {}
   for (const p of selected) acc[p.id] = { apertura: 0, g: emptyLedger() }
 
@@ -1028,25 +1055,31 @@ export async function buildProductsLedgerSummary({ productIds = [], location = '
   const rows = []
   const tot = emptyLedger()
   let tVal = 0
+  let tValUsd = 0
   const mnv = await baseValuer() // modulo 'divisas': costo en MN (tasa vigente)
   for (const p of selected) {
     const a = acc[p.id]
     const existencia = round2(a.apertura + ledgerNet(a.g))
     const cost = mnv.cost(p)
+    const costUsd = isForeignPriced(p) ? round2(Number(p.cost) || 0) : ''
+    if (costUsd !== '') tValUsd = round2(tValUsd + existencia * costUsd)
     for (const k of LEDGER_KEYS) tot[k] = round2(tot[k] + a.g[k])
     tVal = round2(tVal + existencia * cost)
     rows.push([p.name, p.unit, round2(a.apertura), ...ledgerMidCols(a.g, detail), existencia,
-      ...(valued ? [formatMoney(round2(existencia * cost))] : [])])
+      ...(valued ? [formatMoney(round2(existencia * cost))] : []),
+      ...(hasForeign ? [costUsd] : []),
+      ...(valued && hasForeign ? [costUsd === '' ? '' : formatMoney(round2(existencia * costUsd), 'USD')] : [])])
   }
   const emptyMid = new Array(nMid).fill('')
-  if (selected.length === 0) rows.push(['Sin productos', '', '', ...emptyMid, '', ...(valued ? [''] : [])])
-  else rows.push(['TOTAL', '', '', ...ledgerMidCols(tot, detail), '', ...(valued ? [formatMoney(tVal)] : [])])
+  if (selected.length === 0) rows.push(['Sin productos', '', '', ...emptyMid, '', ...(valued ? [''] : []), ...(hasForeign ? [''] : []), ...(valued && hasForeign ? [''] : [])])
+  else rows.push(['TOTAL', '', '', ...ledgerMidCols(tot, detail), '', ...(valued ? [formatMoney(tVal)] : []), ...(hasForeign ? [''] : []), ...(valued && hasForeign ? [formatMoney(tValUsd, 'USD')] : [])])
 
   const locLabel = location ? locationLabel(location) : 'Todas las ubicaciones'
   return {
     title: 'Submayor consolidado por producto',
     subtitle: `${idSet ? selected.length + ' producto(s)' : 'Todos los productos'} · ${locLabel} · ${rangeLabel(from, to)}`,
-    head: ['Producto', 'U/M', 'Apertura', ...mh, 'Existencia', ...(valued ? ['Valor (costo)'] : [])],
+    head: ['Producto', 'U/M', 'Apertura', ...mh, 'Existencia', ...(valued ? ['Valor (costo)'] : []),
+      ...(hasForeign ? ['Costo USD'] : []), ...(valued && hasForeign ? ['Valor USD'] : [])],
     rows,
     orientation: 'landscape',
     filename: 'submayor_consolidado'
@@ -1066,24 +1099,33 @@ function downloadBlob(blob, filename) {
 // cuenta cerrada, con su desglose (consumo, servicio, total). Al final, totales
 // y ticket promedio. Solo mira ventas que llevan mesa (sale.table): las ventas
 // directas no aparecen aqui.
-export async function buildTablesReport({ from = null, to = null } = {}) {
+export async function buildTablesReport({ from = null, to = null, divisas = false } = {}) {
   const names = await userMap()
   const sales = (await db.sales.toArray())
     .filter((s) => !s.voided && s.table && inRange(s.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   const methodOf = (s) =>
     s.paymentMethod === 'mixed' ? 'Mixto' : s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'
+  // Modulo 'divisas' (GATEADO): "Consumo USD" (parte del consumo vendida en divisa)
+  // solo con el modulo Y si alguna mesa consumio algo en divisa. Sin el -> clasico.
+  const hasForeign = divisas && sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
 
   const rows = []
   let totSub = 0
   let totServ = 0
   let totTotal = 0
+  let totConsumoUsd = 0
   for (const s of sales) {
     const units = (s.items || []).reduce((a, it) => a + Number(it.qty || 0), 0)
     const sub = round2(s.subtotal ?? s.totalBase ?? 0)
     const serv = round2(s.serviceChargeAmount ?? 0)
     const tot = round2(s.totalBase ?? 0)
     totSub += sub; totServ += serv; totTotal += tot
+    // Parte del consumo en divisa (suma de importes de lineas en divisa, con su tasa
+    // congelada). Cuenta 100% en divisa -> consumo completo en USD; mixta -> la parte.
+    const consumoUsd = (s.items || []).reduce((a, it) => { const u = foreignOf(it, it.lineTotal); return a + (u === '' ? 0 : u) }, 0)
+    const hasF = (s.items || []).some((it) => it.priceCurrency)
+    if (hasForeign) totConsumoUsd = round2(totConsumoUsd + consumoUsd)
     rows.push([
       formatDateTime(s.createdAt),
       areaLabel(s.area),
@@ -1094,16 +1136,18 @@ export async function buildTablesReport({ from = null, to = null } = {}) {
       s.serviceChargePct ? `${s.serviceChargePct}%` : '',
       serv,
       tot,
-      methodOf(s)
+      methodOf(s),
+      ...(hasForeign ? [hasF ? round2(consumoUsd) : ''] : [])
     ])
   }
   const avg = sales.length ? round2(totTotal / sales.length) : 0
-  rows.push(['', '', '', 'TOTALES', '', round2(totSub), '', round2(totServ), round2(totTotal), ''])
-  rows.push(['', '', '', `Cuentas: ${sales.length}`, '', '', 'Ticket promedio', avg, '', ''])
+  rows.push(['', '', '', 'TOTALES', '', round2(totSub), '', round2(totServ), round2(totTotal), '', ...(hasForeign ? [round2(totConsumoUsd)] : [])])
+  rows.push(['', '', '', `Cuentas: ${sales.length}`, '', '', 'Ticket promedio', avg, '', '', ...(hasForeign ? [''] : [])])
   return {
     title: 'Ventas por mesa',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Área', 'Mesa', 'Camarero', 'Unidades', 'Consumo', 'Serv.%', 'Servicio', 'Total', 'Método'],
+    head: ['Fecha', 'Área', 'Mesa', 'Camarero', 'Unidades', 'Consumo', 'Serv.%', 'Servicio', 'Total', 'Método',
+      ...(hasForeign ? ['Consumo USD'] : [])],
     rows,
     filename: 'ventas-mesas',
     orientation: 'landscape'

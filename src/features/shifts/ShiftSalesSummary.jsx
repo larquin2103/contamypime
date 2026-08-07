@@ -3,6 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { salesRepo } from '../../repositories/salesRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 
@@ -14,6 +16,7 @@ export function ShiftSalesSummary({ shiftId }) {
   const sales = useLiveQuery(() => salesRepo.byShift(shiftId), [shiftId], undefined)
   const { baseCurrency } = useCurrency()
   const { user } = useAuth()
+  const { hasModule } = useLicense()
   const [busy, setBusy] = useState(false)
 
   if (sales === undefined) return <p className="muted">Cargando…</p>
@@ -26,7 +29,7 @@ export function ShiftSalesSummary({ shiftId }) {
     setBusy(true)
     try {
       const { buildShiftSalesReport, exportPdf: toPdf } = await import('../reports/reportsService')
-      const report = await buildShiftSalesReport(shiftId, user?.name || '')
+      const report = await buildShiftSalesReport(shiftId, user?.name || '', hasModule(LICENSE_MODULES.MULTICURRENCY))
       await toPdf(report)
     } catch (e) {
       alert('No se pudo exportar el PDF: ' + e.message)

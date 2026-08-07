@@ -53,7 +53,7 @@ export function ProductLedgerScreen() {
   const report = useLiveQuery(
     () => (scope === 'one'
       ? buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued, divisas })
-      : buildProductsLedgerSummary({ productIds: selIds, location, from, to, valued })),
+      : buildProductsLedgerSummary({ productIds: selIds, location, from, to, valued, divisas })),
     [scope, product?.id, selIds.join(','), location, from, to, mode, valued, divisas],
     undefined
   )
@@ -80,7 +80,7 @@ export function ProductLedgerScreen() {
       if (fmt === 'excel') {
         rep = scope === 'one'
           ? await buildProductLedger({ productId: product?.id || '', location, from, to, mode, valued, detail: 'full', divisas })
-          : await buildProductsLedgerSummary({ productIds: selIds, location, from, to, valued, detail: 'full' })
+          : await buildProductsLedgerSummary({ productIds: selIds, location, from, to, valued, detail: 'full', divisas })
       }
       if (fmt === 'pdf') await exportPdf(rep)
       else await exportExcel(rep)
