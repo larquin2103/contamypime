@@ -2646,9 +2646,15 @@ input[type='file'] {
 /* Impresión: SOLO el ticket, a 58 mm, sin nada del resto de la app. */
 @media print {
   @page { size: 58mm auto; margin: 0; }
+  /* El papel corta al alto EXACTO del ticket: el shell no debe estirar la página.
+     html/body/#root/.app-shell usan height:100% (y .app-main flex:1) en pantalla;
+     en impresión se sueltan a `auto` para que NO salga papel en blanco de más
+     debajo del ticket (antes la página se estiraba a una hoja completa). */
+  html, body, #root { height: auto !important; min-height: 0 !important; }
   body { background: #fff !important; }
   .app-header, .app-nav, .print-hide { display: none !important; }
-  .app-main { padding: 0 !important; overflow: visible !important; }
+  .app-shell { height: auto !important; display: block !important; }
+  .app-main { flex: none !important; height: auto !important; padding: 0 !important; overflow: visible !important; }
   /* El ticket toma el ancho del papel; área útil ~48 mm centrada. */
   .thermal {
     width: 100% !important;
