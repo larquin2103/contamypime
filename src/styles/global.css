@@ -2608,19 +2608,21 @@ input[type='file'] {
   padding: 12px 10px;
   border-radius: 8px;
   font-family: 'Courier New', ui-monospace, monospace;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.35;
 }
+/* Encabezado y pie: MISMA fuente (la del ticket), MISMO tamaño y en NEGRITA. */
 .thermal__head {
   text-align: center;
   font-weight: 700;
-  font-size: 15px;
+  font-size: 16px;
   text-transform: uppercase;
   word-break: break-word;
 }
-.thermal__meta { text-align: center; font-size: 11px; margin-top: 4px; }
+.thermal__meta { text-align: center; font-size: 12px; margin-top: 4px; }
 .thermal__rule { border-top: 1px dashed #000; margin: 8px 0; }
-.thermal__item { display: flex; justify-content: space-between; gap: 8px; }
+/* Descripción de productos: un poco más grande para que sea legible impresa. */
+.thermal__item { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; }
 .thermal__item-name { flex: 1; word-break: break-word; }
 .thermal__item-amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .thermal__row {
@@ -2629,14 +2631,15 @@ input[type='file'] {
   gap: 8px;
   font-variant-numeric: tabular-nums;
 }
-.thermal__row--sm { font-size: 11px; }
-.thermal__total { font-weight: 700; font-size: 15px; margin-top: 4px; }
-.thermal__pay { text-align: center; margin-top: 8px; font-size: 12px; }
+.thermal__row--sm { font-size: 13px; }
+.thermal__total { font-weight: 700; font-size: 16px; margin-top: 4px; }
+.thermal__pay { text-align: center; margin-top: 8px; font-size: 14px; }
 .thermal__parts { margin-top: 4px; }
 .thermal__foot {
   text-align: center;
   margin-top: 10px;
-  font-size: 11px;
+  font-size: 16px;      /* igual que el encabezado */
+  font-weight: 700;     /* en negrita, como el encabezado */
   word-break: break-word;
 }
 
@@ -2653,7 +2656,7 @@ input[type='file'] {
     margin: 0 !important;
     padding: 0 3mm !important;
     border-radius: 0 !important;
-    font-size: 12px;
+    font-size: 15px;
     color: #000 !important;
     background: #fff !important;
   }
