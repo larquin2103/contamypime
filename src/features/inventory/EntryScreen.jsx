@@ -61,7 +61,12 @@ export function EntryScreen() {
 
   const results = useMemo(() => {
     if (!query.trim()) return []
-    return products.filter((p) => matchesQuery(p, query)).slice(0, 20)
+    // Orden ALFABETICO por nombre (igual que el catalogo) ANTES de recortar a 20.
+    // `filter` crea un arreglo nuevo, por lo que `sort` no muta el live query.
+    return products
+      .filter((p) => matchesQuery(p, query))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 20)
   }, [products, query])
 
   // Existencia ACTUAL en la ubicacion elegida por producto (la entrada se suma a
