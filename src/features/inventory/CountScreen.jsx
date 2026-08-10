@@ -209,6 +209,12 @@ function CountEditor({ draft }) {
       // Sobrescribe systemStock con el valor EN VIVO para mostrar y calcular diff.
       g[key].push({ ...it, idx, systemStock: sysOf(it) })
     })
+    // Orden ALFABETICO por nombre dentro de cada categoria (igual que el catalogo).
+    // Es solo de PRESENTACION: cada item conserva su `idx` original, por lo que el
+    // mapeo al borrador (setItem por idx) y los datos guardados quedan intactos.
+    for (const key of Object.keys(g)) {
+      g[key].sort((a, b) => a.name.localeCompare(b.name))
+    }
     return g
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, liveStock])
