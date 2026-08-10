@@ -1,11 +1,13 @@
-# Módulo `cocina` — Recetas y tablero de elaboración
+# Fase 7 — Módulo `cocina` (recetas y tablero de elaboración)
 
 Plan de implementación **antes de tocar código** (Regla 4 y 5 del proyecto). Este documento
 es la referencia única del módulo: qué es, qué se toca, qué NO se toca, casos borde,
 degradación de licencia y plan de verificación. Todo es **aditivo, gateado y append-only**;
 el comportamiento clásico queda **idéntico** sin la licencia.
 
-> Estado: **PLANEADO** (sin código todavía). Pendiente: luz verde del dueño + confirmación de rama.
+> **Fase 7** en la secuencia del dueño (la Fase 6 fue el módulo `divisas`).
+> Estado: **PLANEADO** (sin código todavía). Pendiente: luz verde del dueño para implementar.
+> Rama de desarrollo confirmada: `claude/awesome-dirac-484azm` (nada a `main`).
 
 ---
 
