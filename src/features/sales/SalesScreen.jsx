@@ -224,6 +224,16 @@ export function SalesScreen() {
   // Sobrepago en mixto (ej: una parte en USD que redondea por encima, o el
   // cliente entrega de mas): el exceso es el vuelto, que se devuelve en MN.
   const mixChange = round2(Math.max(0, mixCovered - totalBase))
+  // Vista de divisa al cobrar una PARTE en una moneda distinta a la base (p.ej.
+  // USD): cuanto falta convertido a esa moneda (para saber cuanto cobrar), el
+  // equivalente en MN de lo que se teclea y el vuelto que generaria. Todo
+  // informativo; el vuelto del mixto se entrega y registra en MN (sin cambios).
+  const partIsForeign = partCurrency !== baseCurrency
+  const partRateVal = partRate(partCurrency)
+  const partAmtNum = Number(partAmount) || 0
+  const partTypedBase = round2(partAmtNum * partRateVal)
+  const remainingInPart = partRateVal > 0 ? round2(mixRemaining / partRateVal) : 0
+  const partLiveChange = round2(Math.max(0, (mixCovered + partTypedBase) - totalBase))
   const mixOk =
     mixParts.length > 0 &&
     mixCovered >= totalBase - 0.01 &&
@@ -651,9 +661,16 @@ export function SalesScreen() {
                       </label>
                     )}
                   </div>
-                  {partCurrency !== baseCurrency && Number(partAmount) > 0 && partRate(partCurrency) > 0 && (
+                  {partIsForeign && partRateVal > 0 && (
                     <p className="muted">
-                      Equivale a <strong>{formatMoney(round2(Number(partAmount) * partRate(partCurrency)), baseCurrency)}</strong> (tasa {partRate(partCurrency)}).
+                      A cobrar en {partCurrency}: <strong>{formatMoney(remainingInPart, partCurrency)}</strong>{' '}
+                      (tasa {partRateVal}) · equivale a {formatMoney(mixRemaining, baseCurrency)}
+                    </p>
+                  )}
+                  {partIsForeign && partAmtNum > 0 && partRateVal > 0 && (
+                    <p className="muted">
+                      Recibes <strong>{formatMoney(partTypedBase, baseCurrency)}</strong> (tasa {partRateVal})
+                      {partLiveChange > 0.01 && <> · vuelto <strong>{formatMoney(partLiveChange, baseCurrency)}</strong></>}
                     </p>
                   )}
                   <div className="report-actions">
