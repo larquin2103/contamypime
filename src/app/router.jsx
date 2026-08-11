@@ -36,6 +36,7 @@ import { PartnersScreen } from '../features/partners/PartnersScreen'
 import { AccountsScreen } from '../features/accounts/AccountsScreen'
 import { SalonScreen } from '../features/tables/SalonScreen'
 import { TableScreen } from '../features/tables/TableScreen'
+import { RecipesScreen } from '../features/kitchen/RecipesScreen'
 
 // Decide que mostrar segun el estado:
 //  - sin licencia valida   -> Activacion (compuerta: ni se crea dueño ni se entra)
@@ -87,6 +88,8 @@ export function AppRouter() {
         <Route path="/accounts" element={<AccountsScreen />} />
         <Route path="/salon" element={<SalonScreen />} />
         <Route path="/mesa/:id" element={<TableScreen />} />
+        {/* Modulo 'cocina': recetas + abastecer (la pantalla gatea por licencia y rol). */}
+        <Route path="/recetas" element={<RecipesScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
