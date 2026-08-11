@@ -136,3 +136,17 @@ db.version(11).stores({
 db.version(12).stores({
   images: 'id, refType, updatedAt'
 })
+
+// Fase 7 - modulo 'cocina': recetas y bitacora de elaboracion (produccion).
+// `recipes` es la receta que define el dueño (insumos y cantidades por unidad del
+// elaborado); sus `items` viven como array dentro del doc porque la edita SOLO el
+// dueño (baja concurrencia -> LWW por updatedAt, igual que transfers/sales guardan
+// sus items). `productions` es la bitacora APPEND-ONLY de cada elaboracion (un
+// snapshot para el reporte, como `mermas`/`purchases` acompañan al libro mayor);
+// el stock real lo mueven los CONVERSION_*/TRANSFER_* en stockMovements, que ya
+// existen y ya sincronizan. Migracion aditiva: solo agrega dos tablas vacias, no
+// toca datos existentes. Sin el modulo quedan vacias y la app es identica a la clasica.
+db.version(13).stores({
+  recipes: 'id, active, outputProductId, createdAt',
+  productions: 'id, recipeId, toArea, byUserId, createdAt'
+})

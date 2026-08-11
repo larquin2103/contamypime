@@ -36,7 +36,13 @@ export const SYNC_COLLECTIONS = [
   // Modulo 'imagenes': miniaturas (producto/usuario/carta). Id determinista por
   // referencia -> dos dispositivos no duplican; LWW por updatedAt. Sin el modulo
   // no se crea ninguna, la coleccion queda vacia y no hay costo de sync/storage.
-  { name: 'images', pk: 'id' }
+  { name: 'images', pk: 'id' },
+  // Modulo 'cocina': recetas (definidas por el dueño) y producciones (bitacora
+  // append-only de cada elaboracion). Sin el modulo no se crea ninguna: ambas
+  // colecciones quedan vacias y no hay costo de sync. El stock lo mueven los
+  // CONVERSION_*/TRANSFER_* del libro mayor, que ya sincronizan.
+  { name: 'recipes', pk: 'id' },
+  { name: 'productions', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

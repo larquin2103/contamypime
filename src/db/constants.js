@@ -13,14 +13,20 @@ export const ROLES = {
   // transforma productos y hace salidas a los puntos de venta, y vende desde el
   // centro. No ve el almacen central ni los datos del dueño. Es un rol acotado,
   // separado del vendedor.
-  ELABORATION: 'elaboration'
+  ELABORATION: 'elaboration',
+  // Cocinero (modulo 'cocina'): rol acotado al tablero de cocina. NO abre turno
+  // ni maneja caja; solo elabora recetas y las envia a un area de venta. No ve el
+  // almacen central, ni costos, ni datos del dueño (como ELABORATION, pero para la
+  // cocina). Solo existe con el modulo 'cocina' desbloqueado.
+  COOK: 'cook'
 }
 
 export const ROLE_LABELS = {
   [ROLES.OWNER]: 'Dueño',
   [ROLES.ADMIN]: 'Administrativo',
   [ROLES.SELLER]: 'Vendedor',
-  [ROLES.ELABORATION]: 'Elaboración'
+  [ROLES.ELABORATION]: 'Elaboración',
+  [ROLES.COOK]: 'Cocinero'
 }
 
 // Unidades de medida soportadas por producto.
@@ -183,9 +189,17 @@ export const WAREHOUSE_LABEL = 'Almacén'
 export const ELABORATION = '__elaboracion'
 export const ELABORATION_LABEL = 'Elaboración'
 
+// Cocina (modulo 'cocina'). Ubicacion fija propia (centinela reservado, como el
+// almacen y elaboracion, pero INDEPENDIENTE de esta ultima): guarda el stock de
+// insumos que el dueño entrega a la cocina. El cocinero elabora recetas desde
+// aqui y envia el producto terminado a un area de venta. Nombre visible fijo.
+export const COCINA = '__cocina'
+export const COCINA_LABEL = 'Cocina'
+
 export function locationLabel(loc) {
   if (!loc || loc === WAREHOUSE) return WAREHOUSE_LABEL
   if (loc === ELABORATION) return ELABORATION_LABEL
+  if (loc === COCINA) return COCINA_LABEL
   return String(loc)
 }
 
