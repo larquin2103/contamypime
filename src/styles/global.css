@@ -2668,11 +2668,14 @@ input[type='file'] {
      seguro (no hay otra pantalla que se imprima). */
   body * { visibility: hidden !important; }
   #ticket, #ticket * { visibility: visible !important; }
-  /* El ticket NO se estira: se limita a 58 mm aunque el servicio de impresión use
-     una hoja grande (evita que el ticket llene un A4). Fuente un poco mayor. */
+  /* El ticket LLENA el ancho de la página (como el clásico): así el contenido llega
+     a AMBOS bordes y NO queda margen a la derecha. El ancho real lo fija el servicio
+     de impresión (2-inch/58 mm), no el CSS. (Corrección 2026-08-11: un tope fijo de
+     58 mm dejaba el ticket pegado a la izquierda cuando el servicio renderiza la hoja
+     más ancha que 58 mm; se vuelve a max-width:100% como antes.) Fuente un poco mayor. */
   #ticket {
     width: 100% !important;
-    max-width: 58mm !important;
+    max-width: 100% !important;
     margin: 0 !important;
     padding: 0 3mm !important;
     border-radius: 0 !important;
