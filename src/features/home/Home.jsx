@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, PackageMinus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat, CookingPot
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -310,6 +310,7 @@ export function Home() {
           {hasModule(LICENSE_MODULES.KITCHEN) && (
             <Section label="Cocina">
               <ActionCard to="/recetas" icon={ChefHat} title="Recetas" sub="Definir recetas y abastecer la cocina" />
+              <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
             </Section>
           )}
           <Section label="Operación">
