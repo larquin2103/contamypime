@@ -10,7 +10,7 @@ import { useShift } from '../../app/providers/ShiftProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
-import { WAREHOUSE, locationLabel } from '../../db/constants'
+import { WAREHOUSE, COCINA, locationLabel } from '../../db/constants'
 import { matchesQuery } from '../../lib/search'
 import { formatMoney } from '../../lib/currency'
 import { ProductForm } from './ProductForm'
@@ -19,7 +19,7 @@ import { CategoryManager } from './CategoryManager'
 const MAX_RENDER = 200 // evita pintar 400+ filas de golpe en gama media
 
 export function Catalog() {
-  const { isManager, isElaborator } = useAuth()
+  const { isManager, isElaborator, isCook } = useAuth()
   const { activeShift } = useShift()
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
@@ -47,13 +47,17 @@ export function Catalog() {
   // El vendedor solo ve los productos ASIGNADOS a su área (no el almacén). El
   // dueño y el administrativo ven todo el catálogo. Modo área solo si hay áreas.
   const sellArea = activeShift?.area || ''
+  // El cocinero (módulo 'cocina') ve el catálogo de la COCINA con el MISMO mecanismo
+  // de "vista por ubicación" del vendedor en su área, pero fijado a __cocina y SIN
+  // necesitar turno. Solo lectura (como cualquier no-mando). Gateado por el módulo.
+  const cookMode = isCook && hasModule(LICENSE_MODULES.KITCHEN)
   // El elaborador ve el catálogo de SU centro (su turno.area = elaboración).
-  const areaMode = !isManager && (areas.length > 0 || isElaborator)
+  const areaMode = !isManager && (areas.length > 0 || isElaborator || cookMode)
   // Mayorista: si el dueño lo permitió, el vendedor puede VER (solo lectura) el
-  // catálogo del almacén central, además del de su área. El elaborador NO (no ve almacén).
-  const canWarehouseView = !isElaborator && areaMode && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
-  // Ubicación que se está mirando (para el vendedor): su área o el almacén.
-  const viewLoc = canWarehouseView && showWarehouse ? WAREHOUSE : sellArea
+  // catálogo del almacén central, además del de su área. El elaborador/cocinero NO.
+  const canWarehouseView = !isElaborator && !cookMode && areaMode && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
+  // Ubicación que se está mirando: la cocina (cocinero), o el área/almacén (vendedor).
+  const viewLoc = cookMode ? COCINA : (canWarehouseView && showWarehouse ? WAREHOUSE : sellArea)
   // Existencia a mostrar: en modo área, la de la ubicación vista; si no, el total.
   const stockShown = (p) => (areaMode ? Number(p.stockByLocation?.[viewLoc] || 0) : Number(p.stock || 0))
 
@@ -75,8 +79,9 @@ export function Catalog() {
 
   const shown = filtered.slice(0, MAX_RENDER)
 
-  // Vendedor con áreas pero sin turno abierto: no tiene área que mostrar.
-  if (areaMode && !sellArea) {
+  // Vendedor con áreas pero sin turno abierto: no tiene área que mostrar. (El
+  // cocinero NO cae aquí: su ubicación es la cocina, no depende de un turno.)
+  if (areaMode && !viewLoc) {
     return (
       <div className="screen">
         <h2>Catálogo</h2>
