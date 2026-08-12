@@ -17,6 +17,7 @@ import {
   buildCountReport,
   buildTablesReport,
   buildMermasReport,
+  buildKitchenProduction,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -100,6 +101,8 @@ export function ReportsScreen() {
         card('accounts', 'Movimientos de cuentas', 'Créditos y débitos de la tesorería, con saldos', buildAccountsReport, true)}
       {hasModule(LICENSE_MODULES.TABLES) &&
         card('tables', 'Ventas por mesa', 'Cuentas cobradas por mesa: consumo, servicio, total y ticket promedio', buildTablesReport, true)}
+      {hasModule(LICENSE_MODULES.KITCHEN) &&
+        card('kitchen', 'Producción de cocina', 'Elaboraciones de cocina: receta, área, unidades y costo (insumos y unitario del elaborado)', buildKitchenProduction, true)}
     </div>
   )
 }

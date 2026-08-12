@@ -1201,6 +1201,53 @@ export async function buildMermasReport({ from = null, to = null } = {}) {
   }
 }
 
+// Reporte de PRODUCCION de cocina (modulo 'cocina'). Cada fila es una elaboracion
+// (snapshot append-only en `productions`): fecha, receta, area destino, unidades,
+// costo de insumos (total, MN) y costo unitario del elaborado (MN), con totales.
+// Solo lee. Se valora en MN (base interna); el precio de venta en divisa del
+// elaborado aparece en los reportes de ventas/area (este es de COSTO), igual que
+// buildMermasReport valora la afectacion en MN.
+export async function buildKitchenProduction({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const prods = (await db.productions.toArray())
+    .filter((p) => inRange(p.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const rows = []
+  let totUnits = 0
+  let totCost = 0
+  for (const p of prods) {
+    const units = round2(Number(p.units || 0))
+    const unitCost = round2(Number(p.outputCostUnit || 0)) // costo unitario del elaborado (MN)
+    // Costo de insumos EXACTO: suma del valor congelado de cada insumo (qty x costo MN),
+    // no units x unitCost (que re-multiplica un unitario ya redondeado).
+    const insumoCost = round2((p.ingredients || []).reduce((a, g) => a + Number(g.qty || 0) * Number(g.unitCostMN || 0), 0))
+    totUnits = round2(totUnits + units)
+    totCost = round2(totCost + insumoCost)
+    rows.push([
+      formatDateTime(p.createdAt),
+      p.recipeName || '',
+      areaLabel(p.toArea),
+      units,
+      insumoCost,
+      unitCost,
+      names[p.byUserId] || ''
+    ])
+  }
+  if (rows.length === 0) {
+    rows.push(['Sin elaboraciones en el periodo', '', '', '', '', '', ''])
+  } else {
+    rows.push(['', '', 'TOTALES', round2(totUnits), round2(totCost), '', ''])
+  }
+  return {
+    title: 'Producción de cocina',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Receta', 'Área destino', 'Unidades', 'Costo insumos', 'Costo unit. elaborado', 'Elaboró'],
+    rows,
+    filename: 'produccion-cocina',
+    orientation: 'landscape'
+  }
+}
+
 // --- Exportadores (carga diferida de las librerias) ---
 
 export async function exportExcel(report) {
