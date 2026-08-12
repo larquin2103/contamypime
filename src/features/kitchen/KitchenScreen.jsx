@@ -10,6 +10,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { cleanQty } from '../../lib/qty'
+import { COCINA } from '../../db/constants'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 
 // Tablero de cocina (modulo 'cocina'). Lo opera el COCINERO (y tambien el mando).
@@ -31,6 +32,15 @@ export function KitchenScreen() {
     const m = {}
     for (const p of products) m[p.id] = p
     return m
+  }, [products])
+
+  // Existencias actuales EN la cocina (lo que el mando abastecio). El cocinero las
+  // ve al entrar, sin abrir turno: es su "catalogo de la cocina" (los insumos con
+  // los que va a elaborar). Solo lectura y sin costos, por el alcance del rol.
+  const cocinaStock = useMemo(() => {
+    const list = products.filter((p) => Number(p.stockByLocation?.[COCINA] || 0) > 0)
+    list.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    return list
   }, [products])
 
   // Hoja de elaboracion: receta elegida (o null).
@@ -141,6 +151,31 @@ export function KitchenScreen() {
                     Puedes elaborar: <strong>{n}</strong>
                   </div>
                   <button className="btn btn--primary btn--block" onClick={() => openProduce(r)}>Elaborar</button>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {cocinaStock.length > 0 && (
+        <section className="card">
+          <h3>Productos en la cocina</h3>
+          <p className="muted">Existencias que el dueño abasteció para elaborar.</p>
+          <div className="entry-lines">
+            {cocinaStock.map((p) => {
+              const thumb = photos.get(p.id)
+              return (
+                <div key={p.id} className="entry-line">
+                  <div className="entry-line__head">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                      <div className="product-thumb">
+                        {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="product-thumb__ph">📦</span>}
+                      </div>
+                      <strong>{p.name}</strong>
+                    </div>
+                    <span className="muted">{cleanQty(Number(p.stockByLocation?.[COCINA] || 0))} {p.unit}</span>
+                  </div>
                 </div>
               )
             })}

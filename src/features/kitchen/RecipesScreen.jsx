@@ -58,9 +58,20 @@ export function RecipesScreen() {
   const warehouseOf = (p) => Number(p.stockByLocation?.[WAREHOUSE] || 0)
   const cocinaOf = (p) => Number(p.stockByLocation?.[COCINA] || 0)
 
-  // Productos con existencia en el almacen (lo que no hay no se puede enviar).
+  // IDs de los productos ELABORADOS (la salida de cada receta). NO son insumos: la
+  // cocina los PRODUCE y los envia a las areas; nunca se abastecen desde el almacen.
+  // Se excluyen del panel "Abastecer cocina" para no ofrecerlos como insumo. Incluye
+  // las recetas dadas de baja: su elaborado sigue siendo un elaborado, no un insumo.
+  const recipeOutputIds = useMemo(() => {
+    const s = new Set()
+    for (const r of recipes) if (r.outputProductId) s.add(r.outputProductId)
+    return s
+  }, [recipes])
+
+  // Productos con existencia en el almacen (lo que no hay no se puede enviar), SIN
+  // los elaborados de cocina (esos se producen en la cocina, no se abastecen).
   const groups = useMemo(() => {
-    const eligible = products.filter((p) => warehouseOf(p) > 0)
+    const eligible = products.filter((p) => warehouseOf(p) > 0 && !recipeOutputIds.has(p.id))
     const filtered = query.trim() ? eligible.filter((p) => matchesQuery(p, query)) : eligible
     filtered.sort((a, b) => a.name.localeCompare(b.name))
     const g = {}
@@ -71,7 +82,7 @@ export function RecipesScreen() {
     }
     return g
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, query])
+  }, [products, query, recipeOutputIds])
 
   // Compuerta del modulo: sin la licencia 'cocina', la pantalla no ofrece nada.
   if (!hasModule(LICENSE_MODULES.KITCHEN)) {
