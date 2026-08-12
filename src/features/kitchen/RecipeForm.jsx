@@ -16,7 +16,7 @@ import { useEscapeClose } from '../../lib/useEscapeClose'
 //
 // Al guardar, recipesRepo se encarga de crear/actualizar el PRODUCTO elaborado
 // (reusa el catalogo). El costo del elaborado no se teclea: se deriva al producir.
-export function RecipeForm({ recipe, outputProduct, products, categories, areas, onClose, onSaved }) {
+export function RecipeForm({ recipe, outputProduct, products, categories, areas, recipeOutputIds, onClose, onSaved }) {
   const { user } = useAuth()
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
@@ -87,11 +87,13 @@ export function RecipeForm({ recipe, outputProduct, products, categories, areas,
     return m
   }, [categories])
 
-  // Insumos elegibles: todos los productos activos MENOS el propio elaborado (una
-  // receta no se consume a si misma). Agrupados por categoria para marcar comodo.
+  // Insumos elegibles: productos activos MENOS los ELABORADOS (la salida de CUALQUIER
+  // receta, incluido el propio): una receta se hace con INSUMOS, no con otros
+  // elaborados. Los insumos ya elegidos en una receta vieja NO se pierden: se listan
+  // arriba desde `selected` (no dependen de esta lista). Agrupados por categoria.
   const groups = useMemo(() => {
     const selfId = recipe?.outputProductId
-    const eligible = products.filter((p) => p.id !== selfId)
+    const eligible = products.filter((p) => p.id !== selfId && !(recipeOutputIds && recipeOutputIds.has(p.id)))
     const filtered = query.trim() ? eligible.filter((p) => matchesQuery(p, query)) : eligible
     filtered.sort((a, b) => a.name.localeCompare(b.name))
     const g = {}
@@ -102,7 +104,7 @@ export function RecipeForm({ recipe, outputProduct, products, categories, areas,
     }
     return g
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, query, recipe])
+  }, [products, query, recipe, recipeOutputIds])
 
   const toggle = (p) =>
     setSelected((prev) => {

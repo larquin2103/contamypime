@@ -280,6 +280,7 @@ export function RecipesScreen() {
           products={products}
           categories={categories}
           areas={areas}
+          recipeOutputIds={recipeOutputIds}
           onClose={() => setEditing(null)}
           onSaved={() => setDoneMsg('')}
         />
