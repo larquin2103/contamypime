@@ -121,6 +121,12 @@ Importaciones pesadas (xlsx/jspdf/firebase) siempre con `import()` dinámico.
 - **Elaboración (ELABORATION, módulo `elaboracion`)**: rol **acotado** al centro de elaboración
   (transforma productos y hace salidas a los puntos de venta). NO ve el almacén central ni los
   datos del dueño; no abre turnos de venta. Solo existe con el módulo `elaboracion`.
+- **Cocinero (COOK, módulo `cocina`)**: rol **acotado** a la cocina (elabora recetas y las envía a
+  las áreas desde el **tablero** `/cocina`). Como el elaborador: **no es mando ni vendedor**, no
+  abre turno ni maneja caja (el `Layout` le oculta la pestaña *Turno*), no ve costos ni ganancia. En
+  su sesión ve el **tablero** (solo recetas) y un **Catálogo de la cocina** (los insumos que hay en
+  `__cocina`, reusando la vista por ubicación del vendedor, sin turno). El flag `isCook` (en
+  `AuthProvider`) **no** entra en `isManager`. Solo existe con el módulo `cocina`.
 - **Regla de oro:** solo el vendedor con **su turno abierto** puede vender (ni el dueño sin turno).
   Desde el Bloque 19, **varios vendedores pueden tener turno a la vez** (uno por área); el turno
   es por vendedor (`shiftsRepo.getActiveFor(sellerId)`), no global.
@@ -225,6 +231,8 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   Nota: los **avatares** de usuario son **base** (no gateados), no cuentan como este módulo.
 - **`divisas`** — precios de catálogo en **divisa** (USD): el dueño fija precio/costo en USD y el
   cliente paga en USD o MN (MN = USD × tasa vigente). OFF por defecto. Ver "Divisas" abajo.
+- **`cocina`** — recetas + tablero de cocina: el dueño define recetas (insumos y consumo por unidad)
+  y el **Cocinero** (rol `COOK`) elabora y envía a las áreas. OFF por defecto. Ver "Cocina" abajo.
 
 ## Mesas (módulo `mesas`)
 
@@ -291,6 +299,55 @@ el precio **flota en USD** y el **MN se deriva al cobrar** con la tasa vigente (
   USD y el monto en divisa del ticket). Quitar `divisas` no rompe ni borra nada (append-only): solo
   desaparecen esas columnas/el monto en divisa y la opción de fijar nuevos productos en divisa.
 
+## Cocina (módulo `cocina`)
+
+Recetas + **tablero de cocina**: el dueño define recetas y el **Cocinero** (rol `COOK`) elabora y
+envía a las áreas. Gateado por la licencia `cocina`; sin él —y sin el rol— la app queda **idéntica
+a la clásica**. Pantallas en `features/kitchen/`: `RecipesScreen` (recetas + *Abastecer cocina*,
+solo mando), `RecipeForm` (editor) y `KitchenScreen` (tablero `/cocina`). Repos: `recipesRepo`,
+`kitchenRepo`. Ubicación **sentinel** `COCINA = '__cocina'` (como `__almacen`/`__elaboracion`).
+
+- **Receta = insumos + su producto elaborado.** `recipesRepo.create` da de **alta el elaborado**
+  REUSANDO `productsRepo` (no reimplementa el catálogo), en **una transacción** (producto + receta).
+  `items = [{ productId, qty }]` = consumo por **1 unidad** del elaborado. Foto (`imagenes`) y
+  *"Moneda del precio"* (`divisas`) gateadas igual que en `ProductForm`. El costo del elaborado **no
+  se teclea**: se deriva al producir (promedio ponderado).
+- **Abastecer cocina (mando):** envía insumos del **almacén central → `__cocina`** reusando el
+  traspaso general (`transfersRepo.move`, sin cambios): es una **salida** como hacia cualquier área.
+  El panel **NO lista los elaborados** (la salida de una receta): esos se producen, no se abastecen.
+  El checklist de insumos de una receta tampoco lista elaborados.
+- **Tablero (`/cocina`, cocinero y mando):** una tarjeta por receta con *"Puedes elaborar: N"*
+  (`kitchenRepo.canMake` = mínimo sobre insumos de `floor(stockCocina / consumo)`); en 3 toques
+  (receta → cantidad + área → *Elaborar y enviar*) llama a `kitchenRepo.produce`. **No muestra
+  costos** (alcance del rol). Mosaico responsive (`.kitchen-grid/.kitchen-tile`) que aguanta 20+ recetas.
+- **`kitchenRepo.produce` (motor, atómico):** elabora `units` y las ENVÍA al área en **una
+  transacción**. Replica el patrón de `conversionsRepo` (consumir insumos → crear elaborado) +
+  `transfersRepo` (cocina → área) DENTRO de su propia transacción (no toca esos repos). Valida cada
+  insumo contra el **LIBRO MAYOR** (`[productId+location]`, candado de última instancia como
+  `salesRepo`), no la caché. **Costo por promedio ponderado**; insumo en divisa → costo a MN a la
+  tasa vigente; sin tasa **bloquea**. El costo del elaborado se guarda en **su** moneda (invariante:
+  precio y costo van en `priceCurrency`); movimientos y snapshot llevan MN. Usa tipos **existentes**
+  `CONVERSION_OUT/IN` (cocina) + `TRANSFER_OUT` (cocina) / `TRANSFER_IN` (área): neto en cocina = 0,
+  el total sube `+u` y termina en el área. Snapshot append-only en `productions`.
+- **Ciclo de vida de la receta (solo dueño):** *dar de baja/reactivar* (`setActive`, transaccional)
+  **sincroniza el elaborado**: darla de baja lo retira del catálogo; reactivarla lo **restablece** (y
+  limpia su baja si se había eliminado del catálogo). *Eliminar* (`remove`) = **borrado lógico**
+  (`deletedAt` + baja del elaborado con evento en Auditoría → *Bajas*); nada se borra (producciones y
+  ventas se conservan). `list()/listActive()` no listan las eliminadas.
+- **Conteo físico (base + cocina):** en *"¿Qué vas a contar?"* aparece **Cocina** con el módulo. Y
+  como cambio **de base** (todas las ubicaciones), al teclear el real contado el mando ve el
+  **importe** de la diferencia (sistema − real): por **precio de venta** en áreas (venta estimada
+  sin carrito) y por **costo** en la cocina (lo consumido), en MN a la tasa; con total del área y el
+  **sobrante** aparte. Es **solo informativo** (no cambia el ajuste, que sigue igualando el stock al real).
+- **Reportes y auditoría:** *Producción de cocina* (Reportes, gateado): receta, área, unidades y
+  **costo** (insumos y unitario), sin precio ni ganancia. *Inventario por ubicación* capta la columna
+  **Cocina** (data-driven: solo si hay existencia). Auditoría → pestaña **Cocina** (elaboraciones +
+  abastecimientos). El submayor ya clasifica `CONVERSION_*/TRANSFER_*`, sin cambios.
+- **Datos y degradación:** Dexie **v13** (`recipes`, `productions`), ambas en `SYNC_COLLECTIONS`
+  (`recipes` LWW por `updatedAt`; `productions` append-only). Sin el módulo quedan vacías y la app es
+  idéntica. Quitar `cocina` no borra recetas ni elaborados (append-only); conviene **cambiar el rol**
+  de un Cocinero antes de quitarlo (si no, queda sin turno ni tablero).
+
 ## Reportes (`features/reports/reportsService.js`, solo lectura)
 
 Cada reporte es un *builder* `build*()` que **solo lee** (`.toArray()` + filtrar/mapear, nunca
@@ -302,7 +359,8 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
   turno, ventas del turno, submayor por producto (kardex) y consolidado, conteo físico (submayor).
 - **Por licencia:** *Ventas por área* y *por vendedor* (áreas), *Movimientos de cuentas* (`cuentas`),
   *Ventas por mesa* (`mesas`), consolidado/salidas/cuadre de **elaboración** (que **no** exponen
-  costo ni ganancia, por el alcance del rol) y *Mermas* (afectación al costo).
+  costo ni ganancia, por el alcance del rol), *Mermas* (afectación al costo) y *Producción de cocina*
+  (`cocina`: receta, área, unidades y costo de insumos/unitario en MN, sin precio ni ganancia).
 - **Columnas USD (módulo `divisas`):** todos los reportes con importes/costos ganan columnas de
   **referencia en USD** (precio, importe, costo y sus totales) SOLO con el módulo activo y si hay
   productos en divisa; sin eso, columnas y filas **idénticas** al clásico. Ver "Divisas".
@@ -370,6 +428,11 @@ Versiones en `src/db/db.js`:
 - **v12**: `images` (módulo `imagenes`, Fase 8): miniaturas JPEG (`dataUrl` ≤256 px, <40 KB) de
   producto/carta/avatar, con id determinista `img:<refType>:<refId>` (no duplican entre
   dispositivos; LWW por `updatedAt`). Viven **aparte** de `products`/`users`. Migración aditiva.
+- **v13**: `recipes`, `productions` (módulo `cocina`). `recipes` = receta del dueño (insumos y
+  consumo por unidad del elaborado; sus `items` viven como array en el doc — la edita solo el dueño,
+  LWW por `updatedAt`). `productions` = bitácora **append-only** de cada elaboración (snapshot para
+  el reporte, como `mermas`/`purchases`); el stock lo mueven los `CONVERSION_*/TRANSFER_*` del libro
+  mayor. Migración aditiva (dos tablas vacías).
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`. El módulo `divisas` añade el campo
@@ -414,7 +477,10 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   tesorería), `elaboracion` ✅ (centro intermedio + rol acotado), `mesas` ✅ (cuentas por mesa,
   ticket térmico y reporte "Ventas por mesa"), `imagenes` ✅ (miniaturas sync: fotos de producto
   y carta de mesas), `divisas` ✅ (precios de catálogo en USD; cobro en USD/MN a la tasa; ticket de
-  mesa y reportes con el monto/columnas en USD, todo gateado). Cada uno gateado con `hasModule(...)`.
+  mesa y reportes con el monto/columnas en USD, todo gateado) y `cocina` ✅ (recetas + tablero: el
+  Cocinero elabora y envía a las áreas; motor atómico contra el libro mayor, reporte de producción,
+  cocina contable en el conteo físico y pestaña de cocina en auditoría; rol acotado `COOK`). Cada
+  uno gateado con `hasModule(...)`.
 
 ## Fase 4 — Sincronización (cómo funciona)
 
