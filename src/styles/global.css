@@ -2822,6 +2822,61 @@ input[type='file'] {
   justify-content: center;
 }
 
+/* ----- Tablero de cocina (modulo 'cocina'): mosaico de recetas -----
+   Rejilla fluida (patron de .menu-grid): la columna se auto-ajusta al ancho del
+   dispositivo -> mas columnas en tablet, 2 en telefono. Aguanta muchas recetas
+   (20+) sin romperse: solo agrega filas. */
+.kitchen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 380px) {
+  .kitchen-grid {
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: 10px;
+  }
+}
+/* Mosaico de una receta: miniatura arriba, nombre, "Puedes elaborar" y el boton
+   pegado al fondo (asi las tarjetas de una misma fila quedan parejas). */
+.kitchen-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;          /* deja que el texto se encoja y no desborde la columna */
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-hi);
+  color: var(--text);
+  overflow: hidden;
+  text-align: center;
+}
+/* Miniatura del elaborado: cuadrada y proporcional al dispositivo (clamp: crece en
+   tablet, se achica en telefono) con tope. Reusa el marco/relleno de .product-thumb;
+   sin aspect-ratio (compatibilidad con WebView antiguo de Android). */
+.kitchen-tile .product-thumb {
+  align-self: center;    /* no se estira: se mantiene cuadrada y centrada */
+  width: clamp(56px, 18vw, 80px);
+  height: clamp(56px, 18vw, 80px);
+  font-size: clamp(1.4rem, 7vw, 2.1rem);
+}
+/* Nombre a 2 lineas maximo con puntos suspensivos: por largo que sea NO rompe la
+   rejilla. Si el WebView no soporta -webkit-line-clamp, simplemente ajusta a mas
+   lineas (nunca desborda gracias a overflow-wrap). */
+.kitchen-tile__name {
+  font-weight: 700;
+  line-height: 1.2;
+  font-size: clamp(0.9rem, 3.6vw, 1rem);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.kitchen-tile__can { font-size: clamp(0.78rem, 3.2vw, 0.9rem); }
+.kitchen-tile .btn { margin-top: auto; }  /* boton al fondo del mosaico */
+
 /* Sumar / restar unidades en la cuenta */
 .stepper {
   display: flex;

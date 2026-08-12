@@ -127,17 +127,17 @@ export function KitchenScreen() {
         </section>
       ) : (
         <section className="card">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+          <div className="kitchen-grid">
             {recipes.map((r) => {
               const n = kitchenRepo.canMake(r, productById)
               const thumb = photos.get(r.outputProductId)
               return (
-                <div key={r.id} className="card" style={{ margin: 0 }}>
+                <div key={r.id} className="kitchen-tile">
                   <div className="product-thumb">
                     {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="product-thumb__ph">🍽️</span>}
                   </div>
-                  <strong>{r.name}</strong>
-                  <div className="muted" style={{ marginBottom: 8 }}>
+                  <strong className="kitchen-tile__name" title={r.name}>{r.name}</strong>
+                  <div className="kitchen-tile__can muted">
                     Puedes elaborar: <strong>{n}</strong>
                   </div>
                   <button className="btn btn--primary btn--block" onClick={() => openProduce(r)}>Elaborar</button>
