@@ -307,7 +307,8 @@ function CountEditor({ draft }) {
           {list.map((it) => {
             const phys = it.physicalQty
             const has = phys !== null && phys !== ''
-            const diff = has ? Number(phys) - it.systemStock : null
+            // round2: evita colas decimales de la resta flotante (0.3-0.1) en el badge.
+            const diff = has ? round2(Number(phys) - it.systemStock) : null
             // Importe de la diferencia (sistema − real) × valor unitario (costo en
             // cocina, precio de venta en el resto). Positivo = faltante; negativo = sobrante.
             const soldQty = has ? round2(it.systemStock - Number(phys)) : 0
