@@ -3,7 +3,7 @@ import { formatDateTime, localDay } from '../../lib/dates'
 import { round2, formatMoney, foreignToBase, baseToForeign, isForeignPriced } from '../../lib/currency'
 import {
   SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
-  areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION
+  areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION, COCINA
 } from '../../db/constants'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
@@ -155,8 +155,14 @@ export async function buildInventoryReport({ divisas = false } = {}) {
     .filter((p) => p.active)
     .sort((a, b) => a.name.localeCompare(b.name))
 
-  // Columnas dinamicas: almacen (+ elaboracion si esta activa) + cada area.
-  const locCols = [WAREHOUSE, ...(elab.enabled ? [ELABORATION] : []), ...areas]
+  // La cocina (modulo 'cocina') NO es un area de Ajustes: es una ubicacion sentinel
+  // (__cocina) que se abastece por traspaso (almacen -> cocina). Se incluye como
+  // columna SOLO si hay existencia en ella (data-driven): sin el modulo nadie la
+  // abastece -> sin columna -> reporte IDENTICO al clasico; con existencia (aunque
+  // luego se quite el modulo) se sigue mostrando, sin romper nada (append-only).
+  const hasCocina = products.some((p) => Number(p.stockByLocation?.[COCINA] || 0) > 0)
+  // Columnas dinamicas: almacen (+ elaboracion si activa, + cocina si hay) + cada area.
+  const locCols = [WAREHOUSE, ...(elab.enabled ? [ELABORATION] : []), ...(hasCocina ? [COCINA] : []), ...areas]
   const stockAt = (p, loc) => round2(Number(p.stockByLocation?.[loc] || 0))
   // Modulo 'divisas': costo/precio en MN (tasa vigente) si el producto es en divisa.
   const mnv = await baseValuer()
@@ -192,7 +198,7 @@ export async function buildInventoryReport({ divisas = false } = {}) {
     subtitle: `Generado ${formatDateTime(new Date().toISOString())}`,
     head: [
       'Codigo', 'Producto', 'Categoria', 'Unidad',
-      WAREHOUSE_LABEL, ...(elab.enabled ? [elab.name] : []), ...areas.map((a) => areaLabel(a)),
+      WAREHOUSE_LABEL, ...(elab.enabled ? [elab.name] : []), ...(hasCocina ? [locationLabel(COCINA)] : []), ...areas.map((a) => areaLabel(a)),
       'Total', 'Costo', 'Precio', 'Valor (total*costo)',
       ...(hasForeign ? ['Precio USD', 'Costo USD', 'Valor costo USD'] : [])
     ],
