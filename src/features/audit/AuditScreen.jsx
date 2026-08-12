@@ -7,12 +7,17 @@ import { cashRepo } from '../../repositories/cashRepo'
 import { stockRepo } from '../../repositories/stockRepo'
 import { productsRepo } from '../../repositories/productsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
+import { kitchenRepo } from '../../repositories/kitchenRepo'
+import { transfersRepo } from '../../repositories/transfersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
+import { cleanQty } from '../../lib/qty'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { SHIFT_STATUS, locationLabel, areaLabel } from '../../db/constants'
+import { SHIFT_STATUS, locationLabel, areaLabel, COCINA } from '../../db/constants'
 
 const MOVE_LABEL = {
   purchase_in: 'Entrada (almacén)',
@@ -21,7 +26,12 @@ const MOVE_LABEL = {
   adjustment: 'Ajuste',
   transfer_out: 'Salida a área',
   transfer_in: 'Entrada a área',
-  partner_out: 'Entrega a tercero'
+  partner_out: 'Entrega a tercero',
+  // CONVERSION_* lo comparten cocina (elaboración) y mayorista (fraccionamiento):
+  // etiqueta NEUTRAL para no mal-nombrar ninguno. El detalle de cocina va en su pestaña.
+  conversion_out: 'Consumo (conversión)',
+  conversion_in: 'Producción (conversión)',
+  merma_out: 'Merma'
 }
 
 const MAX = 200
@@ -36,6 +46,8 @@ function inRange(iso, from, to) {
 export function AuditScreen() {
   const { isManager } = useAuth()
   const { baseCurrency } = useCurrency()
+  const { hasModule } = useLicense()
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
   const [tab, setTab] = useState('shifts')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -48,6 +60,9 @@ export function AuditScreen() {
   const movements = useLiveQuery(() => stockRepo.listAll(), [], [])
   const prices = useLiveQuery(() => productsRepo.allPriceChanges(), [], [])
   const deletions = useLiveQuery(() => productsRepo.listDeletions(), [], [])
+  // Modulo 'cocina' (gateado): producciones (elaborados) y abastecimientos a la cocina.
+  const productions = useLiveQuery(() => (canKitchen ? kitchenRepo.listAll() : Promise.resolve([])), [canKitchen], [])
+  const kitchenTransfers = useLiveQuery(() => (canKitchen ? transfersRepo.listAll() : Promise.resolve([])), [canKitchen], [])
 
   const userName = useMemo(() => {
     const m = {}
@@ -59,6 +74,22 @@ export function AuditScreen() {
     for (const p of products) m[p.id] = p.name
     return m
   }, [products])
+
+  // Actividad de cocina (modulo 'cocina') para la auditoria: elaboraciones (con su
+  // salida al area) + abastecimientos a la cocina, en una lista cronologica unica.
+  const cocinaRows = useMemo(() => {
+    const elaborados = (productions || []).map((p) => ({
+      id: p.id, kind: 'elaborado', createdAt: p.createdAt, userId: p.byUserId,
+      title: p.recipeName || 'Elaborado', detail: `${cleanQty(p.units)} → ${areaLabel(p.toArea)}`
+    }))
+    const abastos = (kitchenTransfers || [])
+      .filter((t) => t.toArea === COCINA)
+      .map((t) => ({
+        id: t.id, kind: 'abasto', createdAt: t.createdAt, userId: t.byUserId,
+        title: 'Abastecimiento a cocina', detail: `${(t.items || []).length} producto(s)`
+      }))
+    return [...elaborados, ...abastos].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  }, [productions, kitchenTransfers])
 
   if (!isManager) {
     return (
@@ -77,6 +108,7 @@ export function AuditScreen() {
   const movesF = movements.filter((x) => inRange(x.createdAt, from, to)).slice(0, MAX)
   const pricesF = prices.filter((p) => inRange(p.createdAt, from, to)).slice(0, MAX)
   const deletionsF = deletions.filter((d) => inRange(d.createdAt, from, to)).slice(0, MAX)
+  const cocinaF = cocinaRows.filter((x) => inRange(x.createdAt, from, to)).slice(0, MAX)
 
   return (
     <div className="screen">
@@ -96,6 +128,9 @@ export function AuditScreen() {
         <button className={`tab ${tab === 'inv' ? 'is-active' : ''}`} onClick={() => setTab('inv')}>Inventario</button>
         <button className={`tab ${tab === 'prices' ? 'is-active' : ''}`} onClick={() => setTab('prices')}>Precios</button>
         <button className={`tab ${tab === 'del' ? 'is-active' : ''}`} onClick={() => setTab('del')}>Bajas</button>
+        {canKitchen && (
+          <button className={`tab ${tab === 'cocina' ? 'is-active' : ''}`} onClick={() => setTab('cocina')}>Cocina</button>
+        )}
       </div>
 
       {tab === 'del' && (
@@ -175,6 +210,21 @@ export function AuditScreen() {
             </div>
           ))}
           {pricesF.length === 0 && <p className="muted">Sin cambios de precio en el rango.</p>}
+        </div>
+      )}
+
+      {tab === 'cocina' && canKitchen && (
+        <div className="list">
+          {cocinaF.map((row) => (
+            <div key={row.id} className="audit-row">
+              <div className="audit-row__head">
+                <strong>{row.kind === 'elaborado' ? '🍽️ ' : '📦 '}{row.title}</strong>
+                <span className="muted">{formatDateTime(row.createdAt)}</span>
+              </div>
+              <span className="muted">{row.detail} · {userName[row.userId] || '—'}</span>
+            </div>
+          ))}
+          {cocinaF.length === 0 && <p className="muted">Sin actividad de cocina en el rango.</p>}
         </div>
       )}
     </div>
