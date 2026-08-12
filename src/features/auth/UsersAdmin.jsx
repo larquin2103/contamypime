@@ -130,6 +130,11 @@ function EditUserForm({ user, onClose }) {
   if (hasModule(LICENSE_MODULES.ELABORATION) || user.role === ROLES.ELABORATION) {
     roleOptions.push(ROLES.ELABORATION)
   }
+  // Cocinero solo con el módulo 'cocina' (o si el usuario ya lo es, para poder
+  // sacarlo de ese rol aunque el módulo se haya apagado).
+  if (hasModule(LICENSE_MODULES.KITCHEN) || user.role === ROLES.COOK) {
+    roleOptions.push(ROLES.COOK)
+  }
 
   const cleanName = name.trim()
   const nameChanged = cleanName.length > 0 && cleanName !== user.name
@@ -196,6 +201,11 @@ function EditUserForm({ user, onClose }) {
             {roleChanged && role === ROLES.ELABORATION && (
               <p className="muted">
                 Operará solo el <strong>centro de elaboración</strong>; no verá el almacén central ni los datos del dueño.
+              </p>
+            )}
+            {roleChanged && role === ROLES.COOK && (
+              <p className="muted">
+                Operará solo el <strong>tablero de cocina</strong> (elaborar y enviar a las áreas); no verá el almacén central, ni costos, ni los datos del dueño.
               </p>
             )}
             {roleChanged && role === ROLES.SELLER && (
@@ -266,6 +276,9 @@ function NewUserForm({ onClose }) {
             {hasModule(LICENSE_MODULES.ELABORATION) && (
               <option value={ROLES.ELABORATION}>{ROLE_LABELS[ROLES.ELABORATION]}</option>
             )}
+            {hasModule(LICENSE_MODULES.KITCHEN) && (
+              <option value={ROLES.COOK}>{ROLE_LABELS[ROLES.COOK]}</option>
+            )}
           </select>
         </label>
         {role === ROLES.ELABORATION && (
@@ -279,6 +292,12 @@ function NewUserForm({ onClose }) {
             El administrativo opera como el dueño en inventario y supervisión (entradas,
             salidas, autorizar al vendedor, forzar cierres, aprobar conteos) y ve reportes y
             costos. No gestiona usuarios, licencia ni sincronización.
+          </p>
+        )}
+        {role === ROLES.COOK && (
+          <p className="muted">
+            Opera solo el <strong>tablero de cocina</strong>: elabora recetas y las envía a las
+            áreas de venta. No ve el almacén central, ni costos, ni los datos del dueño.
           </p>
         )}
         <p className="field-label">PIN (4 a 6 dígitos)</p>

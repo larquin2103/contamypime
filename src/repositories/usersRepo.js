@@ -7,7 +7,7 @@ import { ROLES } from '../db/constants'
 // Roles OPERATIVOS a los que se puede mover un usuario (Fase 8 - B2). El DUEÑO
 // queda fuera a propósito: su rol es la identidad del negocio (uid = businessId,
 // licencia, código de recuperación) y ni se cambia ni se asigna a nadie.
-const ASSIGNABLE_ROLES = [ROLES.SELLER, ROLES.ADMIN, ROLES.ELABORATION]
+const ASSIGNABLE_ROLES = [ROLES.SELLER, ROLES.ADMIN, ROLES.ELABORATION, ROLES.COOK]
 
 // Usuarios y autenticacion por PIN.
 export const usersRepo = {
@@ -71,7 +71,7 @@ export const usersRepo = {
   // mover entre roles operativos. Escribe rol + updatedAt y deja constancia
   // INMUTABLE en auditEvents (rol anterior -> nuevo). Todo en una transaccion;
   // sincroniza como cualquier cambio (users y auditEvents estan en SYNC_COLLECTIONS).
-  // El gate del modulo 'elaboracion' se aplica en la UI (igual que en el alta).
+  // El gate de los modulos 'elaboracion'/'cocina' se aplica en la UI (igual que en el alta).
   async setRole(id, newRole, { actorId = null, note = '' } = {}) {
     if (!ASSIGNABLE_ROLES.includes(newRole)) throw new Error('Rol no válido')
     const ts = now()
