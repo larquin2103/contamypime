@@ -9,11 +9,14 @@ import { configRepo } from '../../repositories/configRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
+import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { LICENSE_MODULES } from '../../lib/license'
+import { ratesRepo } from '../../repositories/ratesRepo'
+import { formatMoney, isForeignPriced, foreignToBase, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { WAREHOUSE, ELABORATION, locationLabel } from '../../db/constants'
+import { WAREHOUSE, ELABORATION, COCINA, locationLabel } from '../../db/constants'
 
 // Existencia de un producto en una ubicacion (espejo de countsRepo) para saber
 // si hay algo que contar en el destino elegido.
@@ -21,6 +24,42 @@ function stockAt(p, location) {
   const byLoc = p.stockByLocation
   if (byLoc && byLoc[location] != null) return Number(byLoc[location])
   return location === WAREHOUSE ? Number(p.stock || 0) : 0
+}
+
+// Valor unitario en MN para el IMPORTE informativo del conteo: en la COCINA por
+// COSTO del insumo (lo consumido); en el resto por PRECIO de venta (venta sin
+// carrito). Convierte divisa a MN a la tasa vigente (0 si falta la tasa). Data-driven,
+// como los reportes: se convierte si el producto tiene priceCurrency, con o sin modulo.
+function unitValueMap(products, isCocina, rates) {
+  const m = {}
+  const rateOf = (cur) => Number(rates?.[cur]?.rate || 0)
+  for (const p of products) {
+    const raw = isCocina ? Number(p.cost || 0) : Number(p.price || 0)
+    let mn = raw
+    if (isForeignPriced(p)) {
+      const r = rateOf(p.priceCurrency)
+      mn = r > 0 ? foreignToBase(raw, r) : 0
+    }
+    m[p.id] = round2(mn)
+  }
+  return m
+}
+
+// Suma el importe de las diferencias del conteo (informativo): `short` = faltante
+// (sistema > fisico: salio sin registrarse en el carrito) y `over` = sobrante
+// (fisico > sistema), ambos en positivo. sysOf(it) da el stock de sistema del item.
+function sumCountValue(items, valMap, sysOf) {
+  let short = 0
+  let over = 0
+  for (const it of items) {
+    const phys = it.physicalQty
+    if (phys === null || phys === '') continue
+    const q = round2(Number(sysOf(it)) - Number(phys))
+    const val = round2(q * (valMap[it.productId] || 0))
+    if (q > 0) short += val
+    else if (q < 0) over += -val
+  }
+  return { short: round2(short), over: round2(over) }
 }
 
 // Si el vendedor llego aqui desde el asistente de cierre, le permitimos volver
@@ -39,6 +78,7 @@ export function CountScreen() {
   const { user, isManager } = useAuth()
   const { activeShift } = useShift()
   const { hasModule } = useLicense()
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
   // Borrador PROPIO (cada vendedor cuenta su area de forma independiente).
   const draft = useLiveQuery(() => countsRepo.getDraft(user.id), [user.id], undefined)
   // Conteo enviado: el mando revisa cualquiera (cola); el vendedor solo el suyo.
@@ -128,12 +168,13 @@ export function CountScreen() {
               ? `Elige qué contar: tu área (${sellerArea}) o el almacén central. Al terminar, el dueño o administrativo aprueba y se ajustan.`
               : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño o administrativo aprueba y se ajustan.`}
         </p>
-        {isManager && (areas.length > 0 || elab.enabled) && (
+        {isManager && (areas.length > 0 || elab.enabled || canKitchen) && (
           <label className="field">
             <span>¿Qué vas a contar?</span>
             <select value={countLoc} onChange={(e) => setCountLoc(e.target.value)}>
               <option value={WAREHOUSE}>{locationLabel(WAREHOUSE)}</option>
               {elab.enabled && <option value={ELABORATION}>{elab.name}</option>}
+              {canKitchen && <option value={COCINA}>{locationLabel(COCINA)}</option>}
               {areas.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>
@@ -168,10 +209,14 @@ export function CountScreen() {
 
 // ---- Contar (borrador) ----
 function CountEditor({ draft }) {
+  const { isManager } = useAuth()
+  const { baseCurrency } = useCurrency()
   const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
   // Productos EN VIVO: para que el "Sistema" mostrado refleje las ventas/salidas
   // recientes (igual que el catálogo) y no la foto congelada al iniciar el conteo.
   const liveProducts = useLiveQuery(() => productsRepo.list(), [], [])
+  // Tasas vigentes: para valorar en MN los productos fijados en divisa (importe).
+  const rates = useLiveQuery(() => ratesRepo.currentRates(), [], null)
   const [items, setItems] = useState(draft.items)
   const [selectedCat, setSelectedCat] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -188,6 +233,17 @@ function CountEditor({ draft }) {
   }, [liveProducts, draftLoc])
   // Stock del sistema a usar: el vivo si está disponible; si no, la foto del borrador.
   const sysOf = (it) => (liveStock[it.productId] != null ? liveStock[it.productId] : Number(it.systemStock || 0))
+
+  // Importe INFORMATIVO (solo mando): valor de la diferencia sistema − real contado.
+  // En la COCINA por COSTO (lo consumido); en el resto por PRECIO de venta (venta sin
+  // carrito). NO cambia el ajuste de existencias, que sigue igualando el sistema al real.
+  const isCocina = draftLoc === COCINA
+  const valMap = useMemo(() => unitValueMap(liveProducts, isCocina, rates), [liveProducts, isCocina, rates])
+  const totals = useMemo(
+    () => sumCountValue(items, valMap, sysOf),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, valMap, liveStock]
+  )
 
   const catName = useMemo(() => {
     const m = { __none: 'Sin categoría' }
@@ -252,11 +308,20 @@ function CountEditor({ draft }) {
             const phys = it.physicalQty
             const has = phys !== null && phys !== ''
             const diff = has ? Number(phys) - it.systemStock : null
+            // Importe de la diferencia (sistema − real) × valor unitario (costo en
+            // cocina, precio de venta en el resto). Positivo = faltante; negativo = sobrante.
+            const soldQty = has ? round2(it.systemStock - Number(phys)) : 0
+            const imp = round2(soldQty * (valMap[it.productId] || 0))
             return (
               <div key={it.productId} className="count-row">
                 <div className="count-row__main">
                   <strong>{it.name}</strong>
                   <span className="muted">Sistema: {it.systemStock} {it.unit}</span>
+                  {isManager && has && imp !== 0 && (
+                    <span className={soldQty > 0 ? 'ok-text' : 'warn-text'} style={{ fontSize: '0.82rem' }}>
+                      {isCocina ? 'Costo' : (soldQty > 0 ? 'Venta est.' : 'Sobrante')}: {formatMoney(Math.abs(imp), baseCurrency)}
+                    </span>
+                  )}
                 </div>
                 <div className="count-row__input">
                   <input
@@ -303,6 +368,25 @@ function CountEditor({ draft }) {
       <div className="progress">
         <div className="progress__bar" style={{ width: `${progress}%` }} />
       </div>
+
+      {isManager && (totals.short !== 0 || totals.over !== 0) && (
+        <section className="card">
+          <div className="kv">
+            <span className="muted">{isCocina ? 'Costo consumido (estimado)' : 'Venta estimada sin carrito'}</span>
+            <strong>{formatMoney(totals.short, baseCurrency)}</strong>
+          </div>
+          {totals.over !== 0 && (
+            <div className="kv">
+              <span className="muted">{isCocina ? 'Sobrante contado' : 'Sobrante (¿cobrado sin entregar?)'}</span>
+              <strong className="warn-text">{formatMoney(totals.over, baseCurrency)}</strong>
+            </div>
+          )}
+          <p className="muted"><small>
+            Estimado informativo: existencia en sistema − real contado, por {isCocina ? 'costo' : 'precio de venta'}.
+            No cambia el ajuste de existencias.
+          </small></p>
+        </section>
+      )}
 
       <div className="list">
         {Object.entries(groups).map(([cat, list]) => {
