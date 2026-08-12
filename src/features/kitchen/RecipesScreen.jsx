@@ -145,6 +145,13 @@ export function RecipesScreen() {
     }
   }
 
+  // Eliminar una receta (solo dueño): borrado LOGICO (append-only). Confirma antes;
+  // el elaborado sale del catalogo y el historial se conserva (queda en auditoria).
+  const removeRecipe = (r) => {
+    if (!confirm(`¿Eliminar la receta "${r.name}"? Dejará de ofrecerse y su elaborado sale del catálogo. El historial se conserva (auditable). Úsalo solo si ya no la vas a elaborar más.`)) return
+    recipesRepo.remove(r.id, { userId: user.id }).catch((e) => alert('No se pudo eliminar: ' + e.message))
+  }
+
   const sortedRecipes = [...recipes].sort((a, b) => {
     if (!!a.active !== !!b.active) return a.active ? -1 : 1 // activas primero
     return (a.name || '').localeCompare(b.name || '')
@@ -192,9 +199,14 @@ export function RecipesScreen() {
                     )}
                   </div>
                   {isOwner && (
-                    <button className="btn btn--ghost btn--sm" onClick={() => recipesRepo.setActive(r.id, !r.active)}>
-                      {r.active ? 'Dar de baja' : 'Reactivar'}
-                    </button>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button className="btn btn--ghost btn--sm" onClick={() => recipesRepo.setActive(r.id, !r.active)}>
+                        {r.active ? 'Dar de baja' : 'Reactivar'}
+                      </button>
+                      <button className="btn btn--ghost btn--sm" onClick={() => removeRecipe(r)}>
+                        Eliminar
+                      </button>
+                    </div>
                   )}
                 </div>
               )

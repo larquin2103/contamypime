@@ -36,12 +36,13 @@ function cleanItems(items) {
 
 export const recipesRepo = {
   async list() {
-    return db.recipes.toArray()
+    const all = await db.recipes.toArray()
+    return all.filter((r) => !r.deletedAt) // las eliminadas (borrado logico) no se listan
   },
 
   async listActive() {
     const all = await db.recipes.toArray()
-    return all.filter((r) => r.active)
+    return all.filter((r) => r.active && !r.deletedAt)
   },
 
   async get(id) {
@@ -121,9 +122,38 @@ export const recipesRepo = {
     await db.recipes.update(id, patch)
   },
 
-  // Baja/alta LOGICA de la receta (append-only): deja de ofrecerse en el tablero
-  // (o vuelve). NO toca su producto, ni su stock, ni sus ventas: todo se conserva.
+  // Baja/alta LOGICA de la receta (append-only): deja de ofrecerse en el tablero (o
+  // vuelve). El ELABORADO sigue el estado de su receta: darla de baja lo retira del
+  // catalogo; reactivarla lo RESTABLECE (aunque se hubiera eliminado del catalogo,
+  // reactivar limpia su baja). NO toca stock ni ventas: todo se conserva.
   async setActive(id, active) {
-    await db.recipes.update(id, { active: !!active, updatedAt: now() })
+    const on = !!active
+    const ts = now()
+    await db.transaction('rw', db.recipes, db.products, async () => {
+      const r = await db.recipes.get(id)
+      if (!r) throw new Error('La receta no existe')
+      await db.recipes.update(id, { active: on, updatedAt: ts })
+      if (r.outputProductId) {
+        const patch = on
+          ? { active: true, deletedAt: null, deletedBy: null, updatedAt: ts }
+          : { active: false, updatedAt: ts }
+        await db.products.update(r.outputProductId, patch)
+      }
+    })
+  },
+
+  // Eliminar la receta (solo dueño) cuando ya no se va a elaborar mas. Es un borrado
+  // LOGICO (append-only, como productsRepo.remove): la receta se marca deletedAt y
+  // desaparece de la lista, pero NADA se borra — el registro y su historial
+  // (producciones, ventas del elaborado) se conservan. Su ELABORADO se retira del
+  // catalogo con el mismo borrado logico (deja constancia en auditoria -> "Bajas").
+  async remove(id, { userId = null, note = '' } = {}) {
+    const r = await db.recipes.get(id)
+    if (!r) throw new Error('La receta no existe')
+    const ts = now()
+    await db.recipes.update(id, { active: false, deletedAt: ts, deletedBy: userId, updatedAt: ts })
+    if (r.outputProductId) {
+      await productsRepo.remove(r.outputProductId, { userId, note: note || 'Receta eliminada' })
+    }
   }
 }
