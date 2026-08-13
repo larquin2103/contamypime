@@ -72,8 +72,18 @@ export async function pushChanges() {
         batch.set(doc(fs, 'businesses', businessId, col.name, id), toCloud(r))
         if (ts > maxTs) maxTs = ts
       }
-      // Encolar sin bloquear: durabilidad local garantizada por Firestore.
-      batch.commit().catch((e) => console.warn('[sync] push', col.name, e?.code || e?.message))
+      // Encolar sin bloquear: offline, Firestore deja el commit PENDIENTE (ni
+      // resuelve ni rechaza) y lo entrega al reconectar; por eso NO esperamos
+      // (un await colgaria la subida sin conexion). Pero si el servidor RECHAZA
+      // el lote (reglas, cuota, sesion caducada), esos registros se perderian
+      // porque el cursor ya avanzo: en ese caso RETROCEDEMOS el cursor de la
+      // coleccion a donde estaba, y la proxima pasada los reintenta. El rechazo
+      // real llega del servidor tras la RTT (despues del avance de abajo) y el
+      // set() es idempotente por id -> reintentar no duplica ni daña.
+      batch.commit().catch((e) => {
+        console.warn('[sync] push', col.name, e?.code || e?.message)
+        setCursor(col.name, cursor).catch(() => {})
+      })
       queued += slice.length
     }
     await setCursor(col.name, maxTs)
