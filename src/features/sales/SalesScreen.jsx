@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft, Search, Package, Trash2 } from 'lucide-react'
@@ -56,22 +56,14 @@ export function SalesScreen() {
   const [confirming, setConfirming] = useState(false)
   const [lastSale, setLastSale] = useState(null)
 
-  if (!canSell) {
-    return (
-      <div className="screen">
-        <h2>Vender</h2>
-        <section className="card">
-          <p>Para registrar ventas necesitas tener <strong>tu turno abierto</strong>.</p>
-          <p className="muted">
-            Solo el vendedor con turno activo puede vender — ni siquiera el dueño sin turno.
-          </p>
-          <Link className="btn btn--primary btn--block" to="/shift">
-            Ir a Turno
-          </Link>
-        </section>
-      </div>
-    )
-  }
+  // Bloque B (integridad de turno): recordamos si el vendedor LLEGO a tener su
+  // turno abierto en esta sesion. Si luego deja de estarlo (el dueño o un
+  // administrativo lo cerro/forzo desde otro equipo y ya se sincronizo aqui), el
+  // live query de ShiftProvider apaga `canSell` y esta pantalla deja de vender
+  // sola; con esta marca avisamos con claridad, sin confundirlo con "aun no
+  // abriste turno". Es solo informativo: no cambia la logica de venta.
+  const hadActiveShiftRef = useRef(false)
+  useEffect(() => { if (activeShift) hadActiveShiftRef.current = true }, [activeShift])
 
   // Existencia disponible para ESTE vendedor: la de su área (Bloque 20). Sin
   // áreas configuradas, se vende contra el almacén (comportamiento clásico).
@@ -184,6 +176,38 @@ export function SalesScreen() {
     () => round2(cart.reduce((a, l) => a + priceOf(l) * l.qty, 0)),
     [cart]
   )
+
+  // Bloque B: sin turno abierto no se vende. El return va AQUI, tras TODOS los
+  // hooks, para que su cantidad sea constante aunque `canSell` cambie en vivo al
+  // cerrarse el turno desde otro equipo (asi React nunca ve "menos hooks que en el
+  // render anterior"). El camino con turno abierto queda identico. Si el vendedor
+  // tuvo turno y ya no, aviso explicito; si nunca lo abrio, el mensaje de siempre.
+  if (!canSell) {
+    return (
+      <div className="screen">
+        <h2>Vender</h2>
+        {hadActiveShiftRef.current ? (
+          <section className="card card--warn">
+            <p><strong>Tu turno ya no está abierto.</strong></p>
+            <p className="muted">
+              Pudo haberse cerrado desde otro dispositivo (por ejemplo, el dueño o un
+              administrativo). No puedes seguir vendiendo en este turno; abre uno nuevo para continuar.
+            </p>
+            <Link className="btn btn--primary btn--block" to="/shift">Ir a Turno</Link>
+          </section>
+        ) : (
+          <section className="card">
+            <p>Para registrar ventas necesitas tener <strong>tu turno abierto</strong>.</p>
+            <p className="muted">
+              Solo el vendedor con turno activo puede vender — ni siquiera el dueño sin turno.
+            </p>
+            <Link className="btn btn--primary btn--block" to="/shift">Ir a Turno</Link>
+          </section>
+        )}
+      </div>
+    )
+  }
+
   // Bloqueo por stock de área (Bloque 20): ninguna línea puede superar lo
   // disponible en el área del turno. Lo que no se ha sacado del almacén no se vende.
   const stockOk = cart.every((l) => Number(l.qty) <= Number(l.stock || 0))
