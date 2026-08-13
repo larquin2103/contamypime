@@ -3,7 +3,7 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
-import { MOVEMENT_TYPES, PARTNER_MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
+import { MOVEMENT_TYPES, PARTNER_MOVEMENT_TYPES, WAREHOUSE, SHIFT_STATUS } from '../db/constants'
 import { ensureSystemAccount, addAccountMovementRaw } from './accountsRepo'
 
 // Ventas de mostrador. Cada venta congela el precio y el costo de cada linea
@@ -75,7 +75,21 @@ export const salesRepo = {
     // defecto, o el almacen central si la venta es mayorista (Bloque A). El
     // dinero entra siempre a la caja del turno, sea cual sea el origen.
     const loc = String(sourceLocation || '').trim() || shiftArea || WAREHOUSE
-    await db.transaction('rw', db.sales, db.stockMovements, db.products, db.partnerMovements, db.accounts, db.accountMovements, async () => {
+    await db.transaction('rw', db.sales, db.stockMovements, db.products, db.partnerMovements, db.accounts, db.accountMovements, db.shifts, async () => {
+      // Candado de estado del turno (integridad, append-only): una venta SOLO
+      // entra a un turno ABIERTO. Si el turno ya fue cerrado (p.ej. el dueño lo
+      // forzo desde otro equipo y este dispositivo ya lo sincronizo), se rechaza
+      // aqui DENTRO de la transaccion (candado de ultima instancia, igual que la
+      // revalidacion de stock de mas abajo) para no dejar ventas colgadas de un
+      // turno cerrado. Solo bloquea si el turno EXISTE y esta cerrado; si falta el
+      // id o el turno no esta local, se comporta identico a antes: el camino normal
+      // (turno abierto) queda igual y no se rompe ningun flujo existente.
+      if (shiftId) {
+        const sh = await db.shifts.get(shiftId)
+        if (sh && sh.status === SHIFT_STATUS.CLOSED) {
+          throw new Error('El turno ya fue cerrado. Abre un turno nuevo para vender.')
+        }
+      }
       await db.sales.add({
         id,
         shiftId,
