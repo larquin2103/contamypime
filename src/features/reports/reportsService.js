@@ -376,6 +376,64 @@ export async function buildShiftsReport({ from = null, to = null } = {}) {
   }
 }
 
+// Integridad turno/sync - Bloque D: ventas que quedaron registradas en un turno
+// YA CERRADO (posible descuadre). Es de SOLO LECTURA (no muta nada): deriva el
+// problema comparando la fecha de la venta con el cierre de SU turno; si la venta
+// se registro DESPUES del closedAt de un turno cerrado, quedo "colgada". Da
+// visibilidad al dueño de esas ventas -incluidas las historicas- para cuadrarlas
+// a mano; append-only: no reescribe ni la venta ni el turno. Base (no gateado).
+export async function buildPostCloseSalesReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const shiftsById = {}
+  for (const sh of await db.shifts.toArray()) shiftsById[sh.id] = sh
+  const method = { cash: 'efectivo', transfer: 'transferencia', mixed: 'mixto' }
+
+  const flagged = []
+  for (const s of await db.sales.toArray()) {
+    if (s.voided) continue
+    if (!inRange(s.createdAt, from, to)) continue
+    const sh = shiftsById[s.shiftId]
+    // Solo cuenta si el turno EXISTE, esta cerrado y la venta es POSTERIOR a su
+    // cierre (ISO compara lexicografico). Si falta el turno o sigue abierto, no
+    // es una venta post-cierre.
+    if (!sh || sh.status !== SHIFT_STATUS.CLOSED || !sh.closedAt) continue
+    if (!(s.createdAt > sh.closedAt)) continue
+    flagged.push({ s, sh })
+  }
+  flagged.sort((a, b) =>
+    a.sh.closedAt < b.sh.closedAt ? -1 : a.sh.closedAt > b.sh.closedAt ? 1
+      : (a.s.createdAt < b.s.createdAt ? -1 : 1))
+
+  let total = 0
+  const rows = flagged.map(({ s, sh }) => {
+    total += Number(s.totalBase || 0)
+    return [
+      formatDateTime(s.createdAt),
+      names[s.sellerId] || 'vendedor',
+      areaLabel(s.area),
+      formatDateTime(sh.closedAt),
+      sh.forced ? 'Sí' : 'No',
+      method[s.paymentMethod] || s.paymentMethod || '',
+      round2(Number(s.totalBase || 0)),
+      String(s.shiftId || '').slice(0, 8)
+    ]
+  })
+  if (rows.length) {
+    rows.push(['TOTAL', `${flagged.length} venta(s)`, '', '', '', '', round2(total), ''])
+  } else {
+    rows.push(['Sin ventas después del cierre en el periodo', '', '', '', '', '', '', ''])
+  }
+
+  return {
+    title: 'Ventas después del cierre',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha venta', 'Vendedor', 'Área', 'Turno cerrado el', 'Forzado', 'Método', 'Importe MN', 'Turno (id)'],
+    rows,
+    filename: 'ventas_despues_del_cierre',
+    orientation: 'landscape' // 8 columnas: PDF horizontal
+  }
+}
+
 // Ventas por area de venta (Fase 6 - Bloque 19): cuanto vendio y gano cada
 // VENDEDOR en cada area (quien hizo el turno en esa area), con subtotal por
 // area, y el detalle de ventas cruzadas (sustitucion) por vendedor.
