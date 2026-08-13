@@ -19,6 +19,7 @@ import {
   buildMermasReport,
   buildKitchenProduction,
   buildPostCloseSalesReport,
+  buildForcedClosuresReport,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -91,6 +92,7 @@ export function ReportsScreen() {
       {card('seller', 'Ventas por vendedor', 'Productos, cantidades y fechas de lo vendido por cada vendedor', buildSellerSalesReport, true)}
       {card('shifts', 'Cierres de turno', 'Cuadre de cada turno cerrado, por área', buildShiftsReport, true)}
       {card('postclose', 'Ventas después del cierre', 'Ventas que quedaron registradas en un turno YA cerrado (posible descuadre): fecha, vendedor, área, cuándo se cerró el turno e importe MN', buildPostCloseSalesReport, true)}
+      {card('forced', 'Cierres forzados', 'Turnos cerrados por el dueño/administrativo (no por el vendedor) y su diferencia de caja — para supervisión', buildForcedClosuresReport, true)}
       {card('entries', 'Entradas al almacén', 'Compras ingresadas al almacén central', buildEntriesReport, true)}
       {areas.length > 0 &&
         card('area', 'Ventas por área', 'Ingreso y ganancia por área y vendedor', buildAreaReport, true)}

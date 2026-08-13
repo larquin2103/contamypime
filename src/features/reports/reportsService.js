@@ -434,6 +434,52 @@ export async function buildPostCloseSalesReport({ from = null, to = null } = {})
   }
 }
 
+// Integridad turno/sync - Bloque E (#10): reporte FOCALIZADO de cierres FORZADOS
+// (turno cerrado por alguien distinto al vendedor: el dueño o un administrativo) y
+// su diferencia de caja. Es de SOLO LECTURA y deriva todo del registro del turno
+// (forced/closedBy/difference/semaphore YA existen); no escribe ni muta nada.
+// Complementa "Cierres de turno" (que los lista todos) con una vista centrada en
+// la supervision de los forzados. Base (bajo isManager, como los demas reportes).
+export async function buildForcedClosuresReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const shifts = (await db.shifts.toArray())
+    .filter((s) => s.status === SHIFT_STATUS.CLOSED && s.forced === true && inRange(s.closedAt, from, to))
+    .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))
+
+  const sem = { green: 'Cuadra', yellow: 'Dif. menor', red: 'Dif. critica' }
+  let totalDiff = 0
+  const rows = shifts.map((s) => {
+    const diff = round2(s.difference?.MN ?? 0)
+    totalDiff = round2(totalDiff + diff)
+    return [
+      formatDateTime(s.closedAt),
+      names[s.sellerId] || 'vendedor',
+      (s.closedBy && names[s.closedBy]) || 'mando',
+      areaLabel(s.area),
+      round2(s.expectedCash?.MN ?? 0),
+      round2(s.declaredCash?.MN ?? 0),
+      diff,
+      sem[s.semaphore] || '',
+      s.countSkipped ? 'sin contar' : 'contó',
+      String(s.notes || '').trim()
+    ]
+  })
+  if (rows.length) {
+    rows.push(['TOTAL', `${shifts.length} cierre(s) forzado(s)`, '', '', '', '', totalDiff, '', '', ''])
+  } else {
+    rows.push(['Sin cierres forzados en el periodo', '', '', '', '', '', '', '', '', ''])
+  }
+
+  return {
+    title: 'Cierres forzados y diferencias',
+    subtitle: rangeLabel(from, to),
+    head: ['Cerrado el', 'Vendedor del turno', 'Cerró (mando)', 'Área', 'Esperado MN', 'Declarado MN', 'Diferencia MN', 'Cuadre', 'Billetes', 'Notas'],
+    rows,
+    filename: 'cierres_forzados',
+    orientation: 'landscape' // 10 columnas: PDF horizontal
+  }
+}
+
 // Ventas por area de venta (Fase 6 - Bloque 19): cuanto vendio y gano cada
 // VENDEDOR en cada area (quien hizo el turno en esa area), con subtotal por
 // area, y el detalle de ventas cruzadas (sustitucion) por vendedor.
