@@ -401,9 +401,13 @@ export function TableScreen() {
             Folio: {folio}
           </div>
           <div className="thermal__rule" />
+          {/* Fila en 3 columnas: [cantidad] [nombre] [importe]. La cantidad y el
+              importe se quedan fijos en su columna; solo el nombre envuelve si
+              no cabe (el CSS .thermal__item usa grid auto/1fr/auto). */}
           {ticketLines.map((l, i) => (
             <div key={i} className="thermal__item">
-              <div className="thermal__item-name">{l.qty} x {l.name}</div>
+              <div className="thermal__item-qty">{l.qty} x</div>
+              <div className="thermal__item-name">{l.name}</div>
               <div className="thermal__item-amt">{formatMoney(l.total, baseCurrency)}</div>
             </div>
           ))}

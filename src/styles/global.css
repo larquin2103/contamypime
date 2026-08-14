@@ -2621,10 +2621,21 @@ input[type='file'] {
 }
 .thermal__meta { text-align: center; font-size: 12px; margin-top: 4px; }
 .thermal__rule { border-top: 1px dashed #000; margin: 8px 0; }
-/* Descripción de productos: un poco más grande para que sea legible impresa. */
-.thermal__item { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; }
-.thermal__item-name { flex: 1; word-break: break-word; }
-.thermal__item-amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Descripción de productos en 3 columnas: [cantidad] [nombre] [importe].
+   El grid con centro minmax(0,1fr) mantiene la cantidad y el importe fijos en
+   sus columnas y deja que SOLO el nombre envuelva (controlado) cuando no cabe;
+   así el importe nunca baja de línea. Un poco más grande que la meta para que
+   sea legible impreso. */
+.thermal__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  font-size: 15px;
+  align-items: baseline;
+}
+.thermal__item-qty { white-space: nowrap; }
+.thermal__item-name { overflow-wrap: break-word; }
+.thermal__item-amt { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .thermal__row {
   display: flex;
   justify-content: space-between;
@@ -2681,15 +2692,22 @@ input[type='file'] {
     border-radius: 0 !important;
     color: #000 !important;
     background: #fff !important;
-    font-size: 16px;
+    font-size: 11px;
+    line-height: 1.15;
   }
-  #ticket .thermal__head { font-size: 18px; }
-  #ticket .thermal__meta { font-size: 13px; }
-  #ticket .thermal__item { font-size: 17px; }
-  #ticket .thermal__row--sm { font-size: 15px; }
-  #ticket .thermal__total { font-size: 18px; }
-  #ticket .thermal__pay { font-size: 16px; }
-  #ticket .thermal__foot { font-size: 18px; }
+  /* Tamaños compactos para 58 mm: nítidos pero sin el exceso vertical anterior.
+     Ajuste fino de densidad: line-height 1.15 (arriba), gap de columnas a 6px
+     (más ancho para el nombre, sin desperdiciar el papel) y pie más pegado. La
+     negrita del negocio/TOTAL/pie viene de las clases base (font-weight:700). */
+  #ticket .thermal__head { font-size: 14px; }
+  #ticket .thermal__meta { font-size: 10px; }
+  #ticket .thermal__rule { margin: 4px 0; }
+  #ticket .thermal__item { font-size: 12px; gap: 6px; }
+  #ticket .thermal__row { font-size: 11px; }
+  #ticket .thermal__row--sm { font-size: 10px; }
+  #ticket .thermal__total { font-size: 13px; }
+  #ticket .thermal__pay { font-size: 11px; margin-top: 4px; }
+  #ticket .thermal__foot { font-size: 13px; margin-top: 6px; }
 }
 
 /* ----- Mesas: carta de un toque (velocidad de servicio) ----- */
