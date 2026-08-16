@@ -12,7 +12,7 @@ import { DonutChart, TrendChart } from './Charts'
 
 // Rangos calculados en dia LOCAL (no UTC) para que "Hoy/7/30" cuadren con el
 // dia calendario del negocio (ver lib/dates.localDay).
-function rangeFor(period) {
+function rangeFor(period, customFrom = '', customTo = '') {
   const today = localDay()
   if (period === 'today') return { from: today, to: today }
   if (period === '7') {
@@ -25,11 +25,14 @@ function rangeFor(period) {
     d.setDate(d.getDate() - 29)
     return { from: localDay(d), to: today }
   }
+  // Rango libre elegido por el dueño (Bloque 1). Un extremo vacio = sin ese
+  // limite (igual que en Reportes): solo "desde" = de esa fecha en adelante.
+  if (period === 'custom') return { from: customFrom || null, to: customTo || null }
   return { from: null, to: null } // todo
 }
 
 // Periodo inmediatamente anterior, del mismo largo, para comparar (vs anterior).
-function prevRangeFor(period) {
+function prevRangeFor(period, customFrom = '', customTo = '') {
   if (period === 'today') {
     const d = new Date(); d.setDate(d.getDate() - 1)
     return { from: localDay(d), to: localDay(d) }
@@ -40,6 +43,17 @@ function prevRangeFor(period) {
     const from = new Date(); from.setDate(from.getDate() - (len * 2 - 1))
     return { from: localDay(from), to: localDay(to) }
   }
+  // Rango libre: la ventana anterior del MISMO largo (solo con ambas fechas).
+  // Si falta alguna, se devuelve el mismo rango => delta 0 (no compara aun).
+  if (period === 'custom') {
+    if (!customFrom || !customTo) return { from: customFrom || null, to: customTo || null }
+    const from = new Date(customFrom + 'T00:00:00')
+    const to = new Date(customTo + 'T00:00:00')
+    const len = Math.round((to - from) / 86400000) + 1
+    const pTo = new Date(from); pTo.setDate(pTo.getDate() - 1)
+    const pFrom = new Date(pTo); pFrom.setDate(pFrom.getDate() - (len - 1))
+    return { from: localDay(pFrom), to: localDay(pTo) }
+  }
   return { from: null, to: null } // 'all' no compara
 }
 
@@ -47,7 +61,8 @@ const PERIODS = [
   ['today', 'Hoy'],
   ['7', '7 días'],
   ['30', '30 días'],
-  ['all', 'Todo']
+  ['all', 'Todo'],
+  ['custom', 'Personalizado']
 ]
 
 // Variacion porcentual vs periodo anterior.
@@ -71,11 +86,13 @@ export function DashboardScreen() {
   const { isManager } = useAuth()
   const { baseCurrency } = useCurrency()
   const [period, setPeriod] = useState('7')
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
   const [rotDays, setRotDays] = useState(14)
   const [tab, setTab] = useState('top')
 
-  const range = useMemo(() => rangeFor(period), [period])
-  const prevRange = useMemo(() => prevRangeFor(period), [period])
+  const range = useMemo(() => rangeFor(period, customFrom, customTo), [period, customFrom, customTo])
+  const prevRange = useMemo(() => prevRangeFor(period, customFrom, customTo), [period, customFrom, customTo])
   const report = useLiveQuery(() => analyticsRepo.report(range), [range.from, range.to])
   const prev = useLiveQuery(() => analyticsRepo.report(prevRange), [prevRange.from, prevRange.to])
   const lowRot = useLiveQuery(() => analyticsRepo.lowRotation({ days: rotDays }), [rotDays], [])
@@ -109,6 +126,15 @@ export function DashboardScreen() {
           </button>
         ))}
       </div>
+
+      {period === 'custom' && (
+        <div className="form-row">
+          <label className="field"><span>Desde</span>
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} /></label>
+          <label className="field"><span>Hasta</span>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} /></label>
+        </div>
+      )}
 
       <div className="stat-grid">
         <div className="stat-card">
