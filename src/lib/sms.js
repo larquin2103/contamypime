@@ -68,3 +68,15 @@ export function parseSms(text) {
 
   return { amount, reference }
 }
+
+// Extrae SOLO el numero de transaccion/operacion (alfanumerico, p.ej. "KW601JEQ31999")
+// de un SMS de confirmacion. A diferencia de la "reference" de parseSms (que suele ser
+// la secuencia de digitos mas larga = la tarjeta), esto busca el token que sigue a la
+// palabra clave "transaccion/operacion/confirmacion". Quita tildes (NFD + \p{Diacritic})
+// para tolerar "transaccion" con o sin acento. Devuelve el id en MAYUSCULAS, o '' si no
+// aparece. SOLO LECTURA (auditoria): detecta el MISMO comprobante reusado en dos ventas.
+export function parseTxnId(text) {
+  const t = String(text || '').normalize('NFD').replace(/\p{Diacritic}/gu, '')
+  const m = t.match(/(?:transacc\w*|operac\w*|confirmac\w*)[^A-Za-z0-9]{0,8}([A-Z0-9]{5,})/i)
+  return m ? m[1].toUpperCase() : ''
+}

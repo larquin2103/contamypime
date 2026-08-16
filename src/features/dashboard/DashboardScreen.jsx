@@ -98,6 +98,12 @@ export function DashboardScreen() {
   const lowRot = useLiveQuery(() => analyticsRepo.lowRotation({ days: rotDays }), [rotDays], [])
   const restock = useLiveQuery(() => analyticsRepo.restock(), [], [])
   const transferDiffs = useLiveQuery(() => analyticsRepo.transferMismatches(range), [range.from, range.to], [])
+  // Auditoria de cuadre (Bloque 2). El detector de duplicados barre TODO el historial
+  // (sin rango); las demas secciones respetan el rango elegido arriba.
+  const transferRecon = useLiveQuery(() => analyticsRepo.transferReconciliation(range), [range.from, range.to], null)
+  const dupTransfers = useLiveQuery(() => analyticsRepo.duplicateTransfers(), [], [])
+  const cashRecon = useLiveQuery(() => analyticsRepo.cashReconciliation(range), [range.from, range.to], [])
+  const integrity = useLiveQuery(() => analyticsRepo.integrityFlags(range), [range.from, range.to], null)
 
   if (!isManager) {
     return (
@@ -188,6 +194,7 @@ export function DashboardScreen() {
           <button className={`tab ${tab === 'area' ? 'is-active' : ''}`} onClick={() => setTab('area')}>Áreas</button>
         )}
         <button className={`tab ${tab === 'alerts' ? 'is-active' : ''}`} onClick={() => setTab('alerts')}>Alertas</button>
+        <button className={`tab ${tab === 'audit' ? 'is-active' : ''}`} onClick={() => setTab('audit')}>Auditoría</button>
       </div>
 
       {tab === 'top' && (
@@ -303,6 +310,153 @@ export function DashboardScreen() {
               </div>
             ))}
             {lowRot.length === 0 && <p className="muted">Todo con buena rotación.</p>}
+          </div>
+        </>
+      )}
+
+      {tab === 'audit' && (
+        <>
+          <p className="muted">
+            Verificación de solo lectura. Usa el rango de fechas de arriba; los
+            duplicados barren todo el historial. No modifica nada.
+          </p>
+
+          {/* 1) Transferencias: esperadas (lo que se debia cobrar) vs contabilizadas (lo del SMS) */}
+          <h3 className="section-title">
+            Transferencias: esperadas vs contabilizadas{' '}
+            {transferRecon && (transferRecon.mismatches.length === 0
+              ? <span className="ok-text">🟢 cuadra</span>
+              : <span className="warn-text">🔴 {transferRecon.mismatches.length} con diferencia</span>)}
+          </h3>
+          <div className="list">
+            {(transferRecon?.byCurrency || []).map((c) => (
+              <div key={c.currency} className="list-item">
+                <div>
+                  <strong>{c.currency}</strong> · {c.count} transferencia(s)
+                  <br />
+                  <span className="muted">
+                    esperado {formatMoney(c.expected, c.currency)} · contabilizado {formatMoney(c.received, c.currency)}
+                  </span>
+                  <br />
+                  <span className={c.diff === 0 ? 'ok-text' : 'warn-text'}>
+                    diferencia {formatMoney(c.diff, c.currency)}{c.diff > 0 ? ' (de más)' : c.diff < 0 ? ' (falta)' : ''}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {(transferRecon?.byCurrency || []).length === 0 && <p className="muted">Sin transferencias en el periodo.</p>}
+          </div>
+          {(transferRecon?.mismatches || []).length > 0 && (
+            <div className="list">
+              {transferRecon.mismatches.map((s) => (
+                <div key={s.id} className="list-item">
+                  <div>
+                    <strong>{s.seller} · {formatDateTime(s.createdAt)}</strong>
+                    <br />
+                    <span className="muted">{s.items} · esperado {formatMoney(s.expected, s.currency)} · recibido {formatMoney(s.received, s.currency)}</span>
+                    <br />
+                    <span className={s.diff < 0 ? 'error' : 'warn-text'}>
+                      diferencia {formatMoney(s.diff, s.currency)} {s.diff < 0 ? '(faltó)' : '(de más)'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 2) Duplicados por Nº de Transaccion del banco (barre TODO el historial) */}
+          <h3 className="section-title">
+            Duplicados por Nº de Transacción{' '}
+            {dupTransfers.length === 0
+              ? <span className="ok-text">🟢 ninguno</span>
+              : <span className="warn-text">🔴 {dupTransfers.length}</span>}
+          </h3>
+          <p className="muted">Mismo Nº del banco en 2+ ventas = el dinero entró una sola vez. Barre todo el historial.</p>
+          <div className="list">
+            {dupTransfers.map((g) => (
+              <div key={g.txn} className="list-item">
+                <div>
+                  <strong>Nº {g.txn} · {formatMoney(g.amount, g.currency)}</strong>
+                  {g.sales.map((s) => (
+                    <div key={s.id}>
+                      <span className={s.suspicious ? 'error' : 'muted'}>
+                        {s.suspicious ? '⚠️ ' : '✓ '}
+                        {formatDateTime(s.createdAt)} · {s.items} · esperado {formatMoney(s.expected, g.currency)} · recibido {formatMoney(s.received, g.currency)}
+                        {s.suspicious ? ' (comprobante reusado)' : ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {dupTransfers.length === 0 && <p className="muted">Sin comprobantes repetidos.</p>}
+          </div>
+
+          {/* 3) Efectivo: esperado vs declarado por turno CERRADO (los abiertos no tienen conteo) */}
+          <h3 className="section-title">
+            Efectivo: esperado vs declarado{' '}
+            {cashRecon.filter((s) => s.semaphore !== 'green').length === 0
+              ? <span className="ok-text">🟢 cuadra</span>
+              : <span className="warn-text">🔴 {cashRecon.filter((s) => s.semaphore !== 'green').length} sin cuadrar</span>}
+          </h3>
+          <div className="list">
+            {cashRecon.map((s) => (
+              <div key={s.shiftId} className="list-item">
+                <div>
+                  <strong>
+                    {s.semaphore === 'green' ? '🟢' : s.semaphore === 'yellow' ? '🟡' : '🔴'}{' '}
+                    {s.seller}{s.area ? ` · ${areaLabel(s.area)}` : ''} · {formatDateTime(s.closedAt)}
+                  </strong>
+                  <br />
+                  <span className="muted">esperado {m(s.expected)} · declarado {m(s.declared)}{s.forced ? ' · cierre forzado' : ''}{s.countSkipped ? ' · sin contar' : ''}</span>
+                  <br />
+                  <span className={s.diff === 0 ? 'ok-text' : s.semaphore === 'red' ? 'error' : 'warn-text'}>
+                    diferencia {m(s.diff)}
+                  </span>
+                </div>
+              </div>
+            ))}
+            {cashRecon.length === 0 && <p className="muted">Sin turnos cerrados en el periodo.</p>}
+          </div>
+
+          {/* 4) Anuladas / cierres forzados / ventas post-cierre */}
+          <h3 className="section-title">
+            Anuladas, forzadas y post-cierre{' '}
+            {integrity && (integrity.voided.length + integrity.forced.length + integrity.postClose.length === 0
+              ? <span className="ok-text">🟢 nada</span>
+              : <span className="warn-text">🔴 {integrity.voided.length + integrity.forced.length + integrity.postClose.length}</span>)}
+          </h3>
+          <div className="list">
+            {(integrity?.voided || []).map((s) => (
+              <div key={s.id} className="list-item">
+                <div>
+                  <strong>Anulada · {s.seller} · {formatDateTime(s.createdAt)}</strong>
+                  <br />
+                  <span className="muted">{s.items} · {m(s.total)}</span>
+                </div>
+              </div>
+            ))}
+            {(integrity?.forced || []).map((s) => (
+              <div key={s.shiftId} className="list-item">
+                <div>
+                  <strong>Cierre forzado · {s.seller}{s.area ? ` · ${areaLabel(s.area)}` : ''} · {formatDateTime(s.closedAt)}</strong>
+                  <br />
+                  <span className="muted">cerró {s.closedBy} · diferencia {m(s.diff)}</span>
+                </div>
+              </div>
+            ))}
+            {(integrity?.postClose || []).map((s) => (
+              <div key={s.id} className="list-item">
+                <div>
+                  <strong>Venta post-cierre · {s.seller}{s.area ? ` · ${areaLabel(s.area)}` : ''} · {formatDateTime(s.createdAt)}</strong>
+                  <br />
+                  <span className="muted">turno cerrado {formatDateTime(s.shiftClosedAt)} · {m(s.total)}</span>
+                </div>
+              </div>
+            ))}
+            {integrity && integrity.voided.length + integrity.forced.length + integrity.postClose.length === 0 && (
+              <p className="muted">Sin anuladas, cierres forzados ni ventas post-cierre en el periodo.</p>
+            )}
           </div>
         </>
       )}

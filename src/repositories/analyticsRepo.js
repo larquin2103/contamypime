@@ -1,6 +1,8 @@
 import { db } from '../db/db'
 import { round2 } from '../lib/currency'
 import { localDay } from '../lib/dates'
+import { parseTxnId } from '../lib/sms'
+import { SHIFT_STATUS } from '../db/constants'
 
 // El dia se calcula en hora LOCAL (no UTC) para que "hoy" cuadre con el dia
 // calendario del negocio (ver localDay en lib/dates).
@@ -217,5 +219,170 @@ export const analyticsRepo = {
       .filter((p) => (Number(p.minStock) > 0 && p.stock <= p.minStock) || p.stock <= 0)
       .map((p) => ({ productId: p.id, name: p.name, stock: p.stock, minStock: Number(p.minStock) || 0, unit: p.unit }))
       .sort((a, b) => a.stock - b.stock)
+  },
+
+  // ---------------------------------------------------------------------------
+  // Auditoria de cuadre (Bloque 2). Todo SOLO LECTURA: deriva de ventas/turnos,
+  // no muta ni escribe nada. Alimenta la pestaña "Auditoria" del panel del dueño.
+  // ---------------------------------------------------------------------------
+
+  // 1) Transferencias: lo que se DEBIO cobrar (transferExpected) vs lo CONTABILIZADO
+  //    (transferAmount, leido del SMS), por moneda, en el rango. Lista las ventas con
+  //    diferencia (transferDiff != 0) para ubicar el descuadre.
+  async transferReconciliation({ from = null, to = null } = {}) {
+    const users = await db.users.toArray()
+    const nameOf = Object.fromEntries(users.map((u) => [u.id, u.name]))
+    const sales = (await db.sales.toArray()).filter(
+      (s) => !s.voided && s.paymentMethod === 'transfer' && inRange(s.createdAt, from, to)
+    )
+    const cur = {}
+    const mismatches = []
+    for (const s of sales) {
+      const c = s.transferCurrency || 'MN'
+      const e = cur[c] || (cur[c] = { currency: c, expected: 0, received: 0, count: 0 })
+      e.expected += Number(s.transferExpected || 0)
+      e.received += Number(s.transferAmount || 0)
+      e.count += 1
+      if (Math.abs(Number(s.transferDiff || 0)) >= 0.01) {
+        mismatches.push({
+          id: s.id,
+          createdAt: s.createdAt,
+          seller: nameOf[s.sellerId] || 'vendedor',
+          items: (s.items || []).map((it) => `${it.qty}x ${it.name}`).join(', '),
+          currency: c,
+          expected: round2(Number(s.transferExpected || 0)),
+          received: round2(Number(s.transferAmount || 0)),
+          diff: round2(Number(s.transferDiff || 0))
+        })
+      }
+    }
+    const byCurrency = Object.values(cur).map((e) => ({
+      currency: e.currency,
+      expected: round2(e.expected),
+      received: round2(e.received),
+      diff: round2(e.received - e.expected),
+      count: e.count
+    }))
+    mismatches.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff))
+    return { byCurrency, mismatches }
+  },
+
+  // 2) Duplicados por Nº de Transaccion del banco: el MISMO comprobante (mismo Nº en
+  //    el SMS) reusado en 2+ ventas => el dinero entro una sola vez. Barre TODO el
+  //    historial (no depende del rango) para no perder pares en fechas distintas.
+  //    Marca "suspicious" la venta cuyo recibido != total vendido (comprobante ajeno).
+  async duplicateTransfers() {
+    const users = await db.users.toArray()
+    const nameOf = Object.fromEntries(users.map((u) => [u.id, u.name]))
+    const sales = (await db.sales.toArray()).filter(
+      (s) => !s.voided && s.paymentMethod === 'transfer'
+    )
+    const groups = {}
+    for (const s of sales) {
+      const txn = parseTxnId(s.transferSms)
+      if (!txn) continue
+      if (!groups[txn]) groups[txn] = []
+      groups[txn].push(s)
+    }
+    const out = []
+    for (const [txn, arr] of Object.entries(groups)) {
+      if (arr.length < 2) continue
+      arr.sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+      out.push({
+        txn,
+        currency: arr[0].transferCurrency || 'MN',
+        amount: round2(Number(arr[0].transferAmount || 0)),
+        sales: arr.map((s) => ({
+          id: s.id,
+          createdAt: s.createdAt,
+          seller: nameOf[s.sellerId] || 'vendedor',
+          items: (s.items || []).map((it) => `${it.qty}x ${it.name}`).join(', '),
+          expected: round2(Number(s.transferExpected || 0)),
+          received: round2(Number(s.transferAmount || 0)),
+          // Sospechosa: lo recibido NO coincide con lo esperado (mismo comprobante, otra venta).
+          suspicious: Math.abs(Number(s.transferAmount || 0) - Number(s.transferExpected || 0)) >= 0.01
+        }))
+      })
+    }
+    out.sort((a, b) => b.amount - a.amount)
+    return out
+  },
+
+  // 3) Efectivo: esperado vs declarado por TURNO CERRADO en el rango (los abiertos aun
+  //    no tienen conteo declarado). Devuelve todos con su semaforo; la UI resalta los
+  //    que no cuadran. Deriva del registro del turno (no muta).
+  async cashReconciliation({ from = null, to = null } = {}) {
+    const users = await db.users.toArray()
+    const nameOf = Object.fromEntries(users.map((u) => [u.id, u.name]))
+    const shifts = (await db.shifts.toArray()).filter(
+      (s) => s.status === SHIFT_STATUS.CLOSED && inRange(s.closedAt, from, to)
+    )
+    return shifts
+      .map((s) => ({
+        shiftId: s.id,
+        closedAt: s.closedAt,
+        seller: nameOf[s.sellerId] || 'vendedor',
+        area: s.area || '',
+        expected: round2(s.expectedCash?.MN ?? 0),
+        declared: round2(s.declaredCash?.MN ?? 0),
+        diff: round2(s.difference?.MN ?? 0),
+        semaphore: s.semaphore || null,
+        forced: !!s.forced,
+        countSkipped: !!s.countSkipped
+      }))
+      .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))
+  },
+
+  // 4) Integridad: ventas ANULADAS, cierres FORZADOS y ventas POST-CIERRE en el rango.
+  //    Misma derivacion que los reportes homonimos de reportsService (solo lectura).
+  async integrityFlags({ from = null, to = null } = {}) {
+    const users = await db.users.toArray()
+    const nameOf = Object.fromEntries(users.map((u) => [u.id, u.name]))
+    const allSales = await db.sales.toArray()
+    const shiftsById = {}
+    for (const sh of await db.shifts.toArray()) shiftsById[sh.id] = sh
+
+    const voided = allSales
+      .filter((s) => s.voided && inRange(s.createdAt, from, to))
+      .map((s) => ({
+        id: s.id,
+        createdAt: s.createdAt,
+        seller: nameOf[s.sellerId] || 'vendedor',
+        items: (s.items || []).map((it) => `${it.qty}x ${it.name}`).join(', '),
+        total: round2(Number(s.totalBase || 0))
+      }))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+
+    const forced = (await db.shifts.toArray())
+      .filter((s) => s.status === SHIFT_STATUS.CLOSED && s.forced === true && inRange(s.closedAt, from, to))
+      .map((s) => ({
+        shiftId: s.id,
+        closedAt: s.closedAt,
+        seller: nameOf[s.sellerId] || 'vendedor',
+        closedBy: (s.closedBy && nameOf[s.closedBy]) || 'mando',
+        area: s.area || '',
+        diff: round2(s.difference?.MN ?? 0),
+        semaphore: s.semaphore || null
+      }))
+      .sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1))
+
+    const postClose = []
+    for (const s of allSales) {
+      if (s.voided || !inRange(s.createdAt, from, to)) continue
+      const sh = shiftsById[s.shiftId]
+      if (!sh || sh.status !== SHIFT_STATUS.CLOSED || !sh.closedAt) continue
+      if (!(s.createdAt > sh.closedAt)) continue
+      postClose.push({
+        id: s.id,
+        createdAt: s.createdAt,
+        seller: nameOf[s.sellerId] || 'vendedor',
+        area: s.area || '',
+        total: round2(Number(s.totalBase || 0)),
+        shiftClosedAt: sh.closedAt
+      })
+    }
+    postClose.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+
+    return { voided, forced, postClose }
   }
 }
