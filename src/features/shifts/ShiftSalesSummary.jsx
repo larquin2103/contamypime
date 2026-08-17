@@ -18,12 +18,31 @@ export function ShiftSalesSummary({ shiftId }) {
   const { user } = useAuth()
   const { hasModule } = useLicense()
   const [busy, setBusy] = useState(false)
+  const [filter, setFilter] = useState('all') // Bloque 3: filtro por metodo de pago
 
   if (sales === undefined) return <p className="muted">Cargando…</p>
   const active = sales.filter((s) => !s.voided)
   if (!active.length) return <p className="muted">Aún no hay ventas en este turno.</p>
 
   const total = active.reduce((a, s) => a + Number(s.totalBase || 0), 0)
+
+  // Bloque 3: agrupar por metodo de pago. La clasificacion es IDENTICA a la de
+  // cada tarjeta (mixto / efectivo / transferencia). Se calculan subtotales por
+  // metodo y el filtro solo aparece cuando hay MAS de un metodo (si no, la vista
+  // queda identica al clasico: sin chips ni desglose).
+  const methodOf = (s) => (s.paymentMethod === 'mixed' ? 'mixed' : s.paymentMethod === 'transfer' ? 'transfer' : 'cash')
+  const groups = { cash: { n: 0, sum: 0 }, transfer: { n: 0, sum: 0 }, mixed: { n: 0, sum: 0 } }
+  for (const s of active) {
+    const g = groups[methodOf(s)]
+    g.n += 1
+    g.sum += Number(s.totalBase || 0)
+  }
+  const METHODS = [['cash', 'Efectivo'], ['transfer', 'Transferencia'], ['mixed', 'Mixto']]
+  const present = METHODS.filter(([k]) => groups[k].n > 0)
+  const showFilter = present.length > 1
+  // Si el filtro elegido ya no tiene ventas (p.ej. se anularon), vuelve a "Todos".
+  const activeFilter = present.some(([k]) => k === filter) ? filter : 'all'
+  const shown = showFilter && activeFilter !== 'all' ? active.filter((s) => methodOf(s) === activeFilter) : active
 
   const exportPdf = async () => {
     setBusy(true)
@@ -46,7 +65,31 @@ export function ShiftSalesSummary({ shiftId }) {
           {busy ? '...' : '⬇ PDF'}
         </button>
       </div>
-      {active.map((s) => {
+      {showFilter && (
+        <>
+          <p className="muted">
+            {present.map(([k, label]) => `${label}: ${formatMoney(groups[k].sum, baseCurrency)}`).join(' · ')}
+          </p>
+          <div className="period-row">
+            <button
+              className={`btn btn--sm ${activeFilter === 'all' ? 'btn--primary' : 'btn--ghost'}`}
+              onClick={() => setFilter('all')}
+            >
+              Todos ({active.length})
+            </button>
+            {present.map(([k, label]) => (
+              <button
+                key={k}
+                className={`btn btn--sm ${activeFilter === k ? 'btn--primary' : 'btn--ghost'}`}
+                onClick={() => setFilter(k)}
+              >
+                {label} ({groups[k].n})
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {shown.map((s) => {
         const isMixed = s.paymentMethod === 'mixed'
         const isCash = !isMixed && s.paymentMethod !== 'transfer'
         const cur = isMixed ? baseCurrency : isCash ? s.cashCurrency || baseCurrency : s.transferCurrency || 'MN'
