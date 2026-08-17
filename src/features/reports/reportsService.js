@@ -480,6 +480,117 @@ export async function buildForcedClosuresReport({ from = null, to = null } = {})
   }
 }
 
+// --- Bloque 4: la Auditoria de cuadre y las ventas del turno por metodo,
+// expuestas como REPORTES exportables. Reutilizan la MISMA logica que la pestaña
+// "Auditoria" del panel (metodos de analyticsRepo) y el desglose del resumen del
+// turno; no derivan distinto, solo formatean a tabla. Solo lectura; base. ---
+
+// Transferencias: lo que se DEBIO cobrar (esperado) vs lo CONTABILIZADO (leido del
+// SMS), por moneda, con las ventas que tienen diferencia. Reusa
+// analyticsRepo.transferReconciliation (misma logica que el panel).
+export async function buildTransferReconReport({ from = null, to = null } = {}) {
+  const { byCurrency, mismatches } = await analyticsRepo.transferReconciliation({ from, to })
+  const rows = []
+  // Detalle: las ventas por transferencia con diferencia (para ubicar el descuadre).
+  for (const s of mismatches) {
+    rows.push([formatDateTime(s.createdAt), s.seller, s.items, s.currency, s.expected, s.received, s.diff])
+  }
+  // Cierre por moneda (el cuadre: esperado vs contabilizado y su diferencia).
+  for (const c of byCurrency) {
+    rows.push([`TOTAL ${c.currency}`, `${c.count} transferencia(s)`, '', c.currency, c.expected, c.received, c.diff])
+  }
+  if (!rows.length) rows.push(['Sin transferencias en el periodo', '', '', '', '', '', ''])
+  return {
+    title: 'Transferencias: esperado vs contabilizado',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Vendedor', 'Productos', 'Moneda', 'Esperado', 'Contabilizado', 'Diferencia'],
+    rows,
+    filename: 'transferencias_cuadre',
+    orientation: 'landscape' // 7 columnas: PDF horizontal
+  }
+}
+
+// Transferencias duplicadas: el MISMO Nº de Transaccion del banco reusado en 2+
+// ventas (el dinero entro una sola vez). Reusa analyticsRepo.duplicateTransfers,
+// que barre TODO el historial (por eso el subtitulo no es un rango). from/to se
+// aceptan por el contrato del boton de Reportes, pero no se aplican.
+export async function buildTransferDuplicatesReport({ from = null, to = null } = {}) {
+  void from; void to // los duplicados se buscan en todo el historial, no por rango
+  const groups = await analyticsRepo.duplicateTransfers()
+  const rows = []
+  for (const g of groups) {
+    for (const s of g.sales) {
+      rows.push([
+        g.txn,
+        formatDateTime(s.createdAt),
+        s.seller,
+        s.items,
+        g.currency,
+        s.expected,
+        s.received,
+        s.suspicious ? 'SOSPECHOSA (comprobante reusado)' : 'OK'
+      ])
+    }
+  }
+  if (!rows.length) rows.push(['Sin comprobantes repetidos', '', '', '', '', '', '', ''])
+  return {
+    title: 'Transferencias duplicadas (mismo Nº)',
+    subtitle: 'Todo el historial',
+    head: ['Nº Transacción', 'Fecha', 'Vendedor', 'Productos', 'Moneda', 'Esperado', 'Recibido', 'Estado'],
+    rows,
+    filename: 'transferencias_duplicadas',
+    orientation: 'landscape' // 8 columnas: PDF horizontal
+  }
+}
+
+// Ventas del turno por metodo de pago: por cada turno con ventas en el rango, sus
+// subtotales Efectivo / Transferencia / Mixto y total. Misma clasificacion que el
+// resumen del turno (Bloque 3); suma por totalBase (MN base). Solo lectura.
+export async function buildShiftPaymentReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const shifts = {}
+  for (const sh of await db.shifts.toArray()) shifts[sh.id] = sh
+  const methodOf = (s) => (s.paymentMethod === 'mixed' ? 'mixed' : s.paymentMethod === 'transfer' ? 'transfer' : 'cash')
+  const agg = {}
+  for (const s of await db.sales.toArray()) {
+    if (s.voided || !inRange(s.createdAt, from, to)) continue
+    const a = agg[s.shiftId] || (agg[s.shiftId] = { cash: 0, transfer: 0, mixed: 0, n: 0 })
+    a[methodOf(s)] += Number(s.totalBase || 0)
+    a.n += 1
+  }
+  // Mas reciente primero (por apertura del turno).
+  const ids = Object.keys(agg).sort((x, y) => ((shifts[x]?.openedAt || '') < (shifts[y]?.openedAt || '') ? 1 : -1))
+  const tot = { cash: 0, transfer: 0, mixed: 0, n: 0 }
+  const rows = ids.map((id) => {
+    const a = agg[id]
+    const sh = shifts[id]
+    tot.cash += a.cash; tot.transfer += a.transfer; tot.mixed += a.mixed; tot.n += a.n
+    return [
+      sh ? formatDateTime(sh.openedAt) : '—',
+      sh ? (names[sh.sellerId] || 'vendedor') : '—',
+      sh ? areaLabel(sh.area) : '—',
+      a.n,
+      round2(a.cash),
+      round2(a.transfer),
+      round2(a.mixed),
+      round2(a.cash + a.transfer + a.mixed)
+    ]
+  })
+  if (rows.length) {
+    rows.push(['TOTAL', '', '', tot.n, round2(tot.cash), round2(tot.transfer), round2(tot.mixed), round2(tot.cash + tot.transfer + tot.mixed)])
+  } else {
+    rows.push(['Sin ventas en el periodo', '', '', '', '', '', '', ''])
+  }
+  return {
+    title: 'Ventas del turno por método de pago',
+    subtitle: rangeLabel(from, to),
+    head: ['Turno abierto', 'Vendedor', 'Área', 'N.º ventas', 'Efectivo MN', 'Transferencia MN', 'Mixto MN', 'Total MN'],
+    rows,
+    filename: 'ventas_turno_metodo',
+    orientation: 'landscape' // 8 columnas: PDF horizontal
+  }
+}
+
 // Ventas por area de venta (Fase 6 - Bloque 19): cuanto vendio y gano cada
 // VENDEDOR en cada area (quien hizo el turno en esa area), con subtotal por
 // area, y el detalle de ventas cruzadas (sustitucion) por vendedor.

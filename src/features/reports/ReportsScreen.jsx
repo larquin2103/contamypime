@@ -20,6 +20,9 @@ import {
   buildKitchenProduction,
   buildPostCloseSalesReport,
   buildForcedClosuresReport,
+  buildTransferReconReport,
+  buildTransferDuplicatesReport,
+  buildShiftPaymentReport,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -93,6 +96,9 @@ export function ReportsScreen() {
       {card('shifts', 'Cierres de turno', 'Cuadre de cada turno cerrado, por área', buildShiftsReport, true)}
       {card('postclose', 'Ventas después del cierre', 'Ventas que quedaron registradas en un turno YA cerrado (posible descuadre): fecha, vendedor, área, cuándo se cerró el turno e importe MN', buildPostCloseSalesReport, true)}
       {card('forced', 'Cierres forzados', 'Turnos cerrados por el dueño/administrativo (no por el vendedor) y su diferencia de caja — para supervisión', buildForcedClosuresReport, true)}
+      {card('transrecon', 'Transferencias: esperado vs contabilizado', 'Cuadre de transferencias por moneda y las ventas con diferencia (lo que se debía cobrar vs lo recibido por SMS)', buildTransferReconReport, true)}
+      {card('transdup', 'Transferencias duplicadas', 'Mismo Nº de Transacción del banco reusado en 2+ ventas (el dinero entró una sola vez). Barre todo el historial', buildTransferDuplicatesReport, false)}
+      {card('shiftpay', 'Ventas del turno por método', 'Por cada turno: subtotales Efectivo / Transferencia / Mixto y total (según el método de pago)', buildShiftPaymentReport, true)}
       {card('entries', 'Entradas al almacén', 'Compras ingresadas al almacén central', buildEntriesReport, true)}
       {areas.length > 0 &&
         card('area', 'Ventas por área', 'Ingreso y ganancia por área y vendedor', buildAreaReport, true)}
