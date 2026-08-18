@@ -69,14 +69,16 @@ export function parseSms(text) {
   return { amount, reference }
 }
 
-// Extrae SOLO el numero de transaccion/operacion (alfanumerico, p.ej. "KW601JEQ31999")
-// de un SMS de confirmacion. A diferencia de la "reference" de parseSms (que suele ser
-// la secuencia de digitos mas larga = la tarjeta), esto busca el token que sigue a la
-// palabra clave "transaccion/operacion/confirmacion". Quita tildes (NFD + \p{Diacritic})
-// para tolerar "transaccion" con o sin acento. Devuelve el id en MAYUSCULAS, o '' si no
-// aparece. SOLO LECTURA (auditoria): detecta el MISMO comprobante reusado en dos ventas.
+// Extrae SOLO el numero de transaccion/operacion (alfanumerico, p.ej. "KW601JEQ31999") de
+// un SMS de confirmacion. A diferencia de la "reference" de parseSms (que suele ser la
+// secuencia de digitos mas larga = la tarjeta), busca el token tras la palabra clave
+// "transaccion/operacion/confirmacion". Se mantiene minimo y en ASCII, con clases de
+// caracteres explicitas y sin features de regex especiales, porque este modulo lo comparte
+// el cobro (parseSms). Los SMS de bancos cubanos escriben "Transaccion" sin tilde (validado
+// en el respaldo). Devuelve el id en MAYUSCULAS o cadena vacia. SOLO LECTURA (auditoria):
+// detecta el MISMO comprobante de transferencia reusado en dos ventas.
 export function parseTxnId(text) {
-  const t = String(text || '').normalize('NFD').replace(/\p{Diacritic}/gu, '')
-  const m = t.match(/(?:transacc\w*|operac\w*|confirmac\w*)[^A-Za-z0-9]{0,8}([A-Z0-9]{5,})/i)
+  const t = String(text || '')
+  const m = t.match(/(?:transacc[A-Za-z0-9_]*|operac[A-Za-z0-9_]*|confirmac[A-Za-z0-9_]*)[^A-Za-z0-9]{0,8}([A-Z0-9]{5,})/i)
   return m ? m[1].toUpperCase() : ''
 }
