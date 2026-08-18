@@ -12,13 +12,13 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { cleanQty } from '../../lib/qty'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 
-// Tablero de cocina (modulo 'cocina'). Lo opera el COCINERO (y tambien el mando).
+// Tablero de cocina (modulo 'cocina'). Lo opera el COCINERO, el VENDEDOR y el mando.
 // Muestra una tarjeta por receta con "Puedes elaborar: N" y, en 3 toques
 // (receta -> cantidad + area -> Elaborar y enviar), llama a kitchenRepo.produce,
 // que consume insumos de la cocina, crea el elaborado y lo envia al area elegida.
 // Aqui NO se ven costos (alcance del rol): el analisis financiero vive en Reportes.
 export function KitchenScreen() {
-  const { user, isCook, isManager } = useAuth()
+  const { user, isCook, isManager, isSeller } = useAuth()
   const { hasModule } = useLicense()
 
   const recipes = useLiveQuery(() => recipesRepo.listActive(), [], [])
@@ -42,7 +42,7 @@ export function KitchenScreen() {
   const [okMsg, setOkMsg] = useState('')
   useEscapeClose(() => setProducing(null))
 
-  // Compuerta del modulo y del rol (cocinero o mando).
+  // Compuerta del modulo y del rol (cocinero, mando o vendedor).
   if (!hasModule(LICENSE_MODULES.KITCHEN)) {
     return (
       <div className="screen">
@@ -54,12 +54,12 @@ export function KitchenScreen() {
       </div>
     )
   }
-  if (!isCook && !isManager) {
+  if (!isCook && !isManager && !isSeller) {
     return (
       <div className="screen">
         <h2>Cocina</h2>
         <section className="card">
-          <p>Solo el <strong>cocinero</strong> (o el dueño/administrativo) opera el tablero de cocina.</p>
+          <p>Solo el <strong>cocinero</strong>, el <strong>vendedor</strong> o el dueño/administrativo operan el tablero de cocina.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>

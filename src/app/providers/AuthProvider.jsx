@@ -67,6 +67,11 @@ export function AuthProvider({ children }) {
   // Rol acotado de cocina (módulo 'cocina'). Como el elaborador: no es mando ni
   // vendedor, no abre turno ni maneja caja; solo opera el tablero de cocina.
   const isCook = user?.role === ROLES.COOK
+  // Vendedor: rol de venta. Se expone como flag (igual que isCook/isElaborator)
+  // para gatear en la UI sin repetir la comprobación de rol; hoy lo usa el Home
+  // (tarjeta del tablero de cocina, gateada además por el módulo 'cocina') y el
+  // propio tablero, para que el vendedor lo opere idéntico al cocinero.
+  const isSeller = user?.role === ROLES.SELLER
 
   // Permisos del administrativo (Bloque 20.6+). El dueño puede QUITAR facultades
   // puntuales al admin en Ajustes. Por defecto (config ausente o clave sin poner)
@@ -85,6 +90,7 @@ export function AuthProvider({ children }) {
     isAdmin,
     isElaborator,
     isCook,
+    isSeller,
     can,
     // "Mando": dueño O administrativo. Habilita inventario, supervision y la
     // visibilidad financiera. Lo exclusivo del dueño (usuarios, licencia, nube)

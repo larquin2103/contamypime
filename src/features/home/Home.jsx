@@ -213,7 +213,7 @@ function AvatarEditor({ user, current, onClose }) {
 }
 
 export function Home() {
-  const { user, isOwner, isManager, isElaborator, isCook } = useAuth()
+  const { user, isOwner, isManager, isElaborator, isCook, isSeller } = useAuth()
   const { hasModule } = useLicense()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
@@ -358,6 +358,14 @@ export function Home() {
           {hasModule(LICENSE_MODULES.TABLES) && (
             <Section label="Salón">
               <ActionCard to="/salon" icon={UtensilsCrossed} title="Mesas" sub="Atender y cobrar mesas" />
+            </Section>
+          )}
+          {/* Tablero de cocina en la sesión del vendedor (módulo 'cocina'). Misma
+              tarjeta y mismo tablero que el cocinero/mando; el elaborador (que
+              comparte esta rama) NO la ve. Sin el módulo, nada cambia (clásico). */}
+          {isSeller && hasModule(LICENSE_MODULES.KITCHEN) && (
+            <Section label="Cocina">
+              <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
             </Section>
           )}
           {sellerEntries && (
