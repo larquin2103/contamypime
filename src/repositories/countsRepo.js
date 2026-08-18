@@ -128,7 +128,9 @@ export const countsRepo = {
       const sem = evalSemaphore(sysNow, phys, cfg)
       items.push({ ...it, systemStock: sysNow, physicalQty: phys, counted: true, diff, semaphore: sem.color })
     }
-    await db.counts.update(id, { items, status: COUNT_STATUS.PENDING, submittedAt: now() })
+    // updatedAt: toda mutacion actualiza su marca de tiempo; de esto depende la
+    // sync (el cursor de subida y el LWW de bajada leen syncTs = mayor timestamp).
+    await db.counts.update(id, { items, status: COUNT_STATUS.PENDING, submittedAt: now(), updatedAt: now() })
   },
 
   // Aprueba: ajusta el stock de la UBICACION contada para que coincida con lo
@@ -154,19 +156,25 @@ export const countsRepo = {
         })
       }
     }
+    // updatedAt: la resolucion debe avanzar syncTs para que la aprobacion vuelva
+    // al vendedor (sin el, incoming == local y el LWW de bajada la descartaria).
     await db.counts.update(id, {
       status: COUNT_STATUS.APPROVED,
       approvedBy: ownerId,
-      approvedAt: now()
+      approvedAt: now(),
+      updatedAt: now()
     })
   },
 
   async reject(id, ownerId, reason = '') {
+    // updatedAt: igual que approve, para que el rechazo avance syncTs y regrese
+    // al vendedor por el LWW de bajada.
     await db.counts.update(id, {
       status: COUNT_STATUS.REJECTED,
       approvedBy: ownerId,
       approvedAt: now(),
-      rejectReason: reason
+      rejectReason: reason,
+      updatedAt: now()
     })
   }
 }
