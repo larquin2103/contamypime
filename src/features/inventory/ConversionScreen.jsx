@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
@@ -10,6 +10,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery, normalize } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
+import { canConvertUnits, convertQty } from '../../lib/units'
 import { WAREHOUSE, COCINA, COCINA_LABEL, UNITS, UNIT_LABELS } from '../../db/constants'
 
 // Modulo mayorista: conversion de un producto del almacen central en otro con su
@@ -78,6 +79,9 @@ export function ConversionScreen() {
   const [toProduct, setToProduct] = useState(null)
   const [fromQty, setFromQty] = useState('')
   const [toQty, setToQty] = useState('')
+  // toQty autogenerado por conversion de unidad (misma familia): editable, no pisa
+  // lo tecleado a mano. En true mientras el valor lo puso la sugerencia, no el usuario.
+  const [toQtyAuto, setToQtyAuto] = useState(false)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -100,6 +104,33 @@ export function ConversionScreen() {
   const live = (p) => (p ? products.find((x) => x.id === p.id) || p : null)
   const from = live(fromProduct)
   const to = live(toProduct)
+
+  // Unidad del destino segun el modo. En 'new' la elige el usuario; en 'existing' se
+  // conserva la del producto (no se muta nada). Se calcula aqui (antes de los return)
+  // porque el efecto de sugerencia de cantidad la necesita.
+  const destUnit = destMode === 'new' ? newUnit : (to?.unit || '')
+
+  // Sugerencia de "Cantidad resultante" por conversion de unidad de la MISMA familia
+  // fisica (peso o volumen): p.ej. 1 L de aceite -> 1000 ml. Es solo una ayuda: precarga
+  // el valor y queda editable; NO pisa lo tecleado a mano y NO aplica entre familias
+  // (kg->ml, u->g...) ni con 'u'/'caja' (ahi la cantidad va a mano, como hoy).
+  useEffect(() => {
+    const originUnit = from?.unit
+    const q = Number(fromQty) || 0
+    if (!originUnit || !destUnit || originUnit === destUnit || q <= 0 || !canConvertUnits(originUnit, destUnit)) {
+      // Sin sugerencia valida: limpia solo si el valor actual era autogenerado.
+      if (toQtyAuto) { setToQty(''); setToQtyAuto(false) }
+      return
+    }
+    const suggested = convertQty(q, originUnit, destUnit)
+    if (suggested == null) return
+    // Precarga solo si el campo esta vacio o el valor era autogenerado (no pisa lo tecleado).
+    if (toQty === '' || toQtyAuto) {
+      setToQty(String(suggested))
+      setToQtyAuto(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromQty, from, destUnit])
 
   if (!isManager) {
     return (
@@ -145,10 +176,8 @@ export function ConversionScreen() {
   const movedValue = round2(fq * Number(from?.cost || 0))
   const unitCostTo = tq > 0 ? round2(movedValue / tq) : 0
 
-  // Destino segun el modo. En 'new' la unidad la elige el usuario; en 'existing' se
-  // conserva la del producto (no se muta nada). El costo por unidad del destino no
-  // depende del producto: sale del valor consumido / cantidad resultante.
-  const destUnit = destMode === 'new' ? newUnit : (to?.unit || '')
+  // El costo por unidad del destino no depende del producto: sale del valor consumido
+  // / cantidad resultante. (destUnit se calculo arriba, antes de los return).
   // Codigo repetido (solo 'new'): se valida contra el catalogo cargado, sin async.
   const codeTaken = destMode === 'new' && !!newCode.trim() &&
     products.some((p) => (p.code || '').trim() && normalize(p.code) === normalize(newCode))
@@ -165,6 +194,12 @@ export function ConversionScreen() {
   const sendOver = sq > resultWh
   const sendValid = !!lastResult && !!sendTo && sq > 0 && !sendOver
   const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+
+  // Aviso de que la "Cantidad resultante" fue sugerida por conversion de unidad.
+  const showAutoHint = toQtyAuto && !!from && from.unit !== destUnit &&
+    canConvertUnits(from?.unit, destUnit) && Number(toQty) > 0
+  // Editar la cantidad resultante la marca como MANUAL (deja de autogenerarse).
+  const onToQty = (v) => { setToQty(v); setToQtyAuto(false) }
 
   const register = async () => {
     setError('')
@@ -210,7 +245,7 @@ export function ConversionScreen() {
       setSendMsg('')
       // Limpia el formulario de conversion para el proximo registro.
       setFromProduct(null); setToProduct(null)
-      setFromQty(''); setToQty(''); setNote('')
+      setFromQty(''); setToQty(''); setToQtyAuto(false); setNote('')
       setNewName(''); setNewUnit(UNITS[0]); setNewPrice(''); setNewCode('')
       setDestMode('existing')
     } catch (e) {
@@ -295,7 +330,7 @@ export function ConversionScreen() {
           </button>
           <button
             className={`btn btn--sm ${destMode === 'new' ? 'btn--primary' : 'btn--ghost'}`}
-            onClick={() => { setDestMode('new'); setToProduct(null); setToQty(''); setError('') }}
+            onClick={() => { setDestMode('new'); setToProduct(null); setToQty(''); setToQtyAuto(false); setError('') }}
           >
             Nuevo
           </button>
@@ -323,8 +358,11 @@ export function ConversionScreen() {
                 <label className="field">
                   <span>Cantidad resultante ({to.unit})</span>
                   <input type="number" inputMode="decimal" value={toQty}
-                    onChange={(e) => setToQty(e.target.value)} />
+                    onChange={(e) => onToQty(e.target.value)} />
                 </label>
+                {showAutoHint && (
+                  <p className="muted">Sugerido por conversión de unidad ({from.unit} → {to.unit}); puedes ajustarlo.</p>
+                )}
               </>
             )}
           </>
@@ -356,8 +394,11 @@ export function ConversionScreen() {
             <label className="field">
               <span>Cantidad resultante ({newUnit})</span>
               <input type="number" inputMode="decimal" value={toQty}
-                onChange={(e) => setToQty(e.target.value)} />
+                onChange={(e) => onToQty(e.target.value)} />
             </label>
+            {showAutoHint && (
+              <p className="muted">Sugerido por conversión de unidad ({from.unit} → {newUnit}); puedes ajustarlo.</p>
+            )}
           </>
         )}
       </section>

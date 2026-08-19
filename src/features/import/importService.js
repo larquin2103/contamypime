@@ -89,6 +89,7 @@ function parseUnit(v) {
   if (['oz', 'onza', 'onzas'].includes(s)) return 'oz'
   if (['g', 'gr', 'gramo', 'gramos'].includes(s)) return 'g'
   if (['ml', 'mililitro', 'mililitros', 'cc'].includes(s)) return 'ml'
+  if (['l', 'lt', 'litro', 'litros'].includes(s)) return 'l'
   return UNITS.includes(s) ? s : ''
 }
 
@@ -133,7 +134,7 @@ export async function parseAndValidate(buffer, { existingProducts, withCurrency 
     const draft = extractRow(obj)
     const errors = []
     if (!draft.name) errors.push('Falta el nombre')
-    if (!draft.unit) errors.push('Unidad invalida (u/lb/kg/caja/oz/g/ml)')
+    if (!draft.unit) errors.push('Unidad invalida (u/lb/kg/caja/oz/g/ml/l)')
     if (draft.price == null) errors.push('Precio de venta invalido')
     // Escalas mayoristas opcionales: "20:100; 50:60" (cantidad:precio).
     const tiersParsed = parseTiersText(draft.tiersText)
