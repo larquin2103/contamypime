@@ -1146,9 +1146,6 @@ input[type='file'] {
 }
 
 /* ----- Ayuda ----- */
-.app-header__help {
-  gap: 4px;
-}
 .help-section {
   margin-bottom: 16px;
 }
@@ -2740,7 +2737,10 @@ input[type='file'] {
 /* Centro de notificaciones (Fase 9): campana + badge + panel. Prioridad visual:
    CRITICAL rojo (--danger), WARNING amarillo (--warn), INFO azul. Responsive:
    el panel nunca se sale del borde (mismo patrón que .sync-pop). */
-.notif-wrap { display: inline-flex; position: relative; }
+/* Sin position propio: el panel (.notif-pop) se ancla a .app-header —de ancho
+   completo—, no a la campana (que llevaba "Ayuda"/"Salir" detrás), para que no se
+   salga por el borde izquierdo en móviles. Mismo patrón que .sync-wrap. */
+.notif-wrap { display: inline-flex; }
 .notif-bell {
   position: relative;
   background: none; border: none; padding: 0;

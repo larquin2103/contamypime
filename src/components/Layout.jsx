@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { NavLink, Link } from 'react-router-dom'
-import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, HelpCircle, Moon, Sun } from 'lucide-react'
+import { NavLink } from 'react-router-dom'
+import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, Moon, Sun } from 'lucide-react'
 import { useAuth } from '../app/providers/AuthProvider'
 import { useShift } from '../app/providers/ShiftProvider'
 import { useSync } from '../app/providers/SyncProvider'
@@ -170,9 +170,8 @@ export function Layout({ children }) {
               <NotificationBell />
             </NotificationBoundary>
           )}
-          <Link className="btn btn--ghost btn--sm app-header__help" to="/help" aria-label="Ayuda" title="Ayuda">
-            <HelpCircle size={16} strokeWidth={2} /> Ayuda
-          </Link>
+          {/* La "Ayuda" del encabezado se retiró para ganar espacio: sigue accesible
+              desde la tarjeta "Ayuda" del Inicio (todos los roles) y la ruta /help. */}
           <button className="btn btn--ghost btn--sm app-header__exit" onClick={logout}>
             <LogOut size={16} strokeWidth={2} /> Salir
           </button>
