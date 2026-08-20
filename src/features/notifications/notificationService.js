@@ -1,6 +1,7 @@
 import { db } from '../../db/db'
 import { now } from '../../lib/dates'
 import { newId } from '../../lib/ids'
+import { round2 } from '../../lib/currency'
 import { configRepo } from '../../repositories/configRepo'
 import {
   notificationsRepo,
@@ -291,9 +292,51 @@ function buildPriceChange(pc, ctx) {
   }
 }
 
+// 5) Cobro por TRANSFERENCIA con diferencia (salesRepo.create). El importe recibido
+//    no coincide con lo que se debía cobrar (sale.transferDiff != 0): de más (recibido
+//    de más) o falta (recibido de menos). Mismo criterio que el panel del dueño
+//    (analyticsRepo.transferMismatches): venta NO anulada, pago por transferencia,
+//    |diferencia| >= 0.01. Ej: "Carlos cobró por transferencia 1200 MN y debía 1000".
+function buildTransferMismatch(sale, ctx) {
+  if (!sale || sale.voided || sale.paymentMethod !== 'transfer') return null
+  const diff = Number(sale.transferDiff || 0)
+  if (Math.abs(diff) < 0.01) return null
+  const currency = sale.transferCurrency || 'MN'
+  const seller = ctx.userName[sale.sellerId] || 'vendedor'
+  const deMas = diff > 0
+  const expected = round2(Number(sale.transferExpected || 0))
+  const received = round2(Number(sale.transferAmount || 0))
+  return {
+    type: NOTIFICATION_TYPES.TRANSFER_MISMATCH,
+    sourceId: sale.id,
+    severity: NOTIFICATION_SEVERITY.WARNING,
+    title: deMas ? 'Cobro de más por transferencia' : 'Falta en cobro por transferencia',
+    message: `${seller} cobró por transferencia ${received} ${currency} y debía ${expected} (${deMas ? '+' : ''}${round2(diff)} ${currency})`,
+    createdAt: sale.createdAt || now(),
+    createdBy: sale.sellerId || null,
+    requiresAction: true,
+    audience: 'manager',
+    metadata: {
+      sourceCollection: 'sales',
+      sourceId: sale.id,
+      expected,
+      received,
+      diff: round2(diff),
+      currency,
+      sign: deMas ? 'de_mas' : 'falta',
+      reference: sale.transferReference || ''
+    }
+  }
+}
+
 // --- Barrido derivado (offline-first, incremental) ---------------------------
 // Lee SOLO lo posterior al piso y materializa los avisos nuevos. Rendimiento:
 //  - priceChanges: rango por índice `createdAt` (= su syncTs) -> solo lo nuevo.
+//  - sales: rango por índice `createdAt` (ventana); en memoria pasan a candidato
+//    SOLO las de transferencia con diferencia y no anuladas (así el ciclo con
+//    ventas normales NO infla candidates ni carga los mapas de nombres). Es la
+//    lectura más pesada (ventas = mayor volumen), pero va por índice y acotada al
+//    piso; corre en el dispositivo del DUEÑO y no toca la sync.
 //  - shifts/counts: acotadas por estado (índice) y filtradas por el piso en
 //    memoria (su transición closedAt/approvedAt no está indexada).
 //  - mapas de nombres (usuarios/productos): se cargan SOLO si hay candidatos
@@ -318,10 +361,11 @@ export async function refreshFromSources() {
   // Lecturas acotadas (NO tablas completas): priceChanges por índice createdAt;
   // shifts/counts por estado (índice). Se filtran por el piso con syncTs (que
   // refleja la transición real: closedAt / approvedAt).
-  const [priceRows, shiftRows, countRows] = await Promise.all([
+  const [priceRows, shiftRows, countRows, saleRows] = await Promise.all([
     db.priceChanges.where('createdAt').aboveOrEqual(floor).toArray(),
     db.shifts.where('status').equals(SHIFT_STATUS.CLOSED).toArray(),
-    db.counts.where('status').equals(COUNT_STATUS.APPROVED).toArray()
+    db.counts.where('status').equals(COUNT_STATUS.APPROVED).toArray(),
+    db.sales.where('createdAt').aboveOrEqual(floor).toArray()
   ])
 
   // Candidatos tras el piso. [registro, regla, ¿necesita ctx de nombres?].
@@ -329,6 +373,13 @@ export async function refreshFromSources() {
   for (const r of shiftRows) if (syncTs(r) >= floor) candidates.push([r, buildCashDifference, false])
   for (const r of countRows) if (syncTs(r) >= floor) candidates.push([r, buildCountApproved, true])
   for (const r of priceRows) candidates.push([r, buildPriceChange, true]) // ya filtrados por índice
+  // Solo las ventas por transferencia CON diferencia (no anuladas) son candidatas:
+  // así el ciclo con ventas normales no infla candidates ni carga los mapas.
+  for (const r of saleRows) {
+    if (!r.voided && r.paymentMethod === 'transfer' && Math.abs(Number(r.transferDiff || 0)) >= 0.01) {
+      candidates.push([r, buildTransferMismatch, true])
+    }
+  }
 
   // La marca de agua avanza al mayor syncTs visto (aunque no se materialice nada).
   let maxTs = cursor

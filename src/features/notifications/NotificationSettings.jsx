@@ -14,8 +14,7 @@ const CATEGORIES = [
   { key: 'caja', label: 'Caja', desc: 'Diferencias al cerrar turno (faltante/sobrante).', live: true },
   { key: 'inventario', label: 'Inventario', desc: 'Conteo físico aprobado con diferencia.', live: true },
   { key: 'ventas', label: 'Ventas', desc: 'Cambios de precio de productos.', live: true },
-  { key: 'transferencias', label: 'Transferencias', desc: 'Traspasos entre almacén y áreas.', live: false },
-  { key: 'usuarios', label: 'Usuarios', desc: 'Cambios de rol y permisos.', live: false }
+  { key: 'transferencias', label: 'Transferencias', desc: 'Cobros por transferencia con diferencia (de más o de menos).', live: true }
 ]
 
 export function NotificationSettings() {

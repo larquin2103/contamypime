@@ -35,23 +35,28 @@ export const NOTIFICATION_SEVERITY = {
 }
 
 // Tipos de evento (clave estable, como MOVEMENT_TYPES). Gatean la preferencia.
-// Primera tanda cableada (Camino 1, derivación): cierre de caja con diferencia,
-// conteo aprobado con diferencia y cambio de precio. Ampliable sin tocar el resto.
+// Cableados (Camino 1, derivación): cierre de caja con diferencia, conteo aprobado
+// con diferencia, cambio de precio y cobro por transferencia con diferencia (de más
+// o de menos). Ampliable sin tocar el resto.
 export const NOTIFICATION_TYPES = {
   CASH_DIFFERENCE: 'cash_difference',
   COUNT_APPROVED: 'count_approved',
-  PRICE_CHANGE: 'price_change'
+  PRICE_CHANGE: 'price_change',
+  // Venta por transferencia cuyo importe recibido NO coincide con lo que se debía
+  // cobrar (sale.transferDiff != 0). Deriva de `sales` (que ya sincroniza).
+  TRANSFER_MISMATCH: 'transfer_mismatch'
 }
 
 // Categorías que ve el dueño en Ajustes (los interruptores de NotificationSettings).
 // Cada tipo pertenece a una categoría: apagar la categoría apaga sus tipos.
-// Transferencias/Usuarios existen como interruptor pero aún no tienen productor
-// cableado (se sumará su regla luego); no generan avisos todavía.
+// 'transferencias' agrupa los cobros por transferencia con diferencia (su antiguo
+// sentido de "traspaso almacén→área" no tenía productor). La categoría 'usuarios' se
+// retiró: los cambios de rol/permisos los hace el propio dueño y no tiene sentido
+// notificárselos.
 export const NOTIFICATION_CATEGORIES = {
   CAJA: 'caja',
   INVENTARIO: 'inventario',
   TRANSFERENCIAS: 'transferencias',
-  USUARIOS: 'usuarios',
   VENTAS: 'ventas'
 }
 
@@ -59,7 +64,8 @@ export const NOTIFICATION_CATEGORIES = {
 export const TYPE_CATEGORY = {
   [NOTIFICATION_TYPES.CASH_DIFFERENCE]: NOTIFICATION_CATEGORIES.CAJA,
   [NOTIFICATION_TYPES.COUNT_APPROVED]: NOTIFICATION_CATEGORIES.INVENTARIO,
-  [NOTIFICATION_TYPES.PRICE_CHANGE]: NOTIFICATION_CATEGORIES.VENTAS
+  [NOTIFICATION_TYPES.PRICE_CHANGE]: NOTIFICATION_CATEGORIES.VENTAS,
+  [NOTIFICATION_TYPES.TRANSFER_MISMATCH]: NOTIFICATION_CATEGORIES.TRANSFERENCIAS
 }
 
 // Preferencias por defecto del dueño (clave 'notificationPreferences' en config,
@@ -70,7 +76,6 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   caja: true,
   inventario: true,
   transferencias: true,
-  usuarios: true,
   ventas: true,
   onlyImportant: false
 }
