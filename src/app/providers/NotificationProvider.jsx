@@ -5,12 +5,12 @@ import { refreshFromSources } from '../../features/notifications/notificationSer
 
 // ---------------------------------------------------------------------------
 // Runtime del centro de notificaciones (Fase 9) — CABLEADO, sin UI propia.
-// SOLO en dispositivos de MANDO (dueño/admin) corre el motor de derivación
+// SOLO en el dispositivo del DUEÑO corre el motor de derivación
 // (refreshFromSources): lee los eventos ya sincronizados y materializa los avisos
-// locales. Los vendedores NO lo corren (no generan avisos del dueño).
+// locales. Vendedores y administrativos NO lo corren (no ven avisos del dueño).
 //
 // Cuándo deriva:
-//  - al montar (mando),
+//  - al montar (dueño),
 //  - cada vez que una BAJADA confirmada trae datos nuevos (lastPullOkAt cambia),
 //  - al traer la app al frente (visibilitychange),
 //  - y de respaldo, en un intervalo suave (para el caso single-device sin sync).
@@ -25,7 +25,7 @@ import { refreshFromSources } from '../../features/notifications/notificationSer
 const REFRESH_INTERVAL_MS = 60000
 
 export function NotificationProvider({ children }) {
-  const { isManager } = useAuth()
+  const { isOwner } = useAuth()
   const { lastPullOkAt } = useSync()
   const busyRef = useRef(false)
 
@@ -41,9 +41,9 @@ export function NotificationProvider({ children }) {
     }
   }
 
-  // Al montar (mando), intervalo de respaldo y al enfocar la app.
+  // Al montar (dueño), intervalo de respaldo y al enfocar la app.
   useEffect(() => {
-    if (!isManager) return
+    if (!isOwner) return
     run()
     const id = setInterval(run, REFRESH_INTERVAL_MS)
     const onVisible = () => {
@@ -55,14 +55,14 @@ export function NotificationProvider({ children }) {
       document.removeEventListener('visibilitychange', onVisible)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager])
+  }, [isOwner])
 
   // Cada bajada confirmada (datos nuevos del vendedor/admin) dispara una derivación.
   useEffect(() => {
-    if (!isManager || !lastPullOkAt) return
+    if (!isOwner || !lastPullOkAt) return
     run()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isManager, lastPullOkAt])
+  }, [isOwner, lastPullOkAt])
 
   return children
 }

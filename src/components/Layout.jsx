@@ -155,7 +155,7 @@ function LicenseBanner() {
 // Shell de la app autenticada: cabecera fina + contenido + navegacion inferior.
 // La identidad rica (avatar, saludo, rol) vive en el Home; aqui solo la marca.
 export function Layout({ children }) {
-  const { logout, isOwner, isCook, isManager } = useAuth()
+  const { logout, isOwner, isCook } = useAuth()
   const { canSell } = useShift()
 
   return (
@@ -165,7 +165,7 @@ export function Layout({ children }) {
         <div className="app-header__right">
           <ThemeToggle />
           <SyncBadge />
-          {isManager && (
+          {isOwner && (
             <NotificationBoundary>
               <NotificationBell />
             </NotificationBoundary>

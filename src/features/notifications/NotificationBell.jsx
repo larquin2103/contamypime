@@ -8,8 +8,8 @@ import { markAsRead, dismissNotification } from './notificationService'
 import { formatDateTime } from '../../lib/dates'
 
 // Centro visual de notificaciones (Fase 9). Campana + badge + panel desplegable,
-// filtro por prioridad, marcar leído y ver detalle. Solo lo ve el MANDO
-// (dueño/admin). Consume SIEMPRE datos reales de notificationsRepo (nada falso):
+// filtro por prioridad, marcar leído y ver detalle. Solo lo ve el DUEÑO
+// (el administrativo no la ve). Consume SIEMPRE datos reales de notificationsRepo (nada falso):
 // si no hay avisos, el panel queda vacío.
 //
 // Rendimiento: el badge sale de `unreadCount()` (count indexado) y el panel de
@@ -30,21 +30,21 @@ const FILTERS = [
 ]
 
 export function NotificationBell() {
-  const { isManager, isOwner } = useAuth()
+  const { isOwner } = useAuth()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('all')
   const [expanded, setExpanded] = useState(null)
 
-  // Badge: conteo de no leídas (count indexado). Sin mando, no consulta nada.
+  // Badge: conteo de no leídas (count indexado). Sin ser dueño, no consulta nada.
   const unreadCount = useLiveQuery(
-    () => (isManager ? notificationsRepo.unreadCount() : Promise.resolve(0)),
-    [isManager],
+    () => (isOwner ? notificationsRepo.unreadCount() : Promise.resolve(0)),
+    [isOwner],
     0
   )
   // Panel: solo activas (unread + read), acotado y reciente-primero.
   const feedRows = useLiveQuery(
-    () => (isManager ? notificationsRepo.feed() : Promise.resolve([])),
-    [isManager],
+    () => (isOwner ? notificationsRepo.feed() : Promise.resolve([])),
+    [isOwner],
     []
   )
 
@@ -54,7 +54,7 @@ export function NotificationBell() {
     return byFilter.slice(0, 50)
   }, [feedRows, filter])
 
-  if (!isManager) return null
+  if (!isOwner) return null
 
   const openItem = async (n) => {
     setExpanded((id) => (id === n.id ? null : n.id))
