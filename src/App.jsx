@@ -4,6 +4,7 @@ import { CurrencyProvider } from './app/providers/CurrencyProvider'
 import { ShiftProvider } from './app/providers/ShiftProvider'
 import { SyncProvider } from './app/providers/SyncProvider'
 import { LicenseProvider } from './app/providers/LicenseProvider'
+import { NotificationProvider } from './app/providers/NotificationProvider'
 import { AppRouter } from './app/router'
 
 export default function App() {
@@ -12,11 +13,13 @@ export default function App() {
       <CurrencyProvider>
         <ShiftProvider>
           <SyncProvider>
-            <LicenseProvider>
-              <BrowserRouter>
-                <AppRouter />
-              </BrowserRouter>
-            </LicenseProvider>
+            <NotificationProvider>
+              <LicenseProvider>
+                <BrowserRouter>
+                  <AppRouter />
+                </BrowserRouter>
+              </LicenseProvider>
+            </NotificationProvider>
           </SyncProvider>
         </ShiftProvider>
       </CurrencyProvider>

@@ -150,3 +150,15 @@ db.version(13).stores({
   recipes: 'id, active, outputProductId, createdAt',
   productions: 'id, recipeId, toArea, byUserId, createdAt'
 })
+
+// Fase 9 - Centro de notificaciones (Opcion A: LOCAL por dispositivo). Tabla
+// DERIVADA: el motor (features/notifications/notificationService) LEE eventos ya
+// existentes (ventas, cierres de turno, ajustes/mermas, traspasos, conteos) y
+// MATERIALIZA avisos para el dueño. NO entra en SYNC_COLLECTIONS -> no viaja a la
+// nube ni aterriza en el telefono del vendedor; cada dispositivo del dueño deriva
+// la suya de los registros fuente que SI sincronizan (sin fugas ni costo de nube).
+// Id DETERMINISTA (mc_notif:<type>:<sourceId>) -> re-derivar no duplica. Migracion
+// aditiva: solo agrega una tabla vacia; nada existente cambia ni se migra.
+db.version(14).stores({
+  notifications: 'id, type, status, severity, createdAt, [status+createdAt]'
+})

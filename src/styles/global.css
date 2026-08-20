@@ -2736,6 +2736,54 @@ input[type='file'] {
   color: var(--text);
   border-color: var(--surface-2);
 }
+
+/* Centro de notificaciones (Fase 9): campana + badge + panel. Prioridad visual:
+   CRITICAL rojo (--danger), WARNING amarillo (--warn), INFO azul. Responsive:
+   el panel nunca se sale del borde (mismo patrón que .sync-pop). */
+.notif-wrap { display: inline-flex; position: relative; }
+.notif-bell {
+  position: relative;
+  background: none; border: none; padding: 0;
+  cursor: pointer; color: inherit; line-height: 1;
+  display: inline-flex; align-items: center;
+}
+.notif-badge {
+  position: absolute; top: -7px; right: -8px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 0.66rem; font-weight: 800; line-height: 16px;
+  text-align: center; box-shadow: 0 0 0 2px var(--bg);
+}
+.notif-pop__backdrop { position: fixed; inset: 0; z-index: 40; }
+.notif-pop {
+  position: absolute; top: calc(100% + 8px); right: 12px; left: auto; z-index: 41;
+  width: min(360px, calc(100vw - 24px)); max-width: calc(100vw - 24px);
+  max-height: min(72vh, 560px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  text-align: left;
+}
+.notif-pop__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.notif-pop__head strong { color: var(--text); }
+.notif-pop__actions { display: inline-flex; gap: 4px; align-items: center; }
+.notif-empty { color: var(--muted); text-align: center; padding: 18px 8px; font-size: 0.85rem; margin: 0; }
+.notif-item {
+  border: 1px solid var(--border); border-left: 3px solid var(--border);
+  border-radius: 8px; background: var(--bg);
+  padding: 8px 10px; margin-bottom: 6px; cursor: pointer;
+}
+.notif-item--critical { border-left-color: var(--danger); }
+.notif-item--warning { border-left-color: var(--warn); }
+.notif-item--info { border-left-color: #5b9bff; }
+.notif-item--unread { background: var(--surface); }
+.notif-item__title { font-weight: 600; color: var(--text); font-size: 0.9rem; }
+.notif-item__new { color: var(--danger); margin-left: 6px; font-weight: 800; }
+.notif-item__msg { color: var(--muted); font-size: 0.83rem; margin-top: 2px; }
+.notif-item__time { color: var(--muted); font-size: 0.74rem; margin-top: 4px; }
+.notif-item__detail { margin-top: 8px; }
+.notif-set__desc { font-size: 0.78rem; color: var(--muted); }
+:root[data-theme="light"] .notif-item--info { border-left-color: #2563eb; }
 .menu-search { margin-bottom: 10px; }
 
 /* Mosaico: objetivos grandes para el dedo, sin teclado. */

@@ -45,9 +45,22 @@ export function Settings() {
       <WhatsappSection />
       <BackupLinkSection />
       <ErrorLogLinkSection />
+      <NotificationsLinkSection />
       <SecuritySection userId={user.id} />
       <LicenseSection />
     </div>
+  )
+}
+
+// Enlace a la pantalla de configuración de notificaciones (Fase 9). El centro y su
+// campana viven en el mando; aquí el dueño elige qué avisos recibe (config sincroniza).
+function NotificationsLinkSection() {
+  return (
+    <section className="card">
+      <h3>Notificaciones</h3>
+      <p className="muted">Elige qué avisos recibes en la campana (caja, inventario, ventas…).</p>
+      <Link className="btn btn--ghost btn--block" to="/notifications">Configurar notificaciones</Link>
+    </section>
   )
 }
 

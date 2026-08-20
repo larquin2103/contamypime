@@ -30,6 +30,7 @@ import { CloudScreen } from '../features/sync/CloudScreen'
 import { BackupScreen } from '../features/backup/BackupScreen'
 import { ErrorLogScreen } from '../features/errors/ErrorLogScreen'
 import { Settings } from '../features/settings/Settings'
+import { NotificationSettings } from '../features/notifications/NotificationSettings'
 import { UsersAdmin } from '../features/auth/UsersAdmin'
 import { HelpScreen } from '../features/help/HelpScreen'
 import { PartnersScreen } from '../features/partners/PartnersScreen'
@@ -83,6 +84,7 @@ export function AppRouter() {
         <Route path="/backup" element={<BackupScreen />} />
         <Route path="/errors" element={<ErrorLogScreen />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/notifications" element={<NotificationSettings />} />
         <Route path="/users" element={<UsersAdmin />} />
         <Route path="/help" element={<HelpScreen />} />
         <Route path="/partners" element={<PartnersScreen />} />

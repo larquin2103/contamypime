@@ -5,6 +5,8 @@ import { useAuth } from '../app/providers/AuthProvider'
 import { useShift } from '../app/providers/ShiftProvider'
 import { useSync } from '../app/providers/SyncProvider'
 import { useLicense } from '../app/providers/LicenseProvider'
+import { NotificationBell } from '../features/notifications/NotificationBell'
+import { NotificationBoundary } from '../features/notifications/NotificationBoundary'
 import { getTheme, setTheme } from '../lib/theme'
 
 // Conmutador de tema (Fase 8 - B1): en la cabecera, a la IZQUIERDA de la nube de
@@ -153,7 +155,7 @@ function LicenseBanner() {
 // Shell de la app autenticada: cabecera fina + contenido + navegacion inferior.
 // La identidad rica (avatar, saludo, rol) vive en el Home; aqui solo la marca.
 export function Layout({ children }) {
-  const { logout, isOwner, isCook } = useAuth()
+  const { logout, isOwner, isCook, isManager } = useAuth()
   const { canSell } = useShift()
 
   return (
@@ -163,6 +165,11 @@ export function Layout({ children }) {
         <div className="app-header__right">
           <ThemeToggle />
           <SyncBadge />
+          {isManager && (
+            <NotificationBoundary>
+              <NotificationBell />
+            </NotificationBoundary>
+          )}
           <Link className="btn btn--ghost btn--sm app-header__help" to="/help" aria-label="Ayuda" title="Ayuda">
             <HelpCircle size={16} strokeWidth={2} /> Ayuda
           </Link>
