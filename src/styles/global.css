@@ -177,10 +177,16 @@ h3 {
   height: 100%;
 }
 .app-header {
-  /* Ancla del panel de sincronizacion: se posiciona respecto a la CABECERA
-     (que ocupa todo el ancho) y no respecto al icono, que lleva Ayuda y Salir
-     detras y haria que el panel se saliera de la pantalla por la izquierda. */
+  /* Ancla de los paneles de la cabecera (sincronizacion y notificaciones): se
+     posicionan respecto a la CABECERA (que ocupa todo el ancho) y no respecto al
+     icono, que lleva "Salir" detras y haria que el panel se saliera por la
+     izquierda. */
   position: relative;
+  /* El contexto de apilamiento de la cabecera (lo crea backdrop-filter) sube por
+     ENCIMA del contenido de .app-main —p.ej. el avatar del Inicio, que es
+     position:relative y se pintaba sobre el panel— para que los paneles no queden
+     tapados; y por DEBAJO de los modales (.modal-backdrop, z-index 50). */
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
