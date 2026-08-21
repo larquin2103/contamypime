@@ -47,7 +47,12 @@ export const SYNC_COLLECTIONS = [
   // cualquier cabecera; se fusiona sola por syncTs. Sin el modulo no se crea
   // ninguna: la coleccion queda vacia y no hay costo de sync. (La custodia de
   // efectivo, las entregas y las liquidaciones se registraran en sus fases.)
-  { name: 'remittances', pk: 'id' }
+  { name: 'remittances', pk: 'id' },
+  // Modulo 'remesas' (F3): libro de custodia de efectivo (append-only). El saldo
+  // por tenedor+moneda se DERIVA de estos movimientos (como accountMovements). Es
+  // su PROPIA tabla: NO toca la tesoreria del modulo 'cuentas'. Sin el modulo
+  // queda vacia y no hay costo de sync.
+  { name: 'custodyMovements', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

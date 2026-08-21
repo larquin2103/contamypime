@@ -2,7 +2,8 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
-import { REMITTANCE_STATUS } from '../db/constants'
+import { REMITTANCE_STATUS, CUSTODY_MOVEMENT_TYPES, REMESA_CENTRAL } from '../db/constants'
+import { custodyRepo } from './custodyRepo'
 
 // Remesas (modulo 'remesas') — CABECERA de la orden. Capa NUEVA y AISLADA: solo
 // escribe `remittances` y deja constancia en `auditEvents` (que ya sincroniza).
@@ -128,7 +129,7 @@ export const remittancesRepo = {
   async setStatus(id, toStatus, { actorId = null, note = '' } = {}) {
     if (!Object.values(REMITTANCE_STATUS).includes(toStatus)) throw new Error('Estado no valido')
     const ts = now()
-    await db.transaction('rw', db.remittances, db.auditEvents, async () => {
+    await db.transaction('rw', db.remittances, db.auditEvents, db.custodyMovements, async () => {
       const r = await db.remittances.get(id)
       if (!r) throw new Error('Remesa no encontrada')
       if (r.status === toStatus) return // sin cambios: no se audita
@@ -145,6 +146,30 @@ export const remittancesRepo = {
         note: String(note || '').trim(),
         createdAt: ts
       })
+      // Ingreso a la CAJA CENTRAL de custodia al marcar PAGADA: el efectivo del
+      // remitente entra al negocio. Id DETERMINISTA (custody:intake:<remesa>) e
+      // idempotente (solo si aun no existe): re-marcar, o una doble llegada offline
+      // desde dos dispositivos, NO duplica el ingreso (ambos generan el MISMO doc y
+      // la sync lo fusiona por id). Dentro de ESTA misma transaccion (atomico con el
+      // estado). El resto de transiciones no mueven efectivo (identico a antes).
+      if (toStatus === REMITTANCE_STATUS.PAID) {
+        const intakeId = `custody:intake:${id}`
+        const already = await db.custodyMovements.get(intakeId)
+        if (!already) {
+          await custodyRepo.addMovementRaw({
+            id: intakeId,
+            holder: REMESA_CENTRAL,
+            direction: 'credit',
+            amount: r.amount,
+            currency: r.currency,
+            type: CUSTODY_MOVEMENT_TYPES.INTAKE,
+            refType: 'remittance',
+            refId: id,
+            byUserId: actorId,
+            createdAt: ts
+          })
+        }
+      }
     })
   }
 }

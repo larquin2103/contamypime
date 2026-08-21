@@ -303,3 +303,18 @@ export const REMITTANCE_STATUS_LABELS = {
   returned: 'Devuelta',
   expired: 'Vencida'
 }
+
+// Tipos de movimiento del LIBRO DE CUSTODIA de efectivo (modulo 'remesas'). Es
+// append-only y el SALDO por tenedor+moneda se DERIVA de estos movimientos (nunca
+// se guarda), igual que el stock sale del libro mayor y el saldo de una cuenta de
+// sus movimientos. "Tenedor" (holder) = la caja central (REMESA_CENTRAL) o el
+// userId de un mensajero. Se define el vocabulario completo (como MOVEMENT_TYPES);
+// esta fase (F3) solo usa INTAKE — asignacion/entrega/devolucion llegan con el rol
+// de mensajero y las entregas.
+export const CUSTODY_MOVEMENT_TYPES = {
+  INTAKE: 'intake', // entra efectivo a la caja central (cobro al remitente)
+  ASSIGN: 'assign', // asignacion a un mensajero (debita central, acredita mensajero)
+  DELIVER: 'deliver', // entrega al beneficiario (debita al mensajero)
+  RETURN: 'return', // devolucion de efectivo (debita mensajero, acredita central)
+  SETTLE_ADJUST: 'settle_adjust' // ajuste por diferencia al liquidar (append-only)
+}

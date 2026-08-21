@@ -3,13 +3,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft } from 'lucide-react'
 import { remittancesRepo } from '../../repositories/remittancesRepo'
+import { custodyRepo } from '../../repositories/custodyRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
-import { CASH_CURRENCIES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS } from '../../db/constants'
+import { CASH_CURRENCIES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS, REMESA_CENTRAL, REMESA_CENTRAL_LABEL } from '../../db/constants'
 
 // Modulo 'remesas' (F2 — Ordenes). Pantalla del MANDO para crear y seguir las
 // ordenes de remesa: alta con remitente/beneficiario/monto congelados y avance de
@@ -28,13 +29,14 @@ const FORWARD = {
   [REMITTANCE_STATUS.VALIDATED]: { to: REMITTANCE_STATUS.FUNDS_AVAILABLE, label: 'Marcar fondos disponibles' }
 }
 
-// Estados desde los que se puede cancelar en esta fase (aun no hay efectivo movido).
+// Estados desde los que se puede cancelar SIN mover efectivo (antes del pago). Tras
+// marcar Pagada, el efectivo ya entro a la caja central de custodia; cancelar
+// entonces exigiria un reembolso (flujo de devolucion), que llega en una fase
+// posterior. Por eso se limita la cancelacion a antes del pago: nunca deja dinero
+// de custodia sin resolver.
 const CANCELLABLE = new Set([
   REMITTANCE_STATUS.CREATED,
-  REMITTANCE_STATUS.PAYMENT_PENDING,
-  REMITTANCE_STATUS.PAID,
-  REMITTANCE_STATUS.VALIDATED,
-  REMITTANCE_STATUS.FUNDS_AVAILABLE
+  REMITTANCE_STATUS.PAYMENT_PENDING
 ])
 
 function StatusBadge({ status }) {
@@ -46,6 +48,28 @@ function StatusBadge({ status }) {
   )
 }
 
+// Panel de custodia: saldo de efectivo por tenedor (derivado del libro). En esta
+// fase solo existe la caja central; los mensajeros aparecen aqui cuando se cablee
+// su asignacion. Se oculta si no hay efectivo en custodia (todo en cero).
+function CustodyPanel({ balances }) {
+  const holders = Object.entries(balances || {})
+    .map(([holder, byCur]) => [holder, Object.entries(byCur).filter(([, a]) => Math.abs(Number(a) || 0) >= 0.01)])
+    .filter(([, curs]) => curs.length > 0)
+  if (holders.length === 0) return null
+  const label = (h) => (h === REMESA_CENTRAL ? REMESA_CENTRAL_LABEL : h)
+  return (
+    <section className="card">
+      <h3>Custodia de efectivo</h3>
+      {holders.map(([holder, curs]) => (
+        <div key={holder} className="kv">
+          <span className="muted">{label(holder)}</span>
+          <strong>{curs.map(([c, a]) => formatMoney(a, c)).join(' · ')}</strong>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 export function RemesasScreen() {
   const { user, isManager } = useAuth()
   const { hasModule } = useLicense()
@@ -53,6 +77,7 @@ export function RemesasScreen() {
 
   const canRemesas = hasModule(LICENSE_MODULES.REMESAS)
   const remittances = useLiveQuery(() => remittancesRepo.list(), [], [])
+  const custody = useLiveQuery(() => custodyRepo.balances(), [], {})
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
 
@@ -88,6 +113,8 @@ export function RemesasScreen() {
         Órdenes de remesa. Cada orden congela remitente, beneficiario y monto al crearse.
         Toca una para ver el detalle y avanzar su estado.
       </p>
+
+      <CustodyPanel balances={custody} />
 
       <button className="btn btn--primary btn--block" onClick={() => setCreating(true)}>
         + Nueva remesa
