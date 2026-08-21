@@ -4,14 +4,16 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft } from 'lucide-react'
 import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { custodyRepo } from '../../repositories/custodyRepo'
+import { settlementsRepo } from '../../repositories/settlementsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
-import { formatMoney } from '../../lib/currency'
+import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { fileToThumbnail } from '../../lib/image'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import {
   CASH_CURRENCIES, ROLES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
   REMESA_CENTRAL, REMESA_CENTRAL_LABEL
@@ -88,6 +90,7 @@ export function RemesasScreen() {
   const allRemittances = useLiveQuery(() => remittancesRepo.list(), [], [])
   const custody = useLiveQuery(() => custodyRepo.balances(), [], {})
   const users = useLiveQuery(() => usersRepo.list(), [], [])
+  const settlements = useLiveQuery(() => settlementsRepo.list(), [], [])
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
 
@@ -166,6 +169,16 @@ export function RemesasScreen() {
           ))
         )}
       </div>
+
+      {isManager && (
+        <SettlementsSection
+          couriers={couriers}
+          balances={custody}
+          settlements={settlements}
+          userId={user.id}
+          userName={userName}
+        />
+      )}
 
       {creating && <RemittanceForm userId={user.id} onClose={() => setCreating(false)} />}
     </div>
@@ -575,6 +588,149 @@ function RemittanceForm({ userId, existing = null, onClose }) {
             onClick={save}
           >
             {busy ? 'Guardando…' : (isEdit ? 'Guardar cambios' : 'Crear remesa')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Primera moneda con diferencia distinta de cero de un mapa { moneda: valor }.
+function firstNonZeroDiff(map) {
+  for (const [currency, v] of Object.entries(map || {})) {
+    if (Math.abs(Number(v) || 0) >= 0.01) return { currency, value: round2(Number(v)) }
+  }
+  return null
+}
+
+// Liquidaciones (F6, solo mando): cuadra el efectivo en custodia de un mensajero
+// (teorico del libro vs contado fisico + semaforo) y muestra las recientes.
+function SettlementsSection({ couriers, balances, settlements, userId, userName }) {
+  const [settling, setSettling] = useState(false)
+  const recent = (settlements || []).slice(0, 8)
+  return (
+    <section className="card">
+      <h3>Liquidaciones</h3>
+      <p className="muted">Cuadra el efectivo en custodia de un mensajero: teórico (libro) vs contado.</p>
+      <button className="btn btn--ghost btn--block" onClick={() => setSettling(true)}>
+        Liquidar mensajero
+      </button>
+      {recent.length > 0 && (
+        <div className="list">
+          {recent.map((s) => {
+            const nz = firstNonZeroDiff(s.difference)
+            return (
+              <div key={s.id} className="audit-row">
+                <div className="audit-row__head">
+                  <strong>{SEMAPHORE_EMOJI[s.semaphore] || ''} {userName(s.courierId)}</strong>
+                  <span className={nz && nz.value < 0 ? 'warn-text' : 'ok-text'}>
+                    {nz ? `${nz.value > 0 ? '+' : ''}${nz.value} ${nz.currency}` : 'Cuadró'}
+                  </span>
+                </div>
+                <span className="muted">{formatDateTime(s.settledAt || s.createdAt)}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {settling && (
+        <SettleModal
+          couriers={couriers}
+          balances={balances}
+          userId={userId}
+          onClose={() => setSettling(false)}
+          onDone={() => setSettling(false)}
+        />
+      )}
+    </section>
+  )
+}
+
+// Modal de liquidacion: elige mensajero, muestra el teorico por moneda (derivado
+// del libro), teclea lo contado y ve la diferencia en vivo. Al registrar, guarda el
+// snapshot append-only (no mueve el libro; una diferencia queda marcada).
+function SettleModal({ couriers, balances, userId, onClose, onDone }) {
+  const [courierId, setCourierId] = useState(couriers[0]?.id || '')
+  const [counted, setCounted] = useState({})
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEscapeClose(onClose)
+
+  const theoretical = balances[courierId] || {}
+  const currencies = Object.keys(theoretical).length ? Object.keys(theoretical) : ['MN']
+  const changeCourier = (id) => { setCourierId(id); setCounted({}) }
+  const setCur = (c, v) => setCounted((p) => ({ ...p, [c]: v }))
+
+  const save = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      const countedNum = {}
+      for (const c of currencies) countedNum[c] = Number(counted[c]) || 0
+      await settlementsRepo.create({ courierId, counted: countedNum, note, settledBy: userId })
+      onDone()
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Liquidar mensajero</h3>
+        {couriers.length === 0 ? (
+          <p className="muted">No hay mensajeros activos. Crea uno en <strong>Usuarios</strong> (rol Mensajero).</p>
+        ) : (
+          <>
+            <label className="field">
+              <span>Mensajero</span>
+              <select value={courierId} onChange={(e) => changeCourier(e.target.value)}>
+                {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <p className="muted">Teórico en custodia (según el libro) frente a lo que cuentas físicamente:</p>
+            {currencies.map((c) => {
+              const th = round2(Number(theoretical[c]) || 0)
+              const cnt = Number(counted[c]) || 0
+              const diff = round2(cnt - th)
+              return (
+                <div key={c} style={{ marginBottom: 12 }}>
+                  <div className="kv">
+                    <span className="muted">Teórico {c}</span>
+                    <strong>{formatMoney(th, c)}</strong>
+                  </div>
+                  <label className="field">
+                    <span>Contado {c}</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={counted[c] ?? ''}
+                      onChange={(e) => setCur(c, e.target.value)}
+                      placeholder="0"
+                    />
+                  </label>
+                  <div className="kv">
+                    <span className="muted">Diferencia</span>
+                    <strong className={Math.abs(diff) >= 0.01 ? 'warn-text' : 'ok-text'}>
+                      {diff > 0 ? '+' : ''}{diff} {c}
+                    </strong>
+                  </div>
+                </div>
+              )
+            })}
+            <label className="field">
+              <span>Nota (opcional)</span>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Observaciones" />
+            </label>
+          </>
+        )}
+        {error && <p className="error">{error}</p>}
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn--primary" disabled={busy || !courierId} onClick={save}>
+            {busy ? 'Guardando…' : 'Registrar liquidación'}
           </button>
         </div>
       </div>

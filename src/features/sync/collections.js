@@ -55,7 +55,11 @@ export const SYNC_COLLECTIONS = [
   { name: 'custodyMovements', pk: 'id' },
   // Modulo 'remesas' (F5): entregas append-only (una fila por intento/resultado).
   // Se fusionan por id (patron orderItems). Sin el modulo queda vacia.
-  { name: 'deliveries', pk: 'id' }
+  { name: 'deliveries', pk: 'id' },
+  // Modulo 'remesas' (F6): liquidaciones (reconciliacion append-only del efectivo
+  // en custodia de un mensajero). Snapshot, como mermas/producciones. Sin el
+  // modulo queda vacia.
+  { name: 'settlements', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a
