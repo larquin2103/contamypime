@@ -13,7 +13,7 @@ import {
   DEFAULT_NOTIFICATION_PREFERENCES
 } from '../../repositories/notificationsRepo'
 import { syncTs } from '../sync/collections'
-import { SHIFT_STATUS, COUNT_STATUS, SEMAPHORE, ROLE_LABELS, areaLabel } from '../../db/constants'
+import { SHIFT_STATUS, COUNT_STATUS, SEMAPHORE, ROLE_LABELS, areaLabel, DELIVERY_RESULT } from '../../db/constants'
 
 // ---------------------------------------------------------------------------
 // Motor de notificaciones (Fase 9) — CAPA INDEPENDIENTE y de SÓLO LECTURA sobre
@@ -329,6 +329,64 @@ function buildTransferMismatch(sale, ctx) {
   }
 }
 
+// 6) Entrega FALLIDA de una remesa (deliveriesRepo). El mensajero no pudo entregar;
+//    el efectivo se devolvió a la caja central. Deriva de `deliveries` (result FAILED,
+//    no anulada). Ej: "Carlos no pudo entregar una remesa".
+function buildDeliveryFailed(delivery, ctx) {
+  if (!delivery || delivery.voided || delivery.result !== DELIVERY_RESULT.FAILED) return null
+  const courier = ctx.userName[delivery.courierId] || 'mensajero'
+  return {
+    type: NOTIFICATION_TYPES.DELIVERY_FAILED,
+    sourceId: delivery.id,
+    severity: NOTIFICATION_SEVERITY.WARNING,
+    title: 'Entrega fallida',
+    message: `${courier} no pudo entregar una remesa${delivery.note ? ` (${delivery.note})` : ''}`,
+    createdAt: delivery.createdAt || now(),
+    createdBy: delivery.courierId || delivery.byUserId || null,
+    requiresAction: true,
+    audience: 'manager',
+    metadata: {
+      sourceCollection: 'deliveries',
+      sourceId: delivery.id,
+      courierId: delivery.courierId || null,
+      remittanceId: delivery.remittanceId || null
+    }
+  }
+}
+
+// 7) Diferencia en la LIQUIDACIÓN de un mensajero (settlementsRepo). Faltante/sobrante
+//    del efectivo contado frente al teórico del libro. Crítico si el semáforo es rojo.
+//    Deriva de `settlements`. Ej: "Liquidación de Carlos con faltante 200 MN".
+function buildSettlementDiff(settlement, ctx) {
+  if (!settlement) return null
+  const nz = firstNonZero(settlement.difference)
+  if (!nz) return null
+  const courier = ctx.userName[settlement.courierId] || 'mensajero'
+  const critical = settlement.semaphore === SEMAPHORE.RED
+  const faltante = nz.value < 0
+  const kind = faltante ? 'faltante' : 'sobrante'
+  return {
+    type: NOTIFICATION_TYPES.SETTLEMENT_DIFF,
+    sourceId: settlement.id,
+    severity: critical ? NOTIFICATION_SEVERITY.CRITICAL : NOTIFICATION_SEVERITY.WARNING,
+    title: faltante ? 'Faltante en liquidación' : 'Sobrante en liquidación',
+    message: `Liquidación de ${courier} con ${kind} ${Math.abs(nz.value)} ${nz.currency}`,
+    createdAt: settlement.settledAt || settlement.createdAt || now(),
+    createdBy: settlement.settledBy || null,
+    requiresAction: true,
+    audience: 'manager',
+    metadata: {
+      sourceCollection: 'settlements',
+      sourceId: settlement.id,
+      courierId: settlement.courierId || null,
+      diff: nz.value,
+      currency: nz.currency,
+      sign: kind,
+      semaphore: settlement.semaphore || null
+    }
+  }
+}
+
 // --- Barrido derivado (offline-first, incremental) ---------------------------
 // Lee SOLO lo posterior al piso y materializa los avisos nuevos. Rendimiento:
 //  - priceChanges: rango por índice `createdAt` (= su syncTs) -> solo lo nuevo.
@@ -361,11 +419,13 @@ export async function refreshFromSources() {
   // Lecturas acotadas (NO tablas completas): priceChanges por índice createdAt;
   // shifts/counts por estado (índice). Se filtran por el piso con syncTs (que
   // refleja la transición real: closedAt / approvedAt).
-  const [priceRows, shiftRows, countRows, saleRows] = await Promise.all([
+  const [priceRows, shiftRows, countRows, saleRows, deliveryRows, settlementRows] = await Promise.all([
     db.priceChanges.where('createdAt').aboveOrEqual(floor).toArray(),
     db.shifts.where('status').equals(SHIFT_STATUS.CLOSED).toArray(),
     db.counts.where('status').equals(COUNT_STATUS.APPROVED).toArray(),
-    db.sales.where('createdAt').aboveOrEqual(floor).toArray()
+    db.sales.where('createdAt').aboveOrEqual(floor).toArray(),
+    db.deliveries.where('createdAt').aboveOrEqual(floor).toArray(),
+    db.settlements.where('createdAt').aboveOrEqual(floor).toArray()
   ])
 
   // Candidatos tras el piso. [registro, regla, ¿necesita ctx de nombres?].
@@ -379,6 +439,14 @@ export async function refreshFromSources() {
     if (!r.voided && r.paymentMethod === 'transfer' && Math.abs(Number(r.transferDiff || 0)) >= 0.01) {
       candidates.push([r, buildTransferMismatch, true])
     }
+  }
+  // Remesas (módulo): entregas fallidas y liquidaciones con diferencia (ambas
+  // acotadas por índice createdAt al piso). Vacías sin el módulo -> sin candidatos.
+  for (const r of deliveryRows) {
+    if (!r.voided && r.result === DELIVERY_RESULT.FAILED) candidates.push([r, buildDeliveryFailed, true])
+  }
+  for (const r of settlementRows) {
+    if (firstNonZero(r.difference)) candidates.push([r, buildSettlementDiff, true])
   }
 
   // La marca de agua avanza al mayor syncTs visto (aunque no se materialice nada).

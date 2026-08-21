@@ -44,7 +44,11 @@ export const NOTIFICATION_TYPES = {
   PRICE_CHANGE: 'price_change',
   // Venta por transferencia cuyo importe recibido NO coincide con lo que se debía
   // cobrar (sale.transferDiff != 0). Deriva de `sales` (que ya sincroniza).
-  TRANSFER_MISMATCH: 'transfer_mismatch'
+  TRANSFER_MISMATCH: 'transfer_mismatch',
+  // Módulo 'remesas': entrega fallida (el mensajero no pudo entregar) y diferencia
+  // en la liquidación de un mensajero (faltante/sobrante frente al teórico).
+  DELIVERY_FAILED: 'delivery_failed',
+  SETTLEMENT_DIFF: 'settlement_diff'
 }
 
 // Categorías que ve el dueño en Ajustes (los interruptores de NotificationSettings).
@@ -57,7 +61,8 @@ export const NOTIFICATION_CATEGORIES = {
   CAJA: 'caja',
   INVENTARIO: 'inventario',
   TRANSFERENCIAS: 'transferencias',
-  VENTAS: 'ventas'
+  VENTAS: 'ventas',
+  REMESAS: 'remesas'
 }
 
 // Qué categoría gobierna cada tipo (para el gate de preferencias).
@@ -65,7 +70,9 @@ export const TYPE_CATEGORY = {
   [NOTIFICATION_TYPES.CASH_DIFFERENCE]: NOTIFICATION_CATEGORIES.CAJA,
   [NOTIFICATION_TYPES.COUNT_APPROVED]: NOTIFICATION_CATEGORIES.INVENTARIO,
   [NOTIFICATION_TYPES.PRICE_CHANGE]: NOTIFICATION_CATEGORIES.VENTAS,
-  [NOTIFICATION_TYPES.TRANSFER_MISMATCH]: NOTIFICATION_CATEGORIES.TRANSFERENCIAS
+  [NOTIFICATION_TYPES.TRANSFER_MISMATCH]: NOTIFICATION_CATEGORIES.TRANSFERENCIAS,
+  [NOTIFICATION_TYPES.DELIVERY_FAILED]: NOTIFICATION_CATEGORIES.REMESAS,
+  [NOTIFICATION_TYPES.SETTLEMENT_DIFF]: NOTIFICATION_CATEGORIES.REMESAS
 }
 
 // Preferencias por defecto del dueño (clave 'notificationPreferences' en config,
@@ -77,6 +84,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   inventario: true,
   transferencias: true,
   ventas: true,
+  remesas: true,
   onlyImportant: false
 }
 
