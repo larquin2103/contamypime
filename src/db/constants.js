@@ -18,7 +18,13 @@ export const ROLES = {
   // ni maneja caja; solo elabora recetas y las envia a un area de venta. No ve el
   // almacen central, ni costos, ni datos del dueño (como ELABORATION, pero para la
   // cocina). Solo existe con el modulo 'cocina' desbloqueado.
-  COOK: 'cook'
+  COOK: 'cook',
+  // Mensajero (modulo 'remesas'): rol acotado a la gestion de remesas. Recibe
+  // efectivo en custodia, lo lleva en ruta y lo entrega al beneficiario, y luego
+  // liquida. NO es mando ni vendedor: no abre turno de venta ni maneja el
+  // catalogo, no ve costos ni datos del dueño (como COOK/ELABORATION, pero para
+  // remesas). Solo existe con el modulo 'remesas' desbloqueado.
+  COURIER: 'courier'
 }
 
 export const ROLE_LABELS = {
@@ -26,7 +32,8 @@ export const ROLE_LABELS = {
   [ROLES.ADMIN]: 'Administrativo',
   [ROLES.SELLER]: 'Vendedor',
   [ROLES.ELABORATION]: 'Elaboración',
-  [ROLES.COOK]: 'Cocinero'
+  [ROLES.COOK]: 'Cocinero',
+  [ROLES.COURIER]: 'Mensajero'
 }
 
 // Unidades de medida soportadas por producto.
@@ -233,4 +240,66 @@ export const DEFAULT_SEMAPHORE_CONFIG = {
 export const DEFAULT_DENOMINATIONS = {
   MN: [1000, 500, 200, 100, 50, 20, 10, 5, 3, 1],
   USD: [100, 50, 20, 10, 5, 1]
+}
+
+// ---------------------------------------------------------------------------
+// Modulo 'remesas': gestion de remesas (orden -> pago -> custodia -> entrega ->
+// liquidacion). Aditivo y gateado; sin el modulo, nada de esto aparece y la app
+// es identica a la clasica. (F1: cimientos; sin logica ni UI todavia.)
+// ---------------------------------------------------------------------------
+
+// Caja central de la operacion de remesas: centinela reservado (como WAREHOUSE
+// '__almacen') que representa el efectivo aun NO asignado a ningun mensajero. La
+// custodia de un mensajero se identifica con su userId; "asignar" mueve de
+// __central al mensajero (neto cero, igual que un traspaso almacen->area). No es
+// una ubicacion de stock: por eso vive aparte y no entra en locationLabel.
+export const REMESA_CENTRAL = '__central'
+export const REMESA_CENTRAL_LABEL = 'Caja central'
+
+// Estados de una remesa. Flujo normal (orden -> cierre) mas estados de excepcion.
+// El estado avanza append-only y cada transicion actualiza updatedAt (la sync es
+// LWW por marca de tiempo). Sin el modulo no se crea ninguna remesa.
+export const REMITTANCE_STATUS = {
+  CREATED: 'created', // orden creada
+  PAYMENT_PENDING: 'payment_pending', // esperando pago del remitente
+  PAID: 'paid', // pagada
+  VALIDATED: 'validated', // pago validado
+  FUNDS_AVAILABLE: 'funds_available', // fondos disponibles para asignar
+  ASSIGNED: 'assigned', // asignada a un mensajero
+  HANDED_TO_COURIER: 'handed_to_courier', // efectivo entregado al mensajero
+  IN_ROUTE: 'in_route', // en ruta
+  DELIVERED: 'delivered', // entregada al beneficiario
+  SETTLED: 'settled', // liquidada (efectivo conciliado)
+  CLOSED: 'closed', // cerrada
+  // Excepciones.
+  CANCELLED: 'cancelled',
+  FAILED: 'failed',
+  BENEFICIARY_UNAVAILABLE: 'beneficiary_unavailable',
+  WRONG_ADDRESS: 'wrong_address',
+  REJECTED: 'rejected',
+  DISPUTED: 'disputed',
+  RETURNED: 'returned',
+  EXPIRED: 'expired'
+}
+
+export const REMITTANCE_STATUS_LABELS = {
+  created: 'Creada',
+  payment_pending: 'Pago pendiente',
+  paid: 'Pagada',
+  validated: 'Validada',
+  funds_available: 'Fondos disponibles',
+  assigned: 'Asignada',
+  handed_to_courier: 'Entregada al mensajero',
+  in_route: 'En ruta',
+  delivered: 'Entregada',
+  settled: 'Liquidada',
+  closed: 'Cerrada',
+  cancelled: 'Cancelada',
+  failed: 'Fallida',
+  beneficiary_unavailable: 'Beneficiario ausente',
+  wrong_address: 'Dirección incorrecta',
+  rejected: 'Rechazada',
+  disputed: 'En disputa',
+  returned: 'Devuelta',
+  expired: 'Vencida'
 }

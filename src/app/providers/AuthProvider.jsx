@@ -67,6 +67,10 @@ export function AuthProvider({ children }) {
   // Rol acotado de cocina (módulo 'cocina'). Como el elaborador: no es mando ni
   // vendedor, no abre turno ni maneja caja; solo opera el tablero de cocina.
   const isCook = user?.role === ROLES.COOK
+  // Rol acotado de mensajería (módulo 'remesas'). Como el cocinero/elaborador: no
+  // es mando ni vendedor, no abre turno ni maneja caja; solo gestiona sus remesas
+  // (custodia, ruta, entregas, liquidación). NO entra en isManager.
+  const isCourier = user?.role === ROLES.COURIER
   // Vendedor: rol de venta. Se expone como flag (igual que isCook/isElaborator)
   // para gatear en la UI sin repetir la comprobación de rol; hoy lo usa el Home
   // (tarjeta del tablero de cocina, gateada además por el módulo 'cocina') y el
@@ -90,6 +94,7 @@ export function AuthProvider({ children }) {
     isAdmin,
     isElaborator,
     isCook,
+    isCourier,
     isSeller,
     can,
     // "Mando": dueño O administrativo. Habilita inventario, supervision y la

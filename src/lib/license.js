@@ -29,7 +29,8 @@ export const LICENSE_MODULES = {
   TABLES: 'mesas', // mesas con cuenta abierta por area (cafeteria/restaurante)
   IMAGES: 'imagenes', // fotos: catalogo, carta de mesas y avatares (miniaturas sync)
   MULTICURRENCY: 'divisas', // precio/costo por producto en divisa (USD); el MN se deriva a la tasa (base interna MN)
-  KITCHEN: 'cocina' // recetas + tablero de cocina (elabora y envia a areas); rol acotado Cocinero
+  KITCHEN: 'cocina', // recetas + tablero de cocina (elabora y envia a areas); rol acotado Cocinero
+  REMESAS: 'remesas' // gestion de remesas: orden -> pago -> custodia -> entrega -> liquidacion; rol acotado Mensajero
 }
 
 export const LICENSE_MODULE_LABELS = {
@@ -39,7 +40,8 @@ export const LICENSE_MODULE_LABELS = {
   mesas: 'Mesas y cuentas',
   imagenes: 'Imágenes y fotos',
   divisas: 'Precios en divisas',
-  cocina: 'Cocina y recetas'
+  cocina: 'Cocina y recetas',
+  remesas: 'Remesas'
 }
 
 // Lista de modulos de un payload (tolerante a licencias viejas sin el campo).

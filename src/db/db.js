@@ -162,3 +162,28 @@ db.version(13).stores({
 db.version(14).stores({
   notifications: 'id, type, status, severity, createdAt, [status+createdAt]'
 })
+
+// Modulo 'remesas': gestion de remesas (orden -> pago -> custodia -> entrega ->
+// liquidacion). CUATRO tablas NUEVAS y aditivas (solo agrega tablas vacias, no
+// toca datos ni esquema existentes; sin `.upgrade()`), igual que v13 (cocina)
+// agrego dos tablas vacias:
+//  - `remittances`: cabecera de la orden (remitente/beneficiario congelados,
+//    monto, estado). La edita el mando; LWW por updatedAt.
+//  - `deliveries`: entregas append-only (una fila por intento/resultado); las
+//    correcciones se marcan `voided`, nunca se borran (como `orderItems`).
+//  - `custodyMovements`: libro append-only del efectivo en custodia. El SALDO por
+//    tenedor+moneda se DERIVA de estos movimientos (como el stock sale del libro
+//    mayor y el saldo de una cuenta de sus movimientos); nunca se guarda. El
+//    indice [holder+currency] permite sumar por mensajero/moneda.
+//  - `settlements`: bitacora append-only de cada liquidacion (snapshot teorico/
+//    fisico/diferencia), como `mermas`/`productions` acompañan al libro mayor.
+// Sin el modulo, las cuatro quedan vacias y la app es identica a la clasica.
+// NOTA: NO se agregan a SYNC_COLLECTIONS aqui: cada tabla se registrara para la
+// sincronizacion en la fase que empiece a escribirla (junto a su codigo), para
+// no tocar la capa de sync mientras estan vacias.
+db.version(15).stores({
+  remittances: 'id, status, assignedCourierId, createdAt, updatedAt',
+  deliveries: 'id, remittanceId, courierId, result, voided, createdAt',
+  custodyMovements: 'id, holder, type, refId, createdAt, [holder+currency]',
+  settlements: 'id, courierId, settledAt, createdAt'
+})
