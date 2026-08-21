@@ -26,6 +26,11 @@ import {
   exportExcel,
   exportPdf
 } from './reportsService'
+import {
+  buildRemittancesReport,
+  buildDeliveriesReport,
+  buildSettlementsReport
+} from './remesasReports'
 
 export function ReportsScreen() {
   const { isManager } = useAuth()
@@ -113,6 +118,12 @@ export function ReportsScreen() {
         card('tables', 'Ventas por mesa', 'Cuentas cobradas por mesa: consumo, servicio, total y ticket promedio', buildTablesReport, true)}
       {hasModule(LICENSE_MODULES.KITCHEN) &&
         card('kitchen', 'Producción de cocina', 'Elaboraciones de cocina: receta, área, unidades y costo (insumos y unitario del elaborado)', buildKitchenProduction, true)}
+      {hasModule(LICENSE_MODULES.REMESAS) &&
+        card('remesas', 'Remesas', 'Órdenes de remesa: remitente, beneficiario, monto, estado y mensajero asignado', buildRemittancesReport, true)}
+      {hasModule(LICENSE_MODULES.REMESAS) &&
+        card('remesas-ent', 'Entregas de remesas', 'Cada intento de entrega (entregada/fallida) con su mensajero, beneficiario y monto', buildDeliveriesReport, true)}
+      {hasModule(LICENSE_MODULES.REMESAS) &&
+        card('remesas-liq', 'Liquidaciones de mensajeros', 'Cuadre del efectivo en custodia: teórico, contado, diferencia y resultado', buildSettlementsReport, true)}
     </div>
   )
 }

@@ -9,6 +9,8 @@ import { productsRepo } from '../../repositories/productsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { kitchenRepo } from '../../repositories/kitchenRepo'
 import { transfersRepo } from '../../repositories/transfersRepo'
+import { deliveriesRepo } from '../../repositories/deliveriesRepo'
+import { settlementsRepo } from '../../repositories/settlementsRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -17,7 +19,7 @@ import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { cleanQty } from '../../lib/qty'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { SHIFT_STATUS, locationLabel, areaLabel, COCINA } from '../../db/constants'
+import { SHIFT_STATUS, locationLabel, areaLabel, COCINA, DELIVERY_RESULT } from '../../db/constants'
 
 const MOVE_LABEL = {
   purchase_in: 'Entrada (almacén)',
@@ -48,6 +50,7 @@ export function AuditScreen() {
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
   const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+  const canRemesas = hasModule(LICENSE_MODULES.REMESAS)
   const [tab, setTab] = useState('shifts')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -63,6 +66,9 @@ export function AuditScreen() {
   // Modulo 'cocina' (gateado): producciones (elaborados) y abastecimientos a la cocina.
   const productions = useLiveQuery(() => (canKitchen ? kitchenRepo.listAll() : Promise.resolve([])), [canKitchen], [])
   const kitchenTransfers = useLiveQuery(() => (canKitchen ? transfersRepo.listAll() : Promise.resolve([])), [canKitchen], [])
+  // Modulo 'remesas' (gateado): entregas y liquidaciones para la auditoria.
+  const rmDeliveries = useLiveQuery(() => (canRemesas ? deliveriesRepo.listAll() : Promise.resolve([])), [canRemesas], [])
+  const rmSettlements = useLiveQuery(() => (canRemesas ? settlementsRepo.list() : Promise.resolve([])), [canRemesas], [])
 
   const userName = useMemo(() => {
     const m = {}
@@ -91,6 +97,22 @@ export function AuditScreen() {
     return [...elaborados, ...abastos].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }, [productions, kitchenTransfers])
 
+  // Actividad de remesas (modulo 'remesas') para la auditoria: entregas
+  // (entregada/fallida) y liquidaciones, en una lista cronologica unica.
+  const remesaRows = useMemo(() => {
+    const entregas = (rmDeliveries || []).map((d) => ({
+      id: d.id, kind: 'entrega', createdAt: d.createdAt, userId: d.byUserId || d.courierId,
+      title: d.result === DELIVERY_RESULT.DELIVERED ? '✅ Entregada' : '↩️ Devuelta (fallida)',
+      detail: `${userName[d.courierId] || 'mensajero'}${d.note ? ` · ${d.note}` : ''}`
+    }))
+    const liqs = (rmSettlements || []).map((s) => ({
+      id: s.id, kind: 'liquidacion', createdAt: s.settledAt || s.createdAt, userId: s.settledBy,
+      title: `${SEMAPHORE_EMOJI[s.semaphore] || ''} Liquidación`,
+      detail: `${userName[s.courierId] || 'mensajero'}`
+    }))
+    return [...entregas, ...liqs].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  }, [rmDeliveries, rmSettlements, userName])
+
   if (!isManager) {
     return (
       <div className="screen">
@@ -109,6 +131,7 @@ export function AuditScreen() {
   const pricesF = prices.filter((p) => inRange(p.createdAt, from, to)).slice(0, MAX)
   const deletionsF = deletions.filter((d) => inRange(d.createdAt, from, to)).slice(0, MAX)
   const cocinaF = cocinaRows.filter((x) => inRange(x.createdAt, from, to)).slice(0, MAX)
+  const remesaF = remesaRows.filter((x) => inRange(x.createdAt, from, to)).slice(0, MAX)
 
   return (
     <div className="screen">
@@ -130,6 +153,9 @@ export function AuditScreen() {
         <button className={`tab ${tab === 'del' ? 'is-active' : ''}`} onClick={() => setTab('del')}>Bajas</button>
         {canKitchen && (
           <button className={`tab ${tab === 'cocina' ? 'is-active' : ''}`} onClick={() => setTab('cocina')}>Cocina</button>
+        )}
+        {canRemesas && (
+          <button className={`tab ${tab === 'remesas' ? 'is-active' : ''}`} onClick={() => setTab('remesas')}>Remesas</button>
         )}
       </div>
 
@@ -225,6 +251,21 @@ export function AuditScreen() {
             </div>
           ))}
           {cocinaF.length === 0 && <p className="muted">Sin actividad de cocina en el rango.</p>}
+        </div>
+      )}
+
+      {tab === 'remesas' && canRemesas && (
+        <div className="list">
+          {remesaF.map((row) => (
+            <div key={row.id} className="audit-row">
+              <div className="audit-row__head">
+                <strong>{row.title}</strong>
+                <span className="muted">{formatDateTime(row.createdAt)}</span>
+              </div>
+              <span className="muted">{row.detail} · {userName[row.userId] || '—'}</span>
+            </div>
+          ))}
+          {remesaF.length === 0 && <p className="muted">Sin actividad de remesas en el rango.</p>}
         </div>
       )}
     </div>
