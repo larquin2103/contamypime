@@ -318,3 +318,11 @@ export const CUSTODY_MOVEMENT_TYPES = {
   RETURN: 'return', // devolucion de efectivo (debita mensajero, acredita central)
   SETTLE_ADJUST: 'settle_adjust' // ajuste por diferencia al liquidar (append-only)
 }
+
+// Resultado de un intento de ENTREGA (modulo 'remesas'). La entrega es una fila
+// append-only en `deliveries`; una remesa asignada se resuelve ENTREGADA (el
+// efectivo llega al beneficiario) o FALLIDA (se devuelve el efectivo a la central).
+export const DELIVERY_RESULT = {
+  DELIVERED: 'delivered',
+  FAILED: 'failed'
+}

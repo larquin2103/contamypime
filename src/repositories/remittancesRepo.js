@@ -2,8 +2,9 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
-import { REMITTANCE_STATUS, CUSTODY_MOVEMENT_TYPES, REMESA_CENTRAL } from '../db/constants'
+import { REMITTANCE_STATUS, CUSTODY_MOVEMENT_TYPES, REMESA_CENTRAL, DELIVERY_RESULT, ROLES } from '../db/constants'
 import { custodyRepo } from './custodyRepo'
+import { deliveriesRepo } from './deliveriesRepo'
 
 // Remesas (modulo 'remesas') — CABECERA de la orden. Capa NUEVA y AISLADA: solo
 // escribe `remittances` y deja constancia en `auditEvents` (que ya sincroniza).
@@ -170,6 +171,132 @@ export const remittancesRepo = {
           })
         }
       }
+    })
+  },
+
+  // Asigna una remesa con FONDOS DISPONIBLES a un mensajero: mueve el efectivo de
+  // la caja central a la custodia del mensajero (neto cero, como un traspaso
+  // almacen->area) y pasa la remesa a ASIGNADA. Atomico y auditado. Ids
+  // deterministas -> re-asignar o una doble llegada offline NO duplica el efectivo
+  // (el dinero se conserva; en el raro caso de dos asignaciones simultaneas a
+  // mensajeros distintos, la sync converge por LWW y queda para revisar, como los
+  // turnos duplicados). Solo desde FONDOS DISPONIBLES.
+  async assign(id, courierId, { actorId = null } = {}) {
+    if (!courierId) throw new Error('Falta el mensajero')
+    const ts = now()
+    await db.transaction('rw', db.remittances, db.custodyMovements, db.auditEvents, db.users, async () => {
+      const r = await db.remittances.get(id)
+      if (!r) throw new Error('Remesa no encontrada')
+      if (r.status !== REMITTANCE_STATUS.FUNDS_AVAILABLE) {
+        throw new Error('Solo se asigna una remesa con fondos disponibles')
+      }
+      const courier = await db.users.get(courierId)
+      if (!courier || courier.role !== ROLES.COURIER || !courier.active) {
+        throw new Error('El mensajero no es valido')
+      }
+      const outId = `custody:assign-out:${id}`
+      if (!(await db.custodyMovements.get(outId))) {
+        await custodyRepo.addMovementRaw({
+          id: outId, holder: REMESA_CENTRAL, direction: 'debit',
+          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.ASSIGN,
+          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+        })
+      }
+      const inId = `custody:assign-in:${id}`
+      if (!(await db.custodyMovements.get(inId))) {
+        await custodyRepo.addMovementRaw({
+          id: inId, holder: courierId, direction: 'credit',
+          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.ASSIGN,
+          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+        })
+      }
+      await db.remittances.update(id, {
+        assignedCourierId: courierId, status: REMITTANCE_STATUS.ASSIGNED, updatedAt: ts
+      })
+      await db.auditEvents.add({
+        id: newId(), entity: 'remittance', entityId: id, action: 'assign',
+        courierId, toStatus: REMITTANCE_STATUS.ASSIGNED, userId: actorId, createdAt: ts
+      })
+    })
+  },
+
+  // Entrega al beneficiario: DEBITA la custodia del mensajero asignado (el efectivo
+  // sale a manos del beneficiario), registra la entrega (append-only, con
+  // comprobante opcional) y pasa la remesa a ENTREGADA. Atomico, auditado,
+  // idempotente por ids deterministas. Solo desde ASIGNADA / EN RUTA.
+  async deliver(id, { proofDataUrl = '', note = '', actorId = null } = {}) {
+    const ts = now()
+    await db.transaction('rw', db.remittances, db.custodyMovements, db.deliveries, db.auditEvents, async () => {
+      const r = await db.remittances.get(id)
+      if (!r) throw new Error('Remesa no encontrada')
+      if (r.status !== REMITTANCE_STATUS.ASSIGNED && r.status !== REMITTANCE_STATUS.IN_ROUTE) {
+        throw new Error('Solo se entrega una remesa asignada')
+      }
+      if (!r.assignedCourierId) throw new Error('La remesa no tiene mensajero asignado')
+      const movId = `custody:deliver:${id}`
+      if (!(await db.custodyMovements.get(movId))) {
+        await custodyRepo.addMovementRaw({
+          id: movId, holder: r.assignedCourierId, direction: 'debit',
+          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.DELIVER,
+          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+        })
+      }
+      const delId = `delivery:${id}`
+      if (!(await db.deliveries.get(delId))) {
+        await deliveriesRepo.addRaw({
+          id: delId, remittanceId: id, courierId: r.assignedCourierId,
+          result: DELIVERY_RESULT.DELIVERED, proofDataUrl, note, byUserId: actorId, createdAt: ts
+        })
+      }
+      await db.remittances.update(id, { status: REMITTANCE_STATUS.DELIVERED, updatedAt: ts })
+      await db.auditEvents.add({
+        id: newId(), entity: 'remittance', entityId: id, action: 'deliver',
+        courierId: r.assignedCourierId, toStatus: REMITTANCE_STATUS.DELIVERED, userId: actorId, createdAt: ts
+      })
+    })
+  },
+
+  // Entrega fallida: se DEVUELVE el efectivo. Debita la custodia del mensajero y lo
+  // reintegra a la caja central; registra la entrega FALLIDA (append-only) y pasa
+  // la remesa a DEVUELTA. Asi el efectivo del mensajero nunca queda sin resolver.
+  // Atomico, auditado, idempotente. Solo desde ASIGNADA / EN RUTA.
+  async failReturn(id, { note = '', actorId = null } = {}) {
+    const ts = now()
+    await db.transaction('rw', db.remittances, db.custodyMovements, db.deliveries, db.auditEvents, async () => {
+      const r = await db.remittances.get(id)
+      if (!r) throw new Error('Remesa no encontrada')
+      if (r.status !== REMITTANCE_STATUS.ASSIGNED && r.status !== REMITTANCE_STATUS.IN_ROUTE) {
+        throw new Error('Solo se devuelve una remesa asignada')
+      }
+      if (!r.assignedCourierId) throw new Error('La remesa no tiene mensajero asignado')
+      const outId = `custody:return-out:${id}`
+      if (!(await db.custodyMovements.get(outId))) {
+        await custodyRepo.addMovementRaw({
+          id: outId, holder: r.assignedCourierId, direction: 'debit',
+          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.RETURN,
+          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+        })
+      }
+      const inId = `custody:return-in:${id}`
+      if (!(await db.custodyMovements.get(inId))) {
+        await custodyRepo.addMovementRaw({
+          id: inId, holder: REMESA_CENTRAL, direction: 'credit',
+          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.RETURN,
+          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+        })
+      }
+      const delId = `delivery:${id}`
+      if (!(await db.deliveries.get(delId))) {
+        await deliveriesRepo.addRaw({
+          id: delId, remittanceId: id, courierId: r.assignedCourierId,
+          result: DELIVERY_RESULT.FAILED, note, byUserId: actorId, createdAt: ts
+        })
+      }
+      await db.remittances.update(id, { status: REMITTANCE_STATUS.RETURNED, updatedAt: ts })
+      await db.auditEvents.add({
+        id: newId(), entity: 'remittance', entityId: id, action: 'fail_return',
+        courierId: r.assignedCourierId, toStatus: REMITTANCE_STATUS.RETURNED, userId: actorId, createdAt: ts
+      })
     })
   }
 }

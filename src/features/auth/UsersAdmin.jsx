@@ -135,6 +135,11 @@ function EditUserForm({ user, onClose }) {
   if (hasModule(LICENSE_MODULES.KITCHEN) || user.role === ROLES.COOK) {
     roleOptions.push(ROLES.COOK)
   }
+  // Mensajero solo con el módulo 'remesas' (o si el usuario ya lo es, para poder
+  // sacarlo de ese rol aunque el módulo se haya apagado).
+  if (hasModule(LICENSE_MODULES.REMESAS) || user.role === ROLES.COURIER) {
+    roleOptions.push(ROLES.COURIER)
+  }
 
   const cleanName = name.trim()
   const nameChanged = cleanName.length > 0 && cleanName !== user.name
@@ -213,6 +218,12 @@ function EditUserForm({ user, onClose }) {
                 Como <strong>vendedor</strong> solo vende en su turno; no ve costos ni datos del dueño.
               </p>
             )}
+            {roleChanged && role === ROLES.COURIER && (
+              <p className="muted">
+                Como <strong>mensajero</strong> solo gestiona sus remesas asignadas (recibe efectivo en
+                custodia, entrega al beneficiario y devuelve lo que sobre); no vende, no abre turno ni ve el negocio.
+              </p>
+            )}
           </>
         ) : (
           <p className="muted">
@@ -279,6 +290,9 @@ function NewUserForm({ onClose }) {
             {hasModule(LICENSE_MODULES.KITCHEN) && (
               <option value={ROLES.COOK}>{ROLE_LABELS[ROLES.COOK]}</option>
             )}
+            {hasModule(LICENSE_MODULES.REMESAS) && (
+              <option value={ROLES.COURIER}>{ROLE_LABELS[ROLES.COURIER]}</option>
+            )}
           </select>
         </label>
         {role === ROLES.ELABORATION && (
@@ -298,6 +312,12 @@ function NewUserForm({ onClose }) {
           <p className="muted">
             Opera solo el <strong>tablero de cocina</strong>: elabora recetas y las envía a las
             áreas de venta. No ve el almacén central, ni costos, ni los datos del dueño.
+          </p>
+        )}
+        {role === ROLES.COURIER && (
+          <p className="muted">
+            Opera solo sus <strong>remesas asignadas</strong>: recibe efectivo en custodia, lo
+            entrega al beneficiario y devuelve lo que sobre. No vende, no abre turno ni ve el negocio.
           </p>
         )}
         <p className="field-label">PIN (4 a 6 dígitos)</p>

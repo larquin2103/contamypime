@@ -4,25 +4,31 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft } from 'lucide-react'
 import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { custodyRepo } from '../../repositories/custodyRepo'
+import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
+import { fileToThumbnail } from '../../lib/image'
 import { useEscapeClose } from '../../lib/useEscapeClose'
-import { CASH_CURRENCIES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS, REMESA_CENTRAL, REMESA_CENTRAL_LABEL } from '../../db/constants'
+import {
+  CASH_CURRENCIES, ROLES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
+  REMESA_CENTRAL, REMESA_CENTRAL_LABEL
+} from '../../db/constants'
 
-// Modulo 'remesas' (F2 — Ordenes). Pantalla del MANDO para crear y seguir las
-// ordenes de remesa: alta con remitente/beneficiario/monto congelados y avance de
-// estado PREVIO a la custodia (pago -> validacion -> fondos disponibles) o
-// cancelacion. La custodia de efectivo y la asignacion a mensajeros llegan en
-// fases posteriores. Gateada por la licencia 'remesas'; sin ella, no aparece nada.
+// Modulo 'remesas' (F2 Ordenes · F3 Custodia · F4 Mensajeros · F5 Entregas).
+// Pantalla unica con conciencia de ROL:
+//  - MANDO (dueño/admin): crea y sigue las ordenes, avanza pago/validacion,
+//    ASIGNA el efectivo a un mensajero y ve la custodia de todos.
+//  - MENSAJERO (rol acotado): ve SOLO sus remesas asignadas y su efectivo en
+//    custodia; ENTREGA al beneficiario o marca fallida (devuelve el efectivo).
+// Gateada por la licencia 'remesas'; sin ella, no aparece nada.
 
-// Monedas ofrecidas para el monto (efectivo MN/USD + MLC electronico), igual que
-// en la pantalla de Cuentas.
+// Monedas ofrecidas para el monto (efectivo MN/USD + MLC electronico).
 const CURRENCY_OPTIONS = [...new Set([...CASH_CURRENCIES, 'MLC'])]
 
-// Avance lineal de estado en esta fase (solo etapas previas a la custodia).
+// Avance lineal de estado PREVIO a la custodia (solo el mando).
 const FORWARD = {
   [REMITTANCE_STATUS.CREATED]: { to: REMITTANCE_STATUS.PAID, label: 'Registrar pago' },
   [REMITTANCE_STATUS.PAID]: { to: REMITTANCE_STATUS.VALIDATED, label: 'Validar pago' },
@@ -40,7 +46,7 @@ const CANCELLABLE = new Set([
 ])
 
 function StatusBadge({ status }) {
-  const cancelled = status === REMITTANCE_STATUS.CANCELLED
+  const cancelled = status === REMITTANCE_STATUS.CANCELLED || status === REMITTANCE_STATUS.RETURNED
   return (
     <span className={`badge ${cancelled ? 'warn-text' : ''}`}>
       {REMITTANCE_STATUS_LABELS[status] || status}
@@ -48,15 +54,18 @@ function StatusBadge({ status }) {
   )
 }
 
-// Panel de custodia: saldo de efectivo por tenedor (derivado del libro). En esta
-// fase solo existe la caja central; los mensajeros aparecen aqui cuando se cablee
-// su asignacion. Se oculta si no hay efectivo en custodia (todo en cero).
-function CustodyPanel({ balances }) {
-  const holders = Object.entries(balances || {})
+// Panel de custodia: saldo de efectivo por tenedor (derivado del libro). El mando
+// ve todos los tenedores (caja central + mensajeros); el mensajero ve SOLO el suyo
+// (mineId). Se oculta si no hay efectivo en custodia (todo en cero).
+function CustodyPanel({ balances, userName, mineId = null }) {
+  let entries = Object.entries(balances || {})
+  if (mineId) entries = entries.filter(([h]) => h === mineId)
+  const holders = entries
     .map(([holder, byCur]) => [holder, Object.entries(byCur).filter(([, a]) => Math.abs(Number(a) || 0) >= 0.01)])
     .filter(([, curs]) => curs.length > 0)
   if (holders.length === 0) return null
-  const label = (h) => (h === REMESA_CENTRAL ? REMESA_CENTRAL_LABEL : h)
+  const label = (h) =>
+    h === REMESA_CENTRAL ? REMESA_CENTRAL_LABEL : (h === mineId ? 'Tu efectivo en custodia' : userName(h))
   return (
     <section className="card">
       <h3>Custodia de efectivo</h3>
@@ -71,33 +80,48 @@ function CustodyPanel({ balances }) {
 }
 
 export function RemesasScreen() {
-  const { user, isManager } = useAuth()
+  const { user, isManager, isCourier } = useAuth()
   const { hasModule } = useLicense()
   const navigate = useNavigate()
 
   const canRemesas = hasModule(LICENSE_MODULES.REMESAS)
-  const remittances = useLiveQuery(() => remittancesRepo.list(), [], [])
+  const allRemittances = useLiveQuery(() => remittancesRepo.list(), [], [])
   const custody = useLiveQuery(() => custodyRepo.balances(), [], {})
+  const users = useLiveQuery(() => usersRepo.list(), [], [])
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
 
-  if (!isManager || !canRemesas) {
+  if (!(isManager || isCourier) || !canRemesas) {
     return (
       <div className="screen">
         <h2>Remesas</h2>
         <p className="muted">
-          {isManager
+          {(isManager || isCourier)
             ? 'Tu licencia no incluye el módulo de remesas.'
-            : 'Solo el dueño o un administrativo puede gestionar las remesas.'}
+            : 'No tienes acceso a las remesas.'}
         </p>
         <Link className="btn btn--primary btn--block" to="/">Volver</Link>
       </div>
     )
   }
 
+  const userName = (id) => users.find((u) => u.id === id)?.name || '—'
+  const couriers = users.filter((u) => u.role === ROLES.COURIER && u.active)
+  // El mensajero ve SOLO sus remesas asignadas; el mando ve todas.
+  const remittances = isManager ? allRemittances : allRemittances.filter((r) => r.assignedCourierId === user.id)
+
   const open = openId ? remittances.find((r) => r.id === openId) : null
   if (open) {
-    return <RemittanceDetail remittance={open} userId={user.id} onBack={() => setOpenId(null)} />
+    return (
+      <RemittanceDetail
+        remittance={open}
+        userId={user.id}
+        isManager={isManager}
+        couriers={couriers}
+        userName={userName}
+        onBack={() => setOpenId(null)}
+      />
+    )
   }
 
   return (
@@ -106,23 +130,28 @@ export function RemesasScreen() {
         <button className="pos-nav__back" onClick={() => navigate(-1)} aria-label="Volver">
           <ChevronLeft size={20} strokeWidth={2} />
         </button>
-        <h2 className="pos-nav__title">Remesas</h2>
+        <h2 className="pos-nav__title">{isManager ? 'Remesas' : 'Mis remesas'}</h2>
         <span className="pos-nav__action" />
       </div>
       <p className="muted">
-        Órdenes de remesa. Cada orden congela remitente, beneficiario y monto al crearse.
-        Toca una para ver el detalle y avanzar su estado.
+        {isManager
+          ? 'Órdenes de remesa. Crea, cobra, valida y asigna el efectivo a un mensajero.'
+          : 'Tus remesas asignadas. Entrega al beneficiario o marca fallida para devolver el efectivo.'}
       </p>
 
-      <CustodyPanel balances={custody} />
+      <CustodyPanel balances={custody} userName={userName} mineId={isManager ? null : user.id} />
 
-      <button className="btn btn--primary btn--block" onClick={() => setCreating(true)}>
-        + Nueva remesa
-      </button>
+      {isManager && (
+        <button className="btn btn--primary btn--block" onClick={() => setCreating(true)}>
+          + Nueva remesa
+        </button>
+      )}
 
       <div className="list">
         {remittances.length === 0 ? (
-          <p className="muted">Aún no hay remesas. Crea la primera con “Nueva remesa”.</p>
+          <p className="muted">
+            {isManager ? 'Aún no hay remesas. Crea la primera con “Nueva remesa”.' : 'No tienes remesas asignadas.'}
+          </p>
         ) : (
           remittances.map((r) => (
             <button key={r.id} className="list-item help-item" onClick={() => setOpenId(r.id)}>
@@ -143,32 +172,48 @@ export function RemesasScreen() {
   )
 }
 
-// Detalle de una remesa: partes, monto, estado y acciones de esta fase.
-function RemittanceDetail({ remittance: r, userId, onBack }) {
+// Detalle de una remesa: partes, monto, estado y acciones segun el rol.
+function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName, onBack }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
+  const [assigning, setAssigning] = useState(false)
+  const [delivering, setDelivering] = useState(false)
 
-  const forward = FORWARD[r.status]
-  const canCancel = CANCELLABLE.has(r.status)
-  const canEdit = r.status === REMITTANCE_STATUS.CREATED
+  const isAssignedToMe = r.assignedCourierId === userId
+  const forward = isManager ? FORWARD[r.status] : null
+  const canAssign = isManager && r.status === REMITTANCE_STATUS.FUNDS_AVAILABLE
+  const canEdit = isManager && r.status === REMITTANCE_STATUS.CREATED
+  const canCancel = isManager && CANCELLABLE.has(r.status)
+  const canDeliver =
+    (r.status === REMITTANCE_STATUS.ASSIGNED || r.status === REMITTANCE_STATUS.IN_ROUTE) &&
+    (isManager || isAssignedToMe)
+  const noActions = !forward && !canAssign && !canDeliver && !canEdit && !canCancel
 
-  const advance = async (toStatus, note = '') => {
+  const run = async (fn, confirmMsg) => {
+    if (confirmMsg && !confirm(confirmMsg)) return
     setError('')
     setBusy(true)
     try {
-      await remittancesRepo.setStatus(r.id, toStatus, { actorId: userId, note })
-      onBack() // vuelve a la lista (la lista es reactiva y refleja el nuevo estado)
+      await fn()
+      onBack() // vuelve a la lista (reactiva: refleja el nuevo estado)
     } catch (e) {
       setError(e.message)
       setBusy(false)
     }
   }
 
-  const cancel = async () => {
-    if (!confirm('¿Cancelar esta remesa? Queda registrada como cancelada (no se borra).')) return
-    await advance(REMITTANCE_STATUS.CANCELLED, 'Cancelada por el mando')
-  }
+  const advance = (toStatus) => run(() => remittancesRepo.setStatus(r.id, toStatus, { actorId: userId }))
+  const cancel = () =>
+    run(
+      () => remittancesRepo.setStatus(r.id, REMITTANCE_STATUS.CANCELLED, { actorId: userId, note: 'Cancelada por el mando' }),
+      '¿Cancelar esta remesa? Queda registrada como cancelada (no se borra).'
+    )
+  const fail = () =>
+    run(
+      () => remittancesRepo.failReturn(r.id, { actorId: userId }),
+      '¿Entrega fallida? Se devuelve el efectivo a la caja central y la remesa queda como devuelta.'
+    )
 
   return (
     <div className="screen">
@@ -185,6 +230,12 @@ function RemittanceDetail({ remittance: r, userId, onBack }) {
           <span className="muted">Estado</span>
           <StatusBadge status={r.status} />
         </div>
+        {r.assignedCourierId && (
+          <div className="kv">
+            <span className="muted">Mensajero</span>
+            <span>{userName(r.assignedCourierId)}</span>
+          </div>
+        )}
         {Number(r.fee) > 0 && (
           <div className="kv">
             <span className="muted">Cargo</span>
@@ -234,10 +285,20 @@ function RemittanceDetail({ remittance: r, userId, onBack }) {
             {busy ? 'Guardando…' : forward.label}
           </button>
         )}
-        {r.status === REMITTANCE_STATUS.FUNDS_AVAILABLE && (
-          <p className="muted">
-            Fondos disponibles. La asignación a un mensajero se habilitará en la próxima fase.
-          </p>
+        {canAssign && (
+          <button className="btn btn--primary btn--block" disabled={busy} onClick={() => setAssigning(true)}>
+            Asignar a mensajero
+          </button>
+        )}
+        {canDeliver && (
+          <>
+            <button className="btn btn--primary btn--block" disabled={busy} onClick={() => setDelivering(true)}>
+              Marcar entregada
+            </button>
+            <button className="btn btn--ghost btn--block warn-text" disabled={busy} onClick={fail}>
+              Entrega fallida (devolver efectivo)
+            </button>
+          </>
         )}
         {canEdit && (
           <button className="btn btn--ghost btn--block" disabled={busy} onClick={() => setEditing(true)}>
@@ -249,14 +310,139 @@ function RemittanceDetail({ remittance: r, userId, onBack }) {
             Cancelar remesa
           </button>
         )}
-        {!forward && !canCancel && r.status !== REMITTANCE_STATUS.FUNDS_AVAILABLE && (
-          <p className="muted">Sin acciones disponibles para este estado.</p>
-        )}
+        {noActions && <p className="muted">Sin acciones disponibles para este estado.</p>}
       </section>
 
-      {editing && (
-        <RemittanceForm userId={userId} existing={r} onClose={() => setEditing(false)} />
+      {editing && <RemittanceForm userId={userId} existing={r} onClose={() => setEditing(false)} />}
+      {assigning && (
+        <AssignModal remittance={r} userId={userId} couriers={couriers} onClose={() => setAssigning(false)} onDone={onBack} />
       )}
+      {delivering && (
+        <DeliverModal remittance={r} userId={userId} onClose={() => setDelivering(false)} onDone={onBack} />
+      )}
+    </div>
+  )
+}
+
+// Asigna la remesa (con fondos disponibles) a un mensajero: el efectivo pasa de la
+// caja central a su custodia.
+function AssignModal({ remittance: r, userId, couriers, onClose, onDone }) {
+  const [courierId, setCourierId] = useState(couriers[0]?.id || '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEscapeClose(onClose)
+
+  const save = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      await remittancesRepo.assign(r.id, courierId, { actorId: userId })
+      onDone()
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Asignar a mensajero</h3>
+        <p className="muted">
+          Se entregan <strong>{formatMoney(Number(r.amount) || 0, r.currency)}</strong> en custodia al mensajero.
+        </p>
+        {couriers.length === 0 ? (
+          <p className="muted">No hay mensajeros activos. Crea uno en <strong>Usuarios</strong> (rol Mensajero).</p>
+        ) : (
+          <label className="field">
+            <span>Mensajero</span>
+            <select value={courierId} onChange={(e) => setCourierId(e.target.value)}>
+              {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+        )}
+        {error && <p className="error">{error}</p>}
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn--primary" disabled={busy || !courierId} onClick={save}>
+            {busy ? 'Asignando…' : 'Asignar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Entrega al beneficiario: comprobante (foto) opcional y nota. Al confirmar, el
+// efectivo sale de la custodia del mensajero y la remesa queda ENTREGADA.
+function DeliverModal({ remittance: r, userId, onClose, onDone }) {
+  const [proof, setProof] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEscapeClose(onClose)
+
+  const pick = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError('')
+    setBusy(true)
+    try {
+      setProof(await fileToThumbnail(file, { fit: 'contain' }))
+    } catch (err) {
+      setError('No se pudo procesar la imagen: ' + err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const save = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      await remittancesRepo.deliver(r.id, { proofDataUrl: proof, note, actorId: userId })
+      onDone()
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Entregar remesa</h3>
+        <p className="muted">
+          Se entregan <strong>{formatMoney(Number(r.amount) || 0, r.currency)}</strong> a{' '}
+          <strong>{r.beneficiary?.name || 'el beneficiario'}</strong>. Confirma cuando lo haya recibido.
+        </p>
+
+        <p className="field-label">Comprobante (opcional)</p>
+        <div className="img-picker__actions">
+          <label className={`btn btn--ghost btn--sm ${busy ? 'is-disabled' : ''}`}>
+            {proof ? 'Cambiar foto' : 'Agregar foto'}
+            <input type="file" accept="image/*" onChange={pick} disabled={busy} hidden />
+          </label>
+          {proof && !busy && (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setProof('')}>Quitar</button>
+          )}
+        </div>
+        {proof && <img src={proof} alt="Comprobante" style={{ maxWidth: '100%', borderRadius: 8, marginTop: 8 }} />}
+
+        <label className="field">
+          <span>Nota (opcional)</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej: recibió su hijo" />
+        </label>
+
+        {error && <p className="error">{error}</p>}
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn--primary" disabled={busy} onClick={save}>
+            {busy ? 'Guardando…' : 'Confirmar entrega'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

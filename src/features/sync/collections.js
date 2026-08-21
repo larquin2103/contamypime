@@ -52,7 +52,10 @@ export const SYNC_COLLECTIONS = [
   // por tenedor+moneda se DERIVA de estos movimientos (como accountMovements). Es
   // su PROPIA tabla: NO toca la tesoreria del modulo 'cuentas'. Sin el modulo
   // queda vacia y no hay costo de sync.
-  { name: 'custodyMovements', pk: 'id' }
+  { name: 'custodyMovements', pk: 'id' },
+  // Modulo 'remesas' (F5): entregas append-only (una fila por intento/resultado).
+  // Se fusionan por id (patron orderItems). Sin el modulo queda vacia.
+  { name: 'deliveries', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

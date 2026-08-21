@@ -213,7 +213,7 @@ function AvatarEditor({ user, current, onClose }) {
 }
 
 export function Home() {
-  const { user, isOwner, isManager, isElaborator, isCook, isSeller } = useAuth()
+  const { user, isOwner, isManager, isElaborator, isCook, isSeller, isCourier } = useAuth()
   const { hasModule } = useLicense()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
@@ -254,13 +254,13 @@ export function Home() {
       {isManager && <ConcurrentShiftWarning />}
       {isOwner && <BackupReminder />}
 
-      {/* El cocinero no tiene turno ni caja: no ve el banner de turno. */}
-      {!isCook && <ShiftBanner />}
+      {/* Ni el cocinero ni el mensajero tienen turno: no ven el banner de turno. */}
+      {!isCook && !isCourier && <ShiftBanner />}
 
       {isManager && <StartChecklist />}
 
-      {/* Destacados (el cocinero no gestiona catálogo ni ve el panel). */}
-      {!isCook && (
+      {/* Destacados (ni el cocinero ni el mensajero gestionan catálogo o panel). */}
+      {!isCook && !isCourier && (
       <div className="home-highlights">
         {isManager && (
           <Link to="/dashboard" className="highlight highlight--accent">
@@ -293,6 +293,11 @@ export function Home() {
         <Section label="Cocina">
           <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
           <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar el tablero" />
+        </Section>
+      ) : isCourier ? (
+        <Section label="Remesas">
+          <ActionCard to="/remesas" icon={Banknote} title="Mis remesas" sub="Recibir, entregar y devolver" />
+          <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo trabajar tus remesas" />
         </Section>
       ) : isManager ? (
         <>

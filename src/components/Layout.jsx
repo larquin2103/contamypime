@@ -155,7 +155,7 @@ function LicenseBanner() {
 // Shell de la app autenticada: cabecera fina + contenido + navegacion inferior.
 // La identidad rica (avatar, saludo, rol) vive en el Home; aqui solo la marca.
 export function Layout({ children }) {
-  const { logout, isOwner, isCook } = useAuth()
+  const { logout, isOwner, isCook, isCourier } = useAuth()
   const { canSell } = useShift()
 
   return (
@@ -186,11 +186,14 @@ export function Layout({ children }) {
         <NavLink to="/" end className="nav-item">
           <Home size={21} strokeWidth={1.9} /><span>Inicio</span>
         </NavLink>
-        <NavLink to="/catalog" className="nav-item">
-          <Package size={21} strokeWidth={1.9} /><span>Catálogo</span>
-        </NavLink>
-        {/* El cocinero no maneja turno ni caja: no ve la pestaña Turno. */}
-        {!isCook && (
+        {/* El mensajero (rol acotado de remesas) no maneja catalogo. */}
+        {!isCourier && (
+          <NavLink to="/catalog" className="nav-item">
+            <Package size={21} strokeWidth={1.9} /><span>Catálogo</span>
+          </NavLink>
+        )}
+        {/* El cocinero y el mensajero no manejan turno ni caja: sin pestaña Turno. */}
+        {!isCook && !isCourier && (
           <NavLink to="/shift" className="nav-item">
             <ScrollText size={21} strokeWidth={1.9} /><span>Turno</span>
           </NavLink>

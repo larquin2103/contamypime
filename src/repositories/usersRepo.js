@@ -7,7 +7,7 @@ import { ROLES } from '../db/constants'
 // Roles OPERATIVOS a los que se puede mover un usuario (Fase 8 - B2). El DUEÑO
 // queda fuera a propósito: su rol es la identidad del negocio (uid = businessId,
 // licencia, código de recuperación) y ni se cambia ni se asigna a nadie.
-const ASSIGNABLE_ROLES = [ROLES.SELLER, ROLES.ADMIN, ROLES.ELABORATION, ROLES.COOK]
+const ASSIGNABLE_ROLES = [ROLES.SELLER, ROLES.ADMIN, ROLES.ELABORATION, ROLES.COOK, ROLES.COURIER]
 
 // Usuarios y autenticacion por PIN.
 export const usersRepo = {
