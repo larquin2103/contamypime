@@ -2,6 +2,7 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
+import { deriveBalances, deriveHolderBalance } from '../lib/custodyMath'
 
 // Custodia de efectivo (modulo 'remesas') — LIBRO PROPIO Y AISLADO. Es la misma
 // idea que la tesoreria (`accountsRepo`): un libro append-only del que se DERIVA
@@ -55,29 +56,16 @@ export const custodyRepo = {
 
   // Saldos de TODOS los tenedores de una vez: { holder: { currency: monto } }.
   // Deriva de los movimientos (credit suma, debit resta), como accountsRepo.balances.
+  // La matematica vive en lib/custodyMath (pura y testeada con node).
   async balances() {
     const rows = await db.custodyMovements.toArray()
-    const map = {}
-    for (const m of rows) {
-      const sign = m.direction === 'debit' ? -1 : 1
-      const h = m.holder
-      const c = m.currency || 'MN'
-      if (!map[h]) map[h] = {}
-      map[h][c] = round2((map[h][c] || 0) + sign * Number(m.amount || 0))
-    }
-    return map
+    return deriveBalances(rows)
   },
 
   // Saldo de UN tenedor: { currency: monto }.
   async balanceOf(holder) {
     const rows = await db.custodyMovements.where('holder').equals(holder).toArray()
-    const bal = {}
-    for (const m of rows) {
-      const sign = m.direction === 'debit' ? -1 : 1
-      const c = m.currency || 'MN'
-      bal[c] = round2((bal[c] || 0) + sign * Number(m.amount || 0))
-    }
-    return bal
+    return deriveHolderBalance(rows, holder)
   },
 
   async movements(holder) {
