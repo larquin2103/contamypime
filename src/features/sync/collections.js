@@ -42,7 +42,12 @@ export const SYNC_COLLECTIONS = [
   // colecciones quedan vacias y no hay costo de sync. El stock lo mueven los
   // CONVERSION_*/TRANSFER_* del libro mayor, que ya sincronizan.
   { name: 'recipes', pk: 'id' },
-  { name: 'productions', pk: 'id' }
+  { name: 'productions', pk: 'id' },
+  // Modulo 'remesas' (F2): cabecera de la orden de remesa. LWW por updatedAt, como
+  // cualquier cabecera; se fusiona sola por syncTs. Sin el modulo no se crea
+  // ninguna: la coleccion queda vacia y no hay costo de sync. (La custodia de
+  // efectivo, las entregas y las liquidaciones se registraran en sus fases.)
+  { name: 'remittances', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

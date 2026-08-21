@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, PackageMinus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat, CookingPot
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat, CookingPot, Banknote
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -339,6 +339,11 @@ export function Home() {
             )}
             <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar la app" />
           </Section>
+          {hasModule(LICENSE_MODULES.REMESAS) && (
+            <Section label="Remesas">
+              <ActionCard to="/remesas" icon={Banknote} title="Remesas" sub="Órdenes, pagos y validación" />
+            </Section>
+          )}
           {isOwner && (
             <Section label="Sistema">
               <ActionCard to="/cloud" icon={RefreshCw} title="Sincronización" sub="Datos en la nube" />
