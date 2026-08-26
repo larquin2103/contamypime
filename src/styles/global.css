@@ -513,6 +513,21 @@ textarea {
   background: var(--surface-2);
   color: var(--muted);
 }
+/* Badges de GRUPO de una entrega (modulo 'remesas'): mismo pill que --muted, con
+   el texto por color de semaforo. Theme-safe (fondo y color salen de variables,
+   validos en claro y oscuro). Aditivos: no pisan nada existente. */
+.badge--ok {
+  background: var(--surface-2);
+  color: var(--ok);
+}
+.badge--warn {
+  background: var(--surface-2);
+  color: var(--warn);
+}
+.badge--bad {
+  background: var(--surface-2);
+  color: var(--danger);
+}
 
 /* ----- Rates / converter ----- */
 .rate-row {

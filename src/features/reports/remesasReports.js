@@ -66,13 +66,13 @@ export async function buildRemittancesReport({ from = null, to = null } = {}) {
     REMITTANCE_STATUS_LABELS[r.status] || r.status || '',
     r.assignedCourierId ? (names[r.assignedCourierId] || '') : ''
   ])
-  if (rows.length === 0) rows.push(['Sin remesas en el periodo', '', '', '', '', '', ''])
+  if (rows.length === 0) rows.push(['Sin entregas en el periodo', '', '', '', '', '', ''])
   return {
-    title: 'Remesas',
+    title: 'Entregas',
     subtitle: rangeLabel(from, to),
     head: ['Fecha', 'Remitente', 'Beneficiario', 'Monto', 'Moneda', 'Estado', 'Mensajero'],
     rows,
-    filename: 'remesas',
+    filename: 'entregas',
     orientation: 'landscape'
   }
 }
@@ -98,11 +98,11 @@ export async function buildDeliveriesReport({ from = null, to = null } = {}) {
   })
   if (rows.length === 0) rows.push(['Sin entregas en el periodo', '', '', '', '', ''])
   return {
-    title: 'Entregas de remesas',
+    title: 'Entregas realizadas',
     subtitle: rangeLabel(from, to),
     head: ['Fecha', 'Mensajero', 'Resultado', 'Beneficiario', 'Monto', 'Nota'],
     rows,
-    filename: 'entregas-remesas',
+    filename: 'entregas-realizadas',
     orientation: 'landscape'
   }
 }
@@ -127,7 +127,7 @@ export async function buildSettlementsReport({ from = null, to = null } = {}) {
     subtitle: rangeLabel(from, to),
     head: ['Fecha', 'Mensajero', 'Teórico', 'Contado', 'Diferencia', 'Resultado'],
     rows,
-    filename: 'liquidaciones-remesas',
+    filename: 'liquidaciones-mensajeros',
     orientation: 'landscape'
   }
 }

@@ -88,9 +88,9 @@ export const remittancesRepo = {
     const ts = now()
     await db.transaction('rw', db.remittances, db.auditEvents, async () => {
       const r = await db.remittances.get(id)
-      if (!r) throw new Error('Remesa no encontrada')
+      if (!r) throw new Error('Entrega no encontrada')
       if (!EDITABLE_STATUSES.has(r.status)) {
-        throw new Error('La remesa ya no se puede editar (solo antes del pago)')
+        throw new Error('La entrega ya no se puede editar (solo antes del pago)')
       }
       const patch = { updatedAt: ts }
       if (fields.amount != null) {
@@ -132,7 +132,7 @@ export const remittancesRepo = {
     const ts = now()
     await db.transaction('rw', db.remittances, db.auditEvents, db.custodyMovements, async () => {
       const r = await db.remittances.get(id)
-      if (!r) throw new Error('Remesa no encontrada')
+      if (!r) throw new Error('Entrega no encontrada')
       if (r.status === toStatus) return // sin cambios: no se audita
       const fromStatus = r.status
       await db.remittances.update(id, { status: toStatus, updatedAt: ts })
@@ -186,9 +186,9 @@ export const remittancesRepo = {
     const ts = now()
     await db.transaction('rw', db.remittances, db.custodyMovements, db.auditEvents, db.users, async () => {
       const r = await db.remittances.get(id)
-      if (!r) throw new Error('Remesa no encontrada')
+      if (!r) throw new Error('Entrega no encontrada')
       if (r.status !== REMITTANCE_STATUS.FUNDS_AVAILABLE) {
-        throw new Error('Solo se asigna una remesa con fondos disponibles')
+        throw new Error('Solo se asigna una entrega con fondos disponibles')
       }
       const courier = await db.users.get(courierId)
       if (!courier || courier.role !== ROLES.COURIER || !courier.active) {
@@ -228,11 +228,11 @@ export const remittancesRepo = {
     const ts = now()
     await db.transaction('rw', db.remittances, db.custodyMovements, db.deliveries, db.auditEvents, async () => {
       const r = await db.remittances.get(id)
-      if (!r) throw new Error('Remesa no encontrada')
+      if (!r) throw new Error('Entrega no encontrada')
       if (r.status !== REMITTANCE_STATUS.ASSIGNED && r.status !== REMITTANCE_STATUS.IN_ROUTE) {
-        throw new Error('Solo se entrega una remesa asignada')
+        throw new Error('Solo se puede entregar una entrega asignada')
       }
-      if (!r.assignedCourierId) throw new Error('La remesa no tiene mensajero asignado')
+      if (!r.assignedCourierId) throw new Error('La entrega no tiene mensajero asignado')
       const movId = `custody:deliver:${id}`
       if (!(await db.custodyMovements.get(movId))) {
         await custodyRepo.addMovementRaw({
@@ -264,11 +264,11 @@ export const remittancesRepo = {
     const ts = now()
     await db.transaction('rw', db.remittances, db.custodyMovements, db.deliveries, db.auditEvents, async () => {
       const r = await db.remittances.get(id)
-      if (!r) throw new Error('Remesa no encontrada')
+      if (!r) throw new Error('Entrega no encontrada')
       if (r.status !== REMITTANCE_STATUS.ASSIGNED && r.status !== REMITTANCE_STATUS.IN_ROUTE) {
-        throw new Error('Solo se devuelve una remesa asignada')
+        throw new Error('Solo se devuelve una entrega asignada')
       }
-      if (!r.assignedCourierId) throw new Error('La remesa no tiene mensajero asignado')
+      if (!r.assignedCourierId) throw new Error('La entrega no tiene mensajero asignado')
       const outId = `custody:return-out:${id}`
       if (!(await db.custodyMovements.get(outId))) {
         await custodyRepo.addMovementRaw({

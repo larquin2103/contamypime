@@ -295,9 +295,9 @@ export function Home() {
           <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar el tablero" />
         </Section>
       ) : isCourier ? (
-        <Section label="Remesas">
-          <ActionCard to="/remesas" icon={Banknote} title="Mis remesas" sub="Recibir, entregar y devolver" />
-          <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo trabajar tus remesas" />
+        <Section label="Entregas">
+          <ActionCard to="/remesas" icon={Banknote} title="Mis entregas" sub="Recibir, entregar y devolver" />
+          <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo trabajar tus entregas" />
         </Section>
       ) : isManager ? (
         <>
@@ -345,8 +345,8 @@ export function Home() {
             <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar la app" />
           </Section>
           {hasModule(LICENSE_MODULES.REMESAS) && (
-            <Section label="Remesas">
-              <ActionCard to="/remesas" icon={Banknote} title="Remesas" sub="Órdenes, pagos y validación" />
+            <Section label="Entregas">
+              <ActionCard to="/remesas" icon={Banknote} title="Entregas" sub="Órdenes, pagos y validación" />
             </Section>
           )}
           {isOwner && (

@@ -331,7 +331,7 @@ function buildTransferMismatch(sale, ctx) {
 
 // 6) Entrega FALLIDA de una remesa (deliveriesRepo). El mensajero no pudo entregar;
 //    el efectivo se devolvió a la caja central. Deriva de `deliveries` (result FAILED,
-//    no anulada). Ej: "Carlos no pudo entregar una remesa".
+//    no anulada). Ej: "Carlos no pudo completar una entrega".
 function buildDeliveryFailed(delivery, ctx) {
   if (!delivery || delivery.voided || delivery.result !== DELIVERY_RESULT.FAILED) return null
   const courier = ctx.userName[delivery.courierId] || 'mensajero'
@@ -340,7 +340,7 @@ function buildDeliveryFailed(delivery, ctx) {
     sourceId: delivery.id,
     severity: NOTIFICATION_SEVERITY.WARNING,
     title: 'Entrega fallida',
-    message: `${courier} no pudo entregar una remesa${delivery.note ? ` (${delivery.note})` : ''}`,
+    message: `${courier} no pudo completar una entrega${delivery.note ? ` (${delivery.note})` : ''}`,
     createdAt: delivery.createdAt || now(),
     createdBy: delivery.courierId || delivery.byUserId || null,
     requiresAction: true,

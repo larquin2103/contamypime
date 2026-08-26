@@ -119,9 +119,9 @@ export function ReportsScreen() {
       {hasModule(LICENSE_MODULES.KITCHEN) &&
         card('kitchen', 'Producción de cocina', 'Elaboraciones de cocina: receta, área, unidades y costo (insumos y unitario del elaborado)', buildKitchenProduction, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&
-        card('remesas', 'Remesas', 'Órdenes de remesa: remitente, beneficiario, monto, estado y mensajero asignado', buildRemittancesReport, true)}
+        card('remesas', 'Entregas', 'Órdenes de entrega: remitente, beneficiario, monto, estado y mensajero asignado', buildRemittancesReport, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&
-        card('remesas-ent', 'Entregas de remesas', 'Cada intento de entrega (entregada/fallida) con su mensajero, beneficiario y monto', buildDeliveriesReport, true)}
+        card('remesas-ent', 'Entregas realizadas', 'Cada intento de entrega (entregada/fallida) con su mensajero, beneficiario y monto', buildDeliveriesReport, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&
         card('remesas-liq', 'Liquidaciones de mensajeros', 'Cuadre del efectivo en custodia: teórico, contado, diferencia y resultado', buildSettlementsReport, true)}
     </div>

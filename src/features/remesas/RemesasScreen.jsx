@@ -14,6 +14,7 @@ import { formatDateTime } from '../../lib/dates'
 import { fileToThumbnail } from '../../lib/image'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
+import { remittanceGroup } from '../../lib/remesas'
 import {
   CASH_CURRENCIES, ROLES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
   REMESA_CENTRAL, REMESA_CENTRAL_LABEL
@@ -54,6 +55,16 @@ function StatusBadge({ status }) {
       {REMITTANCE_STATUS_LABELS[status] || status}
     </span>
   )
+}
+
+// Badge del GRUPO legible (Por cobrar / En proceso / Completado): lo ve el dueno en
+// la lista para saber de un vistazo en que va cada entrega. El detalle sigue
+// mostrando el estado preciso (StatusBadge).
+function GroupBadge({ remittance }) {
+  const g = remittanceGroup(remittance)
+  const cls =
+    g.tone === 'ok' ? 'badge--ok' : g.tone === 'warn' ? 'badge--warn' : g.tone === 'bad' ? 'badge--bad' : 'badge--muted'
+  return <span className={`badge ${cls}`}>{g.label}</span>
 }
 
 // Panel de custodia: saldo de efectivo por tenedor (derivado del libro). El mando
@@ -97,11 +108,11 @@ export function RemesasScreen() {
   if (!(isManager || isCourier) || !canRemesas) {
     return (
       <div className="screen">
-        <h2>Remesas</h2>
+        <h2>Entregas</h2>
         <p className="muted">
           {(isManager || isCourier)
-            ? 'Tu licencia no incluye el módulo de remesas.'
-            : 'No tienes acceso a las remesas.'}
+            ? 'Tu licencia no incluye el módulo de entregas.'
+            : 'No tienes acceso a las entregas.'}
         </p>
         <Link className="btn btn--primary btn--block" to="/">Volver</Link>
       </div>
@@ -133,27 +144,27 @@ export function RemesasScreen() {
         <button className="pos-nav__back" onClick={() => navigate(-1)} aria-label="Volver">
           <ChevronLeft size={20} strokeWidth={2} />
         </button>
-        <h2 className="pos-nav__title">{isManager ? 'Remesas' : 'Mis remesas'}</h2>
+        <h2 className="pos-nav__title">{isManager ? 'Entregas' : 'Mis entregas'}</h2>
         <span className="pos-nav__action" />
       </div>
       <p className="muted">
         {isManager
-          ? 'Órdenes de remesa. Crea, cobra, valida y asigna el efectivo a un mensajero.'
-          : 'Tus remesas asignadas. Entrega al beneficiario o marca fallida para devolver el efectivo.'}
+          ? 'Órdenes de entrega. Crea, cobra, valida y asigna el efectivo a un mensajero.'
+          : 'Tus entregas asignadas. Entrega al beneficiario o marca fallida para devolver el efectivo.'}
       </p>
 
       <CustodyPanel balances={custody} userName={userName} mineId={isManager ? null : user.id} />
 
       {isManager && (
         <button className="btn btn--primary btn--block" onClick={() => setCreating(true)}>
-          + Nueva remesa
+          + Nueva entrega
         </button>
       )}
 
       <div className="list">
         {remittances.length === 0 ? (
           <p className="muted">
-            {isManager ? 'Aún no hay remesas. Crea la primera con “Nueva remesa”.' : 'No tienes remesas asignadas.'}
+            {isManager ? 'Aún no hay entregas. Crea la primera con “Nueva entrega”.' : 'No tienes entregas asignadas.'}
           </p>
         ) : (
           remittances.map((r) => (
@@ -161,7 +172,7 @@ export function RemesasScreen() {
               <span className="help-item__text">
                 <strong>{r.beneficiary?.name || 'Beneficiario'}</strong>
                 <span className="muted">
-                  De {r.sender?.name || '—'} · <StatusBadge status={r.status} />
+                  De {r.sender?.name || '—'} · <GroupBadge remittance={r} />
                 </span>
               </span>
               <strong>{formatMoney(Number(r.amount) || 0, r.currency)}</strong>
@@ -220,18 +231,18 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
   const cancel = () =>
     run(
       () => remittancesRepo.setStatus(r.id, REMITTANCE_STATUS.CANCELLED, { actorId: userId, note: 'Cancelada por el mando' }),
-      '¿Cancelar esta remesa? Queda registrada como cancelada (no se borra).'
+      '¿Cancelar esta entrega? Queda registrada como cancelada (no se borra).'
     )
   const fail = () =>
     run(
       () => remittancesRepo.failReturn(r.id, { actorId: userId }),
-      '¿Entrega fallida? Se devuelve el efectivo a la caja central y la remesa queda como devuelta.'
+      '¿Entrega fallida? Se devuelve el efectivo a la caja central y la entrega queda como devuelta.'
     )
 
   return (
     <div className="screen">
-      <button className="pos-nav__back help-back" onClick={onBack} aria-label="Volver a remesas">
-        <ChevronLeft size={20} strokeWidth={2} /> Remesas
+      <button className="pos-nav__back help-back" onClick={onBack} aria-label="Volver a entregas">
+        <ChevronLeft size={20} strokeWidth={2} /> Entregas
       </button>
 
       <section className="card">
@@ -320,7 +331,7 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
         )}
         {canCancel && (
           <button className="btn btn--ghost btn--block warn-text" disabled={busy} onClick={cancel}>
-            Cancelar remesa
+            Cancelar entrega
           </button>
         )}
         {noActions && <p className="muted">Sin acciones disponibles para este estado.</p>}
@@ -425,7 +436,7 @@ function DeliverModal({ remittance: r, userId, onClose, onDone }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <h3>Entregar remesa</h3>
+        <h3>Entregar al beneficiario</h3>
         <p className="muted">
           Se entregan <strong>{formatMoney(Number(r.amount) || 0, r.currency)}</strong> a{' '}
           <strong>{r.beneficiary?.name || 'el beneficiario'}</strong>. Confirma cuando lo haya recibido.
@@ -506,7 +517,7 @@ function RemittanceForm({ userId, existing = null, onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <h3>{isEdit ? 'Editar remesa' : 'Nueva remesa'}</h3>
+        <h3>{isEdit ? 'Editar entrega' : 'Nueva entrega'}</h3>
 
         <div className="form-row">
           <label className="field">
@@ -587,7 +598,7 @@ function RemittanceForm({ userId, existing = null, onClose }) {
             disabled={busy || !(Number(amount) > 0) || !sName.trim() || !bName.trim()}
             onClick={save}
           >
-            {busy ? 'Guardando…' : (isEdit ? 'Guardar cambios' : 'Crear remesa')}
+            {busy ? 'Guardando…' : (isEdit ? 'Guardar cambios' : 'Crear entrega')}
           </button>
         </div>
       </div>

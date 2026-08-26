@@ -41,7 +41,7 @@ export const LICENSE_MODULE_LABELS = {
   imagenes: 'Imágenes y fotos',
   divisas: 'Precios en divisas',
   cocina: 'Cocina y recetas',
-  remesas: 'Remesas'
+  remesas: 'Entregas'
 }
 
 // Lista de modulos de un payload (tolerante a licencias viejas sin el campo).

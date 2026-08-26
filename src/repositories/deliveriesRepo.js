@@ -22,7 +22,7 @@ export const deliveriesRepo = {
     byUserId = null,
     createdAt = null
   }) {
-    if (!remittanceId) throw new Error('Entrega sin remesa')
+    if (!remittanceId) throw new Error('Entrega sin orden')
     const rowId = id || newId()
     await db.deliveries.add({
       id: rowId,

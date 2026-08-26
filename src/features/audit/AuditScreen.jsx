@@ -155,7 +155,7 @@ export function AuditScreen() {
           <button className={`tab ${tab === 'cocina' ? 'is-active' : ''}`} onClick={() => setTab('cocina')}>Cocina</button>
         )}
         {canRemesas && (
-          <button className={`tab ${tab === 'remesas' ? 'is-active' : ''}`} onClick={() => setTab('remesas')}>Remesas</button>
+          <button className={`tab ${tab === 'remesas' ? 'is-active' : ''}`} onClick={() => setTab('remesas')}>Entregas</button>
         )}
       </div>
 
@@ -265,7 +265,7 @@ export function AuditScreen() {
               <span className="muted">{row.detail} · {userName[row.userId] || '—'}</span>
             </div>
           ))}
-          {remesaF.length === 0 && <p className="muted">Sin actividad de remesas en el rango.</p>}
+          {remesaF.length === 0 && <p className="muted">Sin actividad de entregas en el rango.</p>}
         </div>
       )}
     </div>

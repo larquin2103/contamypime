@@ -220,7 +220,7 @@ function EditUserForm({ user, onClose }) {
             )}
             {roleChanged && role === ROLES.COURIER && (
               <p className="muted">
-                Como <strong>mensajero</strong> solo gestiona sus remesas asignadas (recibe efectivo en
+                Como <strong>mensajero</strong> solo gestiona sus entregas asignadas (recibe efectivo en
                 custodia, entrega al beneficiario y devuelve lo que sobre); no vende, no abre turno ni ve el negocio.
               </p>
             )}
@@ -316,7 +316,7 @@ function NewUserForm({ onClose }) {
         )}
         {role === ROLES.COURIER && (
           <p className="muted">
-            Opera solo sus <strong>remesas asignadas</strong>: recibe efectivo en custodia, lo
+            Opera solo sus <strong>entregas asignadas</strong>: recibe efectivo en custodia, lo
             entrega al beneficiario y devuelve lo que sobre. No vende, no abre turno ni ve el negocio.
           </p>
         )}
