@@ -5,7 +5,7 @@
 // ENTREGA completa (no solo el estado) para poder afinarse en fases futuras —el
 // cobro contra entrega (grupo "Por cobrar") se activa cuando exista el modo de
 // cobro— sin cambiar la firma.
-import { REMITTANCE_STATUS } from '../db/constants'
+import { REMITTANCE_STATUS, PAYMENT_MODE } from '../db/constants'
 
 const S = REMITTANCE_STATUS
 
@@ -25,11 +25,24 @@ export const REMITTANCE_GROUP = {
   CLOSED: { key: 'cerrada', label: 'Cerrada', tone: 'warn' }
 }
 
-// Grupo legible de una entrega. (En esta fase el grupo "Por cobrar" aun no se
-// alcanza: llega con el modo de cobro contra entrega; la funcion ya lo contempla.)
+// Entrega con cobro CONTRA ENTREGA, ya ENTREGADA y aun sin registrar el cobro del
+// remitente = "por cobrar". El cobro que la concluye (marca `collectedAt`) llega en
+// la fase de cobro a cuenta; hasta entonces la entrega queda pendiente de cobro.
+export function isPendingCollection(r) {
+  return (
+    r?.paymentMode === PAYMENT_MODE.ON_CREDIT &&
+    r?.status === REMITTANCE_STATUS.DELIVERED &&
+    !r?.collectedAt
+  )
+}
+
+// Grupo legible de una entrega. El orden importa: primero las cerradas por
+// excepcion, luego "por cobrar" (contra entrega sin cobrar), luego completado y
+// finalmente en proceso.
 export function remittanceGroup(r) {
   const s = r?.status
   if (CLOSED_EXC.has(s)) return REMITTANCE_GROUP.CLOSED
+  if (isPendingCollection(r)) return REMITTANCE_GROUP.PENDING_COLLECTION
   if (DONE.has(s)) return REMITTANCE_GROUP.DONE
   return REMITTANCE_GROUP.IN_PROCESS
 }

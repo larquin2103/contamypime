@@ -14,10 +14,10 @@ import { formatDateTime } from '../../lib/dates'
 import { fileToThumbnail } from '../../lib/image'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { remittanceGroup } from '../../lib/remesas'
+import { remittanceGroup, isPendingCollection } from '../../lib/remesas'
 import {
   CASH_CURRENCIES, ROLES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
-  REMESA_CENTRAL, REMESA_CENTRAL_LABEL
+  REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS
 } from '../../db/constants'
 
 // Modulo 'remesas' (F2 Ordenes · F3 Custodia · F4 Mensajeros · F5 Entregas).
@@ -123,6 +123,8 @@ export function RemesasScreen() {
   const couriers = users.filter((u) => u.role === ROLES.COURIER && u.active)
   // El mensajero ve SOLO sus remesas asignadas; el mando ve todas.
   const remittances = isManager ? allRemittances : allRemittances.filter((r) => r.assignedCourierId === user.id)
+  // "Por cobrar": entregas contra entrega ya entregadas y aun sin cobrar. Solo el mando.
+  const pendingCount = isManager ? allRemittances.filter(isPendingCollection).length : 0
 
   const open = openId ? remittances.find((r) => r.id === openId) : null
   if (open) {
@@ -152,6 +154,13 @@ export function RemesasScreen() {
           ? 'Órdenes de entrega. Crea, cobra, valida y asigna el efectivo a un mensajero.'
           : 'Tus entregas asignadas. Entrega al beneficiario o marca fallida para devolver el efectivo.'}
       </p>
+
+      {isManager && pendingCount > 0 && (
+        <p style={{ marginTop: 4 }}>
+          <span className="badge badge--bad">{pendingCount}</span>{' '}
+          <span className="muted">por cobrar</span>
+        </p>
+      )}
 
       <CustodyPanel balances={custody} userName={userName} mineId={isManager ? null : user.id} />
 
@@ -253,6 +262,10 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
         <div className="kv">
           <span className="muted">Estado</span>
           <StatusBadge status={r.status} />
+        </div>
+        <div className="kv">
+          <span className="muted">Modo de cobro</span>
+          <span>{PAYMENT_MODE_LABELS[r.paymentMode] || PAYMENT_MODE_LABELS.upfront}</span>
         </div>
         {r.assignedCourierId && (
           <div className="kv">
@@ -486,6 +499,7 @@ function RemittanceForm({ userId, existing = null, onClose }) {
   const [bAddr, setBAddr] = useState(existing?.beneficiary?.address || '')
   const [bId, setBId] = useState(existing?.beneficiary?.idDoc || '')
   const [note, setNote] = useState(existing?.note || '')
+  const [paymentMode, setPaymentMode] = useState(existing?.paymentMode || PAYMENT_MODE.UPFRONT)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   useEscapeClose(onClose)
@@ -498,6 +512,7 @@ function RemittanceForm({ userId, existing = null, onClose }) {
       currency,
       fee,
       note,
+      paymentMode,
       sender: { name: sName, phone: sPhone, idDoc: sId },
       beneficiary: { name: bName, phone: bPhone, address: bAddr, idDoc: bId }
     }
@@ -538,6 +553,16 @@ function RemittanceForm({ userId, existing = null, onClose }) {
             </select>
           </label>
         </div>
+        <label className="field">
+          <span>Modo de cobro</span>
+          <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
+            <option value={PAYMENT_MODE.UPFRONT}>{PAYMENT_MODE_LABELS.upfront}</option>
+            <option value={PAYMENT_MODE.ON_CREDIT}>{PAYMENT_MODE_LABELS.on_credit}</option>
+          </select>
+        </label>
+        {paymentMode === PAYMENT_MODE.ON_CREDIT && (
+          <p className="muted">Se entrega primero; el cobro al remitente queda “por cobrar”.</p>
+        )}
         <label className="field">
           <span>Cargo (opcional)</span>
           <input

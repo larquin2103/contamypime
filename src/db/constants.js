@@ -304,6 +304,22 @@ export const REMITTANCE_STATUS_LABELS = {
   expired: 'Vencida'
 }
 
+// Modo de cobro de una entrega (modulo 'remesas'). ANTICIPADO = el clasico (el
+// remitente paga y recien se entrega). CONTRA ENTREGA = se entrega primero y el
+// cobro al remitente queda PENDIENTE ("por cobrar") hasta registrarlo. Campo
+// opcional SIN indice ni migracion (como sales.area): sin el, la entrega es
+// 'upfront' = comportamiento clasico. La reconexion del dinero de "contra entrega"
+// (cobro a cuenta, fondo del mensajero) llega en fases posteriores.
+export const PAYMENT_MODE = {
+  UPFRONT: 'upfront',
+  ON_CREDIT: 'on_credit'
+}
+
+export const PAYMENT_MODE_LABELS = {
+  upfront: 'Cobro anticipado',
+  on_credit: 'Cobro contra entrega'
+}
+
 // Tipos de movimiento del LIBRO DE CUSTODIA de efectivo (modulo 'remesas'). Es
 // append-only y el SALDO por tenedor+moneda se DERIVA de estos movimientos (nunca
 // se guarda), igual que el stock sale del libro mayor y el saldo de una cuenta de

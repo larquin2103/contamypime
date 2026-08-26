@@ -15,7 +15,9 @@ import { usersRepo } from '../../repositories/usersRepo'
 import { countsRepo } from '../../repositories/countsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { imagesRepo } from '../../repositories/imagesRepo'
+import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { fileToThumbnail } from '../../lib/image'
+import { isPendingCollection } from '../../lib/remesas'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { FOREIGN_CURRENCIES, ROLE_LABELS, COUNT_STATUS } from '../../db/constants'
 import { StartChecklist } from '../help/StartChecklist'
@@ -98,10 +100,13 @@ function ShiftBanner() {
 }
 
 // Tarjeta de accion de una seccion (icono + titulo + subtitulo).
-function ActionCard({ to, icon: Icon, title, sub }) {
+function ActionCard({ to, icon: Icon, title, sub, badge = 0 }) {
   return (
     <Link to={to} className="action-card">
       <span className="action-tile"><Icon size={20} strokeWidth={1.8} /></span>
+      {badge > 0 && (
+        <span className="action-card__badge" aria-label={`${badge} por cobrar`}>{badge}</span>
+      )}
       <strong className="action-card__title">{title}</strong>
       <span className="action-card__sub">{sub}</span>
     </Link>
@@ -216,6 +221,11 @@ export function Home() {
   const { user, isOwner, isManager, isElaborator, isCook, isSeller, isCourier } = useAuth()
   const { hasModule } = useLicense()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
+  // Contador de entregas "por cobrar" (contra entrega ya entregada, sin cobrar):
+  // solo el mando y con el modulo. Se DERIVA de las entregas (no se guarda).
+  const canRemesas = isManager && hasModule(LICENSE_MODULES.REMESAS)
+  const remittances = useLiveQuery(() => (canRemesas ? remittancesRepo.list() : Promise.resolve([])), [canRemesas], [])
+  const pendingCollection = remittances.filter(isPendingCollection).length
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
   // Permiso independiente: el dueño autoriza al vendedor a dar entradas.
   const sellerEntries = useLiveQuery(() => configRepo.get('sellerEntries', false), [], false)
@@ -346,7 +356,7 @@ export function Home() {
           </Section>
           {hasModule(LICENSE_MODULES.REMESAS) && (
             <Section label="Entregas">
-              <ActionCard to="/remesas" icon={Banknote} title="Entregas" sub="Órdenes, pagos y validación" />
+              <ActionCard to="/remesas" icon={Banknote} title="Entregas" sub="Órdenes, pagos y validación" badge={pendingCollection} />
             </Section>
           )}
           {isOwner && (
