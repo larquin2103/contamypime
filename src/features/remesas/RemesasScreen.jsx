@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft } from 'lucide-react'
 import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { custodyRepo } from '../../repositories/custodyRepo'
 import { settlementsRepo } from '../../repositories/settlementsRepo'
+import { accountsRepo } from '../../repositories/accountsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -31,11 +32,23 @@ import {
 // Monedas ofrecidas para el monto (efectivo MN/USD + MLC electronico).
 const CURRENCY_OPTIONS = [...new Set([...CASH_CURRENCIES, 'MLC'])]
 
-// Avance lineal de estado PREVIO a la custodia (solo el mando).
-const FORWARD = {
+// Avance lineal de estado (solo el mando). En COBRO ANTICIPADO (clasico) se pasa por
+// pago -> validacion -> fondos disponibles antes de asignar. En COBRO CONTRA ENTREGA
+// no hay pago anticipado: de creada se pasa directo a "lista para asignar" (el cobro
+// al remitente se registra despues, ya entregada).
+const FORWARD_UPFRONT = {
   [REMITTANCE_STATUS.CREATED]: { to: REMITTANCE_STATUS.PAID, label: 'Registrar pago' },
   [REMITTANCE_STATUS.PAID]: { to: REMITTANCE_STATUS.VALIDATED, label: 'Validar pago' },
   [REMITTANCE_STATUS.VALIDATED]: { to: REMITTANCE_STATUS.FUNDS_AVAILABLE, label: 'Marcar fondos disponibles' }
+}
+
+function forwardFor(r) {
+  if (r.paymentMode === PAYMENT_MODE.ON_CREDIT) {
+    return r.status === REMITTANCE_STATUS.CREATED
+      ? { to: REMITTANCE_STATUS.FUNDS_AVAILABLE, label: 'Preparar para asignar' }
+      : null
+  }
+  return FORWARD_UPFRONT[r.status] || null
 }
 
 // Estados desde los que se puede cancelar SIN mover efectivo (antes del pago). Tras
@@ -212,16 +225,19 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
   const [editing, setEditing] = useState(false)
   const [assigning, setAssigning] = useState(false)
   const [delivering, setDelivering] = useState(false)
+  const [collecting, setCollecting] = useState(false)
 
   const isAssignedToMe = r.assignedCourierId === userId
-  const forward = isManager ? FORWARD[r.status] : null
+  const forward = isManager ? forwardFor(r) : null
   const canAssign = isManager && r.status === REMITTANCE_STATUS.FUNDS_AVAILABLE
   const canEdit = isManager && r.status === REMITTANCE_STATUS.CREATED
   const canCancel = isManager && CANCELLABLE.has(r.status)
   const canDeliver =
     (r.status === REMITTANCE_STATUS.ASSIGNED || r.status === REMITTANCE_STATUS.IN_ROUTE) &&
     (isManager || isAssignedToMe)
-  const noActions = !forward && !canAssign && !canDeliver && !canEdit && !canCancel
+  // Cobro al remitente: solo el mando, en entrega contra entrega ya entregada y sin cobrar.
+  const canCollect = isManager && isPendingCollection(r)
+  const noActions = !forward && !canAssign && !canDeliver && !canEdit && !canCancel && !canCollect
 
   const run = async (fn, confirmMsg) => {
     if (confirmMsg && !confirm(confirmMsg)) return
@@ -267,6 +283,12 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
           <span className="muted">Modo de cobro</span>
           <span>{PAYMENT_MODE_LABELS[r.paymentMode] || PAYMENT_MODE_LABELS.upfront}</span>
         </div>
+        {r.collectedAt && (
+          <div className="kv">
+            <span className="muted">Cobrado</span>
+            <strong>{formatMoney(Number(r.collectedAmount ?? r.amount) || 0, r.collectedCurrency || r.currency)}</strong>
+          </div>
+        )}
         {r.assignedCourierId && (
           <div className="kv">
             <span className="muted">Mensajero</span>
@@ -337,6 +359,11 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
             </button>
           </>
         )}
+        {canCollect && (
+          <button className="btn btn--primary btn--block" disabled={busy} onClick={() => setCollecting(true)}>
+            Registrar cobro
+          </button>
+        )}
         {canEdit && (
           <button className="btn btn--ghost btn--block" disabled={busy} onClick={() => setEditing(true)}>
             Editar datos
@@ -356,6 +383,9 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
       )}
       {delivering && (
         <DeliverModal remittance={r} userId={userId} onClose={() => setDelivering(false)} onDone={onBack} />
+      )}
+      {collecting && (
+        <CollectModal remittance={r} userId={userId} onClose={() => setCollecting(false)} onDone={onBack} />
       )}
     </div>
   )
@@ -477,6 +507,133 @@ function DeliverModal({ remittance: r, userId, onClose, onDone }) {
           <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn--primary" disabled={busy} onClick={save}>
             {busy ? 'Guardando…' : 'Confirmar entrega'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Cobro al remitente de una entrega CONTRA ENTREGA: elige la cuenta de tesoreria
+// (modulo 'cuentas'), el monto recibido (por defecto el de la entrega), quien pago y
+// un comprobante (foto). Al confirmar acredita la cuenta y la entrega sale de "por
+// cobrar". Sin el modulo 'cuentas' se marca cobrada sin cuenta (degradacion limpia).
+function CollectModal({ remittance: r, userId, onClose, onDone }) {
+  const { hasModule } = useLicense()
+  const hasAccounts = hasModule(LICENSE_MODULES.ACCOUNTS)
+  const accounts = useLiveQuery(() => (hasAccounts ? accountsRepo.list() : Promise.resolve([])), [hasAccounts], [])
+  const [accountId, setAccountId] = useState('')
+  const [amount, setAmount] = useState(String(r.amount ?? ''))
+  const [payerName, setPayerName] = useState(r.sender?.name || '')
+  const [proof, setProof] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEscapeClose(onClose)
+
+  // Preselecciona la primera cuenta al cargar (sin pisar una eleccion del usuario).
+  useEffect(() => {
+    if (hasAccounts && !accountId && accounts.length > 0) setAccountId(accounts[0].id)
+  }, [accounts, hasAccounts, accountId])
+
+  const acc = accounts.find((a) => a.id === accountId) || null
+  const curLabel = acc ? acc.currency : r.currency
+
+  const pick = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setError('')
+    setBusy(true)
+    try {
+      setProof(await fileToThumbnail(file, { fit: 'contain' }))
+    } catch (err) {
+      setError('No se pudo procesar la imagen: ' + err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const save = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      await remittancesRepo.collect(r.id, {
+        accountId: hasAccounts ? (accountId || null) : null,
+        amount: Number(amount) || 0,
+        payerName,
+        proofDataUrl: proof,
+        note,
+        actorId: userId
+      })
+      onDone()
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Registrar cobro</h3>
+        <p className="muted">
+          Cobro del remitente <strong>{r.sender?.name || '—'}</strong>. Al confirmar sale de “por cobrar”.
+        </p>
+
+        {hasAccounts ? (
+          accounts.length > 0 ? (
+            <label className="field">
+              <span>Cuenta destino</span>
+              <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}
+              </select>
+            </label>
+          ) : (
+            <p className="muted">No hay cuentas de tesorería. Se marcará cobrada sin cuenta; crea una en <strong>Cuentas</strong>.</p>
+          )
+        ) : (
+          <p className="muted">Sin el módulo de Cuentas se marca cobrada sin acreditar cuenta.</p>
+        )}
+
+        <label className="field">
+          <span>Monto recibido{curLabel ? ` (${curLabel})` : ''}</span>
+          <input
+            autoFocus
+            type="number"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0"
+          />
+        </label>
+        <label className="field">
+          <span>Pagó (nombre)</span>
+          <input value={payerName} onChange={(e) => setPayerName(e.target.value)} placeholder="Quién envió el pago" />
+        </label>
+
+        <p className="field-label">Comprobante (opcional)</p>
+        <div className="img-picker__actions">
+          <label className={`btn btn--ghost btn--sm ${busy ? 'is-disabled' : ''}`}>
+            {proof ? 'Cambiar foto' : 'Agregar foto'}
+            <input type="file" accept="image/*" onChange={pick} disabled={busy} hidden />
+          </label>
+          {proof && !busy && (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setProof('')}>Quitar</button>
+          )}
+        </div>
+        {proof && <img src={proof} alt="Comprobante" style={{ maxWidth: '100%', borderRadius: 8, marginTop: 8 }} />}
+
+        <label className="field">
+          <span>Nota (opcional)</span>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Referencia" />
+        </label>
+
+        {error && <p className="error">{error}</p>}
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn--primary" disabled={busy || !(Number(amount) > 0)} onClick={save}>
+            {busy ? 'Guardando…' : 'Confirmar cobro'}
           </button>
         </div>
       </div>

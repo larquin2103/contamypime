@@ -187,3 +187,12 @@ db.version(15).stores({
   custodyMovements: 'id, holder, type, refId, createdAt, [holder+currency]',
   settlements: 'id, courierId, settledAt, createdAt'
 })
+
+// Modulo 'remesas' (F3): COBROS al remitente de entregas "contra entrega". Snapshot
+// append-only (comprobante, pagador, cuenta y monto) que ACOMPAÑA al credito real en
+// la tesoreria (accountMovements, concepto 'entrega') — el dinero vive alla, como
+// mermas/producciones acompañan al libro mayor. Tabla NUEVA y aditiva (sin upgrade).
+// Sin el modulo queda vacia y la app es identica a la clasica.
+db.version(16).stores({
+  collections: 'id, remittanceId, accountId, createdAt'
+})

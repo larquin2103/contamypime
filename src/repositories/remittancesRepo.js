@@ -5,6 +5,7 @@ import { round2 } from '../lib/currency'
 import { REMITTANCE_STATUS, PAYMENT_MODE, CUSTODY_MOVEMENT_TYPES, REMESA_CENTRAL, DELIVERY_RESULT, ROLES } from '../db/constants'
 import { custodyRepo } from './custodyRepo'
 import { deliveriesRepo } from './deliveriesRepo'
+import { addAccountMovementRaw } from './accountsRepo'
 
 // Remesas (modulo 'remesas') — CABECERA de la orden. Capa NUEVA y AISLADA: solo
 // escribe `remittances` y deja constancia en `auditEvents` (que ya sincroniza).
@@ -159,7 +160,9 @@ export const remittancesRepo = {
       // desde dos dispositivos, NO duplica el ingreso (ambos generan el MISMO doc y
       // la sync lo fusiona por id). Dentro de ESTA misma transaccion (atomico con el
       // estado). El resto de transiciones no mueven efectivo (identico a antes).
-      if (toStatus === REMITTANCE_STATUS.PAID) {
+      // SOLO cobro anticipado (clasico): en "contra entrega" el remitente paga
+      // DESPUES (entra por el cobro a la cuenta), asi que no hay ingreso a custodia.
+      if (toStatus === REMITTANCE_STATUS.PAID && r.paymentMode !== PAYMENT_MODE.ON_CREDIT) {
         const intakeId = `custody:intake:${id}`
         const already = await db.custodyMovements.get(intakeId)
         if (!already) {
@@ -200,21 +203,27 @@ export const remittancesRepo = {
       if (!courier || courier.role !== ROLES.COURIER || !courier.active) {
         throw new Error('El mensajero no es valido')
       }
-      const outId = `custody:assign-out:${id}`
-      if (!(await db.custodyMovements.get(outId))) {
-        await custodyRepo.addMovementRaw({
-          id: outId, holder: REMESA_CENTRAL, direction: 'debit',
-          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.ASSIGN,
-          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
-        })
-      }
-      const inId = `custody:assign-in:${id}`
-      if (!(await db.custodyMovements.get(inId))) {
-        await custodyRepo.addMovementRaw({
-          id: inId, holder: courierId, direction: 'credit',
-          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.ASSIGN,
-          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
-        })
+      // Custodia SOLO en cobro anticipado (clasico): el efectivo del negocio pasa de
+      // la caja central al mensajero (neto cero). En "contra entrega" el efectivo que
+      // reparte el mensajero es su FONDO (F4), no se mueve aqui; el dinero entra luego
+      // por el cobro a la cuenta. El modo clasico queda IDENTICO.
+      if (r.paymentMode !== PAYMENT_MODE.ON_CREDIT) {
+        const outId = `custody:assign-out:${id}`
+        if (!(await db.custodyMovements.get(outId))) {
+          await custodyRepo.addMovementRaw({
+            id: outId, holder: REMESA_CENTRAL, direction: 'debit',
+            amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.ASSIGN,
+            refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+          })
+        }
+        const inId = `custody:assign-in:${id}`
+        if (!(await db.custodyMovements.get(inId))) {
+          await custodyRepo.addMovementRaw({
+            id: inId, holder: courierId, direction: 'credit',
+            amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.ASSIGN,
+            refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+          })
+        }
       }
       await db.remittances.update(id, {
         assignedCourierId: courierId, status: REMITTANCE_STATUS.ASSIGNED, updatedAt: ts
@@ -239,13 +248,18 @@ export const remittancesRepo = {
         throw new Error('Solo se puede entregar una entrega asignada')
       }
       if (!r.assignedCourierId) throw new Error('La entrega no tiene mensajero asignado')
-      const movId = `custody:deliver:${id}`
-      if (!(await db.custodyMovements.get(movId))) {
-        await custodyRepo.addMovementRaw({
-          id: movId, holder: r.assignedCourierId, direction: 'debit',
-          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.DELIVER,
-          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
-        })
+      // Custodia SOLO en cobro anticipado: el efectivo sale de la custodia del
+      // mensajero al beneficiario. En "contra entrega" ese efectivo es su fondo (F4);
+      // aqui solo queda la constancia de la entrega. El modo clasico queda IDENTICO.
+      if (r.paymentMode !== PAYMENT_MODE.ON_CREDIT) {
+        const movId = `custody:deliver:${id}`
+        if (!(await db.custodyMovements.get(movId))) {
+          await custodyRepo.addMovementRaw({
+            id: movId, holder: r.assignedCourierId, direction: 'debit',
+            amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.DELIVER,
+            refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+          })
+        }
       }
       const delId = `delivery:${id}`
       if (!(await db.deliveries.get(delId))) {
@@ -275,21 +289,26 @@ export const remittancesRepo = {
         throw new Error('Solo se devuelve una entrega asignada')
       }
       if (!r.assignedCourierId) throw new Error('La entrega no tiene mensajero asignado')
-      const outId = `custody:return-out:${id}`
-      if (!(await db.custodyMovements.get(outId))) {
-        await custodyRepo.addMovementRaw({
-          id: outId, holder: r.assignedCourierId, direction: 'debit',
-          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.RETURN,
-          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
-        })
-      }
-      const inId = `custody:return-in:${id}`
-      if (!(await db.custodyMovements.get(inId))) {
-        await custodyRepo.addMovementRaw({
-          id: inId, holder: REMESA_CENTRAL, direction: 'credit',
-          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.RETURN,
-          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
-        })
+      // Custodia SOLO en cobro anticipado: se devuelve el efectivo del mensajero a la
+      // caja central. En "contra entrega" no hubo movimiento de custodia que devolver
+      // (el efectivo es el fondo del mensajero, F4); solo queda la constancia fallida.
+      if (r.paymentMode !== PAYMENT_MODE.ON_CREDIT) {
+        const outId = `custody:return-out:${id}`
+        if (!(await db.custodyMovements.get(outId))) {
+          await custodyRepo.addMovementRaw({
+            id: outId, holder: r.assignedCourierId, direction: 'debit',
+            amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.RETURN,
+            refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+          })
+        }
+        const inId = `custody:return-in:${id}`
+        if (!(await db.custodyMovements.get(inId))) {
+          await custodyRepo.addMovementRaw({
+            id: inId, holder: REMESA_CENTRAL, direction: 'credit',
+            amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.RETURN,
+            refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+          })
+        }
       }
       const delId = `delivery:${id}`
       if (!(await db.deliveries.get(delId))) {
@@ -302,6 +321,90 @@ export const remittancesRepo = {
       await db.auditEvents.add({
         id: newId(), entity: 'remittance', entityId: id, action: 'fail_return',
         courierId: r.assignedCourierId, toStatus: REMITTANCE_STATUS.RETURNED, userId: actorId, createdAt: ts
+      })
+    })
+  },
+
+  // Registra el COBRO al remitente de una entrega CONTRA ENTREGA ya entregada: acredita
+  // la CUENTA de tesoreria elegida (modulo 'cuentas') con el monto recibido y marca la
+  // entrega como cobrada (collectedAt) -> sale de "por cobrar". Deja un snapshot
+  // append-only en `collections` (comprobante y pagador). Es un dinero DISTINTO del
+  // fondo del mensajero (la custodia): aqui entra el REEMBOLSO del remitente al negocio.
+  // Reusa el MISMO helper que ventas y terceros (addAccountMovementRaw, concepto
+  // 'entrega'): no toca ninguna ruta de dinero existente, solo agrega un ingreso.
+  // Todo en UNA transaccion; idempotente por id determinista (dos dispositivos que
+  // cobren la misma entrega generan el MISMO doc y la sync no duplica). Sin licencia
+  // 'cuentas' (accountId nulo) se marca cobrada SIN acreditar cuenta (degradacion: se
+  // puede regularizar luego con el ajuste manual de tesoreria).
+  async collect(id, { accountId = null, amount = null, currency = null, payerName = '', proofDataUrl = '', note = '', actorId = null } = {}) {
+    const ts = now()
+    await db.transaction('rw', db.remittances, db.collections, db.accounts, db.accountMovements, db.auditEvents, async () => {
+      const r = await db.remittances.get(id)
+      if (!r) throw new Error('Entrega no encontrada')
+      if (r.paymentMode !== PAYMENT_MODE.ON_CREDIT) throw new Error('Solo se cobra una entrega contra entrega')
+      if (r.status !== REMITTANCE_STATUS.DELIVERED) throw new Error('Solo se cobra una entrega ya entregada')
+      if (r.collectedAt) return // ya cobrada: idempotente, no duplica
+
+      // Cuenta destino (si hay modulo 'cuentas'): valida y fija la moneda del cobro.
+      let acc = null
+      if (accountId) {
+        acc = await db.accounts.get(accountId)
+        if (!acc) throw new Error('Cuenta de tesoreria no encontrada')
+      }
+      const cur = acc ? acc.currency : (currency || r.currency || 'MN')
+      const amt = round2(Number(amount != null ? amount : r.amount) || 0)
+      if (amt <= 0) throw new Error('El monto del cobro debe ser mayor que cero')
+
+      // Snapshot append-only del cobro (id determinista -> no duplica entre dispositivos).
+      const colId = `collection:${id}`
+      if (!(await db.collections.get(colId))) {
+        await db.collections.add({
+          id: colId,
+          remittanceId: id,
+          accountId: acc ? accountId : null,
+          amount: amt,
+          currency: cur,
+          payerName: String(payerName || '').trim(),
+          proofDataUrl: proofDataUrl || '',
+          note: String(note || '').trim(),
+          byUserId: actorId,
+          createdAt: ts
+        })
+      }
+
+      // Acredita la cuenta de tesoreria elegida (mismo helper que ventas/terceros),
+      // con id determinista propio para que no se duplique el ingreso.
+      if (acc) {
+        const movId = `acctmov:collect:${id}`
+        if (!(await db.accountMovements.get(movId))) {
+          await addAccountMovementRaw({
+            id: movId,
+            accountId,
+            direction: 'credit',
+            amount: amt,
+            currency: acc.currency,
+            refType: 'remittance',
+            concept: 'entrega',
+            refId: id,
+            note: String(payerName || note || '').trim(),
+            userId: actorId,
+            createdAt: ts
+          })
+        }
+      }
+
+      // Marca la entrega como cobrada -> deja de contar como "por cobrar".
+      await db.remittances.update(id, {
+        collectedAt: ts,
+        collectedAccountId: acc ? accountId : null,
+        collectedAmount: amt,
+        collectedCurrency: cur,
+        updatedAt: ts
+      })
+      await db.auditEvents.add({
+        id: newId(), entity: 'remittance', entityId: id, action: 'collect',
+        amount: amt, currency: cur, accountId: acc ? accountId : null,
+        userId: actorId, createdAt: ts
       })
     })
   }

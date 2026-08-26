@@ -59,7 +59,12 @@ export const SYNC_COLLECTIONS = [
   // Modulo 'remesas' (F6): liquidaciones (reconciliacion append-only del efectivo
   // en custodia de un mensajero). Snapshot, como mermas/producciones. Sin el
   // modulo queda vacia.
-  { name: 'settlements', pk: 'id' }
+  { name: 'settlements', pk: 'id' },
+  // Modulo 'remesas' (F3): cobros al remitente (snapshot append-only con comprobante
+  // y pagador). El credito real va a accountMovements (que ya sincroniza); esto es la
+  // constancia. Se fusiona por id (determinista collection:<entrega>). Sin el modulo
+  // queda vacia y no hay costo de sync.
+  { name: 'collections', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

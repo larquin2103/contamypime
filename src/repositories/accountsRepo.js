@@ -136,7 +136,9 @@ export const ACCOUNT_CONCEPTS = {
   thirdparty: 'Cobros a terceros',
   provider: 'Pagos a proveedores',
   withdrawal: 'Extracciones de caja',
-  manual: 'Ajustes manuales'
+  manual: 'Ajustes manuales',
+  // Modulo 'remesas': cobro al remitente de una entrega "contra entrega" (ingreso).
+  entrega: 'Cobros de entregas'
 }
 
 export const accountsRepo = {
