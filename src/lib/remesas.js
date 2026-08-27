@@ -31,6 +31,7 @@ export const REMITTANCE_GROUP = {
 export function isPendingCollection(r) {
   return (
     r?.paymentMode === PAYMENT_MODE.ON_CREDIT &&
+    Number(r?.amount) > 0 &&
     r?.status === REMITTANCE_STATUS.DELIVERED &&
     !r?.collectedAt
   )

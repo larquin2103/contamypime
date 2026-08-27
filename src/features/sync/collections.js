@@ -64,7 +64,12 @@ export const SYNC_COLLECTIONS = [
   // y pagador). El credito real va a accountMovements (que ya sincroniza); esto es la
   // constancia. Se fusiona por id (determinista collection:<entrega>). Sin el modulo
   // queda vacia y no hay costo de sync.
-  { name: 'collections', pk: 'id' }
+  { name: 'collections', pk: 'id' },
+  // Modulo 'remesas' (F6): custodia de PRODUCTO del mensajero (append-only, aislada
+  // del inventario general). El saldo por mensajero+producto se deriva; se fusiona por
+  // id. El area "Entregas" (inventario real) viaja por stockMovements, que ya
+  // sincroniza. Sin el modulo queda vacia.
+  { name: 'productCustody', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

@@ -121,7 +121,13 @@ export const MOVEMENT_TYPES = {
   // Merma (deterioro/perdida): rebaja de inventario que NO es venta. Sale de la
   // ubicacion elegida (almacen o area). Su afectacion se valora al COSTO en el
   // reporte de mermas (cantidad x costo = perdida para el dueño).
-  MERMA_OUT: 'merma_out'
+  MERMA_OUT: 'merma_out',
+  // Modulo 'remesas' (F6): carga de PRODUCTO a un mensajero (area "Entregas" -> su
+  // custodia de producto) y su devolucion. El area Entregas es una ubicacion normal
+  // (surtida por traspaso); el producto que carga el mensajero vive APARTE (libro de
+  // custodia de producto, aislado del inventario general, como el efectivo).
+  DELIVERY_OUT: 'delivery_out', // sale del area Entregas hacia el mensajero (carga)
+  DELIVERY_IN: 'delivery_in' // vuelve del mensajero al area Entregas (devolucion)
 }
 
 // Terceros del negocio (Bloque C, modulo 'cuentas').
@@ -207,10 +213,18 @@ export const ELABORATION_LABEL = 'Elaboración'
 export const COCINA = '__cocina'
 export const COCINA_LABEL = 'Cocina'
 
+// Area de ENTREGAS (modulo 'remesas', F6): ubicacion centinela desde la que el
+// mensajero CARGA el producto a entregar. Se surte por el traspaso normal (almacen
+// -> Entregas) y aparece como destino solo con el modulo. El producto que el
+// mensajero ya cargo vive en su custodia de producto (aparte), no aqui.
+export const ENTREGAS_AREA = '__entregas'
+export const ENTREGAS_AREA_LABEL = 'Entregas'
+
 export function locationLabel(loc) {
   if (!loc || loc === WAREHOUSE) return WAREHOUSE_LABEL
   if (loc === ELABORATION) return ELABORATION_LABEL
   if (loc === COCINA) return COCINA_LABEL
+  if (loc === ENTREGAS_AREA) return ENTREGAS_AREA_LABEL
   return String(loc)
 }
 
@@ -318,6 +332,19 @@ export const PAYMENT_MODE = {
 export const PAYMENT_MODE_LABELS = {
   upfront: 'Cobro anticipado',
   on_credit: 'Cobro contra entrega'
+}
+
+// Tipo de lo que se entrega (modulo 'remesas', F6). Por defecto DINERO (clasico).
+// PRODUCTO entrega articulos del catalogo desde el area "Entregas" (rebaja el
+// inventario) y el mensajero los lleva en su custodia de producto (aislada).
+export const DELIVERY_KIND = {
+  MONEY: 'money',
+  PRODUCT: 'product'
+}
+
+export const DELIVERY_KIND_LABELS = {
+  money: 'Dinero',
+  product: 'Producto'
 }
 
 // Tipos de movimiento del LIBRO DE CUSTODIA de efectivo (modulo 'remesas'). Es

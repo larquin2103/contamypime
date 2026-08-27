@@ -196,3 +196,13 @@ db.version(15).stores({
 db.version(16).stores({
   collections: 'id, remittanceId, accountId, createdAt'
 })
+
+// Modulo 'remesas' (F6): custodia de PRODUCTO del mensajero (lo que lleva encima).
+// Libro append-only PROPIO y AISLADO del inventario general (como el efectivo tiene
+// el suyo): el saldo por mensajero+producto se DERIVA de estos movimientos y NO entra
+// en el recalculo de products.stock (ese suma stockMovements por ubicacion). El area
+// "Entregas" (que si es inventario) baja/sube por DELIVERY_OUT/IN en stockMovements.
+// Tabla NUEVA y aditiva (sin upgrade). Sin el modulo queda vacia.
+db.version(17).stores({
+  productCustody: 'id, holder, productId, refId, createdAt, [holder+productId]'
+})

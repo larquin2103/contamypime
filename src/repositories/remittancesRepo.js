@@ -2,9 +2,14 @@ import { db } from '../db/db'
 import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
-import { REMITTANCE_STATUS, PAYMENT_MODE, CUSTODY_MOVEMENT_TYPES, REMESA_CENTRAL, DELIVERY_RESULT, ROLES } from '../db/constants'
+import { cleanQty } from '../lib/qty'
+import {
+  REMITTANCE_STATUS, PAYMENT_MODE, CUSTODY_MOVEMENT_TYPES, REMESA_CENTRAL, DELIVERY_RESULT, ROLES,
+  DELIVERY_KIND, MOVEMENT_TYPES, ENTREGAS_AREA
+} from '../db/constants'
 import { custodyRepo } from './custodyRepo'
 import { deliveriesRepo } from './deliveriesRepo'
+import { productCustodyRepo } from './productCustodyRepo'
 import { addAccountMovementRaw } from './accountsRepo'
 
 // Remesas (modulo 'remesas') — CABECERA de la orden. Capa NUEVA y AISLADA: solo
@@ -31,6 +36,17 @@ function cleanParty(p = {}) {
   }
 }
 
+// Lineas de PRODUCTO de una entrega (snapshot): { productId, name, qty } con qty > 0.
+function cleanItems(items = []) {
+  return (items || [])
+    .map((it) => ({
+      productId: it.productId,
+      name: String(it.name || '').trim(),
+      qty: Math.abs(Number(it.qty) || 0)
+    }))
+    .filter((it) => it.productId && it.qty > 0)
+}
+
 export const remittancesRepo = {
   async list() {
     const rows = await db.remittances.toArray()
@@ -43,21 +59,30 @@ export const remittancesRepo = {
 
   // Crea la orden. Congela remitente/beneficiario/monto (snapshot). Estado inicial
   // CREATED. Todo en una transaccion junto al evento de auditoria.
-  async create({ amount, currency = 'MN', sender = {}, beneficiary = {}, fee = 0, note = '', paymentMode = PAYMENT_MODE.UPFRONT, createdBy = null }) {
+  async create({ amount, currency = 'MN', sender = {}, beneficiary = {}, fee = 0, note = '', paymentMode = PAYMENT_MODE.UPFRONT, kind = DELIVERY_KIND.MONEY, items = [], createdBy = null }) {
+    const isProduct = kind === DELIVERY_KIND.PRODUCT
     const amt = round2(Number(amount) || 0)
-    if (amt <= 0) throw new Error('El monto debe ser mayor que cero')
+    // El monto es obligatorio en entregas de DINERO; en producto puede ser 0 (sin cobro).
+    if (!isProduct && amt <= 0) throw new Error('El monto debe ser mayor que cero')
     const s = cleanParty(sender)
     const b = cleanParty(beneficiary)
     if (!s.name) throw new Error('El nombre del remitente es obligatorio')
     if (!b.name) throw new Error('El nombre del beneficiario es obligatorio')
-    // Modo de cobro: solo dos validos; cualquier otro cae al clasico (anticipado).
-    const mode = paymentMode === PAYMENT_MODE.ON_CREDIT ? PAYMENT_MODE.ON_CREDIT : PAYMENT_MODE.UPFRONT
+    const lines = isProduct ? cleanItems(items) : []
+    if (isProduct && lines.length === 0) throw new Error('Agrega al menos un producto que entregar')
+    // Modo de cobro: producto = contra entrega (se entrega y se cobra despues si hay
+    // monto). Dinero: solo dos validos; cualquier otro cae al clasico (anticipado).
+    const mode = isProduct
+      ? PAYMENT_MODE.ON_CREDIT
+      : (paymentMode === PAYMENT_MODE.ON_CREDIT ? PAYMENT_MODE.ON_CREDIT : PAYMENT_MODE.UPFRONT)
     const id = newId()
     const ts = now()
     await db.transaction('rw', db.remittances, db.auditEvents, async () => {
       await db.remittances.add({
         id,
         status: REMITTANCE_STATUS.CREATED,
+        kind: isProduct ? DELIVERY_KIND.PRODUCT : DELIVERY_KIND.MONEY,
+        items: lines,
         amount: amt,
         currency,
         fee: round2(Number(fee) || 0),
@@ -107,6 +132,7 @@ export const remittancesRepo = {
       if (fields.paymentMode != null) {
         patch.paymentMode = fields.paymentMode === PAYMENT_MODE.ON_CREDIT ? PAYMENT_MODE.ON_CREDIT : PAYMENT_MODE.UPFRONT
       }
+      if (fields.items != null) patch.items = cleanItems(fields.items)
       if (fields.note != null) patch.note = String(fields.note).trim()
       if (fields.sender != null) {
         const s = cleanParty(fields.sender)
@@ -193,7 +219,7 @@ export const remittancesRepo = {
   async assign(id, courierId, { actorId = null } = {}) {
     if (!courierId) throw new Error('Falta el mensajero')
     const ts = now()
-    await db.transaction('rw', db.remittances, db.custodyMovements, db.auditEvents, db.users, async () => {
+    await db.transaction('rw', db.remittances, db.custodyMovements, db.auditEvents, db.users, db.stockMovements, db.products, db.productCustody, async () => {
       const r = await db.remittances.get(id)
       if (!r) throw new Error('Entrega no encontrada')
       if (r.status !== REMITTANCE_STATUS.FUNDS_AVAILABLE) {
@@ -203,11 +229,51 @@ export const remittancesRepo = {
       if (!courier || courier.role !== ROLES.COURIER || !courier.active) {
         throw new Error('El mensajero no es valido')
       }
-      // Custodia SOLO en cobro anticipado (clasico): el efectivo del negocio pasa de
-      // la caja central al mensajero (neto cero). En "contra entrega" el efectivo que
-      // reparte el mensajero es su FONDO (F4), no se mueve aqui; el dinero entra luego
-      // por el cobro a la cuenta. El modo clasico queda IDENTICO.
-      if (r.paymentMode !== PAYMENT_MODE.ON_CREDIT) {
+      if (r.kind === DELIVERY_KIND.PRODUCT) {
+        // CARGA de producto: valida existencia en el area "Entregas" (candado por
+        // cache, como los traspasos: solo el mando la mueve), rebaja el area en el
+        // libro mayor + su cache, y suma a la custodia de PRODUCTO del mensajero (libro
+        // aparte, aislado del inventario). Ids deterministas -> idempotente.
+        const lines = Array.isArray(r.items) ? r.items : []
+        if (lines.length === 0) throw new Error('La entrega de producto no tiene productos')
+        for (const it of lines) {
+          const p = await db.products.get(it.productId)
+          const avail = Number(p?.stockByLocation?.[ENTREGAS_AREA] || 0)
+          if (Math.abs(Number(it.qty) || 0) > avail) {
+            throw new Error(`No hay suficiente "${it.name || 'producto'}" en Entregas (disponible ${avail})`)
+          }
+        }
+        for (const it of lines) {
+          const q = Math.abs(Number(it.qty) || 0)
+          const outId = `delivery-out:${id}:${it.productId}`
+          if (!(await db.stockMovements.get(outId))) {
+            await db.stockMovements.add({
+              id: outId, productId: it.productId, qty: -q,
+              type: MOVEMENT_TYPES.DELIVERY_OUT, refType: 'remittance', refId: id,
+              unitCost: null, shiftId: null, userId: actorId, note: 'Carga a mensajero',
+              location: ENTREGAS_AREA, createdAt: ts
+            })
+            const p = await db.products.get(it.productId)
+            if (p) {
+              const byLoc = { ...(p.stockByLocation || {}) }
+              byLoc[ENTREGAS_AREA] = cleanQty(Number(byLoc[ENTREGAS_AREA] || 0) - q)
+              await db.products.update(it.productId, {
+                stock: cleanQty(Number(p.stock || 0) - q), stockByLocation: byLoc, updatedAt: ts
+              })
+            }
+          }
+          const inId = `pcustody:load:${id}:${it.productId}`
+          if (!(await db.productCustody.get(inId))) {
+            await productCustodyRepo.addMovementRaw({
+              id: inId, holder: courierId, productId: it.productId, name: it.name, qty: q,
+              refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+            })
+          }
+        }
+      } else if (r.paymentMode !== PAYMENT_MODE.ON_CREDIT) {
+        // Custodia de EFECTIVO solo en cobro anticipado (clasico): pasa de la caja
+        // central al mensajero (neto cero). En contra entrega el efectivo es su FONDO
+        // (F4); no se mueve aqui. El modo clasico queda IDENTICO.
         const outId = `custody:assign-out:${id}`
         if (!(await db.custodyMovements.get(outId))) {
           await custodyRepo.addMovementRaw({
@@ -241,24 +307,38 @@ export const remittancesRepo = {
   // idempotente por ids deterministas. Solo desde ASIGNADA / EN RUTA.
   async deliver(id, { proofDataUrl = '', note = '', actorId = null } = {}) {
     const ts = now()
-    await db.transaction('rw', db.remittances, db.custodyMovements, db.deliveries, db.auditEvents, async () => {
+    await db.transaction('rw', db.remittances, db.custodyMovements, db.deliveries, db.auditEvents, db.productCustody, async () => {
       const r = await db.remittances.get(id)
       if (!r) throw new Error('Entrega no encontrada')
       if (r.status !== REMITTANCE_STATUS.ASSIGNED && r.status !== REMITTANCE_STATUS.IN_ROUTE) {
         throw new Error('Solo se puede entregar una entrega asignada')
       }
       if (!r.assignedCourierId) throw new Error('La entrega no tiene mensajero asignado')
-      // La entrega DEBITA la custodia del mensajero por el monto: en cobro anticipado
-      // salda lo que se le asigno para esta entrega; en cobro contra entrega descuenta
-      // su FONDO (el efectivo que reparte, dotado por el mando en F4). En ambos casos su
-      // saldo baja igual. Id determinista -> idempotente entre dispositivos.
-      const movId = `custody:deliver:${id}`
-      if (!(await db.custodyMovements.get(movId))) {
-        await custodyRepo.addMovementRaw({
-          id: movId, holder: r.assignedCourierId, direction: 'debit',
-          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.DELIVER,
-          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
-        })
+      if (r.kind === DELIVERY_KIND.PRODUCT) {
+        // Producto: SALE de la custodia de PRODUCTO del mensajero al beneficiario.
+        const lines = Array.isArray(r.items) ? r.items : []
+        for (const it of lines) {
+          const q = Math.abs(Number(it.qty) || 0)
+          const outId = `pcustody:deliver:${id}:${it.productId}`
+          if (!(await db.productCustody.get(outId))) {
+            await productCustodyRepo.addMovementRaw({
+              id: outId, holder: r.assignedCourierId, productId: it.productId, name: it.name, qty: -q,
+              refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+            })
+          }
+        }
+      } else {
+        // Dinero: DEBITA la custodia de EFECTIVO del mensajero (salda lo asignado en
+        // anticipado; descuenta su fondo en contra entrega). En ambos su saldo baja
+        // igual. Id determinista -> idempotente entre dispositivos.
+        const movId = `custody:deliver:${id}`
+        if (!(await db.custodyMovements.get(movId))) {
+          await custodyRepo.addMovementRaw({
+            id: movId, holder: r.assignedCourierId, direction: 'debit',
+            amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.DELIVER,
+            refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+          })
+        }
       }
       const delId = `delivery:${id}`
       if (!(await db.deliveries.get(delId))) {
@@ -404,6 +484,49 @@ export const remittancesRepo = {
         id: newId(), entity: 'remittance', entityId: id, action: 'collect',
         amount: amt, currency: cur, accountId: acc ? accountId : null,
         userId: actorId, createdAt: ts
+      })
+    })
+  },
+
+  // Devuelve al area "Entregas" el producto que un mensajero ya no entregara (sobrante
+  // o entrega fallida). Rebaja su custodia de PRODUCTO y reingresa al area (libro mayor
+  // + cache). Valida que no devuelva mas de lo que lleva. Atomico y auditado.
+  async returnProduct({ courierId, items = [], actorId = null }) {
+    if (!courierId) throw new Error('Falta el mensajero')
+    const lines = cleanItems(items)
+    if (lines.length === 0) throw new Error('Indica el producto a devolver')
+    const ts = now()
+    await db.transaction('rw', db.productCustody, db.stockMovements, db.products, db.auditEvents, async () => {
+      const carried = await productCustodyRepo.holderProducts(courierId)
+      for (const it of lines) {
+        const have = Number(carried[it.productId] || 0)
+        if (it.qty > have) throw new Error(`El mensajero no lleva tanto "${it.name || 'producto'}" (lleva ${have})`)
+      }
+      const op = newId()
+      for (const it of lines) {
+        const q = Math.abs(Number(it.qty) || 0)
+        await productCustodyRepo.addMovementRaw({
+          id: `pcustody:return:${op}:${it.productId}`, holder: courierId, productId: it.productId,
+          name: it.name, qty: -q, refType: 'productReturn', refId: courierId, byUserId: actorId, createdAt: ts
+        })
+        await db.stockMovements.add({
+          id: `delivery-in:${op}:${it.productId}`, productId: it.productId, qty: q,
+          type: MOVEMENT_TYPES.DELIVERY_IN, refType: 'productReturn', refId: courierId,
+          unitCost: null, shiftId: null, userId: actorId, note: 'Devolucion de mensajero',
+          location: ENTREGAS_AREA, createdAt: ts
+        })
+        const p = await db.products.get(it.productId)
+        if (p) {
+          const byLoc = { ...(p.stockByLocation || {}) }
+          byLoc[ENTREGAS_AREA] = cleanQty(Number(byLoc[ENTREGAS_AREA] || 0) + q)
+          await db.products.update(it.productId, {
+            stock: cleanQty(Number(p.stock || 0) + q), stockByLocation: byLoc, updatedAt: ts
+          })
+        }
+      }
+      await db.auditEvents.add({
+        id: newId(), entity: 'productCustody', entityId: courierId, action: 'product_return',
+        courierId, userId: actorId, createdAt: ts
       })
     })
   }
