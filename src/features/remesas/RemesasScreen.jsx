@@ -6,6 +6,8 @@ import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { custodyRepo } from '../../repositories/custodyRepo'
 import { settlementsRepo } from '../../repositories/settlementsRepo'
 import { accountsRepo } from '../../repositories/accountsRepo'
+import { productsRepo } from '../../repositories/productsRepo'
+import { productCustodyRepo } from '../../repositories/productCustodyRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -18,7 +20,8 @@ import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { remittanceGroup, isPendingCollection } from '../../lib/remesas'
 import {
   CASH_CURRENCIES, ROLES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
-  REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS
+  REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS,
+  DELIVERY_KIND, DELIVERY_KIND_LABELS
 } from '../../db/constants'
 
 // Modulo 'remesas' (F2 Ordenes · F3 Custodia · F4 Mensajeros · F5 Entregas).
@@ -105,6 +108,35 @@ function CustodyPanel({ balances, userName, mineId = null }) {
   )
 }
 
+// Panel de custodia de PRODUCTO: lo que cada mensajero lleva encima (aislado del
+// inventario general). El mando ve a todos; el mensajero ve lo suyo. Oculto si vacio.
+function ProductCustodyPanel({ userName, mineId = null }) {
+  const balances = useLiveQuery(() => productCustodyRepo.balances(), [], {})
+  const movs = useLiveQuery(() => productCustodyRepo.allMovements(), [], [])
+  const nameMap = {}
+  for (const m of (movs || [])) if (m.name) nameMap[m.productId] = m.name
+  let entries = Object.entries(balances || {})
+  if (mineId) entries = entries.filter(([h]) => h === mineId)
+  const holders = entries
+    .map(([holder, byProd]) => [holder, Object.entries(byProd).filter(([, q]) => Math.abs(Number(q) || 0) >= 0.0005)])
+    .filter(([, prods]) => prods.length > 0)
+  if (holders.length === 0) return null
+  const label = (h) => (h === mineId ? 'Tu carga de producto' : userName(h))
+  return (
+    <section className="card">
+      <h3>Producto en poder del mensajero</h3>
+      {holders.map(([holder, prods]) => (
+        <div key={holder} style={{ marginBottom: 8 }}>
+          <div className="muted">{label(holder)}</div>
+          {prods.map(([pid, q]) => (
+            <div key={pid} className="kv"><span>{nameMap[pid] || pid}</span><strong>× {q}</strong></div>
+          ))}
+        </div>
+      ))}
+    </section>
+  )
+}
+
 export function RemesasScreen() {
   const { user, isManager, isCourier } = useAuth()
   const { hasModule } = useLicense()
@@ -176,6 +208,7 @@ export function RemesasScreen() {
       )}
 
       <CustodyPanel balances={custody} userName={userName} mineId={isManager ? null : user.id} />
+      <ProductCustodyPanel userName={userName} mineId={isManager ? null : user.id} />
 
       {isManager && (
         <button className="btn btn--primary btn--block" onClick={() => setCreating(true)}>
@@ -315,6 +348,15 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
         )}
       </section>
 
+      {r.kind === DELIVERY_KIND.PRODUCT && Array.isArray(r.items) && r.items.length > 0 && (
+        <section className="card">
+          <h3>Productos a entregar</h3>
+          {r.items.map((it, i) => (
+            <div key={i} className="kv"><span>{it.name}</span><strong>× {it.qty}</strong></div>
+          ))}
+        </section>
+      )}
+
       <section className="card">
         <h3>Remitente</h3>
         <p><strong>{r.sender?.name || '—'}</strong></p>
@@ -418,7 +460,13 @@ function AssignModal({ remittance: r, userId, couriers, onClose, onDone }) {
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Asignar a mensajero</h3>
         <p className="muted">
-          Se entregan <strong>{formatMoney(Number(r.amount) || 0, r.currency)}</strong> en custodia al mensajero.
+          Se le carga{' '}
+          <strong>
+            {r.kind === DELIVERY_KIND.PRODUCT
+              ? (r.items || []).map((it) => `${it.name} × ${it.qty}`).join(', ')
+              : formatMoney(Number(r.amount) || 0, r.currency)}
+          </strong>{' '}
+          al mensajero{r.kind === DELIVERY_KIND.PRODUCT ? ' (sale del área Entregas)' : ' en custodia'}.
         </p>
         {couriers.length === 0 ? (
           <p className="muted">No hay mensajeros activos. Crea uno en <strong>Usuarios</strong> (rol Mensajero).</p>
@@ -483,8 +531,13 @@ function DeliverModal({ remittance: r, userId, onClose, onDone }) {
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Entregar al beneficiario</h3>
         <p className="muted">
-          Se entregan <strong>{formatMoney(Number(r.amount) || 0, r.currency)}</strong> a{' '}
-          <strong>{r.beneficiary?.name || 'el beneficiario'}</strong>. Confirma cuando lo haya recibido.
+          Se entrega{' '}
+          <strong>
+            {r.kind === DELIVERY_KIND.PRODUCT
+              ? (r.items || []).map((it) => `${it.name} × ${it.qty}`).join(', ')
+              : formatMoney(Number(r.amount) || 0, r.currency)}
+          </strong>{' '}
+          a <strong>{r.beneficiary?.name || 'el beneficiario'}</strong>. Confirma cuando lo haya recibido.
         </p>
 
         <p className="field-label">Comprobante (opcional)</p>
@@ -659,9 +712,34 @@ function RemittanceForm({ userId, existing = null, onClose }) {
   const [bId, setBId] = useState(existing?.beneficiary?.idDoc || '')
   const [note, setNote] = useState(existing?.note || '')
   const [paymentMode, setPaymentMode] = useState(existing?.paymentMode || PAYMENT_MODE.UPFRONT)
+  const [kind, setKind] = useState(existing?.kind || DELIVERY_KIND.MONEY)
+  const [items, setItems] = useState(existing?.items ? existing.items.map((it) => ({ ...it })) : [])
+  const [pickProduct, setPickProduct] = useState('')
+  const [pickQty, setPickQty] = useState('')
+  const products = useLiveQuery(() => productsRepo.listActive(), [], [])
+  const isProduct = kind === DELIVERY_KIND.PRODUCT
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   useEscapeClose(onClose)
+
+  // Agrega/quita una linea de producto (se acumula por producto).
+  const addItem = () => {
+    const p = products.find((x) => x.id === pickProduct)
+    const qty = Number(pickQty) || 0
+    if (!p || qty <= 0) return
+    setItems((prev) => {
+      const idx = prev.findIndex((it) => it.productId === p.id)
+      if (idx >= 0) {
+        const next = [...prev]
+        next[idx] = { ...next[idx], qty: round2(Number(next[idx].qty) + qty) }
+        return next
+      }
+      return [...prev, { productId: p.id, name: p.name, qty }]
+    })
+    setPickProduct('')
+    setPickQty('')
+  }
+  const removeItem = (i) => setItems((prev) => prev.filter((_, idx) => idx !== i))
 
   const save = async () => {
     setError('')
@@ -672,6 +750,8 @@ function RemittanceForm({ userId, existing = null, onClose }) {
       fee,
       note,
       paymentMode,
+      kind,
+      items,
       sender: { name: sName, phone: sPhone, idDoc: sId },
       beneficiary: { name: bName, phone: bPhone, address: bAddr, idDoc: bId }
     }
@@ -693,9 +773,49 @@ function RemittanceForm({ userId, existing = null, onClose }) {
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>{isEdit ? 'Editar entrega' : 'Nueva entrega'}</h3>
 
+        <label className="field">
+          <span>Tipo de entrega</span>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} disabled={isEdit}>
+            <option value={DELIVERY_KIND.MONEY}>{DELIVERY_KIND_LABELS.money}</option>
+            <option value={DELIVERY_KIND.PRODUCT}>{DELIVERY_KIND_LABELS.product}</option>
+          </select>
+        </label>
+
+        {isProduct && (
+          <>
+            <p className="field-label">Productos a entregar</p>
+            <div className="form-row">
+              <label className="field" style={{ flex: 2 }}>
+                <span>Producto</span>
+                <select value={pickProduct} onChange={(e) => setPickProduct(e.target.value)}>
+                  <option value="">— Elige —</option>
+                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </label>
+              <label className="field">
+                <span>Cantidad</span>
+                <input type="number" inputMode="decimal" value={pickQty} onChange={(e) => setPickQty(e.target.value)} placeholder="0" />
+              </label>
+            </div>
+            <button type="button" className="btn btn--ghost btn--sm" disabled={!pickProduct || !(Number(pickQty) > 0)} onClick={addItem}>
+              + Agregar producto
+            </button>
+            {items.length > 0 && (
+              <div className="list" style={{ marginTop: 8 }}>
+                {items.map((it, i) => (
+                  <div key={i} className="list-item" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ flex: 1 }}>{it.name} × {it.qty}</span>
+                    <button type="button" className="btn btn--ghost btn--sm warn-text" onClick={() => removeItem(i)}>Quitar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
         <div className="form-row">
           <label className="field">
-            <span>Monto *</span>
+            <span>{isProduct ? 'Monto a cobrar (opcional)' : 'Monto *'}</span>
             <input
               autoFocus
               type="number"
@@ -712,15 +832,22 @@ function RemittanceForm({ userId, existing = null, onClose }) {
             </select>
           </label>
         </div>
-        <label className="field">
-          <span>Modo de cobro</span>
-          <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
-            <option value={PAYMENT_MODE.UPFRONT}>{PAYMENT_MODE_LABELS.upfront}</option>
-            <option value={PAYMENT_MODE.ON_CREDIT}>{PAYMENT_MODE_LABELS.on_credit}</option>
-          </select>
-        </label>
-        {paymentMode === PAYMENT_MODE.ON_CREDIT && (
-          <p className="muted">Se entrega primero; el cobro al remitente queda “por cobrar”.</p>
+        {!isProduct && (
+          <>
+            <label className="field">
+              <span>Modo de cobro</span>
+              <select value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
+                <option value={PAYMENT_MODE.UPFRONT}>{PAYMENT_MODE_LABELS.upfront}</option>
+                <option value={PAYMENT_MODE.ON_CREDIT}>{PAYMENT_MODE_LABELS.on_credit}</option>
+              </select>
+            </label>
+            {paymentMode === PAYMENT_MODE.ON_CREDIT && (
+              <p className="muted">Se entrega primero; el cobro al remitente queda “por cobrar”.</p>
+            )}
+          </>
+        )}
+        {isProduct && (
+          <p className="muted">Producto: se entrega primero y (si hay monto) se cobra después.</p>
         )}
         <label className="field">
           <span>Cargo (opcional)</span>
@@ -779,7 +906,7 @@ function RemittanceForm({ userId, existing = null, onClose }) {
           <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
           <button
             className="btn btn--primary"
-            disabled={busy || !(Number(amount) > 0) || !sName.trim() || !bName.trim()}
+            disabled={busy || !sName.trim() || !bName.trim() || (isProduct ? items.length === 0 : !(Number(amount) > 0))}
             onClick={save}
           >
             {busy ? 'Guardando…' : (isEdit ? 'Guardar cambios' : 'Crear entrega')}

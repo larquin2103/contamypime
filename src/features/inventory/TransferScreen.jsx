@@ -6,9 +6,11 @@ import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { transfersRepo } from '../../repositories/transfersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { round2 } from '../../lib/currency'
-import { WAREHOUSE } from '../../db/constants'
+import { WAREHOUSE, ENTREGAS_AREA, locationLabel } from '../../db/constants'
 
 // Bloque 20.2 - Salida del almacen central hacia un area. La registra el dueño o
 // un administrativo. Resta del almacen y suma al area; el vendedor de esa area
@@ -21,9 +23,13 @@ import { WAREHOUSE } from '../../db/constants'
 // (validada y atomica); aqui NO cambia esa logica.
 export function TransferScreen() {
   const { user, isManager } = useAuth()
+  const { hasModule } = useLicense()
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
+  // Con el modulo 'remesas', el area centinela "Entregas" aparece como destino para
+  // surtir desde el almacen lo que el mensajero cargara (no es un area de venta).
+  const destAreas = hasModule(LICENSE_MODULES.REMESAS) ? [...(areas || []), ENTREGAS_AREA] : (areas || [])
 
   const [toArea, setToArea] = useState('')
   const [query, setQuery] = useState('')
@@ -75,7 +81,7 @@ export function TransferScreen() {
     )
   }
 
-  if (!areas || areas.length === 0) {
+  if (!destAreas || destAreas.length === 0) {
     return (
       <div className="screen">
         <h2>Salida a áreas</h2>
@@ -122,7 +128,7 @@ export function TransferScreen() {
         qty: qtyOf(p.id)
       }))
       await transfersRepo.create({ toArea, items, byUserId: user.id })
-      setDoneMsg(`✅ ${items.length} producto(s) enviados a ${toArea}. Elige otra área para seguir.`)
+      setDoneMsg(`✅ ${items.length} producto(s) enviados a ${locationLabel(toArea)}. Elige otra área para seguir.`)
       // Se limpia para el proximo envio (a otra area). El area queda elegida por
       // comodidad; cambiala en el desplegable para enviar a otra.
       setSelected({})
@@ -147,7 +153,7 @@ export function TransferScreen() {
           <span>1. Área de destino</span>
           <select value={toArea} onChange={(e) => { setToArea(e.target.value); setDoneMsg('') }}>
             <option value="">— Elige el área —</option>
-            {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            {destAreas.map((a) => <option key={a} value={a}>{locationLabel(a)}</option>)}
           </select>
         </label>
         {doneMsg && <p className="ok-text">{doneMsg}</p>}
@@ -156,7 +162,7 @@ export function TransferScreen() {
       {/* Panel de seleccionados con su cantidad + envío. */}
       {selectedList.length > 0 && (
         <section className="card">
-          <h3>Seleccionados ({selectedList.length}) → {toArea || 'elige área'}</h3>
+          <h3>Seleccionados ({selectedList.length}) → {toArea ? locationLabel(toArea) : 'elige área'}</h3>
           <div className="entry-lines">
             {selectedList.map((p) => {
               const wh = warehouseOf(p)
@@ -191,7 +197,7 @@ export function TransferScreen() {
           {error && <p className="error">{error}</p>}
           {!toArea && <p className="muted">Elige primero el área de destino arriba.</p>}
           <button className="btn btn--primary btn--block" disabled={!valid || busy} onClick={register}>
-            {busy ? 'Enviando…' : `Enviar ${selectedList.length} producto(s) a ${toArea || '…'}`}
+            {busy ? 'Enviando…' : `Enviar ${selectedList.length} producto(s) a ${toArea ? locationLabel(toArea) : '…'}`}
           </button>
         </section>
       )}
