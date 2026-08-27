@@ -29,7 +29,8 @@ import {
 import {
   buildRemittancesReport,
   buildDeliveriesReport,
-  buildSettlementsReport
+  buildSettlementsReport,
+  buildCollectionsReport
 } from './remesasReports'
 
 export function ReportsScreen() {
@@ -124,6 +125,8 @@ export function ReportsScreen() {
         card('remesas-ent', 'Entregas realizadas', 'Cada intento de entrega (entregada/fallida) con su mensajero, beneficiario y monto', buildDeliveriesReport, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&
         card('remesas-liq', 'Liquidaciones de mensajeros', 'Cuadre del efectivo en custodia: teórico, contado, diferencia y resultado', buildSettlementsReport, true)}
+      {hasModule(LICENSE_MODULES.REMESAS) &&
+        card('remesas-cob', 'Cobros de entregas', 'Cobros registrados (contra entrega): beneficiario, quién pagó, cuenta y monto', buildCollectionsReport, true)}
     </div>
   )
 }

@@ -203,6 +203,8 @@ export function RemesasScreen() {
         )}
       </div>
 
+      {isManager && <PendingCollectionsSection remittances={allRemittances} userId={user.id} />}
+
       {isManager && (
         <SettlementsSection
           couriers={couriers}
@@ -794,6 +796,47 @@ function firstNonZeroDiff(map) {
     if (Math.abs(Number(v) || 0) >= 0.01) return { currency, value: round2(Number(v)) }
   }
   return null
+}
+
+// Cierre de cobros (F5, solo mando): lista lo que esta POR COBRAR (contra entrega ya
+// entregada y sin cobrar) para revisarlo entrega por entrega y registrar el pago; el
+// dinero entra a la cuenta elegida (F3). Se oculta si no hay nada pendiente.
+function PendingCollectionsSection({ remittances, userId }) {
+  const [collectId, setCollectId] = useState(null)
+  const pending = (remittances || []).filter(isPendingCollection)
+  if (pending.length === 0) return null
+
+  const totals = {}
+  for (const r of pending) {
+    const c = r.currency || 'MN'
+    totals[c] = round2((totals[c] || 0) + (Number(r.amount) || 0))
+  }
+  const totalStr = Object.entries(totals).map(([c, v]) => formatMoney(v, c)).join(' · ')
+  const target = collectId ? pending.find((r) => r.id === collectId) : null
+
+  return (
+    <section className="card">
+      <h3>Por cobrar</h3>
+      <p className="muted">
+        Entregas ya entregadas cuyo cobro al remitente está pendiente. Total:{' '}
+        <strong className="warn-text">{totalStr}</strong>
+      </p>
+      <div className="list">
+        {pending.map((r) => (
+          <div key={r.id} className="list-item" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="help-item__text" style={{ flex: 1 }}>
+              <strong>{r.beneficiary?.name || 'Beneficiario'}</strong>
+              <span className="muted">De {r.sender?.name || '—'} · {formatMoney(Number(r.amount) || 0, r.currency)}</span>
+            </span>
+            <button className="btn btn--primary btn--sm" onClick={() => setCollectId(r.id)}>Cobrar</button>
+          </div>
+        ))}
+      </div>
+      {target && (
+        <CollectModal remittance={target} userId={userId} onClose={() => setCollectId(null)} onDone={() => setCollectId(null)} />
+      )}
+    </section>
+  )
 }
 
 // Liquidaciones (F6, solo mando): cuadra el efectivo en custodia de un mensajero

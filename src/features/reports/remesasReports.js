@@ -131,3 +131,44 @@ export async function buildSettlementsReport({ from = null, to = null } = {}) {
     orientation: 'landscape'
   }
 }
+
+// Cobros de entregas (contra entrega): cada cobro registrado con su cuenta, quien
+// pago y el monto. El dinero real vive en la tesoreria (accountMovements); esto lista
+// los cobros para el cierre diario. Sin el modulo la tabla esta vacia.
+export async function buildCollectionsReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const remById = {}
+  for (const r of await db.remittances.toArray()) remById[r.id] = r
+  const accById = {}
+  for (const a of await db.accounts.toArray()) accById[a.id] = a
+  const list = (await db.collections.toArray())
+    .filter((c) => inRange(c.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const totals = {}
+  const rows = list.map((c) => {
+    const r = remById[c.remittanceId] || null
+    const acc = c.accountId ? accById[c.accountId] : null
+    const amt = round2(Number(c.amount || 0))
+    const cur = c.currency || 'MN'
+    totals[cur] = round2((totals[cur] || 0) + amt)
+    return [
+      formatDateTime(c.createdAt),
+      r?.beneficiary?.name || '',
+      c.payerName || r?.sender?.name || '',
+      acc ? acc.name : '—',
+      amt,
+      cur,
+      names[c.byUserId] || ''
+    ]
+  })
+  if (rows.length === 0) rows.push(['Sin cobros en el periodo', '', '', '', '', '', ''])
+  else rows.push(['', '', '', 'Total', moneyMapStr(totals), '', ''])
+  return {
+    title: 'Cobros de entregas',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Beneficiario', 'Pagó', 'Cuenta', 'Monto', 'Moneda', 'Registró'],
+    rows,
+    filename: 'cobros-entregas',
+    orientation: 'landscape'
+  }
+}
