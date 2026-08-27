@@ -248,18 +248,17 @@ export const remittancesRepo = {
         throw new Error('Solo se puede entregar una entrega asignada')
       }
       if (!r.assignedCourierId) throw new Error('La entrega no tiene mensajero asignado')
-      // Custodia SOLO en cobro anticipado: el efectivo sale de la custodia del
-      // mensajero al beneficiario. En "contra entrega" ese efectivo es su fondo (F4);
-      // aqui solo queda la constancia de la entrega. El modo clasico queda IDENTICO.
-      if (r.paymentMode !== PAYMENT_MODE.ON_CREDIT) {
-        const movId = `custody:deliver:${id}`
-        if (!(await db.custodyMovements.get(movId))) {
-          await custodyRepo.addMovementRaw({
-            id: movId, holder: r.assignedCourierId, direction: 'debit',
-            amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.DELIVER,
-            refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
-          })
-        }
+      // La entrega DEBITA la custodia del mensajero por el monto: en cobro anticipado
+      // salda lo que se le asigno para esta entrega; en cobro contra entrega descuenta
+      // su FONDO (el efectivo que reparte, dotado por el mando en F4). En ambos casos su
+      // saldo baja igual. Id determinista -> idempotente entre dispositivos.
+      const movId = `custody:deliver:${id}`
+      if (!(await db.custodyMovements.get(movId))) {
+        await custodyRepo.addMovementRaw({
+          id: movId, holder: r.assignedCourierId, direction: 'debit',
+          amount: r.amount, currency: r.currency, type: CUSTODY_MOVEMENT_TYPES.DELIVER,
+          refType: 'remittance', refId: id, byUserId: actorId, createdAt: ts
+        })
       }
       const delId = `delivery:${id}`
       if (!(await db.deliveries.get(delId))) {

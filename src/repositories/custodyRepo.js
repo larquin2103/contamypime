@@ -3,6 +3,7 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { deriveBalances, deriveHolderBalance } from '../lib/custodyMath'
+import { ROLES, REMESA_CENTRAL, CUSTODY_MOVEMENT_TYPES } from '../db/constants'
 
 // Custodia de efectivo (modulo 'remesas') — LIBRO PROPIO Y AISLADO. Es la misma
 // idea que la tesoreria (`accountsRepo`): un libro append-only del que se DERIVA
@@ -76,5 +77,63 @@ export const custodyRepo = {
   async allMovements() {
     const rows = await db.custodyMovements.toArray()
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  // Dota un FONDO a un mensajero (el efectivo que repartira en entregas contra
+  // entrega): caja central -> mensajero, en UNA transaccion. Es la contraparte del
+  // descuento que hace cada entrega al debitar su custodia. NO atado a una entrega
+  // concreta. Como una extraccion manual de caja, el id es aleatorio (el candado
+  // contra doble envio lo pone la UI); dos dotaciones distintas son eventos distintos.
+  async provisionFund({ courierId, amount, currency = 'MN', actorId = null }) {
+    const amt = round2(Number(amount) || 0)
+    if (amt <= 0) throw new Error('El monto del fondo debe ser mayor que cero')
+    const ts = now()
+    await db.transaction('rw', db.custodyMovements, db.users, db.auditEvents, async () => {
+      const courier = await db.users.get(courierId)
+      if (!courier || courier.role !== ROLES.COURIER || !courier.active) {
+        throw new Error('El mensajero no es valido')
+      }
+      const op = newId()
+      await this.addMovementRaw({
+        id: `fund-out:${op}`, holder: REMESA_CENTRAL, direction: 'debit',
+        amount: amt, currency, type: CUSTODY_MOVEMENT_TYPES.FUND,
+        refType: 'fund', refId: courierId, byUserId: actorId, createdAt: ts
+      })
+      await this.addMovementRaw({
+        id: `fund-in:${op}`, holder: courierId, direction: 'credit',
+        amount: amt, currency, type: CUSTODY_MOVEMENT_TYPES.FUND,
+        refType: 'fund', refId: courierId, byUserId: actorId, createdAt: ts
+      })
+      await db.auditEvents.add({
+        id: newId(), entity: 'custody', entityId: courierId, action: 'fund_provision',
+        courierId, amount: amt, currency, userId: actorId, createdAt: ts
+      })
+    })
+  },
+
+  // Devuelve fondo de un mensajero a la caja central (al cerrar el turno o cambiar de
+  // mano): mensajero -> central, en UNA transaccion. Lo que no se devuelve queda en su
+  // custodia para el dia siguiente (turnos de dos y dos).
+  async returnFund({ courierId, amount, currency = 'MN', actorId = null }) {
+    const amt = round2(Number(amount) || 0)
+    if (amt <= 0) throw new Error('El monto a devolver debe ser mayor que cero')
+    const ts = now()
+    await db.transaction('rw', db.custodyMovements, db.users, db.auditEvents, async () => {
+      const op = newId()
+      await this.addMovementRaw({
+        id: `fundret-out:${op}`, holder: courierId, direction: 'debit',
+        amount: amt, currency, type: CUSTODY_MOVEMENT_TYPES.FUND,
+        refType: 'fund', refId: courierId, byUserId: actorId, createdAt: ts
+      })
+      await this.addMovementRaw({
+        id: `fundret-in:${op}`, holder: REMESA_CENTRAL, direction: 'credit',
+        amount: amt, currency, type: CUSTODY_MOVEMENT_TYPES.FUND,
+        refType: 'fund', refId: courierId, byUserId: actorId, createdAt: ts
+      })
+      await db.auditEvents.add({
+        id: newId(), entity: 'custody', entityId: courierId, action: 'fund_return',
+        courierId, amount: amt, currency, userId: actorId, createdAt: ts
+      })
+    })
   }
 }

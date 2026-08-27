@@ -800,11 +800,16 @@ function firstNonZeroDiff(map) {
 // (teorico del libro vs contado fisico + semaforo) y muestra las recientes.
 function SettlementsSection({ couriers, balances, settlements, userId, userName }) {
   const [settling, setSettling] = useState(false)
+  const [fundMode, setFundMode] = useState(null)
   const recent = (settlements || []).slice(0, 8)
   return (
     <section className="card">
-      <h3>Liquidaciones</h3>
-      <p className="muted">Cuadra el efectivo en custodia de un mensajero: teórico (libro) vs contado.</p>
+      <h3>Fondo y cierre del mensajero</h3>
+      <p className="muted">Dale un fondo al mensajero para repartir; cada entrega se lo descuenta. Al cerrar, cuadra su efectivo (teórico del libro vs contado) o devuelve lo que sobra.</p>
+      <div className="form-row">
+        <button className="btn btn--ghost" style={{ flex: 1 }} onClick={() => setFundMode('provision')}>Dar fondo</button>
+        <button className="btn btn--ghost" style={{ flex: 1 }} onClick={() => setFundMode('return')}>Devolver fondo</button>
+      </div>
       <button className="btn btn--ghost btn--block" onClick={() => setSettling(true)}>
         Liquidar mensajero
       </button>
@@ -826,6 +831,16 @@ function SettlementsSection({ couriers, balances, settlements, userId, userName 
           })}
         </div>
       )}
+      {fundMode && (
+        <FundModal
+          mode={fundMode}
+          couriers={couriers}
+          balances={balances}
+          userId={userId}
+          onClose={() => setFundMode(null)}
+          onDone={() => setFundMode(null)}
+        />
+      )}
       {settling && (
         <SettleModal
           couriers={couriers}
@@ -836,6 +851,78 @@ function SettlementsSection({ couriers, balances, settlements, userId, userName 
         />
       )}
     </section>
+  )
+}
+
+// Fondo del mensajero (F4): DAR (dotar) o DEVOLVER efectivo del fondo que reparte.
+// Dar: caja central -> mensajero. Devolver: mensajero -> central. Muestra el fondo
+// actual (derivado del libro) para decidir cuanto. Solo el mando.
+function FundModal({ mode, couriers, balances, userId, onClose, onDone }) {
+  const provision = mode === 'provision'
+  const [courierId, setCourierId] = useState(couriers[0]?.id || '')
+  const [amount, setAmount] = useState('')
+  const [currency, setCurrency] = useState('MN')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEscapeClose(onClose)
+
+  const bal = balances[courierId] || {}
+  const balStr = Object.entries(bal)
+    .filter(([, a]) => Math.abs(Number(a) || 0) >= 0.01)
+    .map(([c, a]) => formatMoney(a, c))
+    .join(' · ')
+
+  const save = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      const fn = provision ? custodyRepo.provisionFund : custodyRepo.returnFund
+      await fn({ courierId, amount: Number(amount) || 0, currency, actorId: userId })
+      onDone()
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>{provision ? 'Dar fondo al mensajero' : 'Devolver fondo'}</h3>
+        {couriers.length === 0 ? (
+          <p className="muted">No hay mensajeros activos. Crea uno en <strong>Usuarios</strong> (rol Mensajero).</p>
+        ) : (
+          <>
+            <label className="field">
+              <span>Mensajero</span>
+              <select value={courierId} onChange={(e) => setCourierId(e.target.value)}>
+                {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            {balStr && <p className="muted">Fondo actual: <strong>{balStr}</strong></p>}
+            <div className="form-row">
+              <label className="field">
+                <span>Monto</span>
+                <input autoFocus type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" />
+              </label>
+              <label className="field">
+                <span>Moneda</span>
+                <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </label>
+            </div>
+          </>
+        )}
+        {error && <p className="error">{error}</p>}
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn--primary" disabled={busy || !courierId || !(Number(amount) > 0)} onClick={save}>
+            {busy ? 'Guardando…' : (provision ? 'Dar fondo' : 'Devolver')}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

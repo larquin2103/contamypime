@@ -32,6 +32,15 @@ const failReturn = (r, courier, amount, currency = 'MN') => ([
   { id: `custody:return-out:${r}`, holder: courier, direction: 'debit', amount, currency },
   { id: `custody:return-in:${r}`, holder: CENTRAL, direction: 'credit', amount, currency }
 ])
+// F4: dotar/devolver el FONDO del mensajero (central <-> mensajero, no atado a una entrega).
+const fund = (courier, amount, currency = 'MN') => ([
+  { id: `fund-out:${courier}:${amount}`, holder: CENTRAL, direction: 'debit', amount, currency },
+  { id: `fund-in:${courier}:${amount}`, holder: courier, direction: 'credit', amount, currency }
+])
+const returnFund = (courier, amount, currency = 'MN') => ([
+  { id: `fundret-out:${courier}:${amount}`, holder: courier, direction: 'debit', amount, currency },
+  { id: `fundret-in:${courier}:${amount}`, holder: CENTRAL, direction: 'credit', amount, currency }
+])
 
 // Fusion "ultima escritura gana" por id (como pullEngine.mergeIncoming): colapsa
 // los duplicados. En la app la unicidad la garantiza tambien la clave primaria.
@@ -105,6 +114,25 @@ const dedupeById = (movs) => {
   eq('varios: C1', b['C1'], { MN: 100 })
   eq('varios: C2', b['C2'], { MN: 300 })
   eq('varios: central 0', b[CENTRAL], { MN: 0 })
+}
+
+// --- FONDO DEL MENSAJERO (F4, cobro CONTRA ENTREGA): dotar -> repartir -> devolver ---
+// El mensajero recibe un fondo (500); cada entrega se lo descuenta; al cerrar devuelve
+// lo que le queda. El efectivo entregado (out) sale del sistema; el reembolso del
+// remitente entra por OTRO libro (tesoreria), no aqui.
+{
+  const movs = [
+    ...fund('C1', 500),
+    deliver('R1', 'C1', 100), // entrega contra entrega: debita su fondo
+    deliver('R2', 'C1', 60)
+  ]
+  const b = deriveBalances(movs)
+  eq('fondo: al mensajero le quedan 340', b['C1'], { MN: 340 })
+  eq('fondo: central desplegado -500', b[CENTRAL], { MN: -500 })
+  // Devuelve lo que le queda (340): su fondo vuelve a 0 y la central sube 340.
+  const b2 = deriveBalances([...movs, ...returnFund('C1', 340)])
+  eq('fondo devuelto: mensajero en 0', b2['C1'], { MN: 0 })
+  eq('fondo devuelto: central = -entregado (160)', b2[CENTRAL], { MN: -160 })
 }
 
 // --- IDEMPOTENCIA: el MISMO evento por duplicado (dos dispositivos) NO dobla ---

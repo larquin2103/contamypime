@@ -332,7 +332,8 @@ export const CUSTODY_MOVEMENT_TYPES = {
   ASSIGN: 'assign', // asignacion a un mensajero (debita central, acredita mensajero)
   DELIVER: 'deliver', // entrega al beneficiario (debita al mensajero)
   RETURN: 'return', // devolucion de efectivo (debita mensajero, acredita central)
-  SETTLE_ADJUST: 'settle_adjust' // ajuste por diferencia al liquidar (append-only)
+  SETTLE_ADJUST: 'settle_adjust', // ajuste por diferencia al liquidar (append-only)
+  FUND: 'fund' // dotacion/devolucion del FONDO del mensajero (no atado a una entrega)
 }
 
 // Resultado de un intento de ENTREGA (modulo 'remesas'). La entrega es una fila
