@@ -94,12 +94,12 @@ export const custodyRepo = {
         throw new Error('El mensajero no es valido')
       }
       const op = newId()
-      await this.addMovementRaw({
+      await custodyRepo.addMovementRaw({
         id: `fund-out:${op}`, holder: REMESA_CENTRAL, direction: 'debit',
         amount: amt, currency, type: CUSTODY_MOVEMENT_TYPES.FUND,
         refType: 'fund', refId: courierId, byUserId: actorId, createdAt: ts
       })
-      await this.addMovementRaw({
+      await custodyRepo.addMovementRaw({
         id: `fund-in:${op}`, holder: courierId, direction: 'credit',
         amount: amt, currency, type: CUSTODY_MOVEMENT_TYPES.FUND,
         refType: 'fund', refId: courierId, byUserId: actorId, createdAt: ts
@@ -120,12 +120,12 @@ export const custodyRepo = {
     const ts = now()
     await db.transaction('rw', db.custodyMovements, db.users, db.auditEvents, async () => {
       const op = newId()
-      await this.addMovementRaw({
+      await custodyRepo.addMovementRaw({
         id: `fundret-out:${op}`, holder: courierId, direction: 'debit',
         amount: amt, currency, type: CUSTODY_MOVEMENT_TYPES.FUND,
         refType: 'fund', refId: courierId, byUserId: actorId, createdAt: ts
       })
-      await this.addMovementRaw({
+      await custodyRepo.addMovementRaw({
         id: `fundret-in:${op}`, holder: REMESA_CENTRAL, direction: 'credit',
         amount: amt, currency, type: CUSTODY_MOVEMENT_TYPES.FUND,
         refType: 'fund', refId: courierId, byUserId: actorId, createdAt: ts
