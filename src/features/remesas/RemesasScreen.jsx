@@ -35,23 +35,16 @@ import {
 // Monedas ofrecidas para el monto (efectivo MN/USD + MLC electronico).
 const CURRENCY_OPTIONS = [...new Set([...CASH_CURRENCIES, 'MLC'])]
 
-// Avance lineal de estado (solo el mando). En COBRO ANTICIPADO (clasico) se pasa por
-// pago -> validacion -> fondos disponibles antes de asignar. En COBRO CONTRA ENTREGA
-// no hay pago anticipado: de creada se pasa directo a "lista para asignar" (el cobro
-// al remitente se registra despues, ya entregada).
-const FORWARD_UPFRONT = {
-  [REMITTANCE_STATUS.CREATED]: { to: REMITTANCE_STATUS.PAID, label: 'Registrar pago' },
-  [REMITTANCE_STATUS.PAID]: { to: REMITTANCE_STATUS.VALIDATED, label: 'Validar pago' },
-  [REMITTANCE_STATUS.VALIDATED]: { to: REMITTANCE_STATUS.FUNDS_AVAILABLE, label: 'Marcar fondos disponibles' }
-}
-
+// Avance de estado (solo el mando). Contra entrega: de creada, directo a "lista para
+// asignar" (el cobro es despues de entregar). Anticipado: el avance lo hace "Registrar
+// pago" (cobra a la cuenta y deja lista para asignar); por eso aqui no hay avance plano.
 function forwardFor(r) {
   if (r.paymentMode === PAYMENT_MODE.ON_CREDIT) {
     return r.status === REMITTANCE_STATUS.CREATED
       ? { to: REMITTANCE_STATUS.FUNDS_AVAILABLE, label: 'Preparar para asignar' }
       : null
   }
-  return FORWARD_UPFRONT[r.status] || null
+  return null
 }
 
 // Estados desde los que se puede cancelar SIN mover efectivo (antes del pago). Tras
@@ -272,7 +265,10 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
     (isManager || isAssignedToMe)
   // Cobro al remitente: solo el mando, en entrega contra entrega ya entregada y sin cobrar.
   const canCollect = isManager && isPendingCollection(r)
-  const noActions = !forward && !canAssign && !canDeliver && !canEdit && !canCancel && !canCollect
+  // Pago anticipado: cobra a la cuenta ANTES de asignar (deja la entrega lista para asignar).
+  const canPay = isManager && r.paymentMode !== PAYMENT_MODE.ON_CREDIT && !r.collectedAt &&
+    (r.status === REMITTANCE_STATUS.CREATED || r.status === REMITTANCE_STATUS.PAYMENT_PENDING)
+  const noActions = !forward && !canAssign && !canDeliver && !canEdit && !canCancel && !canCollect && !canPay
 
   const run = async (fn, confirmMsg) => {
     if (confirmMsg && !confirm(confirmMsg)) return
@@ -386,6 +382,11 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
         {forward && (
           <button className="btn btn--primary btn--block" disabled={busy} onClick={() => advance(forward.to)}>
             {busy ? 'Guardando…' : forward.label}
+          </button>
+        )}
+        {canPay && (
+          <button className="btn btn--primary btn--block" disabled={busy} onClick={() => setCollecting(true)}>
+            Registrar pago
           </button>
         )}
         {canAssign && (
@@ -593,6 +594,8 @@ function CollectModal({ remittance: r, userId, onClose, onDone }) {
 
   const acc = accounts.find((a) => a.id === accountId) || null
   const curLabel = acc ? acc.currency : r.currency
+  // Anticipado = "pago" (antes de asignar); contra entrega = "cobro" (tras entregar).
+  const isPago = r.paymentMode !== PAYMENT_MODE.ON_CREDIT && r.status !== REMITTANCE_STATUS.DELIVERED
 
   const pick = async (e) => {
     const file = e.target.files?.[0]
@@ -631,9 +634,10 @@ function CollectModal({ remittance: r, userId, onClose, onDone }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <h3>Registrar cobro</h3>
+        <h3>{isPago ? 'Registrar pago' : 'Registrar cobro'}</h3>
         <p className="muted">
-          Cobro del remitente <strong>{r.sender?.name || '—'}</strong>. Al confirmar sale de “por cobrar”.
+          {isPago ? 'Pago del remitente ' : 'Cobro del remitente '}
+          <strong>{r.sender?.name || '—'}</strong>. Entra a la cuenta que elijas.
         </p>
 
         {hasAccounts ? (
@@ -688,7 +692,7 @@ function CollectModal({ remittance: r, userId, onClose, onDone }) {
         <div className="modal__actions">
           <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn--primary" disabled={busy || !(Number(amount) > 0)} onClick={save}>
-            {busy ? 'Guardando…' : 'Confirmar cobro'}
+            {busy ? 'Guardando…' : (isPago ? 'Confirmar pago' : 'Confirmar cobro')}
           </button>
         </div>
       </div>
