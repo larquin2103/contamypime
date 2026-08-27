@@ -971,6 +971,7 @@ function PendingCollectionsSection({ remittances, userId }) {
 function SettlementsSection({ couriers, balances, settlements, userId, userName }) {
   const [settling, setSettling] = useState(false)
   const [fundMode, setFundMode] = useState(null)
+  const [returningProduct, setReturningProduct] = useState(false)
   const recent = (settlements || []).slice(0, 8)
   return (
     <section className="card">
@@ -982,6 +983,9 @@ function SettlementsSection({ couriers, balances, settlements, userId, userName 
       </div>
       <button className="btn btn--ghost btn--block" onClick={() => setSettling(true)}>
         Liquidar mensajero
+      </button>
+      <button className="btn btn--ghost btn--block" onClick={() => setReturningProduct(true)}>
+        Devolver producto al área
       </button>
       {recent.length > 0 && (
         <div className="list">
@@ -1018,6 +1022,14 @@ function SettlementsSection({ couriers, balances, settlements, userId, userName 
           userId={userId}
           onClose={() => setSettling(false)}
           onDone={() => setSettling(false)}
+        />
+      )}
+      {returningProduct && (
+        <ReturnProductModal
+          couriers={couriers}
+          userId={userId}
+          onClose={() => setReturningProduct(false)}
+          onDone={() => setReturningProduct(false)}
         />
       )}
     </section>
@@ -1089,6 +1101,80 @@ function FundModal({ mode, couriers, balances, userId, onClose, onDone }) {
           <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn--primary" disabled={busy || !courierId || !(Number(amount) > 0)} onClick={save}>
             {busy ? 'Guardando…' : (provision ? 'Dar fondo' : 'Devolver')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Devolver al area "Entregas" el producto que un mensajero ya no entregara (sobrante
+// o entrega fallida). Muestra lo que carga y el mando elige cuanto devolver. Solo mando.
+function ReturnProductModal({ couriers, userId, onClose, onDone }) {
+  const [courierId, setCourierId] = useState(couriers[0]?.id || '')
+  const carried = useLiveQuery(() => (courierId ? productCustodyRepo.holderProducts(courierId) : Promise.resolve({})), [courierId], {})
+  const names = useLiveQuery(() => (courierId ? productCustodyRepo.holderNames(courierId) : Promise.resolve({})), [courierId], {})
+  const [qtys, setQtys] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  useEscapeClose(onClose)
+
+  const changeCourier = (id) => { setCourierId(id); setQtys({}) }
+  const entries = Object.entries(carried || {})
+
+  const save = async () => {
+    setError('')
+    setBusy(true)
+    try {
+      const items = entries
+        .map(([pid]) => ({ productId: pid, name: names[pid] || '', qty: Number(qtys[pid]) || 0 }))
+        .filter((it) => it.qty > 0)
+      if (items.length === 0) throw new Error('Indica cuánto devolver')
+      await remittancesRepo.returnProduct({ courierId, items, actorId: userId })
+      onDone()
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3>Devolver producto al área</h3>
+        {couriers.length === 0 ? (
+          <p className="muted">No hay mensajeros activos.</p>
+        ) : (
+          <>
+            <label className="field">
+              <span>Mensajero</span>
+              <select value={courierId} onChange={(e) => changeCourier(e.target.value)}>
+                {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            {entries.length === 0 ? (
+              <p className="muted">Este mensajero no lleva producto.</p>
+            ) : (
+              entries.map(([pid, q]) => (
+                <label key={pid} className="field">
+                  <span>{names[pid] || pid} (lleva {q})</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={qtys[pid] ?? ''}
+                    onChange={(e) => setQtys((p) => ({ ...p, [pid]: e.target.value }))}
+                    placeholder="0"
+                  />
+                </label>
+              ))
+            )}
+          </>
+        )}
+        {error && <p className="error">{error}</p>}
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn--primary" disabled={busy || entries.length === 0} onClick={save}>
+            {busy ? 'Guardando…' : 'Devolver'}
           </button>
         </div>
       </div>

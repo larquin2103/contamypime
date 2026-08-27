@@ -1,7 +1,7 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
 import { round2 } from '../../lib/currency'
-import { REMITTANCE_STATUS_LABELS, DELIVERY_RESULT, SEMAPHORE } from '../../db/constants'
+import { REMITTANCE_STATUS_LABELS, DELIVERY_RESULT, SEMAPHORE, DELIVERY_KIND } from '../../db/constants'
 
 // Reportes del modulo 'remesas' (solo lectura). Mismo contrato que reportsService:
 // cada builder recibe { from, to } y devuelve { title, subtitle, head, rows,
@@ -169,6 +169,32 @@ export async function buildCollectionsReport({ from = null, to = null } = {}) {
     head: ['Fecha', 'Beneficiario', 'Pagó', 'Cuenta', 'Monto', 'Moneda', 'Registró'],
     rows,
     filename: 'cobros-entregas',
+    orientation: 'landscape'
+  }
+}
+
+// Entregas de PRODUCTO: cada entrega de tipo producto con sus articulos, estado y
+// mensajero. El stock lo mueven los DELIVERY_OUT/IN del libro mayor (area Entregas);
+// esto lista las entregas para seguimiento. Sin el modulo la tabla esta vacia.
+export async function buildProductDeliveriesReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const list = (await db.remittances.toArray())
+    .filter((r) => r.kind === DELIVERY_KIND.PRODUCT && inRange(r.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const rows = list.map((r) => [
+    formatDateTime(r.createdAt),
+    r.beneficiary?.name || '',
+    (Array.isArray(r.items) ? r.items : []).map((it) => `${it.name} × ${it.qty}`).join(', '),
+    REMITTANCE_STATUS_LABELS[r.status] || r.status || '',
+    r.assignedCourierId ? (names[r.assignedCourierId] || '') : ''
+  ])
+  if (rows.length === 0) rows.push(['Sin entregas de producto en el periodo', '', '', '', ''])
+  return {
+    title: 'Entregas de producto',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha', 'Beneficiario', 'Productos', 'Estado', 'Mensajero'],
+    rows,
+    filename: 'entregas-producto',
     orientation: 'landscape'
   }
 }

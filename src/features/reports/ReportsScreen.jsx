@@ -30,7 +30,8 @@ import {
   buildRemittancesReport,
   buildDeliveriesReport,
   buildSettlementsReport,
-  buildCollectionsReport
+  buildCollectionsReport,
+  buildProductDeliveriesReport
 } from './remesasReports'
 
 export function ReportsScreen() {
@@ -127,6 +128,8 @@ export function ReportsScreen() {
         card('remesas-liq', 'Liquidaciones de mensajeros', 'Cuadre del efectivo en custodia: teórico, contado, diferencia y resultado', buildSettlementsReport, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&
         card('remesas-cob', 'Cobros de entregas', 'Cobros registrados (contra entrega): beneficiario, quién pagó, cuenta y monto', buildCollectionsReport, true)}
+      {hasModule(LICENSE_MODULES.REMESAS) &&
+        card('remesas-prod', 'Entregas de producto', 'Entregas de tipo producto: beneficiario, artículos, estado y mensajero', buildProductDeliveriesReport, true)}
     </div>
   )
 }
