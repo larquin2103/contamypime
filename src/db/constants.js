@@ -350,22 +350,28 @@ export const DELIVERY_KIND_LABELS = {
 // Tipos de movimiento del LIBRO DE CUSTODIA de efectivo (modulo 'remesas'). Es
 // append-only y el SALDO por tenedor+moneda se DERIVA de estos movimientos (nunca
 // se guarda), igual que el stock sale del libro mayor y el saldo de una cuenta de
-// sus movimientos. "Tenedor" (holder) = la caja central (REMESA_CENTRAL) o el
-// userId de un mensajero. Se define el vocabulario completo (como MOVEMENT_TYPES);
-// esta fase (F3) solo usa INTAKE — asignacion/entrega/devolucion llegan con el rol
-// de mensajero y las entregas.
+// sus movimientos. "Tenedor" (holder) = el userId de un mensajero (y, en movimientos
+// HISTORICOS, la caja central REMESA_CENTRAL, que quedo retirada del flujo).
+//
+// Se define el vocabulario completo (como MOVEMENT_TYPES), pero HOY el flujo solo
+// emite DOS tipos: FUND (dotar/devolver el fondo) y DELIVER (la entrega lo descuenta).
+// Los otros tres quedaron sin emisor cuando el dinero del remitente paso a ir a una
+// CUENTA de tesoreria y el mensajero paso a CONSERVAR lo que no entrega. No se
+// eliminan (append-only): los movimientos viejos que los llevan se siguen leyendo.
 export const CUSTODY_MOVEMENT_TYPES = {
-  INTAKE: 'intake', // entra efectivo a la caja central (cobro al remitente)
-  ASSIGN: 'assign', // asignacion a un mensajero (debita central, acredita mensajero)
-  DELIVER: 'deliver', // entrega al beneficiario (debita al mensajero)
-  RETURN: 'return', // devolucion de efectivo (debita mensajero, acredita central)
-  SETTLE_ADJUST: 'settle_adjust', // ajuste por diferencia al liquidar (append-only)
-  FUND: 'fund' // dotacion/devolucion del FONDO del mensajero (no atado a una entrega)
+  INTAKE: 'intake', // HISTORICO: entraba efectivo a la caja central (hoy el cobro va a una cuenta)
+  ASSIGN: 'assign', // HISTORICO: asignacion movia efectivo central -> mensajero (hoy asignar no mueve dinero)
+  DELIVER: 'deliver', // EN USO: entrega al beneficiario (debita al mensajero)
+  RETURN: 'return', // HISTORICO: devolucion a la central (hoy el mensajero conserva y devuelve por 'fund')
+  SETTLE_ADJUST: 'settle_adjust', // reservado: ajuste por diferencia al liquidar (la liquidacion NO mueve el libro)
+  FUND: 'fund' // EN USO: dotacion/devolucion del FONDO del mensajero (no atado a una entrega)
 }
 
 // Resultado de un intento de ENTREGA (modulo 'remesas'). La entrega es una fila
-// append-only en `deliveries`; una remesa asignada se resuelve ENTREGADA (el
-// efectivo llega al beneficiario) o FALLIDA (se devuelve el efectivo a la central).
+// append-only en `deliveries`; una remesa asignada se resuelve ENTREGADA (lo entregado
+// —efectivo o producto— llega al beneficiario y sale de la custodia del mensajero) o
+// FALLIDA (el mensajero CONSERVA lo que llevaba hasta que lo devuelva). El MOTIVO de
+// la falla se guarda aparte, como estado de la entrega (DELIVERY_FAIL_REASONS).
 export const DELIVERY_RESULT = {
   DELIVERED: 'delivered',
   FAILED: 'failed'

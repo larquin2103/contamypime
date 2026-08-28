@@ -127,7 +127,7 @@ export function ReportsScreen() {
       {hasModule(LICENSE_MODULES.REMESAS) &&
         card('remesas-liq', 'Liquidaciones de mensajeros', 'Cuadre del efectivo en custodia: teórico, contado, diferencia y resultado', buildSettlementsReport, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&
-        card('remesas-cob', 'Cobros de entregas', 'Cobros registrados (contra entrega): beneficiario, quién pagó, cuenta y monto', buildCollectionsReport, true)}
+        card('remesas-cob', 'Cobros de entregas', 'Todo el dinero cobrado al remitente (anticipado y contra entrega): beneficiario, quién pagó, cuenta y monto', buildCollectionsReport, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&
         card('remesas-prod', 'Entregas de producto', 'Entregas de tipo producto: beneficiario, artículos, estado y mensajero', buildProductDeliveriesReport, true)}
     </div>

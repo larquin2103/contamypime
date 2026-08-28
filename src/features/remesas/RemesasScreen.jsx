@@ -101,9 +101,11 @@ function GroupBadge({ remittance }) {
   return <span className={`badge ${cls}`}>{g.label}</span>
 }
 
-// Panel de custodia: saldo de efectivo por tenedor (derivado del libro). El mando
-// ve todos los tenedores (caja central + mensajeros); el mensajero ve SOLO el suyo
-// (mineId). Se oculta si no hay efectivo en custodia (todo en cero).
+// Panel de custodia: saldo de efectivo por tenedor (derivado del libro). El mando ve
+// todos los tenedores; el mensajero ve SOLO el suyo (mineId). Hoy los tenedores son
+// los mensajeros: la "caja central" quedó retirada del flujo y solo puede aparecer
+// aquí si el negocio tiene movimientos HISTÓRICOS contra ella (append-only, no se
+// borran). Se oculta si no hay efectivo en custodia (todo en cero).
 function CustodyPanel({ balances, userName, mineId = null }) {
   let entries = Object.entries(balances || {})
   if (mineId) entries = entries.filter(([h]) => h === mineId)
@@ -489,8 +491,10 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
   )
 }
 
-// Asigna la remesa (con fondos disponibles) a un mensajero: el efectivo pasa de la
-// caja central a su custodia.
+// Asigna la remesa (con fondos disponibles) a un mensajero. NO mueve efectivo: el
+// mensajero reparte desde su FONDO (que la entrega le descuenta al confirmarse).
+// Asignar lo designa y, si la entrega es de PRODUCTO, le carga la mercancía (sale
+// del área Entregas y entra a su custodia de producto).
 function AssignModal({ remittance: r, userId, couriers, onClose, onDone }) {
   const [courierId, setCourierId] = useState(couriers[0]?.id || '')
   const [busy, setBusy] = useState(false)

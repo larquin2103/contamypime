@@ -133,9 +133,11 @@ export async function buildSettlementsReport({ from = null, to = null } = {}) {
   }
 }
 
-// Cobros de entregas (contra entrega): cada cobro registrado con su cuenta, quien
-// pago y el monto. El dinero real vive en la tesoreria (accountMovements); esto lista
-// los cobros para el cierre diario. Sin el modulo la tabla esta vacia.
+// Cobros de entregas: TODO lo cobrado al remitente, en los dos modos —anticipado
+// (antes de asignar) y contra entrega (despues de entregar)— y en los dos tipos de
+// entrega (dinero y producto). Lee `collections`, que es el snapshot de CADA cobro sin
+// distinguir el modo; el dinero real vive en la tesoreria (accountMovements) y esto lo
+// lista para el cierre diario. Sin el modulo la tabla esta vacia.
 export async function buildCollectionsReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const remById = {}

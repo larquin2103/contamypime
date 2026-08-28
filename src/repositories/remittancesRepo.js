@@ -266,13 +266,14 @@ export const remittancesRepo = {
     })
   },
 
-  // Asigna una remesa con FONDOS DISPONIBLES a un mensajero: mueve el efectivo de
-  // la caja central a la custodia del mensajero (neto cero, como un traspaso
-  // almacen->area) y pasa la remesa a ASIGNADA. Atomico y auditado. Ids
-  // deterministas -> re-asignar o una doble llegada offline NO duplica el efectivo
-  // (el dinero se conserva; en el raro caso de dos asignaciones simultaneas a
-  // mensajeros distintos, la sync converge por LWW y queda para revisar, como los
-  // turnos duplicados). Solo desde FONDOS DISPONIBLES.
+  // Asigna una remesa con FONDOS DISPONIBLES a un mensajero y la pasa a ASIGNADA.
+  // NO mueve efectivo: el mensajero reparte desde su FONDO (custodyRepo.provisionFund),
+  // que `deliver` le descuenta al confirmarse. Si la entrega es de PRODUCTO, aqui SI se
+  // mueve inventario: la mercancia sale del area "Entregas" (DELIVERY_OUT en el libro
+  // mayor) y entra a su custodia de producto. Atomico y auditado. Ids deterministas ->
+  // re-asignar o una doble llegada offline NO duplica la carga (en el raro caso de dos
+  // asignaciones simultaneas a mensajeros distintos, la sync converge por LWW y queda
+  // para revisar, como los turnos duplicados). Solo desde FONDOS DISPONIBLES.
   async assign(id, courierId, { actorId = null } = {}) {
     if (!courierId) throw new Error('Falta el mensajero')
     const ts = now()

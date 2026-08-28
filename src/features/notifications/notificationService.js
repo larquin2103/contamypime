@@ -329,9 +329,10 @@ function buildTransferMismatch(sale, ctx) {
   }
 }
 
-// 6) Entrega FALLIDA de una remesa (deliveriesRepo). El mensajero no pudo entregar;
-//    el efectivo se devolvió a la caja central. Deriva de `deliveries` (result FAILED,
-//    no anulada). Ej: "Carlos no pudo completar una entrega".
+// 6) Entrega FALLIDA de una remesa (deliveriesRepo). El mensajero no pudo entregar y
+//    CONSERVA lo que llevaba —su fondo de efectivo no bajó, o el producto sigue en su
+//    custodia— hasta que lo devuelva; por eso el aviso pide acción. Deriva de
+//    `deliveries` (result FAILED, no anulada). Ej: "Carlos no pudo completar una entrega".
 function buildDeliveryFailed(delivery, ctx) {
   if (!delivery || delivery.voided || delivery.result !== DELIVERY_RESULT.FAILED) return null
   const courier = ctx.userName[delivery.courierId] || 'mensajero'
