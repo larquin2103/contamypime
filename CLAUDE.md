@@ -97,6 +97,18 @@ src/
   directamente; van por los repos. Esto permitió montar la sync sin reescribir pantallas.
 - **Toda mutación actualiza una marca de tiempo** (`updatedAt`/`closedAt`/`settledAt`/...).
   De esto depende el motor de sincronización; mantenerlo al crear nuevos repos.
+- **Y esa marca NUNCA nace por debajo de la versión que reemplaza** — `tsAfter(...)` en
+  `src/lib/dates.js`. Los relojes de dos teléfonos no coinciden: si el que sella la
+  transición va **atrasado**, el cambio nace *más viejo* que el estado anterior, el LWW
+  de bajada lo **descarta** y el estado se pierde (pasó de verdad con una entrega). Con
+  el reloj coherente `tsAfter` devuelve `now()` **exactamente igual que antes**; solo se
+  desvía (+1 ms sobre la versión previa) en el caso roto. Se aplica **solo a `updatedAt`**
+  (la clave del LWW) en las cabeceras que mutan dos dispositivos en segundos:
+  `remittances` (entregas), `counts` (conteo físico) y `orders`/`orderItems` (mesas). Las
+  fechas de **negocio** (`createdAt` de los libros append-only y de auditoría, `openedAt`,
+  `closedAt`, `settledAt`, `collectedAt`, `approvedAt`…) conservan el **reloj real**: son
+  el hecho, y son la evidencia del desfase. `shifts` queda fuera a propósito (se abre y se
+  cierra con horas de separación: el desfase no alcanza).
 
 **Estilo de código:** imita el código vecino (densidad de comentarios, nombres, idioma).
 Importaciones pesadas (xlsx/jspdf/firebase) siempre con `import()` dinámico.
@@ -622,6 +634,18 @@ y ligera contra Firestore (NO se migró a RxDB). Carpeta `src/features/sync/`.
   `CloudScreen`); el vendedor puede vincular desde el **onboarding** (baja usuarios/catálogo
   y la app pasa sola al login).
 - **Conflictos:** si tras sincronizar hay 2+ turnos abiertos a la vez, el Home avisa al dueño.
+- **Estado derivado de la constancia (`remesas`):** `remittancesRepo.reconcileFromDeliveries()`
+  repara la cabecera de una entrega **en curso** (asignada/en ruta) cuando ya existe su fila
+  en `deliveries` con resultado *entregada* y sin anular: la cabecera se fusiona por LWW y
+  puede perderse, pero la constancia es **append-only con id determinista** y llega siempre.
+  Es el mismo patrón que `recomputeStock` en el `pullEngine` y —como aquél— **NO toca
+  `updatedAt`**: es un valor derivado que todos los dispositivos calculan igual, así que
+  re-subirlo solo provocaría eco. La regla (`shouldReconcileDelivered`, en `lib/remesas.js`,
+  pura y probada con node) es **deliberadamente estrecha**: solo promueve a *entregada*, no
+  regresa ningún estado, no interpreta fallos (el motivo vive en el estado, no en la
+  constancia) y no toca las eliminadas. Se llama al abrir *Entregas*, antes de liquidar y
+  antes de generar sus reportes (**los builders siguen siendo de solo lectura**). En pareja,
+  `failReturn` **rechaza** marcar fallida una entrega que ya tiene constancia de entregada.
 - **Seguridad:** `firestore.rules` → `auth.uid == businessId`, append-only (delete prohibido).
   **Matiz de robustez:** las reglas bloquean el `delete` pero **permiten `update`** (lo necesita la
   fusión LWW) y **no** imponen inmutabilidad por campo; la disciplina append-only (correcciones =
