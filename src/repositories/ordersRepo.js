@@ -1,6 +1,6 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
-import { now } from '../lib/dates'
+import { now, tsAfter } from '../lib/dates'
 import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { ratesRepo } from './ratesRepo'
@@ -21,6 +21,20 @@ import { MOVEMENT_TYPES, ORDER_STATUS } from '../db/constants'
 //    aqui no existe ese camino.
 //  - El precio se congela en la linea, igual que en una venta normal.
 // ---------------------------------------------------------------------------
+
+// Marca de tiempo de una MUTACION de la cabecera del pedido / de una linea: nunca
+// por debajo de la version que reemplaza (ver `tsAfter` en lib/dates). Hace falta
+// porque una mesa la atienden DOS dispositivos en segundos —el camarero agrega, la
+// caja cobra—: si el reloj de uno va atrasado, su cambio nace "mas viejo" que el
+// estado anterior, el LWW de bajada lo descarta y la mesa reaparece abierta en el
+// otro equipo despues de cobrada. Es el mismo patron que rompio las entregas.
+// Se le pasan los campos que cuentan para la marca de sync (TS_FIELDS de
+// features/sync/collections): en `orders` son updatedAt, closedAt y openedAt; en
+// `orderItems`, updatedAt y createdAt. Con el reloj coherente devuelven now(), o
+// sea exactamente lo de hoy. Las fechas de NEGOCIO (openedAt, closedAt, voidedAt y
+// el createdAt de las lineas y del libro mayor) conservan el reloj REAL.
+const stampOrder = (o) => tsAfter(o?.updatedAt, o?.closedAt, o?.openedAt)
+const stampItem = (i) => tsAfter(i?.updatedAt, i?.createdAt)
 
 // Existencia de un producto en una ubicacion (derivada del libro mayor, que es
 // la fuente de verdad; la cache de products puede ir por detras tras una sync).
@@ -94,12 +108,13 @@ export const ordersRepo = {
   // atiende (a partir de aqui ya se le puede agregar consumo).
   async occupy({ orderId, shiftId, userId }) {
     const ts = now()
+    const o = await db.orders.get(orderId) // solo para sellar por encima de su version
     await db.orders.update(orderId, {
       status: ORDER_STATUS.OPEN,
       shiftId,
       openedBy: userId,
       openedAt: ts,
-      updatedAt: ts
+      updatedAt: stampOrder(o)
     })
   },
 
@@ -107,12 +122,13 @@ export const ordersRepo = {
   // anulada con su motivo, como todo en el sistema.
   async cancelReservation({ orderId, userId, note = '' }) {
     const ts = now()
+    const o = await db.orders.get(orderId) // solo para sellar por encima de su version
     await db.orders.update(orderId, {
       status: ORDER_STATUS.VOIDED,
       closedBy: userId,
       closedAt: ts,
       voidNote: String(note || '').trim() || 'Reserva cancelada',
-      updatedAt: ts
+      updatedAt: stampOrder(o)
     })
   },
 
@@ -234,7 +250,7 @@ export const ordersRepo = {
           updatedAt: ts
         })
       }
-      await db.orders.update(orderId, { updatedAt: ts })
+      await db.orders.update(orderId, { updatedAt: stampOrder(order) })
     })
     return id
   },
@@ -256,7 +272,7 @@ export const ordersRepo = {
         voidedBy: userId,
         voidedAt: ts,
         voidNote: String(note || '').trim(),
-        updatedAt: ts
+        updatedAt: stampItem(item)
       })
       // Compensacion: SALE_OUT en POSITIVO (devolucion). Al ser el mismo tipo,
       // el neto de "Ventas" del submayor queda exacto sin tocar los reportes.
@@ -284,7 +300,7 @@ export const ordersRepo = {
           updatedAt: ts
         })
       }
-      await db.orders.update(item.orderId, { updatedAt: ts })
+      await db.orders.update(item.orderId, { updatedAt: stampOrder(order) })
     })
   },
 
@@ -341,12 +357,13 @@ export const ordersRepo = {
   // reutilizar TODA la logica de cobro existente (mixto, cuentas, consignacion).
   async markClosed({ orderId, saleId, userId }) {
     const ts = now()
+    const o = await db.orders.get(orderId) // solo para sellar por encima de su version
     await db.orders.update(orderId, {
       status: ORDER_STATUS.CLOSED,
       saleId,
       closedBy: userId,
       closedAt: ts,
-      updatedAt: ts
+      updatedAt: stampOrder(o)
     })
   },
 
@@ -358,12 +375,14 @@ export const ordersRepo = {
       await this.voidItem({ itemId: it.id, userId, note: 'Pedido anulado' })
     }
     const ts = now()
+    // El get va DESPUES del bucle: cada voidItem ya avanzo el updatedAt del pedido.
+    const o = await db.orders.get(orderId)
     await db.orders.update(orderId, {
       status: ORDER_STATUS.VOIDED,
       closedBy: userId,
       closedAt: ts,
       voidNote: String(note || '').trim(),
-      updatedAt: ts
+      updatedAt: stampOrder(o)
     })
   },
 

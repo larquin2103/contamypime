@@ -1,6 +1,6 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
-import { now } from '../lib/dates'
+import { now, tsAfter } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { evalSemaphore } from '../lib/semaphore'
 import { COUNT_STATUS, WAREHOUSE } from '../db/constants'
@@ -14,6 +14,19 @@ function stockAtLocation(p, location) {
   if (byLoc && byLoc[location] != null) return Number(byLoc[location])
   return location === WAREHOUSE ? Number(p.stock || 0) : 0
 }
+
+// Marca de tiempo de una MUTACION del conteo: nunca por debajo de la version que
+// reemplaza (ver `tsAfter` en lib/dates). El conteo lo mutan DOS dispositivos en
+// segundos —el vendedor envia, el mando aprueba— y si el reloj de uno va atrasado
+// su cambio nace "mas viejo" que el estado anterior: el LWW de bajada lo descarta
+// y la aprobacion no vuelve al vendedor. Es el mismo patron que rompio las
+// entregas. Refuerza el arreglo de b7ad5ce (que puso el `updatedAt` que faltaba):
+// aquel garantiza que la marca EXISTA, este que ADEMAS avance de verdad.
+// Se le pasan los campos que cuentan para la marca de sync (TS_FIELDS de
+// features/sync/collections): en `counts` son updatedAt y createdAt. Con el reloj
+// coherente devuelve now(), o sea exactamente lo de hoy. `submittedAt`/`approvedAt`
+// conservan el reloj REAL (son hechos: cuando se envio y cuando se aprobo).
+const stampFor = (c) => tsAfter(c?.updatedAt, c?.createdAt)
 
 // Conteo fisico interactivo (Fase 3). Snapshot del stock del sistema vs lo
 // contado fisicamente; al aprobar, las diferencias se aplican como ajustes
@@ -82,7 +95,7 @@ export const countsRepo = {
       // Borrador de OTRA ubicacion (obsoleto: p.ej. del almacen creado antes de
       // tener area): se reconvierte a la ubicacion actual con su foto de stock.
       // No se borra (delete prohibido en la nube): misma fila, nuevo snapshot.
-      await db.counts.update(existing.id, { location, items, note: '', updatedAt: now() })
+      await db.counts.update(existing.id, { location, items, note: '', updatedAt: stampFor(existing) })
       return existing.id
     }
     const id = newId()
@@ -99,7 +112,10 @@ export const countsRepo = {
   },
 
   async saveItems(id, items) {
-    await db.counts.update(id, { items, updatedAt: now() })
+    // Se relee el borrador solo para sellar por encima de su version anterior
+    // (stampFor); el contenido que se guarda es el que llega, como siempre.
+    const c = await db.counts.get(id)
+    await db.counts.update(id, { items, updatedAt: stampFor(c) })
   },
 
   // Envia el conteo a aprobacion: calcula diferencia y semaforo por producto.
@@ -130,7 +146,7 @@ export const countsRepo = {
     }
     // updatedAt: toda mutacion actualiza su marca de tiempo; de esto depende la
     // sync (el cursor de subida y el LWW de bajada leen syncTs = mayor timestamp).
-    await db.counts.update(id, { items, status: COUNT_STATUS.PENDING, submittedAt: now(), updatedAt: now() })
+    await db.counts.update(id, { items, status: COUNT_STATUS.PENDING, submittedAt: now(), updatedAt: stampFor(c) })
   },
 
   // Aprueba: ajusta el stock de la UBICACION contada para que coincida con lo
@@ -162,19 +178,22 @@ export const countsRepo = {
       status: COUNT_STATUS.APPROVED,
       approvedBy: ownerId,
       approvedAt: now(),
-      updatedAt: now()
+      updatedAt: stampFor(c)
     })
   },
 
   async reject(id, ownerId, reason = '') {
     // updatedAt: igual que approve, para que el rechazo avance syncTs y regrese
-    // al vendedor por el LWW de bajada.
+    // al vendedor por el LWW de bajada. Se relee el conteo solo para sellar por
+    // encima de su version anterior (stampFor); si no existe, `update` no hace
+    // nada y `stampFor(undefined)` devuelve now(), igual que hoy.
+    const c = await db.counts.get(id)
     await db.counts.update(id, {
       status: COUNT_STATUS.REJECTED,
       approvedBy: ownerId,
       approvedAt: now(),
       rejectReason: reason,
-      updatedAt: now()
+      updatedAt: stampFor(c)
     })
   }
 }
