@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { getPreferences, savePreferences } from './notificationService'
 
 // Pantalla de configuración del centro de notificaciones (Fase 9). El dueño elige
@@ -8,19 +10,25 @@ import { getPreferences, savePreferences } from './notificationService'
 // dueño (la config es del negocio y sincroniza). Los interruptores escriben la
 // clave 'notificationPreferences'; el motor la relee en cada barrido.
 
-// Categorías (los 5 interruptores). `live` = ya tiene productor cableado; las que
+// Categorías (los interruptores). `live` = ya tiene productor cableado; las que
 // no, se muestran (son preferencia real) pero aún no generan avisos: se marca honesto.
+// `module` = solo se ofrece con ese módulo de licencia desbloqueado (sin él la
+// pantalla queda IDÉNTICA a la clásica); sin `module` es una categoría base.
 const CATEGORIES = [
   { key: 'caja', label: 'Caja', desc: 'Diferencias al cerrar turno (faltante/sobrante).', live: true },
   { key: 'inventario', label: 'Inventario', desc: 'Conteo físico aprobado con diferencia.', live: true },
   { key: 'ventas', label: 'Ventas', desc: 'Cambios de precio de productos.', live: true },
   { key: 'transferencias', label: 'Transferencias', desc: 'Cobros por transferencia con diferencia (de más o de menos).', live: true },
-  { key: 'remesas', label: 'Entregas', desc: 'Entregas fallidas y diferencias al liquidar a un mensajero.', live: true }
+  { key: 'remesas', label: 'Entregas', desc: 'Entregas fallidas y diferencias al liquidar a un mensajero.', live: true, module: LICENSE_MODULES.REMESAS }
 ]
 
 export function NotificationSettings() {
   const { isOwner } = useAuth()
+  const { hasModule } = useLicense()
   const prefs = useLiveQuery(() => getPreferences(), [], undefined)
+  // Solo las categorías base + las de módulos desbloqueados: sin licencia no se
+  // ofrece el interruptor (ni se menciona un rol que ese negocio no tiene).
+  const categories = CATEGORIES.filter((c) => !c.module || hasModule(c.module))
 
   if (!isOwner) {
     return (
@@ -46,7 +54,7 @@ export function NotificationSettings() {
 
       <section className="card">
         <h3>Tipos de aviso</h3>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <div key={c.key} className="kv">
             <span className="muted">
               {c.label}

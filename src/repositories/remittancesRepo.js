@@ -451,15 +451,23 @@ export const remittancesRepo = {
         const have = Number(carried[it.productId] || 0)
         if (it.qty > have) throw new Error(`El mensajero no lleva tanto "${it.name || 'producto'}" (lleva ${have})`)
       }
-      const op = newId()
+      // Id de la operacion DERIVADO de su contenido (mensajero + instante), no
+      // aleatorio: este movimiento toca el INVENTARIO REAL, asi que un doble envio
+      // (doble toque, reintento tras error, o la misma fila reprocesada) NO puede
+      // duplicar existencia. Dos devoluciones DISTINTAS ocurren en instantes
+      // distintos -> ids distintos -> se registran las dos, como debe ser. Es el
+      // mismo candado determinista de `assign`, que tambien mueve inventario.
+      const op = `${courierId}:${ts}`
       for (const it of lines) {
         const q = Math.abs(Number(it.qty) || 0)
+        const inId = `delivery-in:${op}:${it.productId}`
+        if (await db.stockMovements.get(inId)) continue // ya registrada: idempotente
         await productCustodyRepo.addMovementRaw({
           id: `pcustody:return:${op}:${it.productId}`, holder: courierId, productId: it.productId,
           name: it.name, qty: -q, refType: 'productReturn', refId: courierId, byUserId: actorId, createdAt: ts
         })
         await db.stockMovements.add({
-          id: `delivery-in:${op}:${it.productId}`, productId: it.productId, qty: q,
+          id: inId, productId: it.productId, qty: q,
           type: MOVEMENT_TYPES.DELIVERY_IN, refType: 'productReturn', refId: courierId,
           unitCost: null, shiftId: null, userId: actorId, note: 'Devolucion de mensajero',
           location: ENTREGAS_AREA, createdAt: ts

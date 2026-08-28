@@ -33,7 +33,14 @@ import { isPermanent, dueIds, markAttempted, onSuccess, onTransient, onPermanent
 
 const BATCH = 400 // limite Firestore: 500 ops por lote
 const IMAGE_BATCH = 50 // las imagenes pesan mas: lotes chicos
-const batchSizeFor = (name) => (name === 'images' ? IMAGE_BATCH : BATCH)
+// Colecciones que llevan FOTO (dataUrl de hasta 40 KB, ver lib/image.js): el limite
+// que manda no es el de 500 operaciones sino el de ~10 MiB por peticion. A 400 docs
+// serian ~16 MB y el lote se rechazaria; se reenviaria uno a uno (no se pierde nada,
+// pero quema escrituras de la cuota). Con lotes de 50 cabe con holgura.
+//  - `images`   : miniaturas del modulo 'imagenes'.
+//  - `deliveries`/`collections`: comprobante de entrega y de cobro (modulo 'remesas').
+const PHOTO_COLLECTIONS = new Set(['images', 'deliveries', 'collections'])
+const batchSizeFor = (name) => (PHOTO_COLLECTIONS.has(name) ? IMAGE_BATCH : BATCH)
 const cursorKey = (name) => `push:${name}`
 const retryKey = (name) => `retry:${name}`
 

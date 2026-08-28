@@ -33,7 +33,10 @@ const MOVE_LABEL = {
   // etiqueta NEUTRAL para no mal-nombrar ninguno. El detalle de cocina va en su pestaña.
   conversion_out: 'Consumo (conversión)',
   conversion_in: 'Producción (conversión)',
-  merma_out: 'Merma'
+  merma_out: 'Merma',
+  // Modulo 'remesas': movimientos del area "Entregas" hacia/desde el mensajero.
+  delivery_out: 'Carga a mensajero',
+  delivery_in: 'Devolución de mensajero'
 }
 
 const MAX = 200

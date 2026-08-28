@@ -7,6 +7,13 @@ import { now } from '../lib/dates'
 // FUSIONAN por id en vez de pisarse). El movimiento de efectivo lo lleva el libro
 // de custodia (custodyMovements); aqui solo queda la constancia de la entrega
 // (resultado, comprobante opcional, nota). Nada se borra.
+//
+// CONTRATO DE SINCRONIZACION (no romper): la fila nace con `updatedAt` = `createdAt`
+// y `voided: false`. Si alguna vez se ANULA una entrega, hay que marcarla
+// `{ voided: true, updatedAt: now() }` — SIEMPRE avanzando `updatedAt`. La marca de
+// sync sale del mayor campo de tiempo presente (`syncTs`, features/sync/collections):
+// sin avanzarla, la anulacion se quedaria por debajo del cursor de subida y por
+// debajo del LWW de bajada, es decir NO viajaria a los demas dispositivos.
 export const deliveriesRepo = {
   // Fila cruda. SIN transaccion propia: pensada para llamarse DENTRO de una
   // transaccion (igual que custodyRepo.addMovementRaw). El id puede pasarse
@@ -24,6 +31,7 @@ export const deliveriesRepo = {
   }) {
     if (!remittanceId) throw new Error('Entrega sin orden')
     const rowId = id || newId()
+    const ts = createdAt || now()
     await db.deliveries.add({
       id: rowId,
       remittanceId,
@@ -33,7 +41,8 @@ export const deliveriesRepo = {
       note: String(note || '').trim(),
       voided: false,
       byUserId,
-      createdAt: createdAt || now()
+      createdAt: ts,
+      updatedAt: ts // ver "CONTRATO DE SINCRONIZACION" arriba: toda mutacion lo avanza
     })
     return rowId
   },

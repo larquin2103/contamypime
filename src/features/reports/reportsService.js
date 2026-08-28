@@ -1131,7 +1131,9 @@ const LEDGER_TIPO = {
   purchase_in: 'Compra', sale_out: 'Venta', internal_debt_out: 'Deuda interna',
   adjustment: 'Ajuste', transfer_out: 'Salida a área', transfer_in: 'Entrada de traspaso',
   partner_out: 'Entrega a tercero', conversion_in: 'Producido (conversión)',
-  conversion_out: 'Consumido (conversión)', merma_out: 'Merma'
+  conversion_out: 'Consumido (conversión)', merma_out: 'Merma',
+  // Modulo 'remesas': carga/devolucion de producto del area "Entregas" al mensajero.
+  delivery_out: 'Carga a mensajero', delivery_in: 'Devolución de mensajero'
 }
 
 // Clasificacion fina de cada movimiento. La CARGA INICIAL (alta con existencia
@@ -1149,6 +1151,13 @@ function ledgerKey(m) {
     case T.INTERNAL_DEBT_OUT: return 'deuda'
     case T.PARTNER_OUT: return 'terceros'
     case T.MERMA_OUT: return 'merma'
+    // Modulo 'remesas': la carga a un mensajero es una SALIDA del area "Entregas" y
+    // su devolucion una ENTRADA, no un ajuste. Reusan las claves de traspaso (que ya
+    // existen) a proposito: asi el submayor no gana columnas y el saldo (`ledgerNet`,
+    // que suma sobre LEDGER_KEYS) sigue cuadrando. Sin el modulo no existe ningun
+    // movimiento de estos tipos -> el reporte queda IDENTICO al clasico.
+    case T.DELIVERY_OUT: return 'traspOut'
+    case T.DELIVERY_IN: return 'traspIn'
     case T.ADJUSTMENT: return m.note === 'Existencia inicial' ? 'cargaIni' : 'ajustes'
     default: return 'ajustes'
   }
