@@ -1,12 +1,13 @@
 import { db } from '../db/db'
 import { newId } from '../lib/ids'
-import { now } from '../lib/dates'
+import { now, tsAfter } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { evalSemaphore } from '../lib/semaphore'
 import { CASH_CURRENCIES, REMITTANCE_STATUS, DELIVERY_KIND } from '../db/constants'
 import { isPendingCollection } from '../lib/remesas'
 import { configRepo } from './configRepo'
 import { custodyRepo } from './custodyRepo'
+import { remittancesRepo } from './remittancesRepo'
 
 // Liquidacion de un mensajero (modulo 'remesas') — RECONCILIACION append-only del
 // efectivo en custodia, con el MISMO patron que el cuadre de turno: TEORICO (lo que
@@ -49,6 +50,14 @@ export const settlementsRepo = {
     let base = await configRepo.getBaseCurrency()
     if (!CASH_CURRENCIES.includes(base)) base = CASH_CURRENCIES[0]
     const cfg = await configRepo.getSemaphoreConfig()
+
+    // ANTES de abrir la transaccion: repara la cabecera que la fusion pudo
+    // descartar (ver remittancesRepo.reconcileFromDeliveries). Sin esto, una
+    // entrega que el mensajero YA entrego pero cuya cabecera se quedo en
+    // "Asignada" no entraria en esta liquidacion, aunque su efectivo SI este
+    // descontado del teorico que se esta cuadrando. Es idempotente y solo mira
+    // las entregas en curso; con todo en orden no hace nada.
+    await remittancesRepo.reconcileFromDeliveries()
 
     const id = newId()
     const ts = now()
@@ -102,7 +111,14 @@ export const settlementsRepo = {
           status: REMITTANCE_STATUS.SETTLED,
           settlementId: id,
           settledAt: ts,
-          updatedAt: ts
+          // Marca de la MUTACION: nunca por debajo de la version que reemplaza (ver
+          // `tsAfter` en lib/dates). El mensajero pudo dejar la cabecera con una marca
+          // MAS ALTA que el reloj de este dispositivo (relojes desfasados); sellando
+          // con now() a secas, el LWW de bajada descartaria la liquidacion y la entrega
+          // seguiria apareciendo sin liquidar en el otro equipo. Con el reloj coherente
+          // devuelve now(): identico a hoy. `settledAt` si conserva el reloj real (es
+          // el hecho de negocio: cuando se cuadro el efectivo).
+          updatedAt: tsAfter(r.updatedAt, r.settledAt, r.createdAt)
         })
         settledCount += 1
       }

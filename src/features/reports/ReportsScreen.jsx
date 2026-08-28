@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { configRepo } from '../../repositories/configRepo'
+import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import {
@@ -55,6 +56,16 @@ export function ReportsScreen() {
   const run = async (key, builder, fmt) => {
     setBusy(`${key}-${fmt}`)
     try {
+      // Módulo 'remesas': antes de LEER, repara el estado de las entregas en curso
+      // a partir de la constancia del mensajero (ver
+      // remittancesRepo.reconcileFromDeliveries) — una transición sellada con un
+      // reloj atrasado puede perderse en la fusión y el reporte imprimiría
+      // "Asignada" una entrega que ya se entregó. Va AQUÍ y no dentro de los
+      // builders para que `remesasReports.js` siga siendo de SOLO LECTURA, como
+      // todos los reportes. Idempotente y gateado por la licencia.
+      if (key.startsWith('remesas') && hasModule(LICENSE_MODULES.REMESAS)) {
+        await remittancesRepo.reconcileFromDeliveries()
+      }
       // Modulo 'divisas': las columnas USD de los reportes se gatean por el módulo.
       const divisas = hasModule(LICENSE_MODULES.MULTICURRENCY)
       const report = await builder({ from, to, divisas })

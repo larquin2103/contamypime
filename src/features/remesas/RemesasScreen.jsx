@@ -170,6 +170,17 @@ export function RemesasScreen() {
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
 
+  // Al abrir la pantalla: repara la cabecera de las entregas en curso a partir de
+  // la CONSTANCIA del mensajero (ver remittancesRepo.reconcileFromDeliveries). Una
+  // transicion sellada con un reloj atrasado puede perderse en la fusion; la fila
+  // de `deliveries` no, y de ella se re-deriva el estado. La lista de arriba es un
+  // useLiveQuery, asi que la correccion se pinta al instante. Gateado por la
+  // licencia: sin el modulo 'remesas' no se ejecuta nunca.
+  useEffect(() => {
+    if (!canRemesas) return
+    remittancesRepo.reconcileFromDeliveries().catch(() => {})
+  }, [canRemesas])
+
   if (!(isManager || isCourier) || !canRemesas) {
     return (
       <div className="screen">

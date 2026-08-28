@@ -5,7 +5,11 @@
 // ENTREGA completa (no solo el estado) para poder afinarse en fases futuras —el
 // cobro contra entrega (grupo "Por cobrar") se activa cuando exista el modo de
 // cobro— sin cambiar la firma.
-import { REMITTANCE_STATUS, PAYMENT_MODE } from '../db/constants'
+// Import CON extension .js (a diferencia del resto del proyecto) a proposito: asi
+// este modulo —que es puro— se puede ejecutar con node para probarlo
+// (`node src/lib/remesas.test.mjs`), como custodyMath/productCustodyMath. Vite lo
+// resuelve igual; `db/constants` tampoco importa nada, por lo que la cadena es pura.
+import { REMITTANCE_STATUS, PAYMENT_MODE, DELIVERY_RESULT } from '../db/constants.js'
 
 const S = REMITTANCE_STATUS
 
@@ -46,4 +50,30 @@ export function remittanceGroup(r) {
   if (isPendingCollection(r)) return REMITTANCE_GROUP.PENDING_COLLECTION
   if (DONE.has(s)) return REMITTANCE_GROUP.DONE
   return REMITTANCE_GROUP.IN_PROCESS
+}
+
+// --- Reconciliacion derivada de la CONSTANCIA -------------------------------
+// Estados desde los que el libro de entregas puede corregir la cabecera: la
+// entrega esta EN CURSO (con mensajero) y todavia no tiene desenlace registrado.
+const RECONCILABLE = new Set([REMITTANCE_STATUS.ASSIGNED, REMITTANCE_STATUS.IN_ROUTE])
+
+// ¿Hay que promover esta entrega a ENTREGADA a partir de su libro de entregas?
+//
+// La cabecera (`remittances`) se fusiona por "ultima escritura gana", asi que una
+// transicion puede perderse si el reloj del dispositivo que la sella va atrasado.
+// La CONSTANCIA (`deliveries`) no: es append-only y con id determinista, asi que
+// llega siempre. Es la misma situacion de `products.stock`, que puede llegar mal
+// como cabecera y se RE-DERIVA del libro mayor.
+//
+// La regla es DELIBERADAMENTE ESTRECHA —solo sube de ASIGNADA/EN RUTA a ENTREGADA
+// cuando hay una fila con resultado ENTREGADA y sin anular—: no regresa ningun
+// estado (liquidada/cerrada/cancelada no se tocan), no interpreta fallos (el
+// MOTIVO de una falla vive en el estado, no en la constancia: no es derivable) y
+// no toca las eliminadas. PURA: recibe la entrega y sus filas, no lee la base.
+export function shouldReconcileDelivered(remittance, deliveries = []) {
+  if (!remittance || remittance.deletedAt) return false
+  if (!RECONCILABLE.has(remittance.status)) return false
+  return (deliveries || []).some(
+    (d) => d && d.result === DELIVERY_RESULT.DELIVERED && d.voided !== true
+  )
 }
