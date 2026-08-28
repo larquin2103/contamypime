@@ -47,11 +47,10 @@ function forwardFor(r) {
   return null
 }
 
-// Estados desde los que se puede cancelar SIN mover efectivo (antes del pago). Tras
-// marcar Pagada, el efectivo ya entro a la caja central de custodia; cancelar
-// entonces exigiria un reembolso (flujo de devolucion), que llega en una fase
-// posterior. Por eso se limita la cancelacion a antes del pago: nunca deja dinero
-// de custodia sin resolver.
+// Estados desde los que se puede cancelar SIN mover dinero (antes de cobrar). Una vez
+// registrado el cobro, el dinero YA ENTRO A UNA CUENTA de tesoreria; cancelar entonces
+// exigiria un reembolso (flujo de devolucion), que llega en una fase posterior. Por eso
+// se limita la cancelacion a antes del cobro: nunca deja dinero sin resolver.
 const CANCELLABLE = new Set([
   REMITTANCE_STATUS.CREATED,
   REMITTANCE_STATUS.PAYMENT_PENDING
@@ -1041,16 +1040,31 @@ function SettlementsSection({ couriers, balances, settlements, userId, userName 
 }
 
 // Fondo del mensajero (F4): DAR (dotar) o DEVOLVER efectivo del fondo que reparte.
-// Dar: caja central -> mensajero. Devolver: mensajero -> central. Muestra el fondo
-// actual (derivado del libro) para decidir cuanto. Solo el mando.
+// El fondo SALE DE LAS CUENTAS DEL NEGOCIO: se elige la cuenta de tesoreria de la que
+// sale (y a la que vuelve al devolver), igual que el cobro. Muestra el fondo actual
+// (derivado del libro) para decidir cuanto. Solo el mando. Sin el modulo 'cuentas' no
+// hay selector y se registra sin mover cuenta (degradacion limpia, como el cobro).
 function FundModal({ mode, couriers, balances, userId, onClose, onDone }) {
   const provision = mode === 'provision'
+  const { hasModule } = useLicense()
+  const hasAccounts = hasModule(LICENSE_MODULES.ACCOUNTS)
+  const accounts = useLiveQuery(() => (hasAccounts ? accountsRepo.list() : Promise.resolve([])), [hasAccounts], [])
+  const [accountId, setAccountId] = useState('')
   const [courierId, setCourierId] = useState(couriers[0]?.id || '')
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('MN')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   useEscapeClose(onClose)
+
+  // Preselecciona la primera cuenta al cargar (sin pisar una eleccion del usuario).
+  useEffect(() => {
+    if (hasAccounts && !accountId && accounts.length > 0) setAccountId(accounts[0].id)
+  }, [accounts, hasAccounts, accountId])
+
+  // Con cuenta elegida manda SU moneda (tesoreria y custodia quedan en la misma).
+  const acc = accounts.find((a) => a.id === accountId) || null
+  const curLabel = acc ? acc.currency : currency
 
   const bal = balances[courierId] || {}
   const balStr = Object.entries(bal)
@@ -1063,7 +1077,13 @@ function FundModal({ mode, couriers, balances, userId, onClose, onDone }) {
     setBusy(true)
     try {
       const fn = provision ? custodyRepo.provisionFund : custodyRepo.returnFund
-      await fn({ courierId, amount: Number(amount) || 0, currency, actorId: userId })
+      await fn({
+        courierId,
+        amount: Number(amount) || 0,
+        currency,
+        accountId: hasAccounts ? (accountId || null) : null,
+        actorId: userId
+      })
       onDone()
     } catch (e) {
       setError(e.message)
@@ -1086,6 +1106,16 @@ function FundModal({ mode, couriers, balances, userId, onClose, onDone }) {
               </select>
             </label>
             {balStr && <p className="muted">Fondo actual: <strong>{balStr}</strong></p>}
+            {hasAccounts && (
+              <label className="field">
+                <span>{provision ? 'Cuenta de la que sale' : 'Cuenta a la que vuelve'}</span>
+                <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="form-row">
               <label className="field">
                 <span>Monto</span>
@@ -1093,11 +1123,22 @@ function FundModal({ mode, couriers, balances, userId, onClose, onDone }) {
               </label>
               <label className="field">
                 <span>Moneda</span>
-                <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                  {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                {acc ? (
+                  <input value={curLabel} readOnly />
+                ) : (
+                  <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                    {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                )}
               </label>
             </div>
+            {acc && (
+              <p className="muted">
+                {provision
+                  ? `Se descontará de ${acc.name} y quedará en manos del mensajero.`
+                  : `Volverá a ${acc.name}.`}
+              </p>
+            )}
           </>
         )}
         {error && <p className="error">{error}</p>}

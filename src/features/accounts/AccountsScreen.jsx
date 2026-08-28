@@ -152,8 +152,11 @@ function UnifiedPartners({ partners, partnerBal, onGo }) {
 // Opcion B: ingresos por concepto (de que actividad vino el dinero) y egresos.
 function IncomeByConcept({ byConcept }) {
   const { credits = {}, debits = {} } = byConcept || {}
-  const incomeKeys = ['own', 'consignment', 'thirdparty']
-  const egressKeys = ['provider', 'withdrawal']
+  // Cada fila se pinta solo si su importe es > 0, asi que las claves del modulo
+  // 'remesas' ('entrega' ingreso, 'fondo' egreso) no cambian nada sin el modulo:
+  // sin entregas ni fondos valen 0 y no se renderizan.
+  const incomeKeys = ['own', 'consignment', 'thirdparty', 'entrega']
+  const egressKeys = ['provider', 'withdrawal', 'fondo']
   const anyIncome = incomeKeys.some((k) => (credits[k] || 0) > 0)
   const anyEgress = egressKeys.some((k) => (debits[k] || 0) > 0)
   if (!anyIncome && !anyEgress) return null

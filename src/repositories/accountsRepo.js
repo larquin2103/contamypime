@@ -138,7 +138,10 @@ export const ACCOUNT_CONCEPTS = {
   withdrawal: 'Extracciones de caja',
   manual: 'Ajustes manuales',
   // Modulo 'remesas': cobro al remitente de una entrega "contra entrega" (ingreso).
-  entrega: 'Cobros de entregas'
+  entrega: 'Cobros de entregas',
+  // Modulo 'remesas': efectivo que sale de la cuenta como FONDO de un mensajero
+  // (egreso) y vuelve a ella cuando lo devuelve. Es dinero del negocio en la calle.
+  fondo: 'Fondo de mensajeros'
 }
 
 export const accountsRepo = {
