@@ -7,7 +7,7 @@ import {
 } from '../../db/constants'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
-import { accountsRepo } from '../../repositories/accountsRepo'
+import { accountsRepo, ACCOUNT_REF_LABELS, conceptLabel } from '../../repositories/accountsRepo'
 import { ratesRepo } from '../../repositories/ratesRepo'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
@@ -766,12 +766,10 @@ export async function buildAccountsReport({ from = null, to = null } = {}) {
   const accounts = await db.accounts.toArray()
   const accName = {}
   for (const a of accounts) accName[a.id] = a
-  const refLabel = {
-    sale: 'Venta',
-    withdrawal: 'Extracción de caja',
-    partnerPayment: 'Pago/cobro de tercero',
-    manual: 'Ajuste manual'
-  }
+  // Etiquetas del origen: la MISMA lista que usa la pantalla de Cuentas (vive en
+  // accountsRepo para que no se separen). Faltaban el cobro de entrega y el fondo del
+  // mensajero, que salian crudos en ingles ("remittance", "fund").
+  const refLabel = ACCOUNT_REF_LABELS
 
   const moves = (await db.accountMovements.toArray())
     .filter((m) => inRange(m.createdAt, from, to))
@@ -806,33 +804,34 @@ export async function buildAccountsReport({ from = null, to = null } = {}) {
 
   // Opcion B: desglose de ingresos y egresos por CONCEPTO (en el rango).
   const { credits, debits } = await accountsRepo.byConcept({ from, to })
-  const conceptLabels = {
-    own: 'Ventas propias',
-    consignment: 'Ventas en consignación',
-    thirdparty: 'Cobros a terceros',
-    provider: 'Pagos a proveedores',
-    withdrawal: 'Extracciones de caja',
-    manual: 'Ajustes manuales'
-  }
   // Una linea por concepto Y MONEDA, con su moneda real en la columna "Moneda":
   // antes se sumaban todas las monedas en un solo importe etiquetado "MN" (un cobro
   // en USD engordaba el total como si fuera MN). No se convierte a MN con la tasa
   // (la de hoy no es la del dia del movimiento). Con un negocio solo en MN, el
-  // reporte sale identico al de siempre.
+  // reporte sale identico al de siempre. La etiqueta sale de `conceptLabel(k, lado)`
+  // —la misma de la pantalla— porque 'fondo' se llama distinto segun el sentido.
   const conceptRows = (map, keys, credit) => {
     for (const k of keys) {
       for (const [cur, v] of Object.entries(map[k] || {})) {
         const amt = round2(Number(v) || 0)
         if (amt <= 0) continue
-        rows.push(['', conceptLabels[k], '', '', credit ? amt : '', credit ? '' : amt, cur, '', ''])
+        rows.push([
+          '', conceptLabel(k, credit ? 'credit' : 'debit'), '', '',
+          credit ? amt : '', credit ? '' : amt, cur, '', ''
+        ])
       }
     }
   }
+  // Los conceptos del modulo 'remesas' ('entrega' ingreso, 'fondo' en los dos lados)
+  // entran en las listas, pero solo se pintan si HAY movimientos suyos: sin el modulo
+  // no existe ninguno y el reporte queda identico al clasico (data-driven, sin fuga de
+  // licencia). El fondo aparece en ingresos y en egresos porque sale de la cuenta y
+  // vuelve cuando el mensajero lo devuelve; verlo solo de salida lo dejaba en bruto.
   rows.push(['', '', '', '', '', '', '', '', ''])
   rows.push(['INGRESOS POR CONCEPTO', '', '', '', '', '', '', '', ''])
-  conceptRows(credits, ['own', 'consignment', 'thirdparty', 'manual'], true)
+  conceptRows(credits, ['own', 'consignment', 'thirdparty', 'entrega', 'fondo', 'manual'], true)
   rows.push(['EGRESOS POR CONCEPTO', '', '', '', '', '', '', '', ''])
-  conceptRows(debits, ['provider', 'withdrawal', 'manual'], false)
+  conceptRows(debits, ['provider', 'withdrawal', 'fondo', 'manual'], false)
 
   return {
     title: 'Movimientos de cuentas',

@@ -235,6 +235,13 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   movimiento y el histórico cambiaría de valor); es el criterio del panel de custodia y del cuadre
   de turno. Antes se sumaban todas las monedas en un solo número etiquetado "MN": un cobro en USD
   engordaba el total como si fuera MN. Con un negocio solo en MN se ve **igual que siempre**.
+  El concepto **`fondo` se muestra en los dos lados** (sale de la cuenta y **vuelve** cuando el
+  mensajero lo devuelve): la vuelta lleva su propia etiqueta —`ACCOUNT_CONCEPTS_IN`, vía
+  `conceptLabel(clave, lado)`— para que no se lea como un ingreso del negocio; antes solo se
+  pintaba la salida y el egreso quedaba en **bruto**. Las etiquetas del **origen** (`refType`)
+  viven en `ACCOUNT_REF_LABELS` (una sola lista para pantalla y reporte): incluyen `remittance`
+  y `fund`, que salían crudos en inglés. Todo **data-driven**: sin el módulo `remesas` no existe
+  ningún movimiento de esos conceptos y no se pinta nada (sin fuga de licencia).
 - **`elaboracion`** — centro de elaboración intermedio (almacén → elaboración → área) con su
   rol acotado `ELABORATION`.
 - **`mesas`** — cuentas abiertas por mesa dentro de un área (cafetería/restaurante). Ver abajo.

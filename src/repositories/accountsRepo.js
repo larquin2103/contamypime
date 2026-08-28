@@ -144,6 +144,35 @@ export const ACCOUNT_CONCEPTS = {
   fondo: 'Fondo de mensajeros'
 }
 
+// Etiqueta del concepto cuando el movimiento ENTRA a la cuenta y el concepto es
+// BIDIRECCIONAL. 'fondo' es el mismo concepto en los dos sentidos —sale a la calle
+// como fondo del mensajero y vuelve cuando lo devuelve—: llamarle "Fondo de
+// mensajeros" a lo que VUELVE se leeria como un ingreso del negocio, y no lo es (es
+// dinero suyo que regresa). Lo que no este aqui usa ACCOUNT_CONCEPTS en ambos lados.
+export const ACCOUNT_CONCEPTS_IN = {
+  fondo: 'Fondo devuelto por mensajeros'
+}
+
+// Etiqueta de un concepto segun el lado del movimiento ('credit' = entra).
+export function conceptLabel(key, direction = 'credit') {
+  if (direction === 'credit' && ACCOUNT_CONCEPTS_IN[key]) return ACCOUNT_CONCEPTS_IN[key]
+  return ACCOUNT_CONCEPTS[key] || key
+}
+
+// Etiquetas del ORIGEN (refType) de un movimiento de cuenta. Es la lista COMPLETA de
+// lo que puede acreditar o debitar una cuenta: venta, extraccion de caja, pago/cobro
+// de tercero, ajuste manual y —con el modulo 'remesas'— el cobro de una entrega y el
+// fondo del mensajero. Sin ese modulo no existen movimientos de esos dos tipos, asi
+// que sus etiquetas nunca se pintan (data-driven, sin fuga de licencia).
+export const ACCOUNT_REF_LABELS = {
+  sale: 'Venta',
+  withdrawal: 'Extracción de caja',
+  partnerPayment: 'Pago/cobro de tercero',
+  manual: 'Ajuste manual',
+  remittance: 'Cobro de entrega',
+  fund: 'Fondo de mensajero'
+}
+
 export const accountsRepo = {
   // Cuentas base del negocio (se crean si faltan; idempotente y sin duplicar
   // entre dispositivos gracias a los ids fijos).

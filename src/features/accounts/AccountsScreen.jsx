@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft } from 'lucide-react'
-import { accountsRepo, ACCOUNT_CONCEPTS } from '../../repositories/accountsRepo'
+import { accountsRepo, conceptLabel, ACCOUNT_REF_LABELS } from '../../repositories/accountsRepo'
 import { partnersRepo } from '../../repositories/partnersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -12,13 +12,10 @@ import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { CASH_CURRENCIES, PARTNER_TYPES } from '../../db/constants'
 
-// Etiquetas del origen de cada movimiento de cuenta.
-const REF_LABELS = {
-  sale: 'Venta',
-  withdrawal: 'Extracción de caja',
-  partnerPayment: 'Pago/cobro de tercero',
-  manual: 'Ajuste manual'
-}
+// Etiquetas del origen de cada movimiento de cuenta (lista completa en accountsRepo,
+// compartida con el reporte para que no se separen: aqui faltaban el cobro de entrega
+// y el fondo del mensajero, que salian como "Movimiento" a secas).
+const REF_LABELS = ACCOUNT_REF_LABELS
 
 // Bloque D (modulo 'cuentas'): registro de cuentas de tesoreria. Las ventas
 // acreditan su cuenta en tiempo real (efectivo por moneda, transferencias);
@@ -160,9 +157,15 @@ function concepto(map, key) {
 function IncomeByConcept({ byConcept }) {
   const { credits = {}, debits = {} } = byConcept || {}
   // Cada fila se pinta solo si tiene importe, asi que las claves del modulo
-  // 'remesas' ('entrega' ingreso, 'fondo' egreso) no cambian nada sin el modulo:
-  // sin entregas ni fondos no hay movimientos y no se renderizan.
-  const incomeKeys = ['own', 'consignment', 'thirdparty', 'entrega']
+  // 'remesas' ('entrega' ingreso, 'fondo' en los DOS lados) no cambian nada sin el
+  // modulo: sin entregas ni fondos no hay movimientos y no se renderizan.
+  //
+  // 'fondo' va en las dos listas a proposito: sale de la cuenta (egreso) y VUELVE
+  // cuando el mensajero lo devuelve. Antes solo se pintaba la salida, asi que el
+  // egreso se leia en BRUTO —"Fondo de mensajeros −5 000" aunque hubiera devuelto
+  // 4 000—. Ahora se ven las dos patas y el neto se saca de un vistazo; el que vuelve
+  // lleva su propia etiqueta (no es un ingreso del negocio, es dinero suyo que regresa).
+  const incomeKeys = ['own', 'consignment', 'thirdparty', 'entrega', 'fondo']
   const egressKeys = ['provider', 'withdrawal', 'fondo']
   const anyIncome = incomeKeys.some((k) => concepto(credits, k).length > 0)
   const anyEgress = egressKeys.some((k) => concepto(debits, k).length > 0)
@@ -174,7 +177,7 @@ function IncomeByConcept({ byConcept }) {
       <p className="muted">De qué actividad vino el dinero (cada moneda por separado, todo el historial).</p>
       {incomeKeys.map((k) => concepto(credits, k).length > 0 && (
         <div key={k} className="kv">
-          <span className="muted">{ACCOUNT_CONCEPTS[k]}</span>
+          <span className="muted">{conceptLabel(k, 'credit')}</span>
           <strong className="ok-text">
             {concepto(credits, k).map(([c, v]) => `+${formatMoney(v, c)}`).join(' · ')}
           </strong>
@@ -183,7 +186,7 @@ function IncomeByConcept({ byConcept }) {
       {anyEgress && <p className="muted" style={{ marginTop: 8 }}>Egresos</p>}
       {egressKeys.map((k) => concepto(debits, k).length > 0 && (
         <div key={k} className="kv">
-          <span className="muted">{ACCOUNT_CONCEPTS[k]}</span>
+          <span className="muted">{conceptLabel(k, 'debit')}</span>
           <strong className="warn-text">
             {concepto(debits, k).map(([c, v]) => `−${formatMoney(v, c)}`).join(' · ')}
           </strong>
