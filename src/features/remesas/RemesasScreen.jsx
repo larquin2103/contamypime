@@ -39,8 +39,14 @@ const CURRENCY_OPTIONS = [...new Set([...CASH_CURRENCIES, 'MLC'])]
 // asignar" (el cobro es despues de entregar). Anticipado: el avance lo hace "Registrar
 // pago" (cobra a la cuenta y deja lista para asignar); por eso aqui no hay avance plano.
 function forwardFor(r) {
+  // LIQUIDADA (el efectivo del mensajero ya se concilió) -> se archiva.
+  if (r.status === REMITTANCE_STATUS.SETTLED) {
+    return { to: REMITTANCE_STATUS.CLOSED, label: 'Cerrar entrega' }
+  }
   // Entregada y sin nada pendiente de cobrar -> se puede CERRAR (archivarla). Antes
   // se quedaba en "Entregada" para siempre y el estado CERRADA no se alcanzaba nunca.
+  // Las de DINERO normalmente pasan antes por LIQUIDADA (al cuadrar al mensajero);
+  // las de PRODUCTO no tocan la custodia de efectivo y se cierran directo desde aquí.
   if (r.status === REMITTANCE_STATUS.DELIVERED && !isPendingCollection(r)) {
     return { to: REMITTANCE_STATUS.CLOSED, label: 'Cerrar entrega' }
   }
