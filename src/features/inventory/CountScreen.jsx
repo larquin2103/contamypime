@@ -16,7 +16,7 @@ import { formatMoney, isForeignPriced, foreignToBase, round2 } from '../../lib/c
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { WAREHOUSE, ELABORATION, COCINA, locationLabel } from '../../db/constants'
+import { WAREHOUSE, ELABORATION, COCINA, ENTREGAS_AREA, locationLabel } from '../../db/constants'
 
 // Existencia de un producto en una ubicacion (espejo de countsRepo) para saber
 // si hay algo que contar en el destino elegido.
@@ -79,6 +79,11 @@ export function CountScreen() {
   const { activeShift } = useShift()
   const { hasModule } = useLicense()
   const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+  // Modulo 'remesas': el area "Entregas" (de donde el mensajero carga el producto) es
+  // inventario real y hasta ahora no se podia contar, asi que lo que quedaba parado
+  // alli no era conciliable. Se cuenta como cualquier area. Lo que el mensajero YA
+  // carga vive en su custodia (libro aparte) y NO entra aqui, como debe ser.
+  const canEntregas = hasModule(LICENSE_MODULES.REMESAS)
   // Borrador PROPIO (cada vendedor cuenta su area de forma independiente).
   const draft = useLiveQuery(() => countsRepo.getDraft(user.id), [user.id], undefined)
   // Conteo enviado: el mando revisa cualquiera (cola); el vendedor solo el suyo.
@@ -168,13 +173,14 @@ export function CountScreen() {
               ? `Elige qué contar: tu área (${sellerArea}) o el almacén central. Al terminar, el dueño o administrativo aprueba y se ajustan.`
               : `Contarás los productos de tu área (${sellerArea || 'tu punto'}). Al terminar, el dueño o administrativo aprueba y se ajustan.`}
         </p>
-        {isManager && (areas.length > 0 || elab.enabled || canKitchen) && (
+        {isManager && (areas.length > 0 || elab.enabled || canKitchen || canEntregas) && (
           <label className="field">
             <span>¿Qué vas a contar?</span>
             <select value={countLoc} onChange={(e) => setCountLoc(e.target.value)}>
               <option value={WAREHOUSE}>{locationLabel(WAREHOUSE)}</option>
               {elab.enabled && <option value={ELABORATION}>{elab.name}</option>}
               {canKitchen && <option value={COCINA}>{locationLabel(COCINA)}</option>}
+              {canEntregas && <option value={ENTREGAS_AREA}>{locationLabel(ENTREGAS_AREA)}</option>}
               {areas.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>

@@ -55,7 +55,8 @@ const SEMAPHORE_LABEL = {
 export async function buildRemittancesReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const list = (await db.remittances.toArray())
-    .filter((r) => inRange(r.createdAt, from, to))
+    // Las eliminadas (borrado logico) no entran al reporte; siguen en la base.
+    .filter((r) => !r.deletedAt && inRange(r.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   const rows = list.map((r) => [
     formatDateTime(r.createdAt),
@@ -179,7 +180,8 @@ export async function buildCollectionsReport({ from = null, to = null } = {}) {
 export async function buildProductDeliveriesReport({ from = null, to = null } = {}) {
   const names = await userMap()
   const list = (await db.remittances.toArray())
-    .filter((r) => r.kind === DELIVERY_KIND.PRODUCT && inRange(r.createdAt, from, to))
+    // Las eliminadas (borrado logico) no entran al reporte; siguen en la base.
+    .filter((r) => !r.deletedAt && r.kind === DELIVERY_KIND.PRODUCT && inRange(r.createdAt, from, to))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   const rows = list.map((r) => [
     formatDateTime(r.createdAt),

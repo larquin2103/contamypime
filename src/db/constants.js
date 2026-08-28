@@ -370,3 +370,18 @@ export const DELIVERY_RESULT = {
   DELIVERED: 'delivered',
   FAILED: 'failed'
 }
+
+// MOTIVOS por los que una entrega no se pudo concretar. El mando elige uno al marcarla
+// fallida y ESE pasa a ser el estado de la entrega, para que el reporte diga POR QUE
+// falla cada una (antes todas terminaban en 'returned' y el motivo se perdia). Son
+// estados que ya existian en REMITTANCE_STATUS: aqui solo se declara cuales puede
+// elegir el mando, para que `failReturn` no acepte cualquiera.
+export const DELIVERY_FAIL_REASONS = [
+  REMITTANCE_STATUS.RETURNED,
+  REMITTANCE_STATUS.BENEFICIARY_UNAVAILABLE,
+  REMITTANCE_STATUS.WRONG_ADDRESS,
+  REMITTANCE_STATUS.REJECTED,
+  REMITTANCE_STATUS.EXPIRED,
+  REMITTANCE_STATUS.DISPUTED,
+  REMITTANCE_STATUS.FAILED
+]

@@ -5,7 +5,7 @@ import { round2 } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import {
   REMITTANCE_STATUS, PAYMENT_MODE, CUSTODY_MOVEMENT_TYPES, DELIVERY_RESULT, ROLES,
-  DELIVERY_KIND, MOVEMENT_TYPES, ENTREGAS_AREA
+  DELIVERY_KIND, MOVEMENT_TYPES, ENTREGAS_AREA, DELIVERY_FAIL_REASONS
 } from '../db/constants'
 import { custodyRepo } from './custodyRepo'
 import { deliveriesRepo } from './deliveriesRepo'
@@ -23,8 +23,28 @@ import { addAccountMovementRaw } from './accountsRepo'
 // actualiza `updatedAt` (la sincronizacion es "ultima escritura gana" por marca
 // de tiempo) y registra un evento en auditoria.
 
-// Estados en los que la cabecera aun puede corregirse (antes de cobrar).
-const EDITABLE_STATUSES = new Set([REMITTANCE_STATUS.CREATED])
+// Que se puede corregir y cuando. Dos niveles, porque no todo pesa igual:
+//  - DINERO/MERCANCIA (monto, moneda, modo de cobro, productos): SOLO en CREATED, o
+//    sea antes de que nada se haya movido. Despues hay un cobro en una cuenta y/o
+//    producto cargado a un mensajero, y cambiar la cifra descuadraria lo ya asentado.
+//  - CONTACTO (remitente, beneficiario, nota): mientras la entrega siga viva. Corregir
+//    un telefono mal escrito o una direccion no toca ni un centavo ni una existencia,
+//    y es justo lo que hace falta corregir sobre la marcha.
+// Toda edicion actualiza updatedAt y deja evento en auditoria (nada se pierde).
+const EDITABLE_MONEY = new Set([REMITTANCE_STATUS.CREATED])
+const EDITABLE_CONTACT = new Set([
+  REMITTANCE_STATUS.CREATED,
+  REMITTANCE_STATUS.PAYMENT_PENDING,
+  REMITTANCE_STATUS.PAID,
+  REMITTANCE_STATUS.VALIDATED,
+  REMITTANCE_STATUS.FUNDS_AVAILABLE,
+  REMITTANCE_STATUS.ASSIGNED,
+  REMITTANCE_STATUS.HANDED_TO_COURIER,
+  REMITTANCE_STATUS.IN_ROUTE,
+  REMITTANCE_STATUS.DELIVERED
+])
+// Campos que mueven dinero o mercancia (los del primer nivel).
+const MONEY_FIELDS = ['amount', 'currency', 'fee', 'paymentMode', 'items']
 
 // Normaliza los datos de una parte (remitente/beneficiario): cadenas recortadas.
 function cleanParty(p = {}) {
@@ -50,7 +70,39 @@ function cleanItems(items = []) {
 export const remittancesRepo = {
   async list() {
     const rows = await db.remittances.toArray()
-    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    // Las eliminadas (borrado LOGICO) no se listan, pero siguen en la base y viajan
+    // en la sync y en los respaldos: nada se borra de verdad.
+    return rows.filter((r) => !r.deletedAt).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
+  // Elimina una entrega — BORRADO LOGICO (marca `deletedAt`), como productsRepo y
+  // recipesRepo: la fila se conserva, deja de listarse y queda el evento en auditoria.
+  //
+  // Solo se puede eliminar una entrega que NO HAYA MOVIDO NADA: sin cobro registrado
+  // (el dinero ya estaria en una cuenta) y sin mensajero asignado (habria producto
+  // cargado o fondo comprometido). Si ya se movio algo, el camino correcto es
+  // CANCELARLA —que es un estado, no una desaparicion— para que el rastro cuadre.
+  async remove(id, { actorId = null, note = '' } = {}) {
+    const ts = now()
+    await db.transaction('rw', db.remittances, db.auditEvents, async () => {
+      const r = await db.remittances.get(id)
+      if (!r) throw new Error('Entrega no encontrada')
+      if (r.deletedAt) return // ya eliminada: idempotente
+      if (r.collectedAt) {
+        throw new Error('Esta entrega ya tiene un cobro registrado: cancélala en vez de eliminarla.')
+      }
+      if (r.assignedCourierId) {
+        throw new Error('Esta entrega ya está asignada a un mensajero: cancélala en vez de eliminarla.')
+      }
+      await db.remittances.update(id, {
+        deletedAt: ts, deletedBy: actorId, updatedAt: ts
+      })
+      await db.auditEvents.add({
+        id: newId(), entity: 'remittance', entityId: id, action: 'delete',
+        fromStatus: r.status, amount: r.amount, currency: r.currency,
+        note: String(note || '').trim(), userId: actorId, createdAt: ts
+      })
+    })
   },
 
   async get(id) {
@@ -118,8 +170,14 @@ export const remittancesRepo = {
     await db.transaction('rw', db.remittances, db.auditEvents, async () => {
       const r = await db.remittances.get(id)
       if (!r) throw new Error('Entrega no encontrada')
-      if (!EDITABLE_STATUSES.has(r.status)) {
-        throw new Error('La entrega ya no se puede editar (solo antes del pago)')
+      if (r.deletedAt) throw new Error('La entrega está eliminada')
+      // ¿Toca dinero/mercancia, o solo datos de contacto?
+      const touchesMoney = MONEY_FIELDS.some((f) => fields[f] != null)
+      if (touchesMoney && !EDITABLE_MONEY.has(r.status)) {
+        throw new Error('El monto y los productos solo se corrigen antes de cobrar. Puedes corregir los datos de contacto.')
+      }
+      if (!EDITABLE_CONTACT.has(r.status)) {
+        throw new Error('La entrega ya está cerrada: no se puede editar')
       }
       const patch = { updatedAt: ts }
       if (fields.amount != null) {
@@ -277,6 +335,25 @@ export const remittancesRepo = {
       if (r.kind === DELIVERY_KIND.PRODUCT) {
         // Producto: SALE de la custodia de PRODUCTO del mensajero al beneficiario.
         const lines = Array.isArray(r.items) ? r.items : []
+        // CANDADO DE ULTIMA INSTANCIA (como salesRepo contra el libro mayor): valida
+        // que el mensajero LLEVE de verdad lo que va a entregar, derivandolo de su
+        // libro de custodia DENTRO de esta transaccion. Sin esto se podia devolver el
+        // producto al area "Entregas" (que suma al inventario) y ACTO SEGUIDO marcar
+        // la entrega: la mercancia quedaba contada dos veces —de vuelta en el almacen
+        // y entregada al beneficiario— y la custodia en negativo.
+        const carried = await productCustodyRepo.holderProducts(r.assignedCourierId)
+        for (const it of lines) {
+          const q = Math.abs(Number(it.qty) || 0)
+          const have = Number(carried[it.productId] || 0)
+          // Ya registrada (reintento/segunda pasada): no revalida, es idempotente.
+          if (await db.productCustody.get(`pcustody:deliver:${id}:${it.productId}`)) continue
+          if (q > have) {
+            throw new Error(
+              `El mensajero no lleva "${it.name || 'producto'}" (lleva ${have}, hacen falta ${q}). ` +
+              'Si se devolvió por error, vuelve a cargarlo antes de entregar.'
+            )
+          }
+        }
         for (const it of lines) {
           const q = Math.abs(Number(it.qty) || 0)
           const outId = `pcustody:deliver:${id}:${it.productId}`
@@ -319,7 +396,10 @@ export const remittancesRepo = {
   // de efectivo no bajo, porque la entrega no se confirmo; el producto sigue en su
   // custodia). Solo registra la entrega FALLIDA (append-only) y pasa a DEVUELTA; lo que
   // conserva lo devuelve al cerrar (fondo) o con "Devolver producto". Solo ASIGNADA / EN RUTA.
-  async failReturn(id, { note = '', actorId = null } = {}) {
+  // `reason` = uno de DELIVERY_FAIL_REASONS (por que no se pudo entregar); pasa a ser
+  // el estado de la entrega. Por defecto DEVUELTA (comportamiento anterior).
+  async failReturn(id, { note = '', reason = null, actorId = null } = {}) {
+    const toStatus = DELIVERY_FAIL_REASONS.includes(reason) ? reason : REMITTANCE_STATUS.RETURNED
     const ts = now()
     await db.transaction('rw', db.remittances, db.custodyMovements, db.deliveries, db.auditEvents, async () => {
       const r = await db.remittances.get(id)
@@ -337,10 +417,11 @@ export const remittancesRepo = {
           result: DELIVERY_RESULT.FAILED, note, byUserId: actorId, createdAt: ts
         })
       }
-      await db.remittances.update(id, { status: REMITTANCE_STATUS.RETURNED, updatedAt: ts })
+      await db.remittances.update(id, { status: toStatus, updatedAt: ts })
       await db.auditEvents.add({
         id: newId(), entity: 'remittance', entityId: id, action: 'fail_return',
-        courierId: r.assignedCourierId, toStatus: REMITTANCE_STATUS.RETURNED, userId: actorId, createdAt: ts
+        courierId: r.assignedCourierId, toStatus, note: String(note || '').trim(),
+        userId: actorId, createdAt: ts
       })
     })
   },

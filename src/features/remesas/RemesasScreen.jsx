@@ -20,7 +20,7 @@ import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { remittanceGroup, isPendingCollection } from '../../lib/remesas'
 import {
   CASH_CURRENCIES, ROLES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
-  REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS,
+  REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS, DELIVERY_FAIL_REASONS,
   DELIVERY_KIND, DELIVERY_KIND_LABELS
 } from '../../db/constants'
 
@@ -39,6 +39,11 @@ const CURRENCY_OPTIONS = [...new Set([...CASH_CURRENCIES, 'MLC'])]
 // asignar" (el cobro es despues de entregar). Anticipado: el avance lo hace "Registrar
 // pago" (cobra a la cuenta y deja lista para asignar); por eso aqui no hay avance plano.
 function forwardFor(r) {
+  // Entregada y sin nada pendiente de cobrar -> se puede CERRAR (archivarla). Antes
+  // se quedaba en "Entregada" para siempre y el estado CERRADA no se alcanzaba nunca.
+  if (r.status === REMITTANCE_STATUS.DELIVERED && !isPendingCollection(r)) {
+    return { to: REMITTANCE_STATUS.CLOSED, label: 'Cerrar entrega' }
+  }
   if (r.paymentMode === PAYMENT_MODE.ON_CREDIT) {
     return r.status === REMITTANCE_STATUS.CREATED
       ? { to: REMITTANCE_STATUS.FUNDS_AVAILABLE, label: 'Preparar para asignar' }
@@ -54,6 +59,21 @@ function forwardFor(r) {
 const CANCELLABLE = new Set([
   REMITTANCE_STATUS.CREATED,
   REMITTANCE_STATUS.PAYMENT_PENDING
+])
+
+// Estados en los que la entrega sigue VIVA y el mando puede corregir sus datos de
+// contacto (espeja EDITABLE_CONTACT de remittancesRepo, que es quien manda: aquí solo
+// se decide si se ofrece el botón). Una entrega cerrada, cancelada o fallida no se toca.
+const EDITABLE_CONTACT_UI = new Set([
+  REMITTANCE_STATUS.CREATED,
+  REMITTANCE_STATUS.PAYMENT_PENDING,
+  REMITTANCE_STATUS.PAID,
+  REMITTANCE_STATUS.VALIDATED,
+  REMITTANCE_STATUS.FUNDS_AVAILABLE,
+  REMITTANCE_STATUS.ASSIGNED,
+  REMITTANCE_STATUS.HANDED_TO_COURIER,
+  REMITTANCE_STATUS.IN_ROUTE,
+  REMITTANCE_STATUS.DELIVERED
 ])
 
 function StatusBadge({ status }) {
@@ -253,11 +273,16 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
   const [assigning, setAssigning] = useState(false)
   const [delivering, setDelivering] = useState(false)
   const [collecting, setCollecting] = useState(false)
+  const [failing, setFailing] = useState(false)
 
   const isAssignedToMe = r.assignedCourierId === userId
   const forward = isManager ? forwardFor(r) : null
   const canAssign = isManager && r.status === REMITTANCE_STATUS.FUNDS_AVAILABLE
-  const canEdit = isManager && r.status === REMITTANCE_STATUS.CREATED
+  // Editar: el monto y los productos solo antes de cobrar (CREADA); los datos de
+  // CONTACTO mientras la entrega siga viva —corregir un teléfono o una dirección no
+  // toca ni un centavo ni una existencia, y es lo que hace falta corregir sobre la
+  // marcha—. El repo vuelve a comprobarlo (la UI no es el candado).
+  const canEdit = isManager && !r.deletedAt && EDITABLE_CONTACT_UI.has(r.status)
   const canCancel = isManager && CANCELLABLE.has(r.status)
   const canDeliver =
     (r.status === REMITTANCE_STATUS.ASSIGNED || r.status === REMITTANCE_STATUS.IN_ROUTE) &&
@@ -267,7 +292,11 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
   // Pago anticipado: cobra a la cuenta ANTES de asignar (deja la entrega lista para asignar).
   const canPay = isManager && r.paymentMode !== PAYMENT_MODE.ON_CREDIT && !r.collectedAt &&
     (r.status === REMITTANCE_STATUS.CREATED || r.status === REMITTANCE_STATUS.PAYMENT_PENDING)
-  const noActions = !forward && !canAssign && !canDeliver && !canEdit && !canCancel && !canCollect && !canPay
+  // Eliminar (borrado LOGICO): solo el mando y solo si no se movio nada — sin cobro
+  // registrado y sin mensajero asignado. Con algo movido, el camino es CANCELAR.
+  const canDelete = isManager && !r.collectedAt && !r.assignedCourierId && !r.deletedAt
+  const noActions = !forward && !canAssign && !canDeliver && !canEdit && !canCancel &&
+    !canCollect && !canPay && !canDelete
 
   const run = async (fn, confirmMsg) => {
     if (confirmMsg && !confirm(confirmMsg)) return
@@ -288,10 +317,18 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
       () => remittancesRepo.setStatus(r.id, REMITTANCE_STATUS.CANCELLED, { actorId: userId, note: 'Cancelada por el mando' }),
       '¿Cancelar esta entrega? Queda registrada como cancelada (no se borra).'
     )
-  const fail = () =>
+  // Fallida: el mando elige el MOTIVO, que pasa a ser el estado (así el reporte dice
+  // por qué falla cada una). El mensajero conserva lo que llevaba: lo devuelve al
+  // cerrar (fondo) o con "Devolver producto".
+  const fail = (reason) =>
     run(
-      () => remittancesRepo.failReturn(r.id, { actorId: userId }),
-      '¿Entrega fallida? Se devuelve el efectivo a la caja central y la entrega queda como devuelta.'
+      () => remittancesRepo.failReturn(r.id, { reason, actorId: userId }),
+      `¿Marcar como “${REMITTANCE_STATUS_LABELS[reason] || 'fallida'}”? El mensajero conserva lo que lleva hasta que lo devuelva.`
+    )
+  const removeIt = () =>
+    run(
+      () => remittancesRepo.remove(r.id, { actorId: userId }),
+      '¿Eliminar esta entrega? Deja de aparecer en la lista y en los reportes, pero queda registrada en auditoría (no se borra de la base).'
     )
 
   return (
@@ -398,8 +435,8 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
             <button className="btn btn--primary btn--block" disabled={busy} onClick={() => setDelivering(true)}>
               Marcar entregada
             </button>
-            <button className="btn btn--ghost btn--block warn-text" disabled={busy} onClick={fail}>
-              Entrega fallida (devolver efectivo)
+            <button className="btn btn--ghost btn--block warn-text" disabled={busy} onClick={() => setFailing(true)}>
+              Entrega fallida…
             </button>
           </>
         )}
@@ -418,9 +455,20 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
             Cancelar entrega
           </button>
         )}
+        {canDelete && (
+          <button className="btn btn--ghost btn--block warn-text" disabled={busy} onClick={removeIt}>
+            Eliminar entrega
+          </button>
+        )}
         {noActions && <p className="muted">Sin acciones disponibles para este estado.</p>}
       </section>
 
+      {failing && (
+        <FailReasonModal
+          onClose={() => setFailing(false)}
+          onPick={(reason) => { setFailing(false); fail(reason) }}
+        />
+      )}
       {editing && <RemittanceForm userId={userId} existing={r} onClose={() => setEditing(false)} />}
       {assigning && (
         <AssignModal remittance={r} userId={userId} couriers={couriers} onClose={() => setAssigning(false)} onDone={onBack} />
@@ -723,6 +771,9 @@ function RemittanceForm({ userId, existing = null, onClose }) {
   const isProduct = kind === DELIVERY_KIND.PRODUCT
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // Dinero y mercancía CONGELADOS: solo se corrigen antes de cobrar. Después ya hay un
+  // cobro en una cuenta y/o producto cargado; se editan solo los datos de contacto.
+  const moneyLocked = isEdit && existing.status !== REMITTANCE_STATUS.CREATED
   useEscapeClose(onClose)
 
   // Agrega/quita una linea de producto (se acumula por producto).
@@ -747,17 +798,27 @@ function RemittanceForm({ userId, existing = null, onClose }) {
   const save = async () => {
     setError('')
     setBusy(true)
-    const payload = {
-      amount,
-      currency,
-      fee,
-      note,
-      paymentMode,
-      kind,
-      items,
-      sender: { name: sName, phone: sPhone, idDoc: sId },
-      beneficiary: { name: bName, phone: bPhone, address: bAddr, idDoc: bId }
-    }
+    // Editando una entrega que YA se movió (cobrada o asignada) solo viajan los datos
+    // de CONTACTO: el monto y los productos quedan congelados porque ya hay un cobro
+    // asentado en una cuenta y/o mercancía cargada a un mensajero. El repo lo vuelve a
+    // comprobar (la UI no es el candado).
+    const payload = moneyLocked
+      ? {
+        note,
+        sender: { name: sName, phone: sPhone, idDoc: sId },
+        beneficiary: { name: bName, phone: bPhone, address: bAddr, idDoc: bId }
+      }
+      : {
+        amount,
+        currency,
+        fee,
+        note,
+        paymentMode,
+        kind,
+        items,
+        sender: { name: sName, phone: sPhone, idDoc: sId },
+        beneficiary: { name: bName, phone: bPhone, address: bAddr, idDoc: bId }
+      }
     try {
       if (isEdit) {
         await remittancesRepo.update(existing.id, payload, { actorId: userId })
@@ -776,15 +837,24 @@ function RemittanceForm({ userId, existing = null, onClose }) {
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>{isEdit ? 'Editar entrega' : 'Nueva entrega'}</h3>
 
-        <label className="field">
-          <span>Tipo de entrega</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value)} disabled={isEdit}>
-            <option value={DELIVERY_KIND.MONEY}>{DELIVERY_KIND_LABELS.money}</option>
-            <option value={DELIVERY_KIND.PRODUCT}>{DELIVERY_KIND_LABELS.product}</option>
-          </select>
-        </label>
+        {moneyLocked && (
+          <p className="muted">
+            Esta entrega ya se movió: el <strong>monto y los productos quedan fijos</strong>.
+            Puedes corregir los datos del remitente, del beneficiario y la nota.
+          </p>
+        )}
 
-        {isProduct && (
+        {!moneyLocked && (
+          <label className="field">
+            <span>Tipo de entrega</span>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} disabled={isEdit}>
+              <option value={DELIVERY_KIND.MONEY}>{DELIVERY_KIND_LABELS.money}</option>
+              <option value={DELIVERY_KIND.PRODUCT}>{DELIVERY_KIND_LABELS.product}</option>
+            </select>
+          </label>
+        )}
+
+        {!moneyLocked && isProduct && (
           <>
             <p className="field-label">Productos a entregar</p>
             <div className="form-row">
@@ -816,26 +886,28 @@ function RemittanceForm({ userId, existing = null, onClose }) {
           </>
         )}
 
-        <div className="form-row">
-          <label className="field">
-            <span>{isProduct ? 'Monto a cobrar (opcional)' : 'Monto *'}</span>
-            <input
-              autoFocus
-              type="number"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0"
-            />
-          </label>
-          <label className="field">
-            <span>Moneda</span>
-            <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </label>
-        </div>
-        {!isProduct && (
+        {!moneyLocked && (
+          <div className="form-row">
+            <label className="field">
+              <span>{isProduct ? 'Monto a cobrar (opcional)' : 'Monto *'}</span>
+              <input
+                autoFocus
+                type="number"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+            <label className="field">
+              <span>Moneda</span>
+              <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
+        {!moneyLocked && !isProduct && (
           <>
             <label className="field">
               <span>Modo de cobro</span>
@@ -849,7 +921,7 @@ function RemittanceForm({ userId, existing = null, onClose }) {
             )}
           </>
         )}
-        {isProduct && (
+        {!moneyLocked && isProduct && (
           <p className="muted">Producto: se entrega primero y (si hay monto) se cobra después.</p>
         )}
         <label className="field">
@@ -1036,6 +1108,31 @@ function SettlementsSection({ couriers, balances, settlements, userId, userName 
         />
       )}
     </section>
+  )
+}
+
+// Motivo por el que una entrega no se pudo concretar. El mando elige uno y ESE pasa a
+// ser el estado de la entrega, para que el reporte diga POR QUE falla cada una (antes
+// todas terminaban como "Devuelta" y el motivo se perdia).
+function FailReasonModal({ onClose, onPick }) {
+  useEscapeClose(onClose)
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Motivo de la entrega fallida" onClick={(e) => e.stopPropagation()}>
+        <h3>¿Por qué no se entregó?</h3>
+        <p className="muted">
+          El mensajero conserva lo que lleva (efectivo o producto) hasta que lo devuelva.
+        </p>
+        {DELIVERY_FAIL_REASONS.map((s) => (
+          <button key={s} className="btn btn--ghost btn--block" onClick={() => onPick(s)}>
+            {REMITTANCE_STATUS_LABELS[s] || s}
+          </button>
+        ))}
+        <div className="modal__actions">
+          <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
+        </div>
+      </div>
+    </div>
   )
 }
 
