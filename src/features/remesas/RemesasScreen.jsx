@@ -5,6 +5,7 @@ import { ChevronLeft } from 'lucide-react'
 import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { custodyRepo } from '../../repositories/custodyRepo'
 import { settlementsRepo } from '../../repositories/settlementsRepo'
+import { logError } from '../../lib/errorLog'
 import { accountsRepo } from '../../repositories/accountsRepo'
 import { productsRepo } from '../../repositories/productsRepo'
 import { productCustodyRepo } from '../../repositories/productCustodyRepo'
@@ -176,9 +177,12 @@ export function RemesasScreen() {
   // de `deliveries` no, y de ella se re-deriva el estado. La lista de arriba es un
   // useLiveQuery, asi que la correccion se pinta al instante. Gateado por la
   // licencia: sin el modulo 'remesas' no se ejecuta nunca.
+  // Si la reparacion falla NO se rompe la pantalla: queda en el registro local de
+  // errores (Bloque 33) para poder diagnosticarlo, como el resto de la app. Tragarlo
+  // en silencio dejaria un fallo repetido invisible.
   useEffect(() => {
     if (!canRemesas) return
-    remittancesRepo.reconcileFromDeliveries().catch(() => {})
+    remittancesRepo.reconcileFromDeliveries().catch((e) => logError('remesas', e))
   }, [canRemesas])
 
   if (!(isManager || isCourier) || !canRemesas) {

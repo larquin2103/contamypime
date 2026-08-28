@@ -4,6 +4,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { configRepo } from '../../repositories/configRepo'
 import { remittancesRepo } from '../../repositories/remittancesRepo'
+import { logError } from '../../lib/errorLog'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import {
@@ -63,8 +64,15 @@ export function ReportsScreen() {
       // "Asignada" una entrega que ya se entregó. Va AQUÍ y no dentro de los
       // builders para que `remesasReports.js` siga siendo de SOLO LECTURA, como
       // todos los reportes. Idempotente y gateado por la licencia.
+      // La reparacion es BEST-EFFORT: si falla, el reporte se genera igual (con el
+      // estado de hoy) y el fallo queda en el registro local de errores. Una capa
+      // nueva no puede tumbar un camino que ya funcionaba.
       if (key.startsWith('remesas') && hasModule(LICENSE_MODULES.REMESAS)) {
-        await remittancesRepo.reconcileFromDeliveries()
+        try {
+          await remittancesRepo.reconcileFromDeliveries()
+        } catch (e) {
+          logError('remesas', e)
+        }
       }
       // Modulo 'divisas': las columnas USD de los reportes se gatean por el módulo.
       const divisas = hasModule(LICENSE_MODULES.MULTICURRENCY)

@@ -8,6 +8,7 @@ import { isPendingCollection } from '../lib/remesas'
 import { configRepo } from './configRepo'
 import { custodyRepo } from './custodyRepo'
 import { remittancesRepo } from './remittancesRepo'
+import { logError } from '../lib/errorLog'
 
 // Liquidacion de un mensajero (modulo 'remesas') — RECONCILIACION append-only del
 // efectivo en custodia, con el MISMO patron que el cuadre de turno: TEORICO (lo que
@@ -57,7 +58,15 @@ export const settlementsRepo = {
     // "Asignada" no entraria en esta liquidacion, aunque su efectivo SI este
     // descontado del teorico que se esta cuadrando. Es idempotente y solo mira
     // las entregas en curso; con todo en orden no hace nada.
-    await remittancesRepo.reconcileFromDeliveries()
+    // BEST-EFFORT: si la reparacion falla, la liquidacion sigue adelante con el
+    // estado de hoy (el comportamiento previo a este arreglo) en vez de bloquearse.
+    // Lo que quede sin marcar lo toma la siguiente liquidacion, como ya preveia el
+    // diseno. Una capa nueva no puede impedir cuadrar a un mensajero.
+    try {
+      await remittancesRepo.reconcileFromDeliveries()
+    } catch (e) {
+      logError('remesas', e)
+    }
 
     const id = newId()
     const ts = now()
