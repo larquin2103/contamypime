@@ -127,6 +127,11 @@ Importaciones pesadas (xlsx/jspdf/firebase) siempre con `import()` dinámico.
   su sesión ve el **tablero** (solo recetas) y un **Catálogo de la cocina** (los insumos que hay en
   `__cocina`, reusando la vista por ubicación del vendedor, sin turno). El flag `isCook` (en
   `AuthProvider`) **no** entra en `isManager`. Solo existe con el módulo `cocina`.
+- **Mensajero (COURIER, módulo `remesas`)**: rol **acotado** a las entregas. Recibe un **fondo**
+  de efectivo y/o **producto en custodia**, entrega al beneficiario y luego **liquida**. Como el
+  cocinero: **no es mando ni vendedor**, no abre turno ni maneja caja, no ve costos ni datos del
+  dueño. En su sesión ve **solo las entregas que tiene asignadas** y su propia custodia. El flag
+  `isCourier` **no** entra en `isManager`. Solo existe con el módulo `remesas`.
 - **Regla de oro:** solo el vendedor con **su turno abierto** puede vender (ni el dueño sin turno).
   Desde el Bloque 19, **varios vendedores pueden tener turno a la vez** (uno por área); el turno
   es por vendedor (`shiftsRepo.getActiveFor(sellerId)`), no global.
@@ -233,6 +238,61 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   cliente paga en USD o MN (MN = USD × tasa vigente). OFF por defecto. Ver "Divisas" abajo.
 - **`cocina`** — recetas + tablero de cocina: el dueño define recetas (insumos y consumo por unidad)
   y el **Cocinero** (rol `COOK`) elabora y envía a las áreas. OFF por defecto. Ver "Cocina" abajo.
+- **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
+  (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
+  "Entregas" abajo.
+
+## Entregas (módulo `remesas`)
+
+Entregas a domicilio de **dinero** o de **producto**, con el rol acotado **Mensajero**
+(`COURIER`). Gateado por la licencia `remesas`; sin él —y sin el rol— la app queda **idéntica a
+la clásica**. Pantalla única `features/remesas/RemesasScreen.jsx` (`/remesas`, mando y mensajero).
+Repos: `remittancesRepo` (cabecera), `custodyRepo` (efectivo), `productCustodyRepo` (producto),
+`deliveriesRepo`, `settlementsRepo`. Reportes en `features/reports/remesasReports.js`.
+
+- **DOS DINEROS DISTINTOS — no confundirlos nunca:**
+  1. **Lo que paga el remitente** → entra a una **cuenta de tesorería** (`accountMovements`,
+     concepto `entrega`) vía `remittancesRepo.collect`. Anticipado (antes de asignar) o contra
+     entrega (después de entregar, queda "por cobrar" con contador rojo).
+  2. **El fondo del mensajero** → sale de una **cuenta de tesorería** (concepto `fondo`,
+     `custodyRepo.provisionFund`) y entra a su **custodia**; cada entrega se lo descuenta.
+     `returnFund` es el espejo exacto. Es dinero del negocio **en la calle**.
+  La antigua "caja central" (`REMESA_CENTRAL`) quedó **retirada** del flujo: nada la acreditaba
+  y su saldo solo podía ser negativo. Sus movimientos históricos se conservan (append-only).
+- **Custodia = libro propio, saldo derivado.** `custodyMovements` (efectivo) y `productCustody`
+  (producto) son libros **append-only** de los que se DERIVA el saldo por tenedor (nunca se
+  guarda), como el stock sale del libro mayor. La matemática vive en `lib/custodyMath.js` y
+  `lib/productCustodyMath.js` (**puras y testeadas con node**, sin Dexie).
+- **Entrega de PRODUCTO ligada al inventario.** El área centinela `ENTREGAS_AREA = '__entregas'`
+  se surte por el **traspaso normal** (almacén → Entregas) y **se cuenta** en el conteo físico.
+  Asignar carga al mensajero (`DELIVERY_OUT`, rebaja el área); devolver reingresa (`DELIVERY_IN`).
+  Lo que el mensajero ya carga vive en su custodia de producto —**aparte del inventario**— y por
+  eso NO entra en el conteo. `deliver` **valida contra el libro de custodia dentro de la
+  transacción** (candado de última instancia, como `salesRepo`): sin eso se podía devolver el
+  producto y acto seguido marcarlo entregado, contándolo dos veces.
+- **Estados (append-only, nada se borra).** Creada → (cobro) → Fondos disponibles → Asignada →
+  Entregada → **Liquidada** → Cerrada. Una entrega fallida guarda **su motivo** como estado
+  (ausente, dirección incorrecta, rechazada, vencida, en disputa, devuelta, fallida).
+- **Liquidación = cuadre del efectivo del mensajero** (`settlements`), con el mismo patrón que el
+  cierre de turno: teórico (del libro) vs físico (contado) vs diferencia + semáforo. Marca como
+  **Liquidadas** las entregas de ese mensajero que ya estaban entregadas, **de dinero** y **sin
+  cobro pendiente** — estas últimas se excluyen a propósito: "liquidada" habla del efectivo *del
+  mensajero* y "por cobrar" del dinero *que debe el remitente*; marcarlas las sacaría del
+  contador de "Por cobrar".
+- **Editar / eliminar (dos niveles).** Monto, moneda, modo de cobro y productos: **solo antes de
+  cobrar**. Remitente, beneficiario y nota: mientras la entrega siga viva. **Eliminar** es
+  **borrado lógico** (`deletedAt`) y solo si **no se movió nada** (sin cobro, sin mensajero); si
+  ya se movió algo, el camino es **cancelar** (que es un estado, no una desaparición).
+- **Idempotencia.** Todo lo que mueve dinero o inventario usa **ids deterministas con guarda de
+  existencia** (`delivery-out:<entrega>:<producto>`, `custody:deliver:<entrega>`,
+  `acctmov:fund:<mensajero>:<instante>`…) para que un doble toque, un reintento o una fusión de
+  la sync **no puedan duplicar**.
+- **Sincronización.** Seis colecciones nuevas en `SYNC_COLLECTIONS` (`remittances` LWW por
+  `updatedAt`; `custodyMovements`, `deliveries`, `settlements`, `collections`, `productCustody`
+  append-only). `deliveries` y `collections` llevan **foto** de comprobante, así que suben en
+  lotes de **50** (como `images`): a 400 se pasaban del límite de ~10 MiB por petición.
+- **Degradación.** Quitar `remesas` no borra nada (append-only): las tablas quedan como están y
+  solo deja de ofrecerse. Conviene **cambiar el rol** de un Mensajero antes de quitarlo.
 
 ## Mesas (módulo `mesas`)
 
@@ -361,6 +421,9 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
   *Ventas por mesa* (`mesas`), consolidado/salidas/cuadre de **elaboración** (que **no** exponen
   costo ni ganancia, por el alcance del rol), *Mermas* (afectación al costo) y *Producción de cocina*
   (`cocina`: receta, área, unidades y costo de insumos/unitario en MN, sin precio ni ganancia).
+  Con `remesas`, cinco reportes más en `remesasReports.js` (archivo propio, no toca
+  `reportsService.js`): entregas, cobros, custodia, liquidaciones y entregas de producto. Las
+  entregas **eliminadas** (borrado lógico) quedan fuera.
 - **Columnas USD (módulo `divisas`):** todos los reportes con importes/costos ganan columnas de
   **referencia en USD** (precio, importe, costo y sus totales) SOLO con el módulo activo y si hay
   productos en divisa; sin eso, columnas y filas **idénticas** al clásico. Ver "Divisas".
@@ -433,6 +496,22 @@ Versiones en `src/db/db.js`:
   LWW por `updatedAt`). `productions` = bitácora **append-only** de cada elaboración (snapshot para
   el reporte, como `mermas`/`purchases`); el stock lo mueven los `CONVERSION_*/TRANSFER_*` del libro
   mayor. Migración aditiva (dos tablas vacías).
+- **v14**: `notifications` (centro de avisos del dueño). Migración aditiva.
+- **v15**: `remittances`, `deliveries`, `custodyMovements`, `settlements` (módulo `remesas`).
+  `remittances` = cabecera de la entrega (remitente/beneficiario/monto congelados; LWW por
+  `updatedAt`). `deliveries` = bitácora **append-only** de cada intento. `custodyMovements` =
+  libro **append-only** del efectivo en custodia: el saldo por tenedor+moneda se **deriva** de
+  él (índice `[holder+currency]`), nunca se guarda. `settlements` = snapshot de cada liquidación.
+  Migración aditiva (cuatro tablas vacías).
+- **v16**: `collections` (módulo `remesas`): snapshot append-only del **cobro al remitente**
+  (comprobante y pagador). El crédito real vive en `accountMovements`; esto es la constancia.
+  Migración aditiva. Nota: `collections` **no** choca con nada de Dexie (verificado en 4.x); ojo
+  con nombres de tabla como `tables`, `name`, `verno`, `on` o `core`, que **sí** colisionarían en
+  silencio con la instancia (`db.X` no sería la Table y la sync fallaría sin avisar).
+- **v17**: `productCustody` (módulo `remesas`): libro **append-only** del producto que carga el
+  mensajero, **aislado del inventario general** (no entra en el recálculo de `products.stock`).
+  El área `__entregas` sí es inventario y se mueve por `DELIVERY_OUT/IN` en `stockMovements`.
+  Migración aditiva.
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`. El módulo `divisas` añade el campo
@@ -479,7 +558,10 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   y carta de mesas), `divisas` ✅ (precios de catálogo en USD; cobro en USD/MN a la tasa; ticket de
   mesa y reportes con el monto/columnas en USD, todo gateado) y `cocina` ✅ (recetas + tablero: el
   Cocinero elabora y envía a las áreas; motor atómico contra el libro mayor, reporte de producción,
-  cocina contable en el conteo físico y pestaña de cocina en auditoría; rol acotado `COOK`). Cada
+  cocina contable en el conteo físico y pestaña de cocina en auditoría; rol acotado `COOK`) y
+  `remesas` ✅ (entregas de dinero o producto: cobro a tesorería, fondo del mensajero que sale de
+  las cuentas del negocio, custodia de efectivo y de producto con saldo derivado, liquidación con
+  semáforo, editar/eliminar, cinco reportes y pestaña de auditoría; rol acotado `COURIER`). Cada
   uno gateado con `hasModule(...)`.
 
 ## Fase 4 — Sincronización (cómo funciona)
