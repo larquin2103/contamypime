@@ -241,7 +241,12 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   pintaba la salida y el egreso quedaba en **bruto**. Las etiquetas del **origen** (`refType`)
   viven en `ACCOUNT_REF_LABELS` (una sola lista para pantalla y reporte): incluyen `remittance`
   y `fund`, que salían crudos en inglés. Todo **data-driven**: sin el módulo `remesas` no existe
-  ningún movimiento de esos conceptos y no se pinta nada (sin fuga de licencia).
+  ningún movimiento de esos conceptos y no se pinta nada (sin fuga de licencia). **Degradación —
+  decisión del dueño:** si se QUITA `remesas`, esas filas **siguen mostrando su histórico** (no se
+  ocultan). Ese dinero entró y salió de verdad de las cuentas: ocultarlo dejaría la suma de
+  conceptos sin cuadrar con el saldo. No es una fuga (un negocio que nunca tuvo el módulo no tiene
+  esos movimientos y no ve nada); lo que sí desaparece con la licencia es el módulo — pantalla,
+  reportes y rol. **No "corregir" esto ocultando las filas.**
 - **`elaboracion`** — centro de elaboración intermedio (almacén → elaboración → área) con su
   rol acotado `ELABORATION`.
 - **`mesas`** — cuentas abiertas por mesa dentro de un área (cafetería/restaurante). Ver abajo.
