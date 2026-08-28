@@ -451,6 +451,48 @@ solo mando), `RecipeForm` (editor) y `KitchenScreen` (tablero `/cocina`). Repos:
   idéntica. Quitar `cocina` no borra recetas ni elaborados (append-only); conviene **cambiar el rol**
   de un Cocinero antes de quitarlo (si no, queda sin turno ni tablero).
 
+## Estado del trabajo en curso (28-08-2026)
+
+**Rama `claude/awesome-dirac-484azm`: 34 commits por delante de `main`** — todo el módulo de
+Entregas (`remesas`, Fases F1–F9 + Entregas 1–6c) **más** la corrección de la pérdida de estado
+entre dispositivos. `main` sigue en `64542b9` (nada de esto está desplegado todavía).
+
+- **Auditoría profunda completa** hecha antes de fusionar (28-08-2026): las 101 líneas borradas
+  del diff `main..HEAD`, todos los puntos de integración con código existente, el esquema, los
+  repos de dinero y todas las puertas de licencia. **Sin bloqueantes.**
+- **Probado por el dueño en DOS dispositivos reales: funcionó correctamente.** Es la validación
+  de runtime que faltaba (el resto es código + build + pruebas node).
+- `npm run build` limpio y **96 aserciones** en verde en 5 suites node (`dates`, `remesas`,
+  `custodyMath`, `productCustodyMath`, `retryQueue`).
+- **Fusión a `main` = fast-forward limpio** (verificado: `main` es ancestro).
+
+**Hallazgos abiertos (no bloqueantes, decisión del dueño):**
+1. **`custodyRepo.returnFund` no valida el saldo** del mensajero: el mando puede devolver más
+   fondo del que tiene y la custodia queda en negativo mientras la cuenta de tesorería recibe un
+   crédito que no existió. Es asimétrico con `remittancesRepo.returnProduct`, que **sí** valida
+   ("El mensajero no lleva tanto"). Solo lo dispara un error de tecleo del mando. **Pendiente de
+   cerrar** con la misma guarda.
+2. **Byte NUL literal en `src/features/reports/reportsService.js`** (dentro de una cadena, como
+   separador de clave). **Es PREEXISTENTE en `main`**, no lo introduce esta rama. Hace que git
+   trate el archivo como binario (sin diff, sin blame, sin fusión a 3 bandas). No afecta un
+   fast-forward. Sustituirlo por `' '` sería equivalente en runtime.
+3. **Deuda conocida (Hallazgo 5):** el cursor de subida por colección de `pushEngine` puede tapar
+   un registro escrito por debajo de él. `tsAfter` lo hace mucho menos probable (y de hecho
+   RESCATA el caso: una mutación sellada por encima de la versión previa también supera un cursor
+   que esa misma fila había levantado), pero arreglarlo de verdad exige tocar `pushEngine`.
+4. **Quirk preexistente del módulo:** `deliver` y `failReturn` comparten el id determinista
+   `delivery:<entrega>` con guarda de existencia, así que una entrega solo puede tener **una**
+   constancia. Si falló y luego se entregó, no nace fila "entregada" y `reconcileFromDeliveries`
+   no podría repararla. Hoy es inalcanzable desde la UI (`assign` exige FONDOS DISPONIBLES).
+5. **Los relojes de los teléfonos siguen desfasados ~21 s.** El software garantiza el ORDEN, no la
+   hora: las fechas del rastro de auditoría solo se corrigen poniendo fecha y hora **automáticas**
+   en los dos aparatos. Es lo único que no puede arreglar el código.
+
+**Cambio visible declarado:** el panel *Ingresos por concepto* y el reporte *Movimientos de
+cuentas* ahora separan **por moneda**. Con un negocio solo en MN la salida es **idéntica byte a
+byte**; con USD/MLC cambia porque antes se sumaban todas las monedas en un número etiquetado "MN"
+(un cobro en USD engordaba el total como si fuera MN). Es corrección de un error real.
+
 ## Reportes (`features/reports/reportsService.js`, solo lectura)
 
 Cada reporte es un *builder* `build*()` que **solo lee** (`.toArray()` + filtrar/mapear, nunca
