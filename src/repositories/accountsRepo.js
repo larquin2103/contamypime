@@ -208,8 +208,15 @@ export const accountsRepo = {
   },
 
   // Opcion B: ingresos y egresos agrupados por CONCEPTO (de que actividad vino
-  // o salio el dinero), sumado en moneda base MN. Devuelve { credits, debits }
-  // como { concepto: monto }. `movs` opcional (para no releer si ya se tienen).
+  // o salio el dinero) Y POR MONEDA. Devuelve { credits, debits } como
+  // { concepto: { moneda: monto } }. `movs` opcional (para no releer si ya se tienen).
+  //
+  // POR MONEDA, no en MN: antes se sumaban todas las monedas en un solo numero y se
+  // mostraba etiquetado "MN", asi que un cobro en USD engordaba el total como si fuera
+  // MN. No se convierte a MN con la tasa a proposito: la tasa de hoy no es la del dia
+  // del movimiento, y el historico cambiaria de valor cada vez que cambie la tasa. Es
+  // el mismo criterio del panel de custodia y del cuadre de turno: cada moneda por su
+  // lado. Sin USD/MLC (negocio solo en MN) se ve exactamente igual que antes.
   async byConcept({ from = null, to = null, movs = null } = {}) {
     const rows = movs || (await db.accountMovements.toArray())
     const inRange = (iso) => {
@@ -223,8 +230,10 @@ export const accountsRepo = {
     for (const m of rows) {
       if (!inRange(m.createdAt)) continue
       const c = m.concept || 'own'
+      const cur = m.currency || 'MN'
       const bag = m.direction === 'debit' ? debits : credits
-      bag[c] = round2((bag[c] || 0) + Number(m.amount || 0))
+      const byCur = (bag[c] = bag[c] || {})
+      byCur[cur] = round2((byCur[cur] || 0) + Number(m.amount || 0))
     }
     return { credits, debits }
   },

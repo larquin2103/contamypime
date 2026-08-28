@@ -228,7 +228,13 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   y el retiro de efectivo al cerrar turno** con **su propio PIN** vía `OwnerAuthModal self=...`,
   sin necesitar el PIN de un mando; la operación queda a su nombre).
 - **`cuentas`** — proveedores y terceros (consignación, por pagar/cobrar) + cuentas de
-  tesorería del negocio (`features/partners/`, `features/accounts/`).
+  tesorería del negocio (`features/partners/`, `features/accounts/`). *Ingresos por concepto*
+  (`accountsRepo.byConcept`) agrupa por **concepto Y MONEDA** → `{ concepto: { moneda: monto } }`,
+  y tanto la pantalla como el reporte *Movimientos de cuentas* muestran **cada moneda por
+  separado**. **No se convierte a MN con la tasa** a propósito (la de hoy no es la del día del
+  movimiento y el histórico cambiaría de valor); es el criterio del panel de custodia y del cuadre
+  de turno. Antes se sumaban todas las monedas en un solo número etiquetado "MN": un cobro en USD
+  engordaba el total como si fuera MN. Con un negocio solo en MN se ve **igual que siempre**.
 - **`elaboracion`** — centro de elaboración intermedio (almacén → elaboración → área) con su
   rol acotado `ELABORATION`.
 - **`mesas`** — cuentas abiertas por mesa dentro de un área (cafetería/restaurante). Ver abajo.
@@ -269,7 +275,20 @@ Repos: `remittancesRepo` (cabecera), `custodyRepo` (efectivo), `productCustodyRe
   Lo que el mensajero ya carga vive en su custodia de producto —**aparte del inventario**— y por
   eso NO entra en el conteo. `deliver` **valida contra el libro de custodia dentro de la
   transacción** (candado de última instancia, como `salesRepo`): sin eso se podía devolver el
-  producto y acto seguido marcarlo entregado, contándolo dos veces.
+  producto y acto seguido marcarlo entregado, contándolo dos veces. Al **crear** la entrega, el
+  selector ofrece **solo lo que hay en `__entregas`** (`stockByLocation > 0`), **ordenado
+  alfabéticamente** y con la existencia al lado — el mismo criterio de `TransferScreen`, que solo
+  ofrece lo que hay en el almacén. Es un **filtro de la UI**: el candado real sigue siendo
+  `assign` (varias entregas pendientes comparten esa existencia), y la lista avisa en rojo si una
+  línea pide más de lo que hay.
+- **Modo de cobro: idéntico en dinero y en producto.** El dueño elige *anticipado* o *contra
+  entrega* en ambos tipos, y el dinero entra a la **cuenta de tesorería** que él elija por el
+  **mismo camino** (`collect`, concepto `entrega`): anticipado = "Registrar pago" antes de
+  asignar (deja la entrega en *Fondos disponibles*); contra entrega = "Registrar cobro" tras
+  entregar (mientras tanto cuenta en *Por cobrar*). **Por defecto no cambia nada**: dinero sigue
+  naciendo *anticipado* y producto *contra entrega* (`create` sin `paymentMode` da ese clásico).
+  Con anticipado el **monto es obligatorio** (no hay pago de cero); solo el producto *contra
+  entrega* puede ir sin monto (entrega sin cobro), como siempre.
 - **Estados (append-only, nada se borra).** Creada → (cobro) → Fondos disponibles → Asignada →
   Entregada → **Liquidada** → Cerrada. Una entrega fallida guarda **su motivo** como estado
   (ausente, dirección incorrecta, rechazada, vencida, en disputa, devuelta, fallida).

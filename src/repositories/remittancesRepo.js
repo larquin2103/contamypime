@@ -111,7 +111,7 @@ export const remittancesRepo = {
 
   // Crea la orden. Congela remitente/beneficiario/monto (snapshot). Estado inicial
   // CREATED. Todo en una transaccion junto al evento de auditoria.
-  async create({ amount, currency = 'MN', sender = {}, beneficiary = {}, fee = 0, note = '', paymentMode = PAYMENT_MODE.UPFRONT, kind = DELIVERY_KIND.MONEY, items = [], createdBy = null }) {
+  async create({ amount, currency = 'MN', sender = {}, beneficiary = {}, fee = 0, note = '', paymentMode = null, kind = DELIVERY_KIND.MONEY, items = [], createdBy = null }) {
     const isProduct = kind === DELIVERY_KIND.PRODUCT
     const amt = round2(Number(amount) || 0)
     // El monto es obligatorio en entregas de DINERO; en producto puede ser 0 (sin cobro).
@@ -122,11 +122,21 @@ export const remittancesRepo = {
     if (!b.name) throw new Error('El nombre del beneficiario es obligatorio')
     const lines = isProduct ? cleanItems(items) : []
     if (isProduct && lines.length === 0) throw new Error('Agrega al menos un producto que entregar')
-    // Modo de cobro: producto = contra entrega (se entrega y se cobra despues si hay
-    // monto). Dinero: solo dos validos; cualquier otro cae al clasico (anticipado).
-    const mode = isProduct
-      ? PAYMENT_MODE.ON_CREDIT
-      : (paymentMode === PAYMENT_MODE.ON_CREDIT ? PAYMENT_MODE.ON_CREDIT : PAYMENT_MODE.UPFRONT)
+    // Modo de cobro: el dueño lo elige IGUAL en dinero y en producto (el pago entra a
+    // una cuenta de tesoreria por el mismo camino, `collect`). Si no se indica, cada
+    // tipo cae en su modo de SIEMPRE: dinero = anticipado, producto = contra entrega
+    // (asi quien no toque el selector no nota ningun cambio). Cualquier otro valor
+    // tambien cae en ese clasico.
+    const explicit = paymentMode === PAYMENT_MODE.ON_CREDIT || paymentMode === PAYMENT_MODE.UPFRONT
+    const mode = explicit
+      ? paymentMode
+      : (isProduct ? PAYMENT_MODE.ON_CREDIT : PAYMENT_MODE.UPFRONT)
+    // Anticipado = hay un pago que registrar antes de asignar: sin monto no habria
+    // nada que cobrar (en dinero ya se valido arriba; en producto el monto es opcional
+    // SOLO en contra entrega).
+    if (isProduct && mode === PAYMENT_MODE.UPFRONT && amt <= 0) {
+      throw new Error('Con cobro anticipado indica el monto que paga el remitente')
+    }
     const id = newId()
     const ts = now()
     await db.transaction('rw', db.remittances, db.auditEvents, async () => {
@@ -179,10 +189,14 @@ export const remittancesRepo = {
       if (!EDITABLE_CONTACT.has(r.status)) {
         throw new Error('La entrega ya está cerrada: no se puede editar')
       }
+      const isProduct = r.kind === DELIVERY_KIND.PRODUCT
       const patch = { updatedAt: ts }
       if (fields.amount != null) {
         const amt = round2(Number(fields.amount) || 0)
-        if (amt <= 0) throw new Error('El monto debe ser mayor que cero')
+        // En DINERO el monto es obligatorio (como siempre). En PRODUCTO puede quedar en
+        // cero —entrega sin cobro—: antes esta validacion lo impedia y una entrega de
+        // producto sin monto NO se podia editar (ni para corregir un telefono).
+        if (!isProduct && amt <= 0) throw new Error('El monto debe ser mayor que cero')
         patch.amount = amt
       }
       if (fields.currency != null) patch.currency = fields.currency
@@ -201,6 +215,14 @@ export const remittancesRepo = {
         const b = cleanParty(fields.beneficiary)
         if (!b.name) throw new Error('El nombre del beneficiario es obligatorio')
         patch.beneficiary = b
+      }
+      // Misma regla que al crear: con cobro ANTICIPADO hay un pago que registrar, asi
+      // que el monto no puede quedar en cero (se comprueba sobre el resultado de la
+      // edicion, cambie el monto, el modo o ninguno de los dos).
+      const nextMode = patch.paymentMode != null ? patch.paymentMode : r.paymentMode
+      const nextAmount = patch.amount != null ? patch.amount : round2(Number(r.amount) || 0)
+      if (isProduct && nextMode === PAYMENT_MODE.UPFRONT && nextAmount <= 0) {
+        throw new Error('Con cobro anticipado indica el monto que paga el remitente')
       }
       await db.remittances.update(id, patch)
       await db.auditEvents.add({

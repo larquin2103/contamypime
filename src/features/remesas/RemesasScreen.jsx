@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronLeft } from 'lucide-react'
@@ -21,7 +21,7 @@ import { remittanceGroup, isPendingCollection } from '../../lib/remesas'
 import {
   CASH_CURRENCIES, ROLES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
   REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS, DELIVERY_FAIL_REASONS,
-  DELIVERY_KIND, DELIVERY_KIND_LABELS
+  DELIVERY_KIND, DELIVERY_KIND_LABELS, ENTREGAS_AREA, ENTREGAS_AREA_LABEL
 } from '../../db/constants'
 
 // Modulo 'remesas' (F2 Ordenes · F3 Custodia · F4 Mensajeros · F5 Entregas).
@@ -775,16 +775,41 @@ function RemittanceForm({ userId, existing = null, onClose }) {
   const [pickQty, setPickQty] = useState('')
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const isProduct = kind === DELIVERY_KIND.PRODUCT
+  // Solo lo que HAY en el area "Entregas" —lo que el mando le dio salida desde el
+  // almacen— y ordenado alfabeticamente. No se puede prometer lo que no esta ahi: es
+  // la MISMA existencia que valida `remittancesRepo.assign` al cargar al mensajero.
+  // Mismo criterio (y mismo codigo) que la salida a areas, que solo ofrece lo que hay
+  // en el almacen. Se muestra la existencia disponible junto al nombre.
+  const stockEntregas = (p) => Number(p.stockByLocation?.[ENTREGAS_AREA] || 0)
+  const entregasProducts = useMemo(
+    () => (products || [])
+      .filter((p) => stockEntregas(p) > 0)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [products]
+  )
+  // Existencia en Entregas por producto, para avisar en la lista si se pide mas de lo
+  // que hay. Es solo un AVISO: el candado de verdad sigue siendo `assign` (que valida
+  // dentro de su transaccion), porque varias entregas pendientes comparten esa misma
+  // existencia y el almacen puede reponerla antes de asignar.
+  const stockById = useMemo(() => {
+    const m = {}
+    for (const p of (products || [])) m[p.id] = stockEntregas(p)
+    return m
+  }, [products])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   // Dinero y mercancía CONGELADOS: solo se corrigen antes de cobrar. Después ya hay un
   // cobro en una cuenta y/o producto cargado; se editan solo los datos de contacto.
   const moneyLocked = isEdit && existing.status !== REMITTANCE_STATUS.CREATED
+  // Con cobro ANTICIPADO hay un pago que registrar, así que el monto es obligatorio
+  // (en dinero lo es siempre). Solo en producto CONTRA ENTREGA puede quedar en cero
+  // —entrega sin cobro—, que es como funcionaba hasta ahora.
+  const needsAmount = !isProduct || paymentMode === PAYMENT_MODE.UPFRONT
   useEscapeClose(onClose)
 
   // Agrega/quita una linea de producto (se acumula por producto).
   const addItem = () => {
-    const p = products.find((x) => x.id === pickProduct)
+    const p = entregasProducts.find((x) => x.id === pickProduct)
     const qty = Number(pickQty) || 0
     if (!p || qty <= 0) return
     setItems((prev) => {
@@ -853,7 +878,18 @@ function RemittanceForm({ userId, existing = null, onClose }) {
         {!moneyLocked && (
           <label className="field">
             <span>Tipo de entrega</span>
-            <select value={kind} onChange={(e) => setKind(e.target.value)} disabled={isEdit}>
+            {/* Al cambiar el tipo se pone el modo de cobro POR DEFECTO de ese tipo, el
+                mismo de siempre: dinero = anticipado, producto = contra entrega. El
+                dueño puede cambiarlo despues en el selector de abajo. */}
+            <select
+              value={kind}
+              onChange={(e) => {
+                const k = e.target.value
+                setKind(k)
+                setPaymentMode(k === DELIVERY_KIND.PRODUCT ? PAYMENT_MODE.ON_CREDIT : PAYMENT_MODE.UPFRONT)
+              }}
+              disabled={isEdit}
+            >
               <option value={DELIVERY_KIND.MONEY}>{DELIVERY_KIND_LABELS.money}</option>
               <option value={DELIVERY_KIND.PRODUCT}>{DELIVERY_KIND_LABELS.product}</option>
             </select>
@@ -863,19 +899,28 @@ function RemittanceForm({ userId, existing = null, onClose }) {
         {!moneyLocked && isProduct && (
           <>
             <p className="field-label">Productos a entregar</p>
-            <div className="form-row">
-              <label className="field" style={{ flex: 2 }}>
-                <span>Producto</span>
-                <select value={pickProduct} onChange={(e) => setPickProduct(e.target.value)}>
-                  <option value="">— Elige —</option>
-                  {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </label>
-              <label className="field">
-                <span>Cantidad</span>
-                <input type="number" inputMode="decimal" value={pickQty} onChange={(e) => setPickQty(e.target.value)} placeholder="0" />
-              </label>
-            </div>
+            {entregasProducts.length === 0 ? (
+              <p className="muted">
+                No hay existencia en el área <strong>{ENTREGAS_AREA_LABEL}</strong>. Envía primero
+                la mercancía desde <strong>Salida a áreas</strong> (almacén → {ENTREGAS_AREA_LABEL}).
+              </p>
+            ) : (
+              <div className="form-row">
+                <label className="field" style={{ flex: 2 }}>
+                  <span>Producto</span>
+                  <select value={pickProduct} onChange={(e) => setPickProduct(e.target.value)}>
+                    <option value="">— Elige —</option>
+                    {entregasProducts.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name} (hay {stockEntregas(p)})</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Cantidad</span>
+                  <input type="number" inputMode="decimal" value={pickQty} onChange={(e) => setPickQty(e.target.value)} placeholder="0" />
+                </label>
+              </div>
+            )}
             <button type="button" className="btn btn--ghost btn--sm" disabled={!pickProduct || !(Number(pickQty) > 0)} onClick={addItem}>
               + Agregar producto
             </button>
@@ -883,7 +928,12 @@ function RemittanceForm({ userId, existing = null, onClose }) {
               <div className="list" style={{ marginTop: 8 }}>
                 {items.map((it, i) => (
                   <div key={i} className="list-item" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ flex: 1 }}>{it.name} × {it.qty}</span>
+                    <span style={{ flex: 1 }}>
+                      {it.name} × {it.qty}
+                      {Number(it.qty) > Number(stockById[it.productId] || 0) && (
+                        <span className="warn-text"> · en {ENTREGAS_AREA_LABEL} solo hay {Number(stockById[it.productId] || 0)}</span>
+                      )}
+                    </span>
                     <button type="button" className="btn btn--ghost btn--sm warn-text" onClick={() => removeItem(i)}>Quitar</button>
                   </div>
                 ))}
@@ -895,7 +945,7 @@ function RemittanceForm({ userId, existing = null, onClose }) {
         {!moneyLocked && (
           <div className="form-row">
             <label className="field">
-              <span>{isProduct ? 'Monto a cobrar (opcional)' : 'Monto *'}</span>
+              <span>{needsAmount ? 'Monto *' : 'Monto a cobrar (opcional)'}</span>
               <input
                 autoFocus
                 type="number"
@@ -913,7 +963,12 @@ function RemittanceForm({ userId, existing = null, onClose }) {
             </label>
           </div>
         )}
-        {!moneyLocked && !isProduct && (
+        {/* Modo de cobro: IGUAL para dinero y para producto. El dinero del remitente
+            entra a la cuenta de tesoreria que elija el dueño al registrar el pago
+            (anticipado, antes de asignar) o el cobro (contra entrega, tras entregar).
+            En producto el modo por defecto sigue siendo CONTRA ENTREGA, como hasta
+            ahora: quien no lo toque no nota ningun cambio. */}
+        {!moneyLocked && (
           <>
             <label className="field">
               <span>Modo de cobro</span>
@@ -922,13 +977,18 @@ function RemittanceForm({ userId, existing = null, onClose }) {
                 <option value={PAYMENT_MODE.ON_CREDIT}>{PAYMENT_MODE_LABELS.on_credit}</option>
               </select>
             </label>
-            {paymentMode === PAYMENT_MODE.ON_CREDIT && (
-              <p className="muted">Se entrega primero; el cobro al remitente queda “por cobrar”.</p>
+            {paymentMode === PAYMENT_MODE.ON_CREDIT ? (
+              <p className="muted">
+                Se entrega primero; el cobro al remitente queda “por cobrar”
+                {isProduct ? ' (si pusiste monto)' : ''}.
+              </p>
+            ) : (
+              <p className="muted">
+                El remitente paga antes: registra el pago —entra a la cuenta que elijas— y
+                queda lista para asignar al mensajero.
+              </p>
             )}
           </>
-        )}
-        {!moneyLocked && isProduct && (
-          <p className="muted">Producto: se entrega primero y (si hay monto) se cobra después.</p>
         )}
         <label className="field">
           <span>Cargo (opcional)</span>
@@ -987,7 +1047,11 @@ function RemittanceForm({ userId, existing = null, onClose }) {
           <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
           <button
             className="btn btn--primary"
-            disabled={busy || !sName.trim() || !bName.trim() || (isProduct ? items.length === 0 : !(Number(amount) > 0))}
+            disabled={
+              busy || !sName.trim() || !bName.trim() ||
+              (isProduct && items.length === 0) ||
+              (needsAmount && !(Number(amount) > 0))
+            }
             onClick={save}
           >
             {busy ? 'Guardando…' : (isEdit ? 'Guardar cambios' : 'Crear entrega')}

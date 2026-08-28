@@ -149,33 +149,44 @@ function UnifiedPartners({ partners, partnerBal, onGo }) {
   )
 }
 
+// Importes de un concepto POR MONEDA: [[moneda, monto], ...] con lo que no es cero.
+// El dinero de cada moneda va por su lado (no se convierte a MN con la tasa: la de
+// hoy no es la del dia del movimiento). Mismo criterio que el panel de custodia.
+function concepto(map, key) {
+  return Object.entries(map?.[key] || {}).filter(([, v]) => Math.abs(Number(v) || 0) >= 0.01)
+}
+
 // Opcion B: ingresos por concepto (de que actividad vino el dinero) y egresos.
 function IncomeByConcept({ byConcept }) {
   const { credits = {}, debits = {} } = byConcept || {}
-  // Cada fila se pinta solo si su importe es > 0, asi que las claves del modulo
+  // Cada fila se pinta solo si tiene importe, asi que las claves del modulo
   // 'remesas' ('entrega' ingreso, 'fondo' egreso) no cambian nada sin el modulo:
-  // sin entregas ni fondos valen 0 y no se renderizan.
+  // sin entregas ni fondos no hay movimientos y no se renderizan.
   const incomeKeys = ['own', 'consignment', 'thirdparty', 'entrega']
   const egressKeys = ['provider', 'withdrawal', 'fondo']
-  const anyIncome = incomeKeys.some((k) => (credits[k] || 0) > 0)
-  const anyEgress = egressKeys.some((k) => (debits[k] || 0) > 0)
+  const anyIncome = incomeKeys.some((k) => concepto(credits, k).length > 0)
+  const anyEgress = egressKeys.some((k) => concepto(debits, k).length > 0)
   if (!anyIncome && !anyEgress) return null
 
   return (
     <section className="card">
       <h3>Ingresos por concepto</h3>
-      <p className="muted">De qué actividad vino el dinero (en MN, todo el historial).</p>
-      {incomeKeys.map((k) => (credits[k] || 0) > 0 && (
+      <p className="muted">De qué actividad vino el dinero (cada moneda por separado, todo el historial).</p>
+      {incomeKeys.map((k) => concepto(credits, k).length > 0 && (
         <div key={k} className="kv">
           <span className="muted">{ACCOUNT_CONCEPTS[k]}</span>
-          <strong className="ok-text">+{formatMoney(credits[k], 'MN')}</strong>
+          <strong className="ok-text">
+            {concepto(credits, k).map(([c, v]) => `+${formatMoney(v, c)}`).join(' · ')}
+          </strong>
         </div>
       ))}
       {anyEgress && <p className="muted" style={{ marginTop: 8 }}>Egresos</p>}
-      {egressKeys.map((k) => (debits[k] || 0) > 0 && (
+      {egressKeys.map((k) => concepto(debits, k).length > 0 && (
         <div key={k} className="kv">
           <span className="muted">{ACCOUNT_CONCEPTS[k]}</span>
-          <strong className="warn-text">−{formatMoney(debits[k], 'MN')}</strong>
+          <strong className="warn-text">
+            {concepto(debits, k).map(([c, v]) => `−${formatMoney(v, c)}`).join(' · ')}
+          </strong>
         </div>
       ))}
     </section>

@@ -814,15 +814,25 @@ export async function buildAccountsReport({ from = null, to = null } = {}) {
     withdrawal: 'Extracciones de caja',
     manual: 'Ajustes manuales'
   }
+  // Una linea por concepto Y MONEDA, con su moneda real en la columna "Moneda":
+  // antes se sumaban todas las monedas en un solo importe etiquetado "MN" (un cobro
+  // en USD engordaba el total como si fuera MN). No se convierte a MN con la tasa
+  // (la de hoy no es la del dia del movimiento). Con un negocio solo en MN, el
+  // reporte sale identico al de siempre.
+  const conceptRows = (map, keys, credit) => {
+    for (const k of keys) {
+      for (const [cur, v] of Object.entries(map[k] || {})) {
+        const amt = round2(Number(v) || 0)
+        if (amt <= 0) continue
+        rows.push(['', conceptLabels[k], '', '', credit ? amt : '', credit ? '' : amt, cur, '', ''])
+      }
+    }
+  }
   rows.push(['', '', '', '', '', '', '', '', ''])
   rows.push(['INGRESOS POR CONCEPTO', '', '', '', '', '', '', '', ''])
-  for (const k of ['own', 'consignment', 'thirdparty', 'manual']) {
-    if ((credits[k] || 0) > 0) rows.push(['', conceptLabels[k], '', '', round2(credits[k]), '', 'MN', '', ''])
-  }
+  conceptRows(credits, ['own', 'consignment', 'thirdparty', 'manual'], true)
   rows.push(['EGRESOS POR CONCEPTO', '', '', '', '', '', '', '', ''])
-  for (const k of ['provider', 'withdrawal', 'manual']) {
-    if ((debits[k] || 0) > 0) rows.push(['', conceptLabels[k], '', '', '', round2(debits[k]), 'MN', '', ''])
-  }
+  conceptRows(debits, ['provider', 'withdrawal', 'manual'], false)
 
   return {
     title: 'Movimientos de cuentas',
