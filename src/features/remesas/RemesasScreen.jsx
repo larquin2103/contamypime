@@ -19,7 +19,7 @@ import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { remittanceGroup, isPendingCollection } from '../../lib/remesas'
 import {
-  CASH_CURRENCIES, ROLES, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
+  CASH_CURRENCIES, ROLES, ROLE_LABELS, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
   REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS, DELIVERY_FAIL_REASONS,
   DELIVERY_KIND, DELIVERY_KIND_LABELS, ENTREGAS_AREA, ENTREGAS_AREA_LABEL
 } from '../../db/constants'
@@ -185,6 +185,15 @@ export function RemesasScreen() {
   }
 
   const userName = (id) => users.find((u) => u.id === id)?.name || '—'
+  // Quién creó la entrega: nombre + rol (Dueño / Administrativo). El rol sale del
+  // CONGELADO en la entrega (`createdByRole`); las entregas anteriores a ese campo
+  // caen al rol actual del usuario, que es lo mejor que se puede saber de ellas.
+  const authorLabel = (r) => {
+    const u = users.find((x) => x.id === r.createdBy)
+    const roleTxt = ROLE_LABELS[r.createdByRole || u?.role] || ''
+    const name = u?.name || '—'
+    return roleTxt ? `${name} · ${roleTxt}` : name
+  }
   const couriers = users.filter((u) => u.role === ROLES.COURIER && u.active)
   // El mensajero ve SOLO sus remesas asignadas; el mando ve todas.
   const remittances = isManager ? allRemittances : allRemittances.filter((r) => r.assignedCourierId === user.id)
@@ -200,6 +209,7 @@ export function RemesasScreen() {
         isManager={isManager}
         couriers={couriers}
         userName={userName}
+        authorLabel={authorLabel}
         onBack={() => setOpenId(null)}
       />
     )
@@ -274,7 +284,7 @@ export function RemesasScreen() {
 }
 
 // Detalle de una remesa: partes, monto, estado y acciones segun el rol.
-function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName, onBack }) {
+function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName, authorLabel, onBack }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
@@ -380,6 +390,12 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
           <span className="muted">Creada</span>
           <span>{formatDateTime(r.createdAt)}</span>
         </div>
+        {r.createdBy && (
+          <div className="kv">
+            <span className="muted">Creada por</span>
+            <span>{authorLabel(r)}</span>
+          </div>
+        )}
         {r.updatedAt && r.updatedAt !== r.createdAt && (
           <div className="kv">
             <span className="muted">Última actualización</span>

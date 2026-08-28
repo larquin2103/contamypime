@@ -139,7 +139,16 @@ export const remittancesRepo = {
     }
     const id = newId()
     const ts = now()
-    await db.transaction('rw', db.remittances, db.auditEvents, async () => {
+    await db.transaction('rw', db.remittances, db.auditEvents, db.users, async () => {
+      // Rol de quien la crea, CONGELADO en la entrega (dueño o administrativo). Se lee
+      // aqui de la base —no lo dice el llamador— para que sea el rol de verdad. Va
+      // congelado porque el rol CAMBIA (Ajustes -> Usuarios, `usersRepo.setRole`): si
+      // se leyera el actual, un administrativo que mañana pase a vendedor haria que la
+      // entrega dijera "Vendedor" y el reporte mentiria sobre quien la creo. Misma
+      // disciplina que el precio congelado por linea de venta.
+      // Campo NUEVO, opcional y SIN indice (como `sales.area`): no necesita migracion,
+      // y las entregas anteriores se muestran con el rol actual como respaldo.
+      const author = createdBy ? await db.users.get(createdBy) : null
       await db.remittances.add({
         id,
         status: REMITTANCE_STATUS.CREATED,
@@ -155,6 +164,7 @@ export const remittancesRepo = {
         assignedCourierId: null,
         note: String(note || '').trim(),
         createdBy,
+        createdByRole: author?.role || null,
         createdAt: ts,
         updatedAt: ts
       })

@@ -1,7 +1,7 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
 import { round2 } from '../../lib/currency'
-import { REMITTANCE_STATUS_LABELS, DELIVERY_RESULT, SEMAPHORE, DELIVERY_KIND } from '../../db/constants'
+import { REMITTANCE_STATUS_LABELS, DELIVERY_RESULT, SEMAPHORE, DELIVERY_KIND, ROLE_LABELS } from '../../db/constants'
 
 // Reportes del modulo 'remesas' (solo lectura). Mismo contrato que reportsService:
 // cada builder recibe { from, to } y devuelve { title, subtitle, head, rows,
@@ -21,6 +21,15 @@ async function userMap() {
   const users = await db.users.toArray()
   const m = {}
   for (const u of users) m[u.id] = u.name
+  return m
+}
+
+// Rol ACTUAL de cada usuario. Va en su propio mapa (no dentro de userMap) para no
+// cambiarle la forma, que usan los otros cuatro reportes de este archivo.
+async function userRoleMap() {
+  const users = await db.users.toArray()
+  const m = {}
+  for (const u of users) m[u.id] = u.role
   return m
 }
 
@@ -54,6 +63,17 @@ const SEMAPHORE_LABEL = {
 // Remesas: cada orden con su estado actual, monto y mensajero asignado.
 export async function buildRemittancesReport({ from = null, to = null } = {}) {
   const names = await userMap()
+  const roles = await userRoleMap()
+  // Quien creo la entrega: nombre + rol (Dueño / Administrativo). El rol sale del
+  // CONGELADO en la entrega (`createdByRole`); las anteriores a ese campo caen al rol
+  // actual del usuario, que es lo mejor que se puede saber de ellas.
+  const author = (r) => {
+    if (!r.createdBy) return ''
+    const name = names[r.createdBy] || ''
+    const roleTxt = ROLE_LABELS[r.createdByRole || roles[r.createdBy]] || ''
+    if (name && roleTxt) return `${name} (${roleTxt})`
+    return name || roleTxt
+  }
   const list = (await db.remittances.toArray())
     // Las eliminadas (borrado logico) no entran al reporte; siguen en la base.
     .filter((r) => !r.deletedAt && inRange(r.createdAt, from, to))
@@ -65,13 +85,14 @@ export async function buildRemittancesReport({ from = null, to = null } = {}) {
     round2(Number(r.amount || 0)),
     r.currency || 'MN',
     REMITTANCE_STATUS_LABELS[r.status] || r.status || '',
-    r.assignedCourierId ? (names[r.assignedCourierId] || '') : ''
+    r.assignedCourierId ? (names[r.assignedCourierId] || '') : '',
+    author(r)
   ])
-  if (rows.length === 0) rows.push(['Sin entregas en el periodo', '', '', '', '', '', ''])
+  if (rows.length === 0) rows.push(['Sin entregas en el periodo', '', '', '', '', '', '', ''])
   return {
     title: 'Entregas',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Remitente', 'Beneficiario', 'Monto', 'Moneda', 'Estado', 'Mensajero'],
+    head: ['Fecha', 'Remitente', 'Beneficiario', 'Monto', 'Moneda', 'Estado', 'Mensajero', 'Creada por'],
     rows,
     filename: 'entregas',
     orientation: 'landscape'
