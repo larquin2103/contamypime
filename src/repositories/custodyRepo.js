@@ -149,6 +149,9 @@ export const custodyRepo = {
   // reaparezca en la tesoreria. Lo que no se devuelve queda en su custodia para el
   // dia siguiente. Sin el modulo 'cuentas' se devuelve sin acreditar cuenta, y el id
   // se deriva del contenido igual que en la dotacion.
+  //
+  // NO se puede devolver mas efectivo del que el mensajero lleva: se valida contra el
+  // saldo DERIVADO del libro, dentro de la misma transaccion (ver la guarda abajo).
   async returnFund({ courierId, amount, currency = 'MN', accountId = null, actorId = null }) {
     const amt = round2(Number(amount) || 0)
     if (amt <= 0) throw new Error('El monto a devolver debe ser mayor que cero')
@@ -162,6 +165,22 @@ export const custodyRepo = {
       const cur = acc ? acc.currency : currency
       const op = `${courierId}:${ts}`
       if (await db.custodyMovements.get(`fundret-out:${op}`)) return // ya devuelto: idempotente
+      // Candado de ultima instancia: el saldo se DERIVA del libro AQUI DENTRO (no de
+      // una cache), igual que `remittancesRepo.returnProduct` valida el producto que
+      // carga el mensajero y que `salesRepo` revalida contra el libro mayor. Sin esto,
+      // un error de tecleo del mando dejaba la custodia en NEGATIVO y, peor, acreditaba
+      // a la tesoreria un efectivo que nunca volvio de la calle.
+      // Va DESPUES de la guarda de idempotencia a proposito: si la devolucion ya se
+      // aplico, el saldo YA bajo, y un reintento (doble toque, fusion de la sync) debe
+      // salir en silencio como hasta ahora, no fallar aqui.
+      // Se compara por MONEDA (`cur`, la de la cuenta si la hay): devolver a una cuenta
+      // en una moneda que el mensajero no lleva da saldo 0 y se rechaza, que es lo
+      // correcto. `custodyRepo.` y no `this.`: la pantalla desestructura el metodo
+      // (`const fn = provision ? ... : custodyRepo.returnFund`) y `this` se pierde.
+      const have = Number((await custodyRepo.balanceOf(courierId))[cur] || 0)
+      if (amt > have) {
+        throw new Error(`El mensajero no lleva tanto efectivo (lleva ${have} ${cur})`)
+      }
       await custodyRepo.addMovementRaw({
         id: `fundret-out:${op}`, holder: courierId, direction: 'debit',
         amount: amt, currency: cur, type: CUSTODY_MOVEMENT_TYPES.FUND,

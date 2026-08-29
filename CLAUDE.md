@@ -498,13 +498,18 @@ local `main` también se queda atrás: es solo el ref, no afecta a lo publicado
   de runtime; el resto es código + build + pruebas node. **No se probó la app en ejecución**
   durante la auditoría (ni un cobro, ni una liquidación, ni una fusión entre dos aparatos).
 
+**CERRADO — `custodyRepo.returnFund` ya valida el saldo (28-08-2026).** Era el único hallazgo con
+consecuencia **contable**: el mando podía devolver más fondo del que el mensajero llevaba, la
+custodia quedaba en negativo y la tesorería recibía un crédito por un efectivo que nunca volvió de
+la calle. Ahora lleva el **mismo candado de última instancia** que su espejo
+`remittancesRepo.returnProduct`: el saldo se **deriva del libro dentro de la misma transacción**
+(no de una caché) y se compara **por moneda**. La guarda va **después** de la de idempotencia a
+propósito — un reintento de una devolución ya aplicada debe salir en silencio, no fallar, porque
+el saldo ya bajó. Devolver el fondo **completo** sigue permitido (es el caso normal); solo se
+rechaza pasarse. Único llamador: la pantalla de Entregas, que ya mostraba el saldo y pinta el
+error. La liquidación no llama a `returnFund` (solo lee `balanceOf`), así que no cambia.
+
 **Hallazgos abiertos (no bloqueantes, decisión del dueño):**
-1. **`custodyRepo.returnFund` no valida el saldo** del mensajero (`custodyRepo.js:152`, solo
-   comprueba `amt > 0`): el mando puede devolver más fondo del que tiene y la custodia queda en
-   negativo mientras la cuenta de tesorería recibe un crédito que no existió. Es asimétrico con
-   `remittancesRepo.returnProduct`, que **sí** valida ("El mensajero no lleva tanto"). Solo lo
-   dispara un error de tecleo del mando. **Pendiente de cerrar** con la misma guarda. Es el único
-   hallazgo con consecuencia **contable**.
 2. **Byte NUL literal** en `src/features/reports/reportsService.js` (dentro de una cadena, como
    separador de clave). **Es PREEXISTENTE en `main`**, no lo introduce esta rama. **CORRECCIÓN a
    la versión anterior de esta nota, que exageraba el efecto:** git lo trata como TEXTO con
