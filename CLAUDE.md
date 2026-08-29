@@ -59,6 +59,17 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
+**Pruebas:** NO hay script `npm test` (ni linter). Las 5 suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (96 aserciones en total). Ojo: cuatro viven en `src/lib/`
+pero `retryQueue.test.mjs` está en `src/features/sync/`, así que un glob `src/lib/*.test.mjs`
+**se la salta**:
+
+```bash
+for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
+         src/lib/productCustodyMath.test.mjs src/lib/remesas.test.mjs \
+         src/features/sync/retryQueue.test.mjs; do node "$t"; done
+```
+
 `firebase-tools` es una CLI **global por máquina** (no viene con `npm install`):
 `npm install -g firebase-tools` + `firebase login`. Reglas de Firestore:
 `firebase deploy --only firestore:rules`.
@@ -453,40 +464,82 @@ solo mando), `RecipeForm` (editor) y `KitchenScreen` (tablero `/cocina`). Repos:
 
 ## Estado del trabajo en curso (28-08-2026)
 
-**Rama `claude/awesome-dirac-484azm`: 34 commits por delante de `main`** — todo el módulo de
+**FUSIONADO A `main`.** `origin/main` está en **`864a440`**, idéntico byte a byte a
+`claude/awesome-dirac-484azm` (`git diff HEAD origin/main` vacío, divergencia `0/0`). El
+fast-forward se registró el **28-08-2026 21:20**. Subieron los **34 commits** del módulo de
 Entregas (`remesas`, Fases F1–F9 + Entregas 1–6c) **más** la corrección de la pérdida de estado
-entre dispositivos. `main` sigue en `64542b9` (nada de esto está desplegado todavía).
+entre dispositivos. **Ojo:** el ref local `origin/main` se queda viejo; **hacer `git fetch` antes
+de juzgar** si algo está fusionado (sin él se lee `64542b9` y parece que falta subir). La rama
+local `main` también se queda atrás: es solo el ref, no afecta a lo publicado
+(`git branch -f main origin/main` la realinea).
 
-- **Auditoría profunda completa** hecha antes de fusionar (28-08-2026): las 101 líneas borradas
-  del diff `main..HEAD`, todos los puntos de integración con código existente, el esquema, los
-  repos de dinero y todas las puertas de licencia. **Sin bloqueantes.**
+**Auditoría de la fusión (28-08-2026, verificada, no asumida):**
+- **Esquema:** v15/v16/v17 solo **añaden tablas vacías**, sin `.upgrade()` y sin tocar ningún
+  store existente. Ningún nombre de tabla nuevo colisiona con la instancia Dexie (comprobado
+  **empíricamente en 4.4.4**: `remittances`, `custodyMovements`, `deliveries`, `settlements`,
+  `collections`, `productCustody`).
+- **Firestore:** `firestore.rules` usa comodín `{document=**}` → cubre las 6 colecciones nuevas.
+  **NO hace falta redesplegar reglas.**
+- **Cambio de forma:** `accountsRepo.byConcept` pasó de `{concepto: monto}` a
+  `{concepto: {moneda: monto}}`. Tiene **exactamente dos** consumidores (`AccountsScreen` y
+  `reportsService`) y **ambos están adaptados**. Un tercero sin adaptar fallaría en SILENCIO
+  (`{} > 0` es `false` → filas desaparecidas): si se añade otro, adaptarlo.
+- **`tsAfter` sobre producción:** los campos sellados coinciden con `TS_FIELDS` de `syncTs`
+  (`counts`: updatedAt+createdAt; `orders`: updatedAt+closedAt+openedAt; `orderItems`:
+  updatedAt+createdAt). En `addItem` (camino caliente de mesas) `order` ya se leía antes: **no
+  añade E/S**.
+- **Libro mayor:** `DELIVERY_OUT` con `qty` negativa e `IN` positiva en `__entregas`;
+  `ledgerKey` los mapea a claves YA existentes (`traspOut`/`traspIn`) → el submayor de un negocio
+  sin el módulo sale **idéntico**.
+- **Puertas de licencia: sin fugas.** Y gateadas **en la consulta**, no solo en el render
+  (`canRemesas ? repo.list() : Promise.resolve([])` en Home y Auditoría).
+- `npm run build` **limpio** (exit 0) y **96 aserciones** en verde en 5 suites node.
 - **Probado por el dueño en DOS dispositivos reales: funcionó correctamente.** Es la validación
-  de runtime que faltaba (el resto es código + build + pruebas node).
-- `npm run build` limpio y **96 aserciones** en verde en 5 suites node (`dates`, `remesas`,
-  `custodyMath`, `productCustodyMath`, `retryQueue`).
-- **Fusión a `main` = fast-forward limpio** (verificado: `main` es ancestro).
+  de runtime; el resto es código + build + pruebas node. **No se probó la app en ejecución**
+  durante la auditoría (ni un cobro, ni una liquidación, ni una fusión entre dos aparatos).
 
 **Hallazgos abiertos (no bloqueantes, decisión del dueño):**
-1. **`custodyRepo.returnFund` no valida el saldo** del mensajero: el mando puede devolver más
-   fondo del que tiene y la custodia queda en negativo mientras la cuenta de tesorería recibe un
-   crédito que no existió. Es asimétrico con `remittancesRepo.returnProduct`, que **sí** valida
-   ("El mensajero no lleva tanto"). Solo lo dispara un error de tecleo del mando. **Pendiente de
-   cerrar** con la misma guarda.
-2. **Byte NUL literal en `src/features/reports/reportsService.js`** (dentro de una cadena, como
-   separador de clave). **Es PREEXISTENTE en `main`**, no lo introduce esta rama. Hace que git
-   trate el archivo como binario (sin diff, sin blame, sin fusión a 3 bandas). No afecta un
-   fast-forward. Sustituirlo por `' '` sería equivalente en runtime.
+1. **`custodyRepo.returnFund` no valida el saldo** del mensajero (`custodyRepo.js:152`, solo
+   comprueba `amt > 0`): el mando puede devolver más fondo del que tiene y la custodia queda en
+   negativo mientras la cuenta de tesorería recibe un crédito que no existió. Es asimétrico con
+   `remittancesRepo.returnProduct`, que **sí** valida ("El mensajero no lleva tanto"). Solo lo
+   dispara un error de tecleo del mando. **Pendiente de cerrar** con la misma guarda. Es el único
+   hallazgo con consecuencia **contable**.
+2. **Byte NUL literal** en `src/features/reports/reportsService.js` (dentro de una cadena, como
+   separador de clave). **Es PREEXISTENTE en `main`**, no lo introduce esta rama. **CORRECCIÓN a
+   la versión anterior de esta nota, que exageraba el efecto:** git lo trata como TEXTO con
+   normalidad — `git diff --numstat` da `39 21` y `git blame` funciona. Los únicos afectados son
+   `grep`/ripgrep, que se saltan su contenido. Es molestia de herramientas, **no** riesgo de
+   fusión. Sustituirlo por un espacio sería equivalente en runtime.
 3. **Deuda conocida (Hallazgo 5):** el cursor de subida por colección de `pushEngine` puede tapar
    un registro escrito por debajo de él. `tsAfter` lo hace mucho menos probable (y de hecho
    RESCATA el caso: una mutación sellada por encima de la versión previa también supera un cursor
    que esa misma fila había levantado), pero arreglarlo de verdad exige tocar `pushEngine`.
 4. **Quirk preexistente del módulo:** `deliver` y `failReturn` comparten el id determinista
-   `delivery:<entrega>` con guarda de existencia, así que una entrega solo puede tener **una**
-   constancia. Si falló y luego se entregó, no nace fila "entregada" y `reconcileFromDeliveries`
-   no podría repararla. Hoy es inalcanzable desde la UI (`assign` exige FONDOS DISPONIBLES).
+   `delivery:<entrega>` (`remittancesRepo.js:472` y `:519`) con guarda de existencia, así que una
+   entrega solo puede tener **una** constancia. Si falló y luego se entregó, no nace fila
+   "entregada" y `reconcileFromDeliveries` no podría repararla. Hoy es inalcanzable desde la UI
+   (`assign` exige FONDOS DISPONIBLES).
 5. **Los relojes de los teléfonos siguen desfasados ~21 s.** El software garantiza el ORDEN, no la
    hora: las fechas del rastro de auditoría solo se corrigen poniendo fecha y hora **automáticas**
    en los dos aparatos. Es lo único que no puede arreglar el código.
+
+**Hallazgos NUEVOS de la auditoría del 28-08-2026:**
+6. **El despliegue es de IDA: el retroceso NO puede ser `git revert` de `main`.** No hay manejo de
+   `VersionError` en ninguna parte. En cuanto un teléfono abre el build nuevo, su IndexedDB queda
+   en **v17**; volver a un build que pide v14 deja ese aparato **sin poder abrir la base** (y el
+   `ErrorBoundary` mostraría un error, no una app funcionando). Es inherente a cualquier subida de
+   esquema, pero aquí suben tres de golpe. **Antes de actualizar, hacer respaldo** (`/backup`) de
+   un dispositivo bueno: ese es el plan de retroceso real.
+7. **El bundle creció 785.89 KB → 856.31 KB** (gzip 231.13 → 248.30, **+7.4%**), medido
+   construyendo `64542b9` en un worktree aparte. `RemesasScreen` (1522 líneas) entra por **import
+   estático** en `router.jsx`, así que ese peso **lo pagan también los negocios SIN la licencia**.
+   Es coherente con cómo entran las demás pantallas, pero es la más grande: si el peso llega a
+   molestar en datos móviles, la salida es `React.lazy` en la ruta.
+8. **No hay linter configurado** (ni `.eslintrc*` ni script `lint`): `npm run build` es la **única**
+   puerta estática. Nadie detecta variables muertas ni imports huérfanos.
+9. **`CLAUDE.md` tenía su propio byte NUL** (línea 478), escrito por accidente al documentar el
+   hallazgo 2 — la nota sobre el NUL contenía un NUL. **Ya eliminado.**
 
 **Cambio visible declarado:** el panel *Ingresos por concepto* y el reporte *Movimientos de
 cuentas* ahora separan **por moneda**. Con un negocio solo en MN la salida es **idéntica byte a
