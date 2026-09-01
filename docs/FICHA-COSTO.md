@@ -193,13 +193,24 @@ Con Total y firmas.
    UM, nivel de producción, % de capacidad, versión y estado), cuerpo, y pie de firmas
    *Elaborado por* / *Aprobado por* con cargo. La acción vive en el bloque 9 del editor: una hoja
    de exportación con 3 filas × (PDF | Excel).
-   - **Esto SIMPLIFICA F9:** `exportExcel`/`exportPdf` soportan **una sola tabla por archivo**, y
-     cada hoja ES una tabla. Se usan tal cual, sin exportador propio y sin tocar la función
-     compartida por los otros ~20 reportes. El riesgo que se había señalado desaparece con este
-     requisito.
-   - **Lo que SÍ hay que escribir en F9:** las funciones compartidas solo pintan la tabla, no
-     saben poner encabezado ni pie de firmas. Ese añadido va **dentro de `fichaReports.js`**, por
-     encima de `exportPdf`, sin modificarla.
+   - **Una sola tabla por archivo:** `exportExcel`/`exportPdf` solo saben pintar una tabla, y
+     cada hoja ES una tabla. Esa parte encaja tal cual.
+   - **CORRECCIÓN 01-09-2026 (verificada en código, decisión del dueño).** La versión anterior de
+     esta decisión decía que el encabezado y el pie de firmas se añadirían "dentro de
+     `fichaReports.js`, por encima de `exportPdf`, sin modificarla". **Eso es imposible:**
+     `exportPdf` (`src/features/reports/reportsService.js:1504`) construye el `jsPDF` **dentro** y
+     termina llamando a `doc.save()`; no devuelve el documento ni admite ganchos. `exportExcel`
+     (`:1492`) solo hace `aoa_to_sheet([head, ...rows])`. Envolverlas desde fuera no puede añadir
+     nada al archivo.
+   - **Camino aprobado: ampliar las dos funciones compartidas de forma ADITIVA.** Se les añaden
+     dos campos **opcionales** del reporte, `report.header` y `report.footer`. `exportPdf` los
+     pinta antes de `autoTable` y después de la tabla; `exportExcel` los inserta como filas al
+     principio y al final de la hoja. **Los ~20 reportes actuales no pasan ninguno de los dos, así
+     que su salida queda idéntica** (regla 2: cambio aditivo, comportamiento por defecto igual al
+     clásico). `fichaReports.js` solo arma `header`/`footer` y los entrega.
+   - **Verificación obligatoria en F9 (no opcional):** exportar en PDF y en Excel **al menos un
+     reporte preexistente** (p. ej. *Inventario por ubicación*, que no usa rango) antes y después
+     del cambio y comprobar que el archivo sale igual. Sin esa comprobación F9 no se da por hecha.
    - Orientación por hoja: 1 Ficha (16 filas, 2 columnas) vertical · 2 Insumos (7 columnas)
      vertical · 3 Salario (9 columnas) **horizontal**.
 
@@ -243,8 +254,20 @@ Registro:
   muten en segundos, que es el criterio documentado en `CLAUDE.md`. Se sella con `now()`, como
   `recipes`.
 - **Sync:** `{ name: 'costSheets', pk: 'id' }` en `SYNC_COLLECTIONS`, LWW por `updatedAt`, lote de
-  400 (no lleva fotos). `firestore.rules` usa comodín `{document=**}`, así que **no hay que
-  redesplegar reglas**.
+  400 (no lleva fotos: `PHOTO_COLLECTIONS` en `pushEngine.js:42` solo mete en lotes de 50 a
+  `images`/`deliveries`/`collections`, y `costSheets` no entra ahí). `firestore.rules` usa comodín
+  `{document=**}`, así que **no hay que redesplegar reglas**.
+- **`approve()` TIENE que sellar también `updatedAt`. No es estilo: es la diferencia entre que la
+  aprobación suba o no suba.** Verificado en código: `TS_FIELDS` (`src/features/sync/collections.js:97`)
+  es `['updatedAt','settledAt','closedAt','openedAt','effectiveFrom','createdAt']` y **`approvedAt`
+  NO está en esa lista**; `pushEngine` selecciona lo que sube con `syncTs(r) > cursor`
+  (`pushEngine.js:138-139`). Una aprobación que solo escriba `approvedAt`/`status` **no cambia
+  `syncTs`, no supera el cursor y NUNCA se sube**: el otro dispositivo seguiría viendo la ficha en
+  borrador, sin error visible en ninguna parte. Lo mismo vale para cualquier transición futura de
+  `status` (`sustituida`, `deletedAt`): **toda mutación de `costSheets` sella `updatedAt`**, que es
+  además la regla general de `CLAUDE.md`. Se resuelve así y **no** añadiendo `approvedAt` a
+  `TS_FIELDS`, para no tocar un fichero del que dependen las 30 colecciones que hoy sincronizan
+  bien.
 - **F0 obligatoria:** comprobar **empíricamente** que `costSheets` no colisiona con una propiedad
   de la instancia Dexie 4.x (`tables`, `name`, `verno`, `on`, `core` sí colisionan **en
   silencio**). Es el mismo chequeo que se hizo con `remittances`/`collections`.
@@ -324,7 +347,8 @@ Delta del gasto material Base→Nuevo: **+5,6 %**.
 `TransferScreen`) · `product.cost` congelado · `isForeignPriced`/`foreignToBase`/`ratesRepo`
 congelando el par `priceCurrency`/`priceRate` (invariante de `kitchenRepo.produce`: sin tasa,
 bloquea) · `recipesRepo` para importar insumos · `UNIT_LABELS` · `round2`/`formatMoney`/`cleanQty`
-· `.cuadre-banner` y `.badge` para semáforos · `auditEvents` para alta, aprobación y revisión ·
+· `.cuadre-banner` y `.badge` para semáforos · `auditEvents` para alta, aprobación y revisión
+(**escribirlos NO basta: hay que darles pantalla, ver §9 F10**) ·
 `xlsx`/`jspdf` por import dinámico · `hasModule(...)` **gateado en la consulta**, no solo en el
 render.
 
@@ -362,9 +386,24 @@ vista el resultado.
      correlación deriva la utilidad con **aviso rojo de subsidio**.
   8. **Precios de referencia.**
   9. **Firmas, Aprobar ficha y Nueva revisión** (+ la hoja de exportación de la decisión 5).
+     **La exportación vive AQUÍ y solo aquí, NO en `/reportes`** (corrección 01-09-2026,
+     verificada). Motivo de código: en `ReportsScreen.jsx:89` la firma de una tarjeta es
+     `card(key, title, desc, builder, useRange)` y **todos** los builders reciben como mucho un
+     rango de fechas. No existe ningún mecanismo para "elige UNA ficha", que es justo lo que
+     necesitan las tres hojas. Meterlas en `/reportes` obligaría a inventar un selector de ficha
+     ajeno a esa pantalla; el editor ya sabe qué ficha está abierta.
 - **Costo Base vs Costo Nuevo en móvil:** se captura el Nuevo; el Base aparece debajo en `.muted`
-  con **delta arriba/abajo y %** (`.kpi__delta--up/down`), y **solo** cuando la ficha es revisión
-  o hay comparable.
+  con **delta y %**, y **solo** cuando la ficha es revisión o hay comparable.
+- **El color del delta va INVERTIDO respecto al signo** (corrección 01-09-2026, verificada). En
+  `src/styles/global.css:1798-1800`, `.kpi__delta--up` es `var(--ok)` (**verde**) y
+  `.kpi__delta--down` es `var(--danger)` (**rojo**): están pensados para ventas, donde subir es
+  bueno. **En una ficha de costo subir es MALO.** Un "+5,6 % de gasto material" pintado en verde
+  le miente al dueño en la única pantalla cuyo trabajo es avisarle de que el costo se le fue.
+  Regla: **costo al alza → `.kpi__delta--down` (rojo); costo a la baja → `.kpi__delta--up`
+  (verde); sin cambio → `.kpi__delta--flat`.** No se crean clases nuevas ni se toca `global.css`
+  (eso cambiaría el color de los deltas del panel del dueño, que hoy están bien): la ficha
+  **elige** la clase según el signo. El nombre de la clase queda contraintuitivo en este uso, así
+  que la línea que la asigna lleva su comentario explicando por qué.
 - **No negociable:** `inputMode="decimal"` en todo importe, cada total muestra su fórmula
   ("1+2+3+4"), autoguardado del borrador con `updatedAt`, `label` real en cada campo, **cero
   scroll horizontal** (la tabla ancha vive solo en el PDF).
@@ -376,9 +415,21 @@ vista el resultado.
 ## 8. Reportes y licencia
 
 **Reportes:** `src/features/reports/fichaReports.js`, **archivo propio** (precedente
-`remesasReports.js`; no se toca `reportsService.js`). Tres documentos oficiales: Ficha (16 filas,
-2 columnas, vertical), Desagregación de insumos (7 columnas, vertical) y Gasto de salario
-(9 columnas, **horizontal**). Builders de **solo lectura**.
+`remesasReports.js`). Tres documentos oficiales: Ficha (16 filas, 2 columnas, vertical),
+Desagregación de insumos (7 columnas, vertical) y Gasto de salario (9 columnas, **horizontal**).
+Builders de **solo lectura**.
+
+**Dónde se exportan (corrección 01-09-2026):** los tres documentos **NO son tarjetas de
+`/reportes`**; se descargan desde el **bloque 9 del editor**, que es el único sitio que sabe qué
+ficha está abierta (razón de código en §7, bloque 9). `fichaReports.js` es el módulo que arma las
+tres hojas, no una sección de la pantalla de Reportes.
+
+**Matiz sobre `reportsService.js` (corrección 01-09-2026):** la versión anterior de este párrafo
+decía "no se toca `reportsService.js`". **Se toca, y a propósito:** F9 añade a `exportPdf` y
+`exportExcel` los campos **opcionales** `report.header` y `report.footer` (decisión 5 de §3). Es un
+cambio **aditivo**: los ~20 reportes existentes no los pasan y su salida queda idéntica. Lo que
+sigue intacto es que **ningún builder de `reportsService.js` se modifica** y que la lógica de
+ficha vive entera en `fichaReports.js`.
 
 **Licencia:** `LICENSE_MODULES.COSTSHEETS = 'fichas'`, etiqueta "Fichas de costo". Solo **mando**
 (dueño/administrativo: expone costos y ganancia). Gateado **en la consulta**
@@ -401,9 +452,19 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F6** | Anexo de salario (bloque 3). | Pendiente |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con semáforos). | Pendiente |
 | **F8** | Firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`). | Pendiente |
-| **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas. | Pendiente |
-| **F10** | Integración: tarjeta en Home gateada, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
+| **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas. **Incluye los campos opcionales `header`/`footer` en `exportPdf`/`exportExcel` (decisión 5 de §3) y la comprobación de que un reporte preexistente sale idéntico.** | Pendiente |
+| **F10** | Integración: tarjeta en Home gateada, **pestaña *Fichas* en `/auditoria` (gateada)**, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
 | **F11** | Auditoría profunda antes de `main` (regla 5): esquema, fugas de licencia, LWW, bundle antes/después, y decir qué NO se probó. | Pendiente |
+
+**Por qué F10 lleva pestaña de auditoría** (corrección 01-09-2026, verificada). F8 escribe eventos
+en `auditEvents`, pero **hoy nadie podría leerlos**: `AuditScreen.jsx:152-161` tiene las pestañas
+fijas (Turnos, Ventas, Inventario, Precios, Bajas, + Cocina y Entregas gateadas) y la de *Bajas*
+(`:165-180`) no lista `auditEvents` en general, sino lo que devuelve `productsRepo.listDeleted()`,
+que filtra `entity === 'product' && action === 'delete'` (`productsRepo.js:121-124`). Un evento con
+`entity: 'costSheet'` quedaría escrito y **sin ninguna pantalla que lo muestre**: dato ciego. F10
+añade la pestaña siguiendo el patrón exacto de Cocina y Entregas (`:158` y `:161`), **gateada con
+`hasModule` y con la consulta gateada también** (`canFichas ? costSheetsRepo.list() : []`), no solo
+el render.
 
 **Cómo releer el PDF de la Gaceta** (si hiciera falta desde otra máquina): en la PC original
 `Read` no podía abrirlo (falta `poppler`) y python no tenía librerías de PDF; la receta que
