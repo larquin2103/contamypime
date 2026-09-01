@@ -551,6 +551,16 @@ cuentas* ahora separan **por moneda**. Con un negocio solo en MN la salida es **
 byte**; con USD/MLC cambia porque antes se sumaban todas las monedas en un número etiquetado "MN"
 (un cobro en USD engordaba el total como si fuera MN). Es corrección de un error real.
 
+## Próximo módulo: `fichas` (Ficha de costo, Res. 148/2023 MFP)
+
+**DISEÑO APROBADO POR EL DUEÑO (31-08-2026), CERO CÓDIGO ESCRITO.** Todo el traspaso vive en
+**`docs/FICHA-COSTO.md`** (leerlo ANTES de escribir una línea): interpretación normativa completa
+de las 16 filas, la errata de la Gaceta (Fila 12 = **5+11**), los tres controles, las **cuatro**
+bases de utilidad, las 5 decisiones cerradas con el dueño, el esquema Dexie **v18** (`costSheets`,
+aditiva pura), el motor puro `lib/fichaCosto.js` con su fixture obligado ("Pan suave", 200 u), la
+interfaz de 9 bloques y las fases **F0–F11**. Diseño visual aprobado (artefacto v2):
+https://claude.ai/code/artifact/1134b7b2-d636-4a6a-9856-19e3ddb3a879
+
 ## Reportes (`features/reports/reportsService.js`, solo lectura)
 
 Cada reporte es un *builder* `build*()` que **solo lee** (`.toArray()` + filtrar/mapear, nunca
