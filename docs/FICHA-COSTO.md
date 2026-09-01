@@ -443,7 +443,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 
 | Fase | Contenido | Estado |
 |---|---|---|
-| **F0** | Verificación previa **sin código**: colisión de `costSheets` en Dexie comprobada empíricamente, bundle base medido, este documento. Riesgo cero. | Pendiente (este doc ya existe) |
+| **F0** | Verificación previa **sin código**: colisión de `costSheets` en Dexie comprobada empíricamente, bundle base medido, este documento. Riesgo cero. | ✅ **HECHA 01-09-2026** (evidencia abajo) |
 | **F1** | Motor puro + pruebas (`lib/fichaCosto.js` + `.test.mjs`) con el fixture "Pan suave". **Riesgo cero: nadie lo importa aún.** | Pendiente |
 | **F2** | Datos: Dexie v18, `costSheetsRepo`, constantes/etiquetas, `SYNC_COLLECTIONS`. | Pendiente |
 | **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label + gate. | Pendiente |
@@ -455,6 +455,46 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas. **Incluye los campos opcionales `header`/`footer` en `exportPdf`/`exportExcel` (decisión 5 de §3) y la comprobación de que un reporte preexistente sale idéntico.** | Pendiente |
 | **F10** | Integración: tarjeta en Home gateada, **pestaña *Fichas* en `/auditoria` (gateada)**, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
 | **F11** | Auditoría profunda antes de `main` (regla 5): esquema, fugas de licencia, LWW, bundle antes/después, y decir qué NO se probó. | Pendiente |
+
+### 9.1 Evidencia de F0 (ejecutada el 01-09-2026)
+
+Las dos comprobaciones que pedía F0, hechas **empíricamente** en la máquina de desarrollo, no
+razonadas:
+
+**a) `costSheets` NO colisiona con la instancia Dexie.** Sondeo sobre la Dexie **realmente
+instalada** (`4.4.4`), recorriendo la cadena de prototipos de una instancia y preguntando por cada
+nombre:
+
+```
+dexie instalada: 4.4.4
+libre      costSheets      <- el nombre que queremos
+COLISIONA  tables
+COLISIONA  name
+COLISIONA  verno
+COLISIONA  on
+libre      core
+```
+
+**Matiz honesto:** el sondeo corre sobre una instancia **sin abrir** (`db.open()` necesita
+`indexedDB`, que no existe en node). Por eso `core` sale "libre" aquí aunque `CLAUDE.md` lo liste
+como colisión: Dexie asigna `db.core` **durante** `open()`. Lo que sí queda probado es lo que
+importa: `costSheets` no choca con nada de la clase. La lista de nombres prohibidos de `CLAUDE.md`
+sigue siendo válida y **no** se debe reducir con este resultado.
+
+**b) Bundle base, para comparar en F4.** Build de `512c9f1` con `npm run build`, **exit 0**:
+
+| Métrica | Valor |
+|---|---|
+| Fichero | `dist/assets/index-C0lGbTIP.js` |
+| Tamaño | **856 445 bytes** = 856,45 kB (1000) = 836,37 KiB (1024) |
+| gzip | **248,33 kB** |
+| Precache del service worker | 45 entradas, 3540,11 KiB |
+
+Vite informa en **kB de 1000**; el explorador de archivos de Windows enseña **KiB de 1024**. Son el
+mismo fichero: al comparar en F4 hay que usar **la línea de vite**, que es la que dio el 856,45 de
+partida.
+
+---
 
 **Por qué F10 lleva pestaña de auditoría** (corrección 01-09-2026, verificada). F8 escribe eventos
 en `auditEvents`, pero **hoy nadie podría leerlos**: `AuditScreen.jsx:152-161` tiene las pestañas
