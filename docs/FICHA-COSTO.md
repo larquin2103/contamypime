@@ -4,33 +4,40 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 01-09-2026: F0, F1, F2 y F3 HECHAS Y SUBIDAS. F4 BLOQUEADA esperando que el dueño
-> apruebe la maqueta nueva (enlace abajo). Estado exacto para continuar: §9.7.**
+> **Estado al 02-09-2026: F0, F1, F2, F3 y F4 HECHAS Y SUBIDAS. La siguiente es F5 (anexo de
+> insumos). Estado exacto para continuar: §9.8.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
-> `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js` y
-> el módulo de licencia `fichas` con su etiqueta. **Todavía NO existen** la ruta `/fichas` ni
-> ninguna pantalla, y `costSheets` **NO está registrada en `SYNC_COLLECTIONS`** (se registra en F4, ver §9.3).
-> Nadie importa el repo todavía, así que la app desplegada sigue sin ofrecer nada del módulo.
+> `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
+> licencia `fichas`, las pantallas `src/features/costsheets/CostSheetsScreen.jsx` (lista) y
+> `CostSheetScreen.jsx` (editor, **solo el bloque 1**), las rutas `/fichas`, `/ficha/nueva` y
+> `/ficha/:id`, la tarjeta gateada del Home y **`costSheets` YA registrada en
+> `SYNC_COLLECTIONS`**. **Todavía NO existen** los bloques 2 a 9 del editor ni
+> `fichaReports.js`, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los eventos de
+> `costSheet` se escriben desde F4 y hoy **no tienen pantalla que los muestre**.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
 > desde otra PC; si miente sobre su propio estado, la siguiente sesión rehace lo hecho.
 
 **Diseño visual (referencia obligatoria antes de programar pantallas):**
-https://claude.ai/code/artifact/ad25b6d3-c095-408c-96a7-aa557cc6a86a — *"Ficha de costo
-148/2023"*, publicada el **01-09-2026**, **PENDIENTE DE APROBACIÓN DEL DUEÑO**. Contiene las dos
-pantallas de F4 (lista `/fichas` y bloque 1 *Identificación*), el estado vacío, el mapa de los
-nueve bloques y **una tabla con los textos exactos, uno a uno**. Se abre desde cualquier PC con la
-cuenta del dueño.
+https://claude.ai/code/artifact/1134b7b2-d636-4a6a-9856-19e3ddb3a879 — *"Ficha de Costo
+148/2023"*, **APROBADA POR EL DUEÑO EL 31-08-2026** (el propio artefacto lo dice al pie). Trae la
+tesis del diseño, las cuatro decisiones, **seis vistas** del ejemplo "Pan suave" (lista, gasto
+material, salario, semáforo del coeficiente, base de la utilidad y correlación), el mapa de las 16
+filas, los tres controles, la hoja de exportación, los anti-objetivos y las doce fases.
 
-> **El artefacto anterior SE PERDIÓ (verificado el 01-09-2026).** La URL que figuraba aquí
-> (`1134b7b2-d636-4a6a-9856-19e3ddb3a879`, *"Ficha de Costo 148/2023" v2*, aprobada el
-> 31-08-2026) devuelve **"artifact not found"**, y `Artifact action:"list" scope:"all"` sobre la
-> cuenta del dueño solo lista **dos** artefactos, ambos del módulo Entregas. La maqueta nueva
-> **NO es una copia de aquella**: está reconstruida desde la descripción escrita del §7 de este
-> mismo documento. Si el dueño recuerda algo que allí era distinto, hay que corregirlo antes de
-> programar. **No dar por aprobada la maqueta nueva sin que él lo diga.**
+> **CORRECCIÓN 02-09-2026 (verificada, importante).** La versión anterior de este bloque decía
+> que este artefacto **SE HABÍA PERDIDO** y que había una reconstrucción del 01-09
+> (`ad25b6d3-c095-408c-96a7-aa557cc6a86a`) pendiente de aprobación. **Es al revés:**
+> `Artifact action:"list" scope:"all"` del 02-09-2026 lista `1134b7b2` viva y **no** lista
+> `ad25b6d3`. La v2 aprobada se leyó completa el 02-09. **La reconstrucción del 01-09 es la que
+> no existe: no usarla como referencia ni buscarla.** Consecuencia práctica: F4 **nunca estuvo
+> bloqueada por falta de diseño aprobado**.
+>
+> **Lo que la maqueta aprobada NO trae: el bloque 1 (*Identificación*).** Sus seis vistas no lo
+> incluyen. Se programó en F4 desde la prosa del §7, con los mismos tokens y clases, y con el
+> visto bueno del dueño (02-09-2026) para hacerlo así.
 
 **Fuente normativa:** Gaceta Oficial No. 64 Ordinaria del 6-jul-2023, pp. 1376-1387,
 Resolución **148/2023** del Ministerio de Finanzas y Precios: *"Metodología para la elaboración
@@ -236,13 +243,29 @@ Con Total y firmas.
    - Orientación por hoja: 1 Ficha (16 filas, 2 columnas) vertical · 2 Insumos (7 columnas)
      vertical · 3 Salario (9 columnas) **horizontal**.
 
-**Decisión del bundle, cerrada por defecto (31-08-2026):** `RemesasScreen` entra por import
-estático y su peso lo pagan también los negocios sin la licencia (hallazgo 7 de `CLAUDE.md`). La
-pantalla de ficha será igual de grande. Al aprobar, el dueño **no eligió entre las dos opciones**,
-así que rige lo que decía el documento: se implementa **`React.lazy` + `Suspense` solo para
-`/fichas` y `/ficha/:id` desde F4** (aditivo, no cambia ninguna ruta existente), **midiendo el
-bundle antes y después** y poniendo el número en el mensaje del commit de F4. Es reversible en un
-commit si la medición no compensa el patrón nuevo.
+**Decisión del bundle: REVOCADA Y SUSTITUIDA EL 02-09-2026 (decisión del dueño, con evidencia).**
+
+La maqueta aprobada el 31-08 eligió **`React.lazy`** para `/fichas` y `/ficha/:id` con este
+motivo escrito: *"quien no tenga la licencia nunca descarga el código de la ficha"* y *"sobre
+datos móviles cubanos, eso se nota"*. **Ese motivo es falso en esta PWA, y se comprobó
+empíricamente antes de programar F4:**
+
+- `vite.config.js` precachea `globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}']`, es decir
+  **todo** el JS emitido a `dist/`.
+- En el `dist/sw.js` recién construido están ya los chunks diferidos de `xlsx`, `jspdf`,
+  `jspdf.plugin.autotable`, `html2canvas`, `purify` y los tres de `firebase` (45 entradas,
+  3540,24 KiB de precache).
+- Luego un chunk de `/fichas` **se descargaría igual en cada instalación y cada actualización**,
+  con licencia o sin ella. `React.lazy` aquí **no ahorra un byte de datos móviles**: solo adelgaza
+  el parseo del bundle principal al arrancar.
+- La única variante que sí ahorraría datos sería excluir ese chunk del precache (`globIgnores`),
+  y eso **rompe el offline** de la ficha: contra la regla offline-first. **Descartada.**
+
+**Se implementa IMPORT ESTÁTICO**, como las 30 pantallas vecinas (regla 7: imitar el código
+vecino): cero patrones nuevos en `router.jsx` y cero superficie de fallo en runtime. El coste real
+medido en F4 está en §9.8. Nota para quien reabra esto: el riesgo del patrón diferido **sí estaba
+cubierto** (`main.jsx:26-35` atiende `vite:preloadError` con una recarga única y candado en
+`sessionStorage`); no se descartó por miedo, se descartó porque su beneficio no existía.
 
 ---
 
@@ -526,7 +549,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F1** | Motor puro + pruebas (`lib/fichaCosto.js` + `.test.mjs`) con el fixture "Pan suave". **Riesgo cero: nadie lo importa aún.** | ✅ **HECHA 01-09-2026** · 113 aserciones · revisada (ver §9.2) |
 | **F2** | Datos: Dexie v18, `costSheetsRepo`, constantes/etiquetas. **`SYNC_COLLECTIONS` se movió a F4** (ver §9.3). | ✅ **HECHA 01-09-2026** · bundle +90 bytes |
 | **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label. **El gate se aplica en F4**, con la primera pantalla. | ✅ **HECHA 01-09-2026** · bundle +45 bytes |
-| **F4** | Lista + identificación (`/fichas`, bloque 1) + `React.lazy` con medición del bundle + **registrar `costSheets` en `SYNC_COLLECTIONS`** (viene de F2) + **el gate de licencia** (viene de F3). | ⏸ **BLOQUEADA**: espera que el dueño apruebe la maqueta. Todo el detalle en §9.7 |
+| **F4** | Lista + identificación (`/fichas`, `/ficha/nueva`, `/ficha/:id`, bloque 1) + **import estático** (la decisión de `React.lazy` se revocó con evidencia, ver §3) + **`costSheets` registrada en `SYNC_COLLECTIONS`** (venía de F2) + **el gate de licencia** (venía de F3) + tarjeta del Home. | ✅ **HECHA 02-09-2026** · bundle +22 170 bytes · detalle en §9.8 |
 | **F5** | Anexo de insumos (bloque 2 + importar receta + portadores). | Pendiente |
 | **F6** | Anexo de salario (bloque 3). | Pendiente |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con semáforos). | Pendiente |
@@ -715,6 +738,88 @@ apruebe, F4 consiste exactamente en:
 5. Medir el bundle **contra los 856 580 bytes de arriba** y poner el número en el commit.
 6. Agente revisor al terminar (F4 lo merece: primera pantalla, patrón nuevo y el único punto del
    módulo que toca la sincronización).
+
+> **§9.7 quedó SUPERADA el 02-09-2026.** F4 no estaba bloqueada (la maqueta aprobada existe, ver
+> el bloque de la cabecera) y el punto 2 cambió de decisión (import estático en vez de
+> `React.lazy`, ver §3). Se conserva como historia de la sesión anterior. El estado real es §9.8.
+
+---
+
+### 9.8 F4: qué se hizo y qué se verificó (02-09-2026)
+
+**Ficheros nuevos:**
+
+- `src/features/costsheets/CostSheetsScreen.jsx` — lista `/fichas`. `.seg`
+  Borradores/Aprobadas/Todas, buscador (reusa `matchesQuery`, que sabe caer a
+  `buildSearchTokens` cuando el registro no es un producto), tarjeta con el **precio unitario en
+  grande**, `.badge` de estado y el **punto del control de indirectos** visible sin abrir la ficha.
+  Estado vacío que explica el Art. 3.
+- `src/features/costsheets/CostSheetScreen.jsx` — editor. **Solo el bloque 1** (Identificación):
+  producto del catálogo **o** texto libre, código, UM, **tipo de actividad y método primero**
+  (mandan sobre todo lo de abajo), nivel de producción y % de capacidad. Barra inferior fija
+  (`.pay-bar`) con el precio unitario, que se mueve mientras se teclea.
+
+**Ficheros tocados (los tres, aditivos):** `src/app/router.jsx` (tres rutas nuevas, imports
+estáticos), `src/features/home/Home.jsx` (tarjeta gateada en *Gestión*, icono `Calculator`) y
+`src/features/sync/collections.js` (`{ name: 'costSheets', pk: 'id' }`).
+
+**Medición del bundle (la línea de vite, kB de 1000):**
+
+| | Base F3 | F4 | Diferencia |
+|---|---|---|---|
+| `dist/assets/index-*.js` | 856 580 B (856,58 kB) | **878 750 B (878,75 kB)** | **+22 170 B** |
+| gzip | 248,38 kB | **254,68 kB** | +6,30 kB |
+| Precache | 45 entradas · 3540,24 KiB | **45 entradas · 3561,89 KiB** | +21,65 KiB |
+
+El número de entradas del precache **no cambia**: con import estático no nace ningún chunk nuevo.
+Con `React.lazy` habrían sido 46 entradas y **el mismo total descargado** (ver §3).
+
+**Pruebas y build:** 6 suites, **233 aserciones, 0 fallos**. `npm run build` **exit 0**.
+
+**Verificado leyendo el código, no citando este documento:**
+
+| Qué | Dónde | Resultado |
+|---|---|---|
+| `costSheets` no rompe el push | `pushEngine.js:127-190` | El bucle es genérico; `costSheets` no está en `PHOTO_COLLECTIONS` → lote de 400; `toCloud` = `JSON.parse(JSON.stringify(...))` mata los `undefined` que Firestore rechaza |
+| ...ni el pull | `pullEngine.js:18-42` | `mergeIncoming` es genérica con guarda `if (!table)`; `recomputeStock` **solo** se dispara con `stockMovements`/`products`, y una ficha no toca inventario |
+| Nadie más lee `SYNC_COLLECTIONS` | `grep` en todo `src/` | Solo `pushEngine` y `syncEngine`. Ningún consumidor con lista dura que haya que actualizar |
+| Respaldo | `backupService.js:39` y `:103` | Enumeran `db.tables` dinámicamente → `costSheets` entra sola, sin tocar nada |
+| `listAudit()` no revienta | `db.js:32` | `auditEvents: 'id, entity, entityId, createdAt'` → `entity` **sí** está indexado |
+| Sin fuga de licencia | las dos pantallas | El gate va **en la consulta** (`canFichas ? repo.list() : Promise.resolve([])`), no solo en el render, y `canFichas = isManager && hasModule(...)` |
+| Auditoría no muestra basura | `AuditScreen.jsx:152-161` | Ninguna pestaña lista `auditEvents` en crudo: los eventos de `costSheet` quedan escritos y **sin pantalla** hasta F10, como ya decía este documento |
+
+**Decisiones de detalle que se tomaron programando (por si hay que revisarlas):**
+
+- **El autoguardado NO corre al abrir.** Solo se dispara con una bandera `dirty` que enciende el
+  propio tecleo. Sin esa guarda, **abrir una ficha sellaría `updatedAt`** y el registro subiría a
+  la nube sin haber cambiado nada. Hay además un volcado al desmontar la pantalla, para que salir
+  antes de que venza el temporizador (600 ms) no pierda el último tecleo.
+- **El punto del control de indirectos reusa las clases del salón** (`.dot--busy` verde,
+  `.dot--long` ámbar, `.dot--free` punteado). Se reusan por el **color**, que es el correcto, para
+  no tocar `global.css`. Es el mismo criterio que el documento fija para `.kpi__delta`.
+- **Sin salario directo el punto se pinta vacío**, nunca verde: el motor devuelve
+  `applies: false` y un verde se leería como "perfecto".
+- **El selector de producto no corta la lista.** Se listan todas las coincidencias, como el
+  Catálogo: un corte silencioso escondería justo el producto que se busca.
+- **La ficha aprobada se pinta en VERDE, no en ámbar.** Aprobada no es un problema: es el estado
+  al que aspira. Ámbar queda para *sustituida* y *eliminada*.
+- **El alta exige nombre.** `/ficha/nueva` no crea nada hasta pulsar *Crear ficha* con un nombre
+  (propio o traído del catálogo): así no nacen borradores vacíos que todavía no se pueden borrar
+  desde la interfaz.
+
+**Lo que se sabe que falta y NO es un olvido:**
+
+- **No hay forma de eliminar una ficha desde la interfaz hasta F8.** `costSheetsRepo.remove`
+  (borrado lógico) existe y está escrito, pero su botón vive en el bloque 9. Si al probar se crean
+  fichas de prueba, se quedan en la lista hasta F8. Se puede adelantar si el dueño lo pide.
+- **Los eventos de `costSheet` en `auditEvents` no tienen pantalla hasta F10.**
+- Los bloques 2 a 9 del editor no existen: la pantalla lo dice en voz alta en una tarjeta, para
+  que nadie crea que la ficha ya calcula.
+
+**Lo que NO se puede garantizar de F4 (regla 5):** se validó por **código + build + 6 suites
+node**. **No se ejecutó la app**: ni se creó una ficha, ni se comprobó el autoguardado en un
+teléfono, ni se vio viajar un `costSheets` entre dos dispositivos. La primera vez que un aparato
+abra este build, su IndexedDB pasa a **v18 y no puede volver** (§9.6).
 
 ---
 

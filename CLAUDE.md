@@ -283,13 +283,18 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
-- **`fichas`** — **EN CURSO (F3 de F11), todavía sin pantallas.** Ficha de costos y gastos de la
-  **Res. 148/2023 MFP**: reutiliza el catálogo y el stock para construir el documento oficial de
-  16 filas con sus dos anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por
-  defecto. Hecho hasta hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18**
-  (`costSheets`), `costSheetsRepo` y el módulo de licencia. **`costSheets` NO está aún en
-  `SYNC_COLLECTIONS`**: se registra en F4, la fase que empieza a escribirla. Todo el traspaso
-  está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
+- **`fichas`** — **EN CURSO (F4 de F11).** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
+  reutiliza el catálogo y el stock para construir el documento oficial de 16 filas con sus dos
+  anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por defecto. Hecho hasta
+  hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18** (`costSheets`),
+  `costSheetsRepo`, el módulo de licencia, y de F4 la **lista `/fichas`** y el **bloque 1
+  (Identificación)** del editor (`/ficha/nueva`, `/ficha/:id`) en `features/costsheets/`, con la
+  tarjeta gateada del Home. **`costSheets` YA está en `SYNC_COLLECTIONS`** (LWW por `updatedAt`,
+  lote de 400). Las pantallas entran por **import estático** como las demás: la decisión de
+  `React.lazy` se revocó con evidencia (el service worker precachea todos los chunks, así que
+  diferir no ahorra datos a nadie). **Faltan** los bloques 2-9 del editor, `fichaReports.js` y la
+  pestaña *Fichas* de `/auditoria` (los eventos ya se escriben y hoy no tienen pantalla). Todo el
+  traspaso está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
 
 ## Entregas (módulo `remesas`)
 

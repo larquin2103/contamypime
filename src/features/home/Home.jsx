@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, PackageMinus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat, CookingPot, Banknote
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat, CookingPot, Banknote, Calculator
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -351,6 +351,9 @@ export function Home() {
             )}
             {hasModule(LICENSE_MODULES.ACCOUNTS) && (
               <ActionCard to="/accounts" icon={Wallet} title="Cuentas" sub="Tesorería del negocio" />
+            )}
+            {hasModule(LICENSE_MODULES.COSTSHEETS) && (
+              <ActionCard to="/fichas" icon={Calculator} title="Fichas de costo" sub="Res. 148/2023: costos, gastos y precio" />
             )}
             <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar la app" />
           </Section>

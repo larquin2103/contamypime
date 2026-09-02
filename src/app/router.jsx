@@ -40,6 +40,8 @@ import { TableScreen } from '../features/tables/TableScreen'
 import { RecipesScreen } from '../features/kitchen/RecipesScreen'
 import { KitchenScreen } from '../features/kitchen/KitchenScreen'
 import { RemesasScreen } from '../features/remesas/RemesasScreen'
+import { CostSheetsScreen } from '../features/costsheets/CostSheetsScreen'
+import { CostSheetScreen } from '../features/costsheets/CostSheetScreen'
 
 // Decide que mostrar segun el estado:
 //  - sin licencia valida   -> Activacion (compuerta: ni se crea dueño ni se entra)
@@ -98,6 +100,13 @@ export function AppRouter() {
         <Route path="/cocina" element={<KitchenScreen />} />
         {/* Modulo 'remesas': la pantalla gatea por licencia y rol (mando). */}
         <Route path="/remesas" element={<RemesasScreen />} />
+        {/* Modulo 'fichas': ficha de costos y gastos (Res. 148/2023). Cada pantalla
+            gatea por licencia y rol (solo mando: expone costos y ganancia).
+            /ficha/nueva es el ALTA y va antes que /ficha/:id (React Router prioriza
+            el segmento fijo, pero se declara asi para que se lea el orden). */}
+        <Route path="/fichas" element={<CostSheetsScreen />} />
+        <Route path="/ficha/nueva" element={<CostSheetScreen />} />
+        <Route path="/ficha/:id" element={<CostSheetScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

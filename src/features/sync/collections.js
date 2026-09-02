@@ -69,7 +69,16 @@ export const SYNC_COLLECTIONS = [
   // del inventario general). El saldo por mensajero+producto se deriva; se fusiona por
   // id. El area "Entregas" (inventario real) viaja por stockMovements, que ya
   // sincroniza. Sin el modulo queda vacia.
-  { name: 'productCustody', pk: 'id' }
+  { name: 'productCustody', pk: 'id' },
+  // Modulo 'fichas' (F4): ficha de costos y gastos de la Res. 148/2023. Cabecera
+  // unica: sus lineas (insumos, salario, otros directos, referencias) viven como
+  // arrays DENTRO del documento, como `recipes.items`, porque la ficha la edita un
+  // solo actor (el mando) y no hay dos dispositivos añadiendo lineas en segundos.
+  // LWW por updatedAt: TODA mutacion del repo lo sella (incluida `approve`, que
+  // ademas escribe `approvedAt`, campo que NO esta en TS_FIELDS). Sin fotos, asi
+  // que no entra en PHOTO_COLLECTIONS y sube en lotes de 400. Sin el modulo la
+  // tabla queda vacia y no hay costo de sync.
+  { name: 'costSheets', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a
