@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). Las 6 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**230 aserciones** en total). Ojo: cinco viven en `src/lib/`
+que se corren **uno a uno con node** (**233 aserciones** en total). Ojo: cinco viven en `src/lib/`
 pero `retryQueue.test.mjs` está en `src/features/sync/`, así que un glob `src/lib/*.test.mjs`
 **se la salta**:
 
@@ -283,6 +283,13 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
+- **`fichas`** — **EN CURSO (F3 de F11), todavía sin pantallas.** Ficha de costos y gastos de la
+  **Res. 148/2023 MFP**: reutiliza el catálogo y el stock para construir el documento oficial de
+  16 filas con sus dos anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por
+  defecto. Hecho hasta hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18**
+  (`costSheets`), `costSheetsRepo` y el módulo de licencia. **`costSheets` NO está aún en
+  `SYNC_COLLECTIONS`**: se registra en F4, la fase que empieza a escribirla. Todo el traspaso
+  está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
 
 ## Entregas (módulo `remesas`)
 

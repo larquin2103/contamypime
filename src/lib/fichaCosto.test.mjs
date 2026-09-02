@@ -38,6 +38,7 @@ import {
   nextVersion
 } from './fichaCosto.js'
 import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS } from '../db/constants.js'
+import { LICENSE_MODULES, LICENSE_MODULE_LABELS } from './license.js'
 
 let pass = 0
 let fail = 0
@@ -111,7 +112,7 @@ eq('fila 11 TOTAL DE GASTOS = 6+7+8+9+10', T.r11, 5950)
 eq('fila 12 TOTAL DE COSTOS Y GASTOS = 5+11 (errata de la Gaceta resuelta)', T.r12, 31565)
 
 // La errata: el cuerpo de la Gaceta dice "6+11" y el Anexo I rotula "(5+11)".
-// Con 6+11 la fila 6 se contaria dos veces y las filas 1-4 desapareceriaan del
+// Con 6+11 la fila 6 se contaria dos veces y las filas 1-4 desaparecerian del
 // precio. Esta asercion fija la lectura correcta para siempre.
 eq('fila 12 NO es 6+11 (seria 10050, y perderia las filas 1-4)', T.r12 === FILAS.r6 + T.r11, false)
 
@@ -389,6 +390,15 @@ eq('cada estado tiene su etiqueta', cubre(FICHA_STATUS_LABELS, FICHA_STATUS), tr
 eq('ninguna etiqueta esta vacia',
   [...Object.values(FICHA_ACTIVITY_LABELS), ...Object.values(FICHA_METHOD_LABELS), ...Object.values(FICHA_STATUS_LABELS)]
     .every((s) => typeof s === 'string' && s.trim().length > 0), true)
+
+// --- F3: el modulo de licencia esta declarado y etiquetado ------------------
+eq('el modulo se llama "fichas" (es lo que viaja FIRMADO en la licencia)',
+  LICENSE_MODULES.COSTSHEETS, 'fichas')
+eq('y tiene su etiqueta en español', LICENSE_MODULE_LABELS.fichas, 'Fichas de costo')
+// Settings.jsx:328 pinta `LICENSE_MODULE_LABELS[m] || m`: un modulo sin etiqueta
+// se le enseña al dueño con la CLAVE en crudo. Esta guarda vale para los nueve.
+eq('TODOS los modulos de licencia tienen etiqueta (si no, Ajustes pinta la clave cruda)',
+  Object.values(LICENSE_MODULES).filter((m) => !LICENSE_MODULE_LABELS[m]), [])
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

@@ -4,12 +4,12 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 01-09-2026: F0, F1 y F2 HECHAS. F3 en adelante, pendientes.**
+> **Estado al 01-09-2026: F0, F1, F2 y F3 HECHAS. F4 en adelante, pendientes.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
-> (**134 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
-> `src/repositories/costSheetsRepo.js` y las etiquetas en `src/db/constants.js`.
-> **Todavía NO existen** la licencia `fichas`, la ruta `/fichas` ni ninguna pantalla, y
-> `costSheets` **NO está registrada en `SYNC_COLLECTIONS`** (se registra en F4, ver §9.3).
+> (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
+> `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js` y
+> el módulo de licencia `fichas` con su etiqueta. **Todavía NO existen** la ruta `/fichas` ni
+> ninguna pantalla, y `costSheets` **NO está registrada en `SYNC_COLLECTIONS`** (se registra en F4, ver §9.3).
 > Nadie importa el repo todavía, así que la app desplegada sigue sin ofrecer nada del módulo.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
@@ -514,7 +514,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F0** | Verificación previa **sin código**: colisión de `costSheets` en Dexie comprobada empíricamente, bundle base medido, este documento. Riesgo cero. | ✅ **HECHA 01-09-2026** (evidencia abajo) |
 | **F1** | Motor puro + pruebas (`lib/fichaCosto.js` + `.test.mjs`) con el fixture "Pan suave". **Riesgo cero: nadie lo importa aún.** | ✅ **HECHA 01-09-2026** · 113 aserciones · revisada (ver §9.2) |
 | **F2** | Datos: Dexie v18, `costSheetsRepo`, constantes/etiquetas. **`SYNC_COLLECTIONS` se movió a F4** (ver §9.3). | ✅ **HECHA 01-09-2026** · bundle +90 bytes |
-| **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label + gate. | Pendiente |
+| **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label. **El gate se aplica en F4**, con la primera pantalla. | ✅ **HECHA 01-09-2026** · bundle +45 bytes |
 | **F4** | Lista + identificación (`/fichas`, bloque 1) + `React.lazy` con medición del bundle + **registrar `costSheets` en `SYNC_COLLECTIONS`** (viene de F2). | Pendiente |
 | **F5** | Anexo de insumos (bloque 2 + importar receta + portadores). | Pendiente |
 | **F6** | Anexo de salario (bloque 3). | Pendiente |

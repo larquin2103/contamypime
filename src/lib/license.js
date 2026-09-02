@@ -30,7 +30,8 @@ export const LICENSE_MODULES = {
   IMAGES: 'imagenes', // fotos: catalogo, carta de mesas y avatares (miniaturas sync)
   MULTICURRENCY: 'divisas', // precio/costo por producto en divisa (USD); el MN se deriva a la tasa (base interna MN)
   KITCHEN: 'cocina', // recetas + tablero de cocina (elabora y envia a areas); rol acotado Cocinero
-  REMESAS: 'remesas' // gestion de remesas: orden -> pago -> custodia -> entrega -> liquidacion; rol acotado Mensajero
+  REMESAS: 'remesas', // gestion de remesas: orden -> pago -> custodia -> entrega -> liquidacion; rol acotado Mensajero
+  COSTSHEETS: 'fichas' // ficha de costos y gastos de la Res. 148/2023 MFP; solo mando (expone costos)
 }
 
 export const LICENSE_MODULE_LABELS = {
@@ -41,7 +42,8 @@ export const LICENSE_MODULE_LABELS = {
   imagenes: 'Imágenes y fotos',
   divisas: 'Precios en divisas',
   cocina: 'Cocina y recetas',
-  remesas: 'Entregas'
+  remesas: 'Entregas',
+  fichas: 'Fichas de costo'
 }
 
 // Lista de modulos de un payload (tolerante a licencias viejas sin el campo).
