@@ -544,6 +544,12 @@ error. La liquidación no llama a `returnFund` (solo lee `balanceOf`), así que 
    `ErrorBoundary` mostraría un error, no una app funcionando). Es inherente a cualquier subida de
    esquema, pero aquí suben tres de golpe. **Antes de actualizar, hacer respaldo** (`/backup`) de
    un dispositivo bueno: ese es el plan de retroceso real.
+   **AMPLIACIÓN VERIFICADA (01-09-2026): el "antes" es obligatorio, no una recomendación.**
+   `backupService.js:86` rechaza restaurar cualquier respaldo cuyo `meta.schema` supere al esquema
+   de la app (`if ((bk.meta.schema || 1) > db.verno) throw`), y el respaldo sella
+   `meta.schema = db.verno` (`:49`). Es decir: **un respaldo hecho ya con el esquema nuevo NO se
+   puede restaurar en un build viejo.** El retroceso solo existe con un respaldo tomado **antes**
+   de que el aparato abra el build nuevo, y guardado fuera del teléfono.
 7. **El bundle creció 785.89 KB → 856.31 KB** (gzip 231.13 → 248.30, **+7.4%**), medido
    construyendo `64542b9` en un worktree aparte. `RemesasScreen` (1522 líneas) entra por **import
    estático** en `router.jsx`, así que ese peso **lo pagan también los negocios SIN la licencia**.

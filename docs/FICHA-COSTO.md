@@ -4,7 +4,8 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 01-09-2026: F0, F1, F2 y F3 HECHAS. F4 en adelante, pendientes.**
+> **Estado al 01-09-2026: F0, F1, F2 y F3 HECHAS Y SUBIDAS. F4 BLOQUEADA esperando que el dueño
+> apruebe la maqueta nueva (enlace abajo). Estado exacto para continuar: §9.7.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js` y
@@ -16,10 +17,20 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
 > desde otra PC; si miente sobre su propio estado, la siguiente sesión rehace lo hecho.
 
-**Diseño visual aprobado (referencia obligatoria antes de programar pantallas):**
-https://claude.ai/code/artifact/1134b7b2-d636-4a6a-9856-19e3ddb3a879 — *"Ficha de Costo
-148/2023"*, versión v2, aprobada el 31-08-2026. Se abre desde cualquier PC con la cuenta del
-dueño. Las maquetas de ese artefacto son la referencia contra la que se construyen las fases.
+**Diseño visual (referencia obligatoria antes de programar pantallas):**
+https://claude.ai/code/artifact/ad25b6d3-c095-408c-96a7-aa557cc6a86a — *"Ficha de costo
+148/2023"*, publicada el **01-09-2026**, **PENDIENTE DE APROBACIÓN DEL DUEÑO**. Contiene las dos
+pantallas de F4 (lista `/fichas` y bloque 1 *Identificación*), el estado vacío, el mapa de los
+nueve bloques y **una tabla con los textos exactos, uno a uno**. Se abre desde cualquier PC con la
+cuenta del dueño.
+
+> **El artefacto anterior SE PERDIÓ (verificado el 01-09-2026).** La URL que figuraba aquí
+> (`1134b7b2-d636-4a6a-9856-19e3ddb3a879`, *"Ficha de Costo 148/2023" v2*, aprobada el
+> 31-08-2026) devuelve **"artifact not found"**, y `Artifact action:"list" scope:"all"` sobre la
+> cuenta del dueño solo lista **dos** artefactos, ambos del módulo Entregas. La maqueta nueva
+> **NO es una copia de aquella**: está reconstruida desde la descripción escrita del §7 de este
+> mismo documento. Si el dueño recuerda algo que allí era distinto, hay que corregirlo antes de
+> programar. **No dar por aprobada la maqueta nueva sin que él lo diga.**
 
 **Fuente normativa:** Gaceta Oficial No. 64 Ordinaria del 6-jul-2023, pp. 1376-1387,
 Resolución **148/2023** del Ministerio de Finanzas y Precios: *"Metodología para la elaboración
@@ -515,7 +526,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F1** | Motor puro + pruebas (`lib/fichaCosto.js` + `.test.mjs`) con el fixture "Pan suave". **Riesgo cero: nadie lo importa aún.** | ✅ **HECHA 01-09-2026** · 113 aserciones · revisada (ver §9.2) |
 | **F2** | Datos: Dexie v18, `costSheetsRepo`, constantes/etiquetas. **`SYNC_COLLECTIONS` se movió a F4** (ver §9.3). | ✅ **HECHA 01-09-2026** · bundle +90 bytes |
 | **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label. **El gate se aplica en F4**, con la primera pantalla. | ✅ **HECHA 01-09-2026** · bundle +45 bytes |
-| **F4** | Lista + identificación (`/fichas`, bloque 1) + `React.lazy` con medición del bundle + **registrar `costSheets` en `SYNC_COLLECTIONS`** (viene de F2). | Pendiente |
+| **F4** | Lista + identificación (`/fichas`, bloque 1) + `React.lazy` con medición del bundle + **registrar `costSheets` en `SYNC_COLLECTIONS`** (viene de F2) + **el gate de licencia** (viene de F3). | ⏸ **BLOQUEADA**: espera que el dueño apruebe la maqueta. Todo el detalle en §9.7 |
 | **F5** | Anexo de insumos (bloque 2 + importar receta + portadores). | Pendiente |
 | **F6** | Anexo de salario (bloque 3). | Pendiente |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con semáforos). | Pendiente |
@@ -633,6 +644,80 @@ Si se olvida, las fichas **no viajarán entre dispositivos y no habrá ningún e
 
 ---
 
+### 9.5 F4: verificación YA HECHA (01-09-2026). No repetirla.
+
+Antes de escribir una línea de F4 se mapeó **toda** la superficie que toca la sincronización,
+leyendo el código, no citando `CLAUDE.md`. **Estos cinco puntos están cerrados: la próxima sesión
+no tiene que volver a comprobarlos.**
+
+| Qué | Dónde se verificó | Resultado |
+|---|---|---|
+| Fusión de una colección nueva | `pullEngine.js:18-42` | Genérica (`db[col.name]`), LWW puro por `syncTs`, con guarda `if (!table)` |
+| `recomputeStock` | `pullEngine.js:38-39` | Solo se dispara con `stockMovements`/`products`. Una ficha **no toca inventario** |
+| Lote de subida | `pushEngine.js:42` | 400; `costSheets` no está en `PHOTO_COLLECTIONS`, así que no baja a 50 |
+| Reglas de Firestore | leído `firestore.rules` entero | `match /{document=**}` bajo `/businesses/{businessId}` cubre `costSheets`. **NO hay que redesplegar reglas** |
+| Respaldo y restauración | `backupService.js:39` y `:103` | Enumeran `db.tables` **dinámicamente** → `costSheets` entra sola. **No hay que tocar `backupService.js`** |
+
+### 9.6 CORRECCIÓN al plan de retroceso de v18 (verificada, importante)
+
+Este documento (§10.2) y el hallazgo 6 de `CLAUDE.md` dicen que hacer `/backup` es "el plan de
+retroceso real". **Es cierto solo si el respaldo se hace ANTES de que el teléfono abra el build
+nuevo**, y eso no estaba escrito en ninguna parte.
+
+`backupService.js:86`:
+
+```js
+if ((bk.meta.schema || 1) > db.verno) {
+  throw new Error('El respaldo se hizo con una versión más nueva de la app. Actualiza la app primero.')
+}
+```
+
+El respaldo sella `meta.schema = db.verno` (`:49`). Consecuencia: **un respaldo hecho ya en v18 NO
+se puede restaurar en un build v17**. Sumado a que la IndexedDB del aparato queda en v18 en cuanto
+abre el build nuevo (y un build v17 ya no puede abrirla), el retroceso solo existe con un respaldo
+**tomado en v17**.
+
+**Regla operativa para el día de la fusión a `main`:** respaldo del dispositivo bueno **antes** de
+desplegar, guardado fuera del teléfono. Un respaldo tomado después no sirve para volver atrás.
+Hoy no hay riesgo: `origin/main` sigue en `4e28ab0` (v17) y de ahí se despliega.
+
+### 9.7 Estado exacto para continuar (01-09-2026, fin de sesión)
+
+**Hecho y subido a `claude/awesome-dirac-484azm`** (7 commits por delante de `main`):
+
+| Commit | Fase |
+|---|---|
+| `512c9f1` | Las 5 correcciones validadas del plan |
+| `bc115e6` | F0, verificación previa con evidencia (§9.1) |
+| `af78b09` | F1, motor puro (80 aserciones) |
+| `5e292ea` | F1, cierre de los 6 hallazgos de la revisión (§9.2) |
+| `1e7b4dc` | F2, Dexie v18 + `costSheetsRepo` + etiquetas (§9.3, §9.4) |
+| `dc714a8` | F3, módulo de licencia `fichas` |
+
+**Números de referencia para comparar:** 6 suites, **233 aserciones**, 0 fallos
+(21+16+9+32+137+18). `npm run build` exit 0. Bundle **856 580 bytes**, gzip **248,38 kB**
+(base de F0: 856 445 / 248,33; el módulo ha costado **+135 bytes** en tres fases porque nada suyo
+entra todavía al bundle).
+
+**F4 está BLOQUEADA esperando que el dueño apruebe la maqueta** (enlace arriba). En cuanto la
+apruebe, F4 consiste exactamente en:
+
+1. `features/costsheets/CostSheetsScreen.jsx` (lista) y el bloque 1 del editor, contra la maqueta.
+2. Rutas `/fichas` y `/ficha/:id` en `router.jsx` con **`React.lazy` + `Suspense`**. Es un patrón
+   **nuevo en este repo** (verificado: cero `React.lazy`/`Suspense` en todo `src/`). Ya está
+   comprobado que **no rompe el offline**: `vite.config.js` precachea `**/*.{js,css,...}`, así que
+   el chunk diferido entra en el precache del service worker igual que los de xlsx/jspdf.
+3. **Gate de licencia** con `hasModule(LICENSE_MODULES.COSTSHEETS)`, **gateado en la consulta y no
+   solo en el render** (`canFichas ? costSheetsRepo.list() : Promise.resolve([])`), más la tarjeta
+   en Home. El gate venía escrito en F3; se movió aquí porque hasta ahora no había nada que gatear.
+4. **Registrar `{ name: 'costSheets', pk: 'id' }` en `SYNC_COLLECTIONS`.** Viene de F2 (§9.3).
+   **Si se olvida, las fichas no viajan entre dispositivos y NO hay ningún error visible.**
+5. Medir el bundle **contra los 856 580 bytes de arriba** y poner el número en el commit.
+6. Agente revisor al terminar (F4 lo merece: primera pantalla, patrón nuevo y el único punto del
+   módulo que toca la sincronización).
+
+---
+
 **Por qué F10 lleva pestaña de auditoría** (corrección 01-09-2026, verificada). F8 escribe eventos
 en `auditEvents`, pero **hoy nadie podría leerlos**: `AuditScreen.jsx:152-161` tiene las pestañas
 fijas (Turnos, Ventas, Inventario, Precios, Bajas, + Cocina y Entregas gateadas) y la de *Bajas*
@@ -656,7 +741,10 @@ PDF. Con la §2 de este documento **no debería hacer falta volver al PDF**.
    dueño. **Nada se declara "probado" sin que él lo pruebe.**
 2. **v18 es de ida:** no hay manejo de `VersionError`; en cuanto un teléfono abra el build nuevo
    su IndexedDB queda en v18 y no puede volver a v17. **Hacer `/backup` de un dispositivo bueno
-   antes de actualizar** es el plan de retroceso real.
+   ANTES de actualizar** es el plan de retroceso real, y el **antes** es obligatorio: un respaldo
+   tomado ya en v18 **NO se puede restaurar** en un build v17, porque `backupService.js:86`
+   rechaza cualquier respaldo cuyo `meta.schema` supere al esquema de la app. Detalle verificado
+   en §9.6.
 3. Los tipos de Seguridad Social y de Utilización de la Fuerza de Trabajo **no están en la
    Resolución**: van configurables, por defecto 0. **No inventar porcentajes.**
 4. El Anexo II norma a entidades estatales; para la MYPIME es referencia (Art. 6), por eso todo
