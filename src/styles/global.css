@@ -3079,3 +3079,38 @@ input[type='file'] {
   border-color: var(--warn);
   background: rgba(251, 191, 36, 0.08);
 }
+
+/* Modulo 'fichas' (Res. 148/2023): la ficha son 16 filas x 2 columnas, ilegibles
+   en un telefono, asi que se rompe en BLOQUES ACORDEON con su total en la
+   cabecera (uno abierto a la vez) y el precio unitario fijo en la `.pay-bar`.
+   Clases propias del modulo, como `.kitchen-grid` o `.salon-menu`: no cambian
+   ninguna clase existente y sin el modulo nadie las usa. Cero colores nuevos. */
+.ficha-block__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.ficha-block__total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--accent-light);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+/* Una linea capturada del anexo (insumo o portador). Mismo aire que
+   `.product-row`, pero apilada: los campos de un anexo no caben en fila. */
+.ficha-item {
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}

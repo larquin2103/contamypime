@@ -15,8 +15,10 @@ import {
   FICHA_STATUS,
   canEditSheet,
   maxUtility,
-  priceRows
+  priceRows,
+  totals
 } from '../../lib/fichaCosto'
+import { InputsBlock } from './InputsBlock'
 import {
   UNITS,
   UNIT_LABELS,
@@ -47,7 +49,27 @@ const EMPTY = {
   productionLevel: '',
   capacityPct: '',
   activity: FICHA_ACTIVITIES.BIENES,
-  method: FICHA_METHODS.GASTOS
+  method: FICHA_METHODS.GASTOS,
+  // Bloque 2 (F5). Los portadores llevan SIEMPRE las tres filas, aunque valgan
+  // cero: son filas del modelo oficial, no campos opcionales.
+  inputs: [],
+  carriers: { fuel: { qty: 0, unitPrice: 0 }, energy: { qty: 0, unitPrice: 0 }, water: { qty: 0, unitPrice: 0 } }
+}
+
+// Un bloque del acordeon. Cerrado ensena su total; abierto, la ✕ para plegarlo
+// (el total vive entonces al pie del cuerpo). Solo uno abierto a la vez: en un
+// telefono dos cuerpos abiertos hacen la ficha inusable, que es justo el problema
+// que este diseno resuelve.
+function Block({ n, title, closedInfo, open, onToggle, children }) {
+  return (
+    <section className="card">
+      <button className="ficha-block__head" onClick={onToggle}>
+        <strong>{n} · {title}</strong>
+        <span className="ficha-block__total">{open ? '✕' : closedInfo}</span>
+      </button>
+      {open && children}
+    </section>
+  )
 }
 
 const pick = (s) => ({
@@ -58,7 +80,9 @@ const pick = (s) => ({
   productionLevel: s.productionLevel == null ? '' : String(s.productionLevel),
   capacityPct: s.capacityPct == null ? '' : String(s.capacityPct),
   activity: s.activity || FICHA_ACTIVITIES.BIENES,
-  method: s.method || FICHA_METHODS.GASTOS
+  method: s.method || FICHA_METHODS.GASTOS,
+  inputs: Array.isArray(s.inputs) ? s.inputs : [],
+  carriers: s.carriers || EMPTY.carriers
 })
 
 export function CostSheetScreen() {
@@ -89,6 +113,7 @@ export function CostSheetScreen() {
   const [busy, setBusy] = useState(false)
   const [picking, setPicking] = useState(false)
   const [query, setQuery] = useState('')
+  const [openBlock, setOpenBlock] = useState(1) // acordeon: un bloque a la vez
 
   // Espejos para el volcado final: si se sale de la pantalla con el temporizador
   // del autoguardado pendiente, se escribe igual (Dexie sobrevive al desmontaje).
@@ -158,12 +183,15 @@ export function CostSheetScreen() {
     return [...list].sort((a, b) => a.name.localeCompare(b.name))
   }, [picking, products, query])
 
-  // La barra inferior se calcula sobre la ficha CON lo que se acaba de escribir,
-  // para que el unitario se mueva mientras se teclea (aun sin guardar).
-  const unitPrice = useMemo(
-    () => priceRows({ ...(sheet || {}), ...form, productionLevel: Number(form.productionLevel) || 0 }).r15,
+  // La ficha "en vivo": lo guardado MAS lo que se acaba de teclear. Todos los
+  // totales y la barra inferior se calculan sobre esto, para que se muevan
+  // mientras se escribe (aun sin haber guardado).
+  const merged = useMemo(
+    () => ({ ...(sheet || {}), ...form, productionLevel: Number(form.productionLevel) || 0 }),
     [sheet, form]
   )
+  const unitPrice = useMemo(() => priceRows(merged).r15, [merged])
+  const t = useMemo(() => totals(merged), [merged])
 
   const crear = async () => {
     setError('')
@@ -254,9 +282,13 @@ export function CostSheetScreen() {
         </div>
       )}
 
-      <section className="card">
-        <h3>1 · Identificación</h3>
-
+      <Block
+        n="1"
+        title="Identificación"
+        closedInfo={`${Number(form.productionLevel) || 0} ${form.unit || 'u'}`}
+        open={openBlock === 1}
+        onToggle={() => setOpenBlock(openBlock === 1 ? 0 : 1)}
+      >
         {error && <p className="error">{error}</p>}
 
         {/* El producto del catalogo es lo normal; un SERVICIO va por texto libre. */}
@@ -409,17 +441,39 @@ export function CostSheetScreen() {
             )}
           </>
         )}
-      </section>
+      </Block>
 
-      {/* Honestidad sobre el estado del modulo: los bloques 2 a 9 son las fases
+      {/* Bloque 2 - Gasto material (Fila 1). Solo con la ficha ya creada: sus
+          lineas se autoguardan igual que la identificacion. */}
+      {!isNew && (
+        <Block
+          n="2"
+          title="Gasto material"
+          closedInfo={formatMoney(t.r1, baseCurrency)}
+          open={openBlock === 2}
+          onToggle={() => setOpenBlock(openBlock === 2 ? 0 : 2)}
+        >
+          <InputsBlock
+            sheet={merged}
+            inputs={form.inputs}
+            carriers={form.carriers}
+            products={products}
+            editable={editable}
+            onInputs={(inputs) => set('inputs', inputs)}
+            onCarriers={(carriers) => set('carriers', carriers)}
+          />
+        </Block>
+      )}
+
+      {/* Honestidad sobre el estado del modulo: los bloques 3 a 9 son las fases
           siguientes del plan (docs/FICHA-COSTO.md §9). */}
       {!isNew && !picking && (
         <section className="card">
           <h3>Lo que falta de esta ficha</h3>
           <p className="muted">
-            El gasto material, el salario, los indirectos, los tributos, la utilidad, los precios
-            de referencia y la exportación del documento oficial llegan en las fases siguientes.
-            Hasta entonces esta ficha solo guarda su identificación.
+            El salario directo, los otros gastos directos, los indirectos, los tributos, la
+            utilidad, los precios de referencia y la exportación del documento oficial llegan en
+            las fases siguientes. Hoy la ficha guarda su identificación y su gasto material.
           </p>
         </section>
       )}
