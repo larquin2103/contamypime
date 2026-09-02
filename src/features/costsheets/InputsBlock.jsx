@@ -7,7 +7,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { formatMoney, isForeignPriced } from '../../lib/currency'
-import { inputsTotal, carriersTotal, totals } from '../../lib/fichaCosto'
+import { inputsTotal, carriersTotal, totals, inputLineFor, recipeToInputs } from '../../lib/fichaCosto'
 import { UNIT_LABELS } from '../../db/constants'
 
 // Modulo 'fichas' (F5) - Bloque 2: GASTO MATERIAL (Fila 1 del Anexo I).
@@ -68,7 +68,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
 
   // Un solo paso por el motor: `r1_1` es el total del anexo y `r1` la Fila 1
   // completa (1.1 + 1.2 + 1.3 + 1.4). No se recalcula nada aqui.
-  const t = totals({ inputs, carriers })
+  const t = useMemo(() => totals({ inputs, carriers }), [inputs, carriers])
   const fila11 = t.r1_1
   const fila1 = t.r1
 
@@ -81,29 +81,14 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
     return [...list].sort((a, b) => a.name.localeCompare(b.name))
   }, [products, usedIds, sheet?.productId, onlyStock, query])
 
-  // Nace con `product.cost` congelado. Si el producto fija su precio en divisa
-  // (modulo 'divisas'), se congela el par moneda + tasa EN LA LINEA y el motor
-  // convierte a MN con esa tasa, nunca con la de hoy. Mismo invariante que
-  // `ordersRepo.addItem` y `kitchenRepo.produce`.
-  const lineFor = (p, qty = 0) => {
-    const foreign = isForeignPriced(p, baseCurrency)
-    return {
-      productId: p.id,
-      code: p.code || '',
-      name: p.name,
-      unit: p.unit || 'u',
-      baseCost: 0,
-      qty,
-      unitPrice: Number(p.cost) || 0,
-      priceCurrency: foreign ? p.priceCurrency : null,
-      priceRate: foreign ? rateOf(p.priceCurrency) : 0
-    }
-  }
-
+  // La linea la construye el MOTOR (`inputLineFor`), no la pantalla: el precio
+  // unitario congelado, el par moneda + tasa de `divisas` y la limpieza de la
+  // cantidad son la misma regla en las dos entradas del bloque (catalogo y
+  // receta), y ahi se puede probar con node.
   const addProduct = (p) => {
     setMsg('')
     setError('')
-    onInputs([...inputs, lineFor(p)])
+    onInputs([...inputs, inputLineFor(p, { rateOf })])
     setMode(null)
     setQuery('')
   }
@@ -124,42 +109,40 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
   // Importar desde una receta de 'cocina'. La ficha se queda con SU COPIA
   // congelada: no queda atada a la receta.
   //
-  // OJO CON LA ESCALA, que vale x(nivel de produccion): la receta define el
-  // consumo por UNA unidad del elaborado (`kitchenRepo.produce` multiplica por
-  // las unidades), mientras que la columna (5) del anexo es el consumo del NIVEL
-  // DE PRODUCCION completo (en el ejemplo oficial, 25 kg de harina para las 200
-  // unidades, no por unidad). Importar sin multiplicar subvaluaria la ficha por
-  // un factor igual al nivel. Por eso se exige el nivel antes de importar y se
-  // dice en pantalla por cuanto se multiplica.
+  // La regla (y sobre todo LA ESCALA, que vale x nivel de produccion) vive en
+  // `recipeToInputs`, en el motor, con sus aserciones de node. Aqui solo se le
+  // pasan los datos y se cuenta lo que decidio dejar fuera: nada se cuela en
+  // silencio, ni un insumo borrado del catalogo ni uno en divisa sin tasa.
   const importRecipe = (r) => {
     setMsg('')
     setError('')
     const level = Number(sheet?.productionLevel) || 0
-    if (!(level > 0)) {
+    const res = recipeToInputs({
+      items: r.items,
+      productById: new Map(products.map((p) => [p.id, p])),
+      usedIds,
+      level,
+      rateOf
+    })
+    if (res.error === 'sin-nivel') {
       setError('Pon primero el nivel de producción en el bloque 1: la receta define el consumo de UNA unidad y hay que multiplicarlo.')
       return
     }
-    const productById = new Map(products.map((p) => [p.id, p]))
-    const nuevas = []
-    let repetidos = 0
-    let ausentes = 0
-    for (const it of r.items || []) {
-      const p = productById.get(it.productId)
-      if (!p) { ausentes += 1; continue }
-      if (usedIds.has(p.id)) { repetidos += 1; continue }
-      nuevas.push(lineFor(p, (Number(it.qty) || 0) * level))
-    }
-    if (!nuevas.length) {
-      setError('Esa receta no aporta ningún insumo nuevo a esta ficha.')
+    const sinTasa = res.missingRate.length
+      ? ` ${res.missingRate.length} no se trajeron porque falta su tasa de cambio: ${res.missingRate.join(', ')}.`
+      : ''
+    if (!res.lines.length) {
+      setError(`Esa receta no aporta ningún insumo nuevo a esta ficha.${sinTasa}`)
       return
     }
     // Se AÑADE, no se reemplaza: borrarle al dueño lo que ya capturó seria peor.
-    onInputs([...inputs, ...nuevas])
+    onInputs([...inputs, ...res.lines])
     setMode(null)
     setMsg(
-      `Traídos ${nuevas.length} insumos de «${r.name}», multiplicados por el nivel de producción (${level}).` +
-      (repetidos ? ` ${repetidos} ya estaban en la ficha.` : '') +
-      (ausentes ? ` ${ausentes} ya no están en el catálogo.` : '')
+      `Traídos ${res.lines.length} insumos de «${r.name}», multiplicados por el nivel de producción (${level}).` +
+      (res.repeated ? ` ${res.repeated} ya estaban en la ficha.` : '') +
+      (res.missing ? ` ${res.missing} ya no están en el catálogo.` : '') +
+      sinTasa
     )
   }
 
@@ -282,7 +265,8 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
                     <input
                       type="number"
                       inputMode="decimal"
-                      value={l.qty === 0 ? '' : l.qty}
+                      min="0"
+                      value={!l.qty ? '' : l.qty}
                       readOnly={!editable}
                       onChange={(e) => setLine(idx, { qty: e.target.value })}
                       placeholder="0"
@@ -293,7 +277,8 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
                     <input
                       type="number"
                       inputMode="decimal"
-                      value={l.unitPrice === 0 ? '' : l.unitPrice}
+                      min="0"
+                      value={!l.unitPrice ? '' : l.unitPrice}
                       readOnly={!editable}
                       onChange={(e) => setLine(idx, { unitPrice: e.target.value })}
                       placeholder="0"
@@ -335,6 +320,12 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
             </>
           )}
 
+          <p className="muted">
+            Las normas de consumo son las del <strong>nivel de producción completo</strong>
+            ({Number(sheet?.productionLevel) || 0} {sheet?.unit || 'u'}), no las de una unidad.
+            Si cambias el nivel en el bloque 1, hay que revisarlas.
+          </p>
+
           <div className="total-row total-row--grand">
             <span>1.1 INSUMOS</span>
             <strong>{formatMoney(fila11, baseCurrency)}</strong>
@@ -356,6 +347,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
                     <input
                       type="number"
                       inputMode="decimal"
+                      min="0"
                       value={!val.qty ? '' : val.qty}
                       readOnly={!editable}
                       onChange={(e) => setCarrier(c.key, { qty: e.target.value })}
@@ -367,6 +359,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
                     <input
                       type="number"
                       inputMode="decimal"
+                      min="0"
                       value={!val.unitPrice ? '' : val.unitPrice}
                       readOnly={!editable}
                       onChange={(e) => setCarrier(c.key, { unitPrice: e.target.value })}

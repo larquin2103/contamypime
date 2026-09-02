@@ -64,7 +64,7 @@ function Block({ n, title, closedInfo, open, onToggle, children }) {
   return (
     <section className="card">
       <button className="ficha-block__head" onClick={onToggle}>
-        <strong>{n} · {title}</strong>
+        <h3 className="section-title">{n} · {title}</h3>
         <span className="ficha-block__total">{open ? '✕' : closedInfo}</span>
       </button>
       {open && children}
@@ -264,6 +264,10 @@ export function CostSheetScreen() {
         </p>
       )}
 
+      {/* FUERA del acordeon a proposito: si el autoguardado falla mientras se
+          teclea en otro bloque, el aviso tiene que verse igual. */}
+      {error && <p className="error">{error}</p>}
+
       {/* Por que no se edita. Aprobada NO es un problema (verde): es el estado al
           que aspira la ficha. Sustituida y eliminada son historico (ambar). */}
       {!isNew && !editable && (
@@ -286,10 +290,9 @@ export function CostSheetScreen() {
         n="1"
         title="Identificación"
         closedInfo={`${Number(form.productionLevel) || 0} ${form.unit || 'u'}`}
-        open={openBlock === 1}
-        onToggle={() => setOpenBlock(openBlock === 1 ? 0 : 1)}
+        open={isNew || openBlock === 1}
+        onToggle={() => { if (!isNew) setOpenBlock(openBlock === 1 ? 0 : 1) }}
       >
-        {error && <p className="error">{error}</p>}
 
         {/* El producto del catalogo es lo normal; un SERVICIO va por texto libre. */}
         <div className="seg">

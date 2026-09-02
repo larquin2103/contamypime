@@ -35,7 +35,9 @@ import {
   canApproveSheet,
   canReviseSheet,
   canDeleteSheet,
-  nextVersion
+  nextVersion,
+  inputLineFor,
+  recipeToInputs
 } from './fichaCosto.js'
 import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS } from '../db/constants.js'
 import { LICENSE_MODULES, LICENSE_MODULE_LABELS } from './license.js'
@@ -399,6 +401,52 @@ eq('y tiene su etiqueta en español', LICENSE_MODULE_LABELS.fichas, 'Fichas de c
 // se le enseña al dueño con la CLAVE en crudo. Esta guarda vale para los nueve.
 eq('TODOS los modulos de licencia tienen etiqueta (si no, Ajustes pinta la clave cruda)',
   Object.values(LICENSE_MODULES).filter((m) => !LICENSE_MODULE_LABELS[m]), [])
+
+// --- F5: traer insumos desde una receta (la ESCALA vale x nivel) ------------
+// La trampa D del modulo, y la mas cara despues de la base de la utilidad:
+// `recipes.items[].qty` es el consumo de UNA unidad del elaborado, mientras que
+// la columna (5) del anexo es el consumo del NIVEL COMPLETO. Estas aserciones
+// existen para que nadie vuelva a derivarlo al reves: con el fixture "Pan suave"
+// (200 u) la harina de la receta (0,125 kg por pan) tiene que salir 25 kg.
+const CAT = new Map([
+  ['p-har', { id: 'p-har', code: 'HAR', name: 'Harina', unit: 'kg', cost: 420 }],
+  ['p-lev', { id: 'p-lev', code: 'LEV', name: 'Levadura', unit: 'kg', cost: 1800 }],
+  ['p-usd', { id: 'p-usd', code: 'USD', name: 'Insumo en divisa', unit: 'u', cost: 3, priceCurrency: 'USD' }]
+])
+const RECETA_PAN = [{ productId: 'p-har', qty: 0.125 }, { productId: 'p-lev', qty: 0.0025 }]
+
+const impPan = recipeToInputs({ items: RECETA_PAN, productById: CAT, level: 200 })
+eq('la receta se multiplica por el nivel: 0,125 kg/pan x 200 = 25 kg', impPan.lines[0].qty, 25)
+eq('y la levadura del fixture: 0,0025 x 200 = 0,5 kg', impPan.lines[1].qty, 0.5)
+eq('el importe de esas dos lineas es el del fixture (10 500 + 900)', inputsTotal(impPan.lines), 11400)
+eq('el precio unitario nace del costo del producto, CONGELADO', impPan.lines[0].unitPrice, 420)
+eq('sin nivel de produccion NO se inventa una escala: se devuelve el motivo',
+  recipeToInputs({ items: RECETA_PAN, productById: CAT, level: 0 }),
+  { lines: [], repeated: 0, missing: 0, missingRate: [], error: 'sin-nivel' })
+eq('la cantidad escalada se limpia a la milesima (0,003 x 200 no es 0.6000000000000001)',
+  recipeToInputs({ items: [{ productId: 'p-har', qty: 0.003 }], productById: CAT, level: 200 }).lines[0].qty, 0.6)
+eq('un insumo que ya no esta en el catalogo se cuenta, no se cuela',
+  recipeToInputs({ items: [{ productId: 'fantasma', qty: 1 }], productById: CAT, level: 10 }),
+  { lines: [], repeated: 0, missing: 1, missingRate: [], error: null })
+eq('un insumo ya capturado en la ficha no se duplica',
+  recipeToInputs({ items: RECETA_PAN, productById: CAT, usedIds: new Set(['p-har']), level: 200 }).repeated, 1)
+
+// Insumo en divisa: con tasa se congela el par; sin tasa NO se trae (valdria 0).
+const impUsd = recipeToInputs({
+  items: [{ productId: 'p-usd', qty: 2 }], productById: CAT, level: 10, rateOf: () => 120
+})
+eq('insumo en divisa CON tasa: se congela moneda y tasa en la linea',
+  [impUsd.lines[0].priceCurrency, impUsd.lines[0].priceRate], ['USD', 120])
+eq('y su importe usa la tasa congelada: 20 u x 3 USD x 120', inputsTotal(impUsd.lines), 7200)
+const impSinTasa = recipeToInputs({ items: [{ productId: 'p-usd', qty: 2 }], productById: CAT, level: 10 })
+eq('insumo en divisa SIN tasa: NO se trae, y se dice cual', impSinTasa.missingRate, ['Insumo en divisa'])
+eq('lo que no se trae no deja linea suelta', impSinTasa.lines, [])
+
+// Linea traida a mano (sin receta): la norma de consumo la escribe el dueño.
+eq('linea del catalogo a mano: norma en cero y forma completa',
+  inputLineFor(CAT.get('p-har')),
+  { productId: 'p-har', code: 'HAR', name: 'Harina', unit: 'kg', baseCost: 0, qty: 0, unitPrice: 420, priceCurrency: null, priceRate: 0 })
+eq('un producto sin unidad cae a "u", nunca a vacio', inputLineFor({ id: 'x' }).unit, 'u')
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

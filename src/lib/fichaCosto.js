@@ -115,6 +115,77 @@ export function missingRateInputs(inputs) {
   return (inputs || []).filter((line) => isForeignLine(line) && !pos(line?.priceRate))
 }
 
+// --- Construccion de lineas del anexo (UNA sola fuente) ---------------------
+// Vive aqui, y no en la pantalla, por el mismo motivo que las guardas del ciclo
+// de vida y que `shouldReconcileDelivered` en `lib/remesas.js`: es la regla cuyo
+// error cuesta mas, y aqui se puede probar con node.
+//
+// Cantidades a la MILESIMA (misma regla que `lib/qty.js`, replicada para que el
+// modulo siga sin un solo import): 0,003 x 200 da 0.6000000000000001 en binario,
+// y esa cifra es la columna (5) que F9 imprime en el documento oficial.
+const QTY_FACTOR = 1000
+function qty3(n) {
+  const x = Number(n)
+  if (!Number.isFinite(x)) return 0
+  const r = Math.round((x + Number.EPSILON) * QTY_FACTOR) / QTY_FACTOR
+  return Object.is(r, -0) ? 0 : r
+}
+
+// Linea nueva del anexo a partir de un producto del catalogo. El precio unitario
+// es `product.cost` CONGELADO al traerlo (decision del dueño) y editable despues.
+// Si el producto fija su precio en divisa (modulo `divisas`) se congela el par
+// moneda + tasa EN LA LINEA: el importe se convierte con ESA tasa, nunca con la
+// de hoy. `rateOf` entra como funcion para no romper la pureza del modulo.
+export function inputLineFor(product, { qty = 0, rateOf = () => 0 } = {}) {
+  const foreign = !!(product?.priceCurrency && product.priceCurrency !== BASE_CURRENCY)
+  return {
+    productId: product?.id || null,
+    code: product?.code || '',
+    name: product?.name || '',
+    unit: product?.unit || 'u',
+    baseCost: 0, // columna (4): solo aplica en una revision (ver docs §2.7)
+    qty: qty3(qty),
+    unitPrice: Number(product?.cost) || 0,
+    priceCurrency: foreign ? product.priceCurrency : null,
+    priceRate: foreign ? (Number(rateOf(product.priceCurrency)) || 0) : 0
+  }
+}
+
+// Insumos de una receta del modulo `cocina` -> lineas del anexo.
+//
+// LA ESCALA ES LO QUE IMPORTA AQUI, y equivocarse vale x(nivel de produccion):
+// `recipes.items[].qty` es el consumo de UNA unidad del elaborado
+// (`kitchenRepo.produce` lo multiplica por las unidades), mientras que la columna
+// (5) del anexo es el consumo del NIVEL DE PRODUCCION COMPLETO. Lo fija el
+// ejemplo oficial "Pan suave": 25 kg de harina para las 200 unidades, y la Fila
+// 15 divide la 14 entre 200. Importar sin multiplicar subvalua la ficha por un
+// factor igual al nivel, EN SILENCIO.
+//
+// No lanza (ningun lib de `src/lib/` lo hace): devuelve las lineas y POR QUE se
+// quedo fuera cada una, para que la pantalla lo diga en vez de callarselo.
+export function recipeToInputs({
+  items = [],
+  productById = new Map(),
+  usedIds = new Set(),
+  level = 0,
+  rateOf = () => 0
+} = {}) {
+  const out = { lines: [], repeated: 0, missing: 0, missingRate: [], error: null }
+  if (!(pos(level) > 0)) return { ...out, error: 'sin-nivel' }
+  for (const it of items || []) {
+    const p = productById.get(it?.productId)
+    if (!p) { out.missing += 1; continue } // ya no esta en el catalogo
+    if (usedIds.has(p.id)) { out.repeated += 1; continue } // ya capturado en la ficha
+    const line = inputLineFor(p, { qty: pos(it?.qty) * pos(level), rateOf })
+    // Insumo en divisa SIN tasa: no se trae. Su importe seria cero en silencio,
+    // que es el mismo motivo por el que `ordersRepo.addItem` y
+    // `kitchenRepo.produce` lanzan y por el que el selector lo deshabilita.
+    if (line.priceCurrency && !(line.priceRate > 0)) { out.missingRate.push(p.name); continue }
+    out.lines.push(line)
+  }
+  return out
+}
+
 // --- Portadores (filas 1.2, 1.3 y 1.4) --------------------------------------
 // En una MYPIME el combustible, la electricidad y el agua NO son productos del
 // catalogo: se capturan como cantidad x precio unitario.

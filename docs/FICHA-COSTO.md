@@ -4,17 +4,18 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 02-09-2026: F0, F1, F2, F3 y F4 HECHAS Y SUBIDAS. La siguiente es F5 (anexo de
-> insumos). Estado exacto para continuar: §9.8.**
+> **Estado al 02-09-2026: F0, F1, F2, F3, F4 y F5 HECHAS. La siguiente es F6 (anexo de
+> salario). Estado exacto para continuar: §9.9.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
 > licencia `fichas`, las pantallas `src/features/costsheets/CostSheetsScreen.jsx` (lista) y
 > `CostSheetScreen.jsx` (editor, **solo el bloque 1**), las rutas `/fichas`, `/ficha/nueva` y
-> `/ficha/:id`, la tarjeta gateada del Home y **`costSheets` YA registrada en
-> `SYNC_COLLECTIONS`**. **Todavía NO existen** los bloques 2 a 9 del editor ni
-> `fichaReports.js`, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los eventos de
-> `costSheet` se escriben desde F4 y hoy **no tienen pantalla que los muestre**.
+> `/ficha/:id`, la tarjeta gateada del Home, **`costSheets` YA registrada en
+> `SYNC_COLLECTIONS`** y, de F5, `InputsBlock.jsx` (bloque 2: anexo de insumos, portadores e
+> importación desde receta) con el acordeón de bloques. **Todavía NO existen** los bloques 3 a 9
+> del editor ni `fichaReports.js`, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los
+> eventos de `costSheet` se escriben desde F4 y hoy **no tienen pantalla que los muestre**.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
@@ -212,6 +213,16 @@ Con Total y firmas.
 3. **Sí importar insumos desde una receta de `cocina`** (`recipesRepo.get(id).items` ya es
    `[{ productId, qty }]` = norma de consumo por unidad). La ficha se queda con **su copia
    congelada**, no queda atada a la receta. Sin la licencia `cocina`, la opción ni aparece.
+   - **LA ESCALA, cerrada en F5 (02-09-2026) y verificada por un revisor independiente.** Esta
+     decisión no decía a qué escala está cada lado, y los dos NO coinciden: la diferencia vale
+     **×(nivel de producción)**. `recipes.items[].qty` es el consumo de **UNA** unidad del
+     elaborado (`kitchenRepo.produce:105` hace `round2(Number(it.qty) * u)`), mientras que la
+     columna (5) del anexo es el consumo del **NIVEL DE PRODUCCIÓN COMPLETO** — lo fija el
+     fixture "Pan suave": 25 kg de harina para las **200** unidades (125 g por pan) y la Fila 15
+     divide la 14 entre 200. **Al importar se MULTIPLICA por el nivel**, se **exige** el nivel
+     antes de importar y la pantalla dice por cuánto multiplica. Sin eso la ficha se subvalúa por
+     un factor igual al nivel, **en silencio**. La regla vive en `recipeToInputs`
+     (`lib/fichaCosto.js`, puro) con sus aserciones de node: **no volver a derivarla a ojo**.
 4. **Anexo de salario completo (9 columnas de la norma) pero en tarjetas**, no en tabla
    horizontal. El formato tabular oficial de 9 columnas sale solo en el PDF/Excel.
 
@@ -550,7 +561,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F2** | Datos: Dexie v18, `costSheetsRepo`, constantes/etiquetas. **`SYNC_COLLECTIONS` se movió a F4** (ver §9.3). | ✅ **HECHA 01-09-2026** · bundle +90 bytes |
 | **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label. **El gate se aplica en F4**, con la primera pantalla. | ✅ **HECHA 01-09-2026** · bundle +45 bytes |
 | **F4** | Lista + identificación (`/fichas`, `/ficha/nueva`, `/ficha/:id`, bloque 1) + **import estático** (la decisión de `React.lazy` se revocó con evidencia, ver §3) + **`costSheets` registrada en `SYNC_COLLECTIONS`** (venía de F2) + **el gate de licencia** (venía de F3) + tarjeta del Home. | ✅ **HECHA 02-09-2026** · bundle +22 170 bytes · detalle en §9.8 |
-| **F5** | Anexo de insumos (bloque 2 + importar receta + portadores). | Pendiente |
+| **F5** | Anexo de insumos (bloque 2 + importar receta + portadores) + acordeón de bloques + `inputLineFor`/`recipeToInputs` en el motor. | ✅ **HECHA 02-09-2026** · bundle +10 834 bytes · 14 aserciones nuevas · revisada · detalle en §9.9 |
 | **F6** | Anexo de salario (bloque 3). | Pendiente |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con semáforos). | Pendiente |
 | **F8** | Firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`). | Pendiente |
@@ -774,7 +785,7 @@ estáticos), `src/features/home/Home.jsx` (tarjeta gateada en *Gestión*, icono 
 El número de entradas del precache **no cambia**: con import estático no nace ningún chunk nuevo.
 Con `React.lazy` habrían sido 46 entradas y **el mismo total descargado** (ver §3).
 
-**Pruebas y build:** 6 suites, **233 aserciones, 0 fallos**. `npm run build` **exit 0**.
+**Pruebas y build:** 6 suites, **233 aserciones, 0 fallos** (F5 las subió a 247). `npm run build` **exit 0**.
 
 **Verificado leyendo el código, no citando este documento:**
 
@@ -820,6 +831,71 @@ Con `React.lazy` habrían sido 46 entradas y **el mismo total descargado** (ver 
 node**. **No se ejecutó la app**: ni se creó una ficha, ni se comprobó el autoguardado en un
 teléfono, ni se vio viajar un `costSheets` entre dos dispositivos. La primera vez que un aparato
 abra este build, su IndexedDB pasa a **v18 y no puede volver** (§9.6).
+
+---
+
+### 9.9 F5: qué se hizo, qué dijo el revisor y qué queda abierto (02-09-2026)
+
+**Fichero nuevo:** `src/features/costsheets/InputsBlock.jsx` — bloque 2 entero (1.1 insumos, los
+tres portadores, Fila 1 con su fórmula, importación desde receta y el delta del Costo Base).
+**Tocados:** `CostSheetScreen.jsx` (acordeón de bloques, uno abierto a la vez),
+`src/lib/fichaCosto.js` (+`inputLineFor`, +`recipeToInputs`), `src/lib/fichaCosto.test.mjs`
+(+14 aserciones) y `src/styles/global.css` (3 clases `.ficha-*` **al final**, como
+`.kitchen-grid`). **No se tocan** `costSheetsRepo` (ya aceptaba `inputs`/`carriers`), `db.js` ni
+`src/features/sync/`.
+
+| | F4 | F5 | Diferencia |
+|---|---|---|---|
+| `dist/assets/index-*.js` | 878 750 B | **889 584 B** | **+10 834 B** |
+| gzip | 254,68 kB | **257,52 kB** | +2,84 kB |
+| Suites node | 233 aserciones | **247 aserciones** | +14 |
+
+**Lo que el revisor independiente confirmó** (revisó el diff, el plan, el motor y los vecinos;
+corrió las 6 suites y el build): la **escala es correcta**, verificada por tres vías
+(`kitchenRepo.js:105`, el fixture del §5.1 y la sanidad física de 125 g de harina por pan); los
+importes salen **íntegros del motor** sin reimplementar una sola fórmula; el gate de `cocina` está
+**en la consulta**; las 3 clases nuevas no tocan ninguna pantalla existente y sus dos tokens
+(`--surface-2`, `--accent-light`) están definidos **en los dos temas**. **Cero hallazgos
+críticos.**
+
+**Sus seis hallazgos importantes, todos cerrados en el commit de arreglos:**
+
+1. **Importar una receta no bloqueaba un insumo en divisa sin tasa** (el selector sí lo hacía).
+   Nacía con `priceRate: 0` e importe **cero en silencio**. Ahora la regla vive en
+   `recipeToInputs`, que lo deja fuera y **dice cuál**.
+2. **La cantidad escalada no se redondeaba:** `0,003 × 200` daba `0.6000000000000001`, y esa
+   cifra es la **columna (5) que F9 imprime**. `inputLineFor` la limpia a la **milésima** (misma
+   regla que `lib/qty.js`, replicada para que el motor siga sin imports).
+3. **Un fallo del autoguardado era invisible:** el `<p className="error">` había quedado *dentro*
+   del bloque 1, y el acordeón abre uno a la vez, así que tecleando en el bloque 2 un guardado
+   fallido no dejaba rastro. Sacado fuera del acordeón.
+4. **Cambiar el nivel de producción después de capturar desfasa el anexo.** Se resolvió con una
+   **nota fija** en el bloque 2 (las normas son las del nivel completo; si cambias el nivel, hay
+   que revisarlas) en vez del semáforo que proponía el revisor: saber "a qué nivel se capturó"
+   exige un **campo nuevo en el registro**, y la forma del documento (§4) es decisión del dueño.
+   **Queda abierto para él.** La nota cubre además el caso manual, que el semáforo no cubría.
+5. **La columna (4) "Costo Base" por línea no la llena nadie** y `revise` copia el array tal cual,
+   así que una revisión nacería con esa columna oficial **en ceros**. **QUEDA ABIERTO Y ASIGNADO
+   A F8:** o F8 la deriva de `baseFromSheetId` cruzando por `productId`, o se captura a mano. Lo
+   implementado hoy es el delta **agregado** de la Fila 1, que es otra cosa. **Si nadie lo cierra,
+   F9 imprime una columna vacía sin que se note.**
+6. **Hueco de pruebas.** La regla de la escala vivía dentro del componente. Se extrajo al motor
+   (`recipeToInputs`), mismo precedente que `shouldReconcileDelivered` en `lib/remesas.js`, con
+   aserciones que anclan el fixture "Pan suave" contra futuras reinterpretaciones.
+
+**Sus menores, también aplicados:** `useMemo` en el `totals` del bloque, criterio único para el
+campo vacío, `min="0"` en las seis entradas nuevas (el motor ya ignora los negativos en el
+importe, pero el valor **se imprime**), la cabecera del bloque como `<h3>` (la jerarquía se leía
+al revés) y el bloque 1 **no plegable** mientras la ficha es nueva (al plegarlo se iba con él el
+botón *Crear ficha*). **No aplicado:** `readOnly` frente a `disabled` en los numéricos de una
+ficha no editable (cosmético) y el insumo de **texto libre**, que el §7 no pide — **anotado aquí
+para decidirlo antes de F9**: una ficha de servicio cuyo insumo no esté en el catálogo hoy no se
+puede desagregar.
+
+**Lo que NO se puede garantizar de F5 (regla 5):** código + build + 6 suites node. **No se
+ejecutó la app**: no se capturó un insumo real, no se importó una receta de verdad, no se vio el
+acordeón ni el autoguardado en un teléfono. El delta de Costo Base **no es ejercitable hasta F8**.
+El hallazgo 3 (error invisible) se dedujo de la estructura del JSX, no de verlo fallar.
 
 ---
 

@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). Las 6 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**233 aserciones** en total). Ojo: cinco viven en `src/lib/`
+que se corren **uno a uno con node** (**247 aserciones** en total). Ojo: cinco viven en `src/lib/`
 pero `retryQueue.test.mjs` está en `src/features/sync/`, así que un glob `src/lib/*.test.mjs`
 **se la salta**:
 
@@ -289,12 +289,17 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18** (`costSheets`),
   `costSheetsRepo`, el módulo de licencia, y de F4 la **lista `/fichas`** y el **bloque 1
   (Identificación)** del editor (`/ficha/nueva`, `/ficha/:id`) en `features/costsheets/`, con la
-  tarjeta gateada del Home. **`costSheets` YA está en `SYNC_COLLECTIONS`** (LWW por `updatedAt`,
-  lote de 400). Las pantallas entran por **import estático** como las demás: la decisión de
-  `React.lazy` se revocó con evidencia (el service worker precachea todos los chunks, así que
-  diferir no ahorra datos a nadie). **Faltan** los bloques 2-9 del editor, `fichaReports.js` y la
-  pestaña *Fichas* de `/auditoria` (los eventos ya se escriben y hoy no tienen pantalla). Todo el
-  traspaso está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
+  tarjeta gateada del Home, y de F5 el **bloque 2 (gasto material)**: anexo de insumos,
+  portadores e importación desde una receta de `cocina`. **`costSheets` YA está en
+  `SYNC_COLLECTIONS`** (LWW por `updatedAt`, lote de 400). Las pantallas entran por **import
+  estático** como las demás: la decisión de `React.lazy` se revocó con evidencia (el service
+  worker precachea todos los chunks, así que diferir no ahorra datos a nadie). **Regla de escala
+  cerrada en F5:** la receta define el consumo de **una** unidad y la columna (5) del anexo es el
+  del **nivel de producción completo**, así que al importar se **multiplica por el nivel** (sin
+  eso la ficha se subvalúa ×nivel, en silencio). **Faltan** los bloques 3-9 del editor,
+  `fichaReports.js` y la pestaña *Fichas* de `/auditoria` (los eventos ya se escriben y hoy no
+  tienen pantalla). Todo el traspaso está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar
+  nada del módulo).
 
 ## Entregas (módulo `remesas`)
 
