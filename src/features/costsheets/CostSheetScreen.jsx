@@ -19,6 +19,7 @@ import {
   totals
 } from '../../lib/fichaCosto'
 import { InputsBlock } from './InputsBlock'
+import { LaborBlock } from './LaborBlock'
 import {
   UNITS,
   UNIT_LABELS,
@@ -53,7 +54,9 @@ const EMPTY = {
   // Bloque 2 (F5). Los portadores llevan SIEMPRE las tres filas, aunque valgan
   // cero: son filas del modelo oficial, no campos opcionales.
   inputs: [],
-  carriers: { fuel: { qty: 0, unitPrice: 0 }, energy: { qty: 0, unitPrice: 0 }, water: { qty: 0, unitPrice: 0 } }
+  carriers: { fuel: { qty: 0, unitPrice: 0 }, energy: { qty: 0, unitPrice: 0 }, water: { qty: 0, unitPrice: 0 } },
+  // Bloque 3 (F6). Una entrada por operacion del anexo de salario.
+  labor: []
 }
 
 // Un bloque del acordeon. Cerrado ensena su total; abierto, la ✕ para plegarlo
@@ -82,7 +85,8 @@ const pick = (s) => ({
   activity: s.activity || FICHA_ACTIVITIES.BIENES,
   method: s.method || FICHA_METHODS.GASTOS,
   inputs: Array.isArray(s.inputs) ? s.inputs : [],
-  carriers: s.carriers || EMPTY.carriers
+  carriers: s.carriers || EMPTY.carriers,
+  labor: Array.isArray(s.labor) ? s.labor : []
 })
 
 export function CostSheetScreen() {
@@ -468,15 +472,34 @@ export function CostSheetScreen() {
         </Block>
       )}
 
-      {/* Honestidad sobre el estado del modulo: los bloques 3 a 9 son las fases
+      {/* Bloque 3 - Salario directo (Fila 2). Nueve columnas de la norma en
+          tarjetas, una por operacion. */}
+      {!isNew && (
+        <Block
+          n="3"
+          title="Salario directo"
+          closedInfo={formatMoney(t.r2, baseCurrency)}
+          open={openBlock === 3}
+          onToggle={() => setOpenBlock(openBlock === 3 ? 0 : 3)}
+        >
+          <LaborBlock
+            labor={form.labor}
+            baseCurrency={baseCurrency}
+            editable={editable}
+            onLabor={(labor) => set('labor', labor)}
+          />
+        </Block>
+      )}
+
+      {/* Honestidad sobre el estado del modulo: los bloques 4 a 9 son las fases
           siguientes del plan (docs/FICHA-COSTO.md §9). */}
       {!isNew && !picking && (
         <section className="card">
           <h3>Lo que falta de esta ficha</h3>
           <p className="muted">
-            El salario directo, los otros gastos directos, los indirectos, los tributos, la
-            utilidad, los precios de referencia y la exportación del documento oficial llegan en
-            las fases siguientes. Hoy la ficha guarda su identificación y su gasto material.
+            Los otros gastos directos, los indirectos, los tributos, la utilidad, los precios de
+            referencia y la exportación del documento oficial llegan en las fases siguientes. Hoy
+            la ficha guarda su identificación, su gasto material y su salario directo.
           </p>
         </section>
       )}
