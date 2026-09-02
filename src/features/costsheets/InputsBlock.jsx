@@ -168,6 +168,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
         <>
           <div className="chip-row">
             <button
+              type="button"
               className={`chip-btn ${onlyStock ? 'is-active' : ''}`}
               onClick={() => setOnlyStock((v) => !v)}
             >
@@ -190,6 +191,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
               return (
                 <button
                   key={p.id}
+                  type="button"
                   className="product-row"
                   disabled={sinTasa}
                   onClick={() => addProduct(p)}
@@ -220,7 +222,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
               </p>
             )}
           </div>
-          <button className="btn btn--ghost btn--block" onClick={() => { setMode(null); setQuery('') }}>
+          <button type="button" className="btn btn--ghost btn--block" onClick={() => { setMode(null); setQuery('') }}>
             Cancelar
           </button>
         </>
@@ -241,7 +243,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
             ))}
             {recipes.length === 0 && <p className="muted">No hay recetas activas.</p>}
           </div>
-          <button className="btn btn--ghost btn--block" onClick={() => setMode(null)}>Cancelar</button>
+          <button type="button" className="btn btn--ghost btn--block" onClick={() => setMode(null)}>Cancelar</button>
         </>
       ) : (
         <>
@@ -253,7 +255,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
                 <div className="kv">
                   <span><strong>{l.name || 'Insumo sin nombre'}</strong></span>
                   {editable && (
-                    <button className="link-del" onClick={() => removeLine(idx)}>quitar</button>
+                    <button type="button" className="link-del" onClick={() => removeLine(idx)}>quitar</button>
                   )}
                 </div>
                 <span className="muted">
@@ -308,12 +310,12 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
 
           {editable && (
             <>
-              <button className="btn btn--ghost btn--block" onClick={() => { setMode('catalogo'); setError('') }}>
+              <button type="button" className="btn btn--ghost btn--block" onClick={() => { setMode('catalogo'); setError('') }}>
                 Agregar insumo del catálogo
               </button>
               {/* Solo con la licencia 'cocina'. Sin ella la opcion ni aparece. */}
               {canKitchen && (
-                <button className="btn btn--ghost btn--block" onClick={() => { setMode('receta'); setError('') }}>
+                <button type="button" className="btn btn--ghost btn--block" onClick={() => { setMode('receta'); setError('') }}>
                   Traer insumos de una receta
                 </button>
               )}

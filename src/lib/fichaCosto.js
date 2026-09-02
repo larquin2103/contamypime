@@ -211,6 +211,48 @@ export function laborTotal(labor) {
   return round2(total)
 }
 
+// Operacion en blanco del anexo. Vive AQUI y no en la pantalla para que haya una
+// sola verdad sobre la forma de una fila: `cleanLabor` (costSheetsRepo) normaliza
+// estas mismas ocho columnas capturables, y si mañana F8 añade la (2) se toca un
+// solo sitio. Los numericos nacen en TEXTO VACIO, no en cero: un cero tecleado y
+// un campo sin tocar no son lo mismo para quien rellena el anexo.
+export function emptyLaborOp() {
+  return {
+    operation: '', // (1)
+    baseCost: 0, // (2) Costo Base: solo aplica en una revision (F8)
+    workers: '', // (3)
+    category: '', // (4)
+    scaleGroup: '', // (5)
+    hourly: '', // (6)
+    extraHourly: '', // (7)
+    hours: '' // (8)
+  }
+}
+
+// "Otra norma de tiempo": parte una operacion en DOS FILAS INDEPENDIENTES, que es
+// lo que exige el anexo cuando dentro de la misma operacion cambia la norma de
+// tiempo o el grupo escala (docs §2.8).
+//
+// LO QUE NO SE PUEDE COPIAR, Y POR ESO ESTO VIVE EN EL MOTOR:
+//  - `hours`: partir una operacion NO puede mover la Fila 2. Copiar el tiempo
+//    DUPLICA el salario de esa operacion EN SILENCIO (el fixture "Pan suave"
+//    pasaria de 5 700 a 10 500 sin que nada avise). La asercion que lo ancla es
+//    `laborTotal(splitLaborOp(SALARIO, 0)) === 5700`.
+//  - `baseCost`: la columna (2) del Costo Base de una operacion es UNA, no dos.
+//    Hoy vale cero siempre y no se puede editar, pero cuando F8 cierre esa
+//    columna, copiarla contaria el Costo Base dos veces y el delta Base->Nuevo
+//    saldria mal.
+// El grupo escala SI se conserva: lo normal es que siga siendo el mismo, y quien
+// parte por grupo escala lo edita. La copia se inserta PEGADA a su original para
+// que las dos filas de la misma operacion se lean juntas.
+export function splitLaborOp(labor, idx) {
+  const list = Array.isArray(labor) ? labor : []
+  const src = list[idx]
+  if (!src) return [...list]
+  const copia = { ...src, hours: '', baseCost: 0 }
+  return [...list.slice(0, idx + 1), copia, ...list.slice(idx + 1)]
+}
+
 // Fila 3: otros gastos directos (mantenimientos, depreciacion de AFT directos,
 // amortizacion de intangibles). La norma exige desglosarlos, de ahi la lista.
 export function otherDirectTotal(items) {

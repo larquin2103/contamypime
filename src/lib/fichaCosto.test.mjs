@@ -37,7 +37,9 @@ import {
   canDeleteSheet,
   nextVersion,
   inputLineFor,
-  recipeToInputs
+  recipeToInputs,
+  emptyLaborOp,
+  splitLaborOp
 } from './fichaCosto.js'
 import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS } from '../db/constants.js'
 import { LICENSE_MODULES, LICENSE_MODULE_LABELS } from './license.js'
@@ -447,6 +449,57 @@ eq('linea del catalogo a mano: norma en cero y forma completa',
   inputLineFor(CAT.get('p-har')),
   { productId: 'p-har', code: 'HAR', name: 'Harina', unit: 'kg', baseCost: 0, qty: 0, unitPrice: 420, priceCurrency: null, priceRate: 0 })
 eq('un producto sin unidad cae a "u", nunca a vacio', inputLineFor({ id: 'x' }).unit, 'u')
+
+// --- F6: partir una operacion del anexo de salario (§2.8) -------------------
+// La norma obliga a filas INDEPENDIENTES cuando cambia la norma de tiempo o el
+// grupo escala. La trampa: la lectura ingenua de "duplicar" copia tambien las
+// horas, y entonces la Fila 2 se DOBLA en silencio. Esta es la asercion que lo
+// impide, y la razon por la que la regla no vive en la pantalla.
+const PARTIDO = splitLaborOp(SALARIO, 0)
+eq('partir la operacion 1 NO mueve la Fila 2 (5 700, no 10 500)', laborTotal(PARTIDO), 5700)
+eq('la copia se inserta PEGADA a su original', PARTIDO.map((o) => o.operation),
+  ['Amasado', 'Amasado', 'Empaque'])
+eq('la copia nace SIN norma de tiempo (es lo que va a cambiar)', PARTIDO[1].hours, '')
+eq('y por eso aporta cero hasta que se escriba', laborTotal([PARTIDO[1]]), 0)
+eq('la copia NO arrastra el Costo Base de la columna (2): es uno, no dos',
+  PARTIDO[1].baseCost, 0)
+eq('el original queda intacto', laborTotal([PARTIDO[0]]), 4800)
+eq('partir no muta la lista original (append-only en memoria)', SALARIO.length, 2)
+eq('partir por un indice que no existe no inventa filas', splitLaborOp(SALARIO, 9).length, 2)
+eq('partir sobre una lista vacia no revienta', splitLaborOp([], 0), [])
+eq('partir sobre algo que no es lista tampoco', splitLaborOp(null, 0), [])
+// El grupo escala SI se conserva: partir por tiempo no debe obligar a reteclearlo.
+const CON_GRUPO = splitLaborOp([{ operation: 'Amasado', workers: 2, hourly: 350, extraHourly: 50, hours: 6, scaleGroup: 'IV' }], 0)
+eq('la copia conserva el grupo escala', CON_GRUPO[1].scaleGroup, 'IV')
+
+// Operacion en blanco: la MISMA forma que normaliza `cleanLabor` en el repo.
+eq('la operacion en blanco trae las ocho columnas capturables',
+  Object.keys(emptyLaborOp()).sort(),
+  ['baseCost', 'category', 'extraHourly', 'hourly', 'hours', 'operation', 'scaleGroup', 'workers'])
+eq('y vale cero, sin NaN', laborTotal([emptyLaborOp()]), 0)
+eq('sus numericos nacen VACIOS, no en cero (un cero tecleado dice otra cosa)',
+  [emptyLaborOp().workers, emptyLaborOp().hours], ['', ''])
+
+// --- F6: lo que de verdad llega del formulario son CADENAS -------------------
+// El bloque 3 guarda texto (el repo normaliza al escribir), asi que el importe
+// por tarjeta se calcula sobre cadenas mientras se teclea. Sin esto, un cambio en
+// `pos()` podria dejar la pantalla en NaN sin que ninguna asercion se enterara.
+const TECLEADO = [
+  { operation: 'Amasado', workers: '2', hourly: '350', extraHourly: '50', hours: '6' },
+  { operation: 'Empaque', workers: '1', hourly: '300', extraHourly: '', hours: '3' }
+]
+eq('tarjeta con valores de TEXTO: 2x(350+50)x6', laborTotal([TECLEADO[0]]), 4800)
+eq('adicional VACIO cuenta como cero: 1x(300+0)x3', laborTotal([TECLEADO[1]]), 900)
+eq('la suma de las tarjetas cuadra con el pie del bloque',
+  TECLEADO.reduce((acc, o) => acc + laborTotal([o]), 0), laborTotal(TECLEADO))
+eq('texto no numerico vale 0, nunca NaN', laborTotal([{ workers: 'dos', hourly: 'x', hours: 'y' }]), 0)
+eq('un adicional negativo no rebaja el salario/hora',
+  laborTotal([{ workers: '1', hourly: '300', extraHourly: '-100', hours: '1' }]), 300)
+// Redondeo POR LINEA: dos lineas de 0,005 dan 0,02 en pantalla Y 0,02 de total.
+// Sumar en crudo y redondear al final daria 0,01 y el anexo no cuadraria consigo.
+const MENUDO = [{ workers: 1, hourly: 0.005, hours: 1 }, { workers: 1, hourly: 0.005, hours: 1 }]
+eq('el total cuadra con la suma de lo IMPRESO, no con la suma en crudo',
+  laborTotal(MENUDO), MENUDO.reduce((acc, o) => acc + laborTotal([o]), 0))
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

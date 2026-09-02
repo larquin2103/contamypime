@@ -4,8 +4,8 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 02-09-2026: F0, F1, F2, F3, F4 y F5 HECHAS. La siguiente es F6 (anexo de
-> salario). Estado exacto para continuar: §9.9.**
+> **Estado al 02-09-2026: F0, F1, F2, F3, F4, F5 y F6 HECHAS. La siguiente es F7 (indirectos,
+> tributos, utilidad y precio). Estado exacto para continuar: §9.10.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
@@ -13,9 +13,10 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > `CostSheetScreen.jsx` (editor, **solo el bloque 1**), las rutas `/fichas`, `/ficha/nueva` y
 > `/ficha/:id`, la tarjeta gateada del Home, **`costSheets` YA registrada en
 > `SYNC_COLLECTIONS`** y, de F5, `InputsBlock.jsx` (bloque 2: anexo de insumos, portadores e
-> importación desde receta) con el acordeón de bloques. **Todavía NO existen** los bloques 3 a 9
-> del editor ni `fichaReports.js`, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los
-> eventos de `costSheet` se escriben desde F4 y hoy **no tienen pantalla que los muestre**.
+> importación desde receta) con el acordeón de bloques, y de F6 `LaborBlock.jsx` (bloque 3: el
+> anexo de salario en tarjetas). **Todavía NO existen** los bloques 4 a 9 del editor ni
+> `fichaReports.js`, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los eventos de
+> `costSheet` se escriben desde F4 y hoy **no tienen pantalla que los muestre**.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
@@ -562,7 +563,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label. **El gate se aplica en F4**, con la primera pantalla. | ✅ **HECHA 01-09-2026** · bundle +45 bytes |
 | **F4** | Lista + identificación (`/fichas`, `/ficha/nueva`, `/ficha/:id`, bloque 1) + **import estático** (la decisión de `React.lazy` se revocó con evidencia, ver §3) + **`costSheets` registrada en `SYNC_COLLECTIONS`** (venía de F2) + **el gate de licencia** (venía de F3) + tarjeta del Home. | ✅ **HECHA 02-09-2026** · bundle +22 170 bytes · detalle en §9.8 |
 | **F5** | Anexo de insumos (bloque 2 + importar receta + portadores) + acordeón de bloques + `inputLineFor`/`recipeToInputs` en el motor. | ✅ **HECHA 02-09-2026** · bundle +10 834 bytes · 14 aserciones nuevas · revisada · detalle en §9.9 |
-| **F6** | Anexo de salario (bloque 3). | Pendiente |
+| **F6** | Anexo de salario (bloque 3) + `emptyLaborOp`/`splitLaborOp` en el motor. | ✅ **HECHA 02-09-2026** · bundle +4 333 bytes · 20 aserciones nuevas · revisada · detalle en §9.10 |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con semáforos). | Pendiente |
 | **F8** | Firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`). | Pendiente |
 | **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas. **Incluye los campos opcionales `header`/`footer` en `exportPdf`/`exportExcel` (decisión 5 de §3) y la comprobación de que un reporte preexistente sale idéntico.** | Pendiente |
@@ -896,6 +897,90 @@ puede desagregar.
 ejecutó la app**: no se capturó un insumo real, no se importó una receta de verdad, no se vio el
 acordeón ni el autoguardado en un teléfono. El delta de Costo Base **no es ejercitable hasta F8**.
 El hallazgo 3 (error invisible) se dedujo de la estructura del JSX, no de verlo fallar.
+
+---
+
+### 9.10 F6: qué se hizo, qué dijo el revisor y qué queda abierto (02-09-2026)
+
+**Fichero nuevo:** `src/features/costsheets/LaborBlock.jsx` — bloque 3 entero: el anexo "Gasto de
+salario de los obreros" con sus **nueve columnas en tarjetas**, una por operación (decisión 4 del
+§3), el pie `3 × (6 + 7) × 8` por tarjeta y la Fila 2 al final. **Tocados:** `CostSheetScreen.jsx`
+(bloque 3 en el acordeón), `src/lib/fichaCosto.js` (+`emptyLaborOp`, +`splitLaborOp`),
+`src/lib/fichaCosto.test.mjs` (+20 aserciones) e `InputsBlock.jsx` (`type="button"` defensivo).
+**No se tocan** `costSheetsRepo` (ya persistía `labor`: `cleanLabor` en `:85`, alta en `:190`,
+`update` en `:230`), `db.js` ni `src/features/sync/`.
+
+| | F5 | F6 | Diferencia |
+|---|---|---|---|
+| `dist/assets/index-*.js` | 889 584 B | **893 917 B** | **+4 333 B** |
+| gzip | 257,52 kB | **258,41 kB** | +0,89 kB |
+| Suites node | 247 aserciones | **267 aserciones** | +20 |
+
+**Lo que el revisor independiente confirmó** (reconstruyó el fixture pasando los valores **como
+cadenas**, que es lo que produce el formulario): salen **4 800 / 900 / 5 700** clavados;
+`laborTotal([op])` es **exactamente idempotente** con `laborTotal(lista)`, así que el pie de cada
+tarjeta, el total del bloque y el `t.r2` de la cabecera del acordeón **no pueden divergir**; el
+repo ya normalizaba las **ocho columnas capturables** y sus nombres coinciden uno a uno con la
+operación en blanco; el autoguardado no se rompió (el candado `loadedId` sigue impidiendo que la
+recarga pise lo que se escribe, y `dirty` que abrir una ficha selle `updatedAt`); cero fugas de
+licencia y cero cambios en la sincronización; y las once clases CSS usadas existen, sin ninguna
+nueva. **Cero hallazgos críticos.**
+
+**Sus cuatro hallazgos importantes, cerrados:**
+
+1. **La documentación se quedó sin actualizar**, contra la instrucción textual de la cabecera de
+   este fichero. Es lo que estás leyendo: §9.10, la tabla de fases, la cabecera y `CLAUDE.md`.
+2. **La regla del §2.8 volvía a vivir dentro del componente sin cobertura** — el hallazgo 6 de F5
+   otra vez. Con una consecuencia **medible**: si alguien "mejora" el duplicado copiando también
+   la norma de tiempo (la lectura ingenua de "duplicar"), la **Fila 2 se dobla en silencio**
+   (5 700 → 10 500), el precio unitario se dispara y **ninguna aserción falla**. Se extrajo a
+   `splitLaborOp` en el motor, anclada por `laborTotal(splitLaborOp(SALARIO, 0)) === 5700`.
+3. **El duplicado arrastraba `baseCost`**, la columna (2). Hoy no tiene efecto (vale cero siempre
+   y no hay campo que la edite), pero cuando F8 cierre esa columna, partir una operación habría
+   **contado su Costo Base dos veces** y el delta Base→Nuevo saldría mal. `splitLaborOp` lo pone
+   a cero, con su comentario.
+4. **La forma de una fila estaba duplicada** en el componente y en `cleanLabor`. Se cierra con
+   `emptyLaborOp()` en el motor: una sola verdad, y probable con node.
+
+**Sus menores, aplicados:** cada etiqueta lleva **su número de columna** (así el pie
+`3 × (6 + 7) × 8` se puede seguir campo por campo, como en el bloque 2), la moneda también en
+"Pagos adicionales", las notas **una sola vez por bloque** en vez de una por tarjeta, la fórmula
+en el total de la Fila 2 y `type="button"` en los botones del módulo.
+
+**Un punto donde el revisor no tenía la evidencia:** propuso que el contador "1 / N" pudiera
+significar "fila 1 de las 2 de ESTA operación". No pudo abrir la maqueta; se comprobó en ella y
+**es índice global**: pinta *"Empaque 2 / 2"* y Empaque tiene una sola fila (bajo la otra lectura
+diría "1 / 1"). Queda como está.
+
+**Desviación declarada de la maqueta, que el revisor respalda:** la maqueta enseña **un** botón al
+pie, *"Otra norma de tiempo"*, pero sobre un estado ya poblado; con la lista vacía no tiene qué
+duplicar y con dos tarjetas no puede saber cuál. Se implementan **los dos**: *Agregar operación*
+al pie y *Otra norma de tiempo* dentro de cada tarjeta. Es un hueco de la maqueta, no del código.
+**Pendiente del visto bueno del dueño.**
+
+**LO QUE QUEDA ABIERTO Y HAY QUE RECORDAR:**
+
+- **F8 tiene ahora DOS columnas de Costo Base que llenar, no una:** la (4) del anexo de insumos
+  (§9.9 hallazgo 5) y la (2) del anexo de salario. Ninguna se captura hoy y `revise` copia los
+  arrays tal cual, así que **una revisión nacería con las dos en ceros**. Si nadie las cierra,
+  **F9 imprime dos columnas oficiales vacías sin que se note.**
+- **F9 debe filtrar las filas de salario en blanco.** `LaborBlock` es el primer bloque que puede
+  parir filas 100 % vacías (las de insumos siempre vienen del catálogo o de una receta), y
+  `cleanLabor` **a propósito** no descarta filas incompletas (autoguardado). Sin filtro, el anexo
+  oficial imprimiría una fila vacía.
+- **Decisiones del dueño, no de la revisión:** (a) un `uid` por operación en vez de la clave por
+  índice — cambiaría la forma del registro del §4, y el revisor verificó que **hoy no causa ningún
+  error de valores**, solo una aspereza con el doble toque en "quitar"; (b) si *"Otra norma de
+  tiempo"* debería llamarse de otro modo para cubrir también el reparto por **grupo escala**, que
+  el §2.8 exige igual; (c) `.form-row .field` no lleva `min-width: 0`, así que dos campos por fila
+  **podrían** desbordar a 360 px — es **preexistente en media app**, no de F6, y arreglarlo toca
+  una clase compartida (regla 2).
+
+**Lo que NO se puede garantizar de F6 (regla 5):** código + build + 6 suites node, más una
+comprobación aparte del camino real de la pantalla (valores como cadena, vacíos, negativos, texto
+no numérico y el duplicado), que ya vive en la suite. **No se ejecutó la app**: no se capturó una
+operación real, no se probó el duplicado ni el autoguardado en un teléfono, y nadie midió el ancho
+en una pantalla de 360 px.
 
 ---
 

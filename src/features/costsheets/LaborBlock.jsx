@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { formatMoney } from '../../lib/currency'
-import { laborTotal } from '../../lib/fichaCosto'
+import { laborTotal, emptyLaborOp, splitLaborOp } from '../../lib/fichaCosto'
 
 // Modulo 'fichas' (F6) - Bloque 3: SALARIO DIRECTO (Fila 2 del Anexo I).
 //
@@ -15,31 +15,22 @@ import { laborTotal } from '../../lib/fichaCosto'
 // dueño): las nueve columnas apiladas caben en un telefono y la tabla oficial
 // sale solo en el PDF/Excel de F9. Cero scroll horizontal.
 //
-// La norma obliga a FILAS INDEPENDIENTES cuando cambia la norma de tiempo o el
-// grupo escala dentro de la misma operacion; de ahi "otra norma de tiempo", que
-// duplica la tarjeta en vez de meter dos tiempos en una.
+// Cada etiqueta lleva SU NUMERO DE COLUMNA, para que el pie "3 x (6 + 7) x 8"
+// se pueda seguir campo por campo (y para que cuadre con lo que imprime F9).
 //
 // La columna (2) "Costo Base" NO se captura aqui: solo aplica cuando la ficha es
-// una revision, igual que la columna (4) del anexo de insumos. Queda asignada a
-// F8 en docs/FICHA-COSTO.md §9.9.
+// una revision, igual que la columna (4) del anexo de insumos. Las DOS quedan
+// asignadas a F8 en docs/FICHA-COSTO.md §9.10.
+//
+// La forma de una fila (`emptyLaborOp`) y la regla de partirla en dos
+// (`splitLaborOp`) viven en el MOTOR, no aqui: son reglas del §2.8 y ahi se
+// prueban con node. Partir sin borrar la norma de tiempo DOBLA la Fila 2 en
+// silencio, y esa es la asercion que lo ancla.
 
 // El importe de UNA operacion se le pide al MOTOR (una lista de una), en vez de
 // repetir aqui la formula: el redondeo por linea es identico en pantalla y en el
 // documento, y su Total cuadra con la suma de lo impreso.
 const opAmount = (op) => laborTotal([op])
-
-// Operacion en blanco. Los campos se guardan como TEXTO (el repo los normaliza
-// con `num`/`txt`) para no pelear con lo que se esta tecleando.
-const EMPTY_OP = {
-  operation: '',
-  baseCost: 0,
-  workers: '',
-  category: '',
-  scaleGroup: '',
-  hourly: '',
-  extraHourly: '',
-  hours: ''
-}
 
 export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
   const fila2 = useMemo(() => laborTotal(labor), [labor])
@@ -49,20 +40,7 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
   }
 
   const removeOp = (idx) => onLabor(labor.filter((_, i) => i !== idx))
-
-  const addOp = () => onLabor([...labor, { ...EMPTY_OP }])
-
-  // "Otra norma de tiempo": copia la operacion en una fila INDEPENDIENTE, que es
-  // lo que exige la norma cuando el mismo trabajo lleva tiempos o grupos escala
-  // distintos. Se copia TODO menos la norma de tiempo, que es lo que el boton
-  // dice que va a cambiar; el grupo escala se conserva porque lo normal es que
-  // siga siendo el mismo, y si no lo es se edita (borrarlo obligaria a teclear
-  // otra vez algo que casi siempre no cambia). Se inserta pegada a su original
-  // para que las dos filas de la misma operacion se lean juntas.
-  const duplicateOp = (idx) => {
-    const copia = { ...labor[idx], hours: '' }
-    onLabor([...labor.slice(0, idx + 1), copia, ...labor.slice(idx + 1)])
-  }
+  const addOp = () => onLabor([...labor, emptyLaborOp()])
 
   return (
     <>
@@ -74,7 +52,7 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
           </div>
 
           <label className="field">
-            <span>Operación</span>
+            <span>Operación (1)</span>
             <input
               value={op.operation || ''}
               readOnly={!editable}
@@ -85,7 +63,7 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
 
           <div className="form-row">
             <label className="field">
-              <span>Trabajadores</span>
+              <span>Trabajadores (3)</span>
               <input
                 type="number"
                 inputMode="decimal"
@@ -97,7 +75,7 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
               />
             </label>
             <label className="field">
-              <span>Categoría ocupacional</span>
+              <span>Categoría ocupacional (4)</span>
               <input
                 value={op.category || ''}
                 readOnly={!editable}
@@ -109,7 +87,7 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
 
           <div className="form-row">
             <label className="field">
-              <span>Grupo escala</span>
+              <span>Grupo escala (5)</span>
               <input
                 value={op.scaleGroup || ''}
                 readOnly={!editable}
@@ -118,7 +96,7 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
               />
             </label>
             <label className="field">
-              <span>Norma de tiempo (h)</span>
+              <span>Norma de tiempo en horas (8)</span>
               <input
                 type="number"
                 inputMode="decimal"
@@ -133,7 +111,7 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
 
           <div className="form-row">
             <label className="field">
-              <span>Salario / hora ({baseCurrency})</span>
+              <span>Salario / hora (6) · {baseCurrency}</span>
               <input
                 type="number"
                 inputMode="decimal"
@@ -145,7 +123,7 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
               />
             </label>
             <label className="field">
-              <span>Pagos adicionales / hora</span>
+              <span>Pagos adicionales / hora (7) · {baseCurrency}</span>
               <input
                 type="number"
                 inputMode="decimal"
@@ -157,7 +135,6 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
               />
             </label>
           </div>
-          <p className="muted">Los pagos adicionales son por hora: nocturnidad, peligrosidad.</p>
 
           <div className="total-row">
             <span className="muted">3 × (6 + 7) × 8</span>
@@ -166,10 +143,13 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
 
           {editable && (
             <div className="kv">
-              <button className="btn btn--ghost btn--sm" onClick={() => duplicateOp(idx)}>
+              {/* Parte la operacion en dos filas independientes (§2.8). NO es una
+                  accion destructiva, asi que NO va en rojo (`.link-del` es
+                  `var(--danger)`): el rojo queda solo para "quitar". */}
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => onLabor(splitLaborOp(labor, idx))}>
                 Otra norma de tiempo
               </button>
-              <button className="link-del" onClick={() => removeOp(idx)}>quitar</button>
+              <button type="button" className="link-del" onClick={() => removeOp(idx)}>quitar</button>
             </div>
           )}
         </div>
@@ -183,18 +163,21 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
       )}
 
       {editable && (
-        <button className="btn btn--ghost btn--block" onClick={addOp}>
+        <button type="button" className="btn btn--ghost btn--block" onClick={addOp}>
           Agregar operación
         </button>
       )}
 
       <p className="muted">
-        El salario directo <strong>incluye las vacaciones</strong>. Nota de la norma: los precios
-        no se pueden incrementar por motivo de la aplicación del Decreto 53.
+        Los pagos adicionales (7) son <strong>por hora</strong>: nocturnidad, peligrosidad. El
+        salario directo <strong>incluye las vacaciones</strong>. Si una misma operación lleva
+        normas de tiempo o grupos escala distintos, va en <strong>filas independientes</strong>:
+        eso hace “Otra norma de tiempo”. Nota de la norma: los precios no se pueden incrementar
+        por motivo de la aplicación del Decreto 53.
       </p>
 
       <div className="total-row total-row--grand">
-        <span>Fila 2 · SALARIO DIRECTO</span>
+        <span>Fila 2 · SALARIO DIRECTO (suma del anexo)</span>
         <strong>{formatMoney(fila2, baseCurrency)}</strong>
       </div>
     </>
