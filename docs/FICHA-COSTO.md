@@ -4,10 +4,16 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 01-09-2026: DISEÑO APROBADO POR EL DUEÑO, CERO CÓDIGO ESCRITO.**
-> No existe `src/lib/fichaCosto.js`, ni `costSheetsRepo`, ni la ruta `/fichas`, ni la versión
-> Dexie v18. La última versión de esquema en producción es **v17**.
+> **Estado al 01-09-2026: F0 y F1 HECHAS. F2 en adelante, pendientes.**
+> **Ya existe** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
+> (**113 aserciones**). **Todavía NO existen** `costSheetsRepo`, la ruta `/fichas`, la pantalla,
+> ni la versión Dexie v18: la última versión de esquema en producción sigue siendo **v17**.
+> Nadie importa el motor todavía, así que la app desplegada es idéntica a la clásica (verificado:
+> el bundle sale byte a byte igual al de antes de F1).
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
+>
+> **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
+> desde otra PC; si miente sobre su propio estado, la siguiente sesión rehace lo hecho.
 
 **Diseño visual aprobado (referencia obligatoria antes de programar pantallas):**
 https://claude.ai/code/artifact/1134b7b2-d636-4a6a-9856-19e3ddb3a879 — *"Ficha de Costo
@@ -126,7 +132,11 @@ Base = Fila 12 − (1 + 6 + 7 + 8 + 9 + 10) = Fila 2 + Fila 3 + Fila 4
   OSDE"*. **NO menciona distribución y venta**, luego
   `Base gastronomía = 12 − (1 + 6 + 8 + 9 + 10) = 2 + 3 + 4 + 7`.
   Se implementa **literal**, con la diferencia documentada.
-- Son **cuatro bases distintas**: cada una lleva su aserción en las pruebas node.
+- **CORRECCIÓN 01-09-2026:** la versión anterior decía "son **cuatro** bases distintas". Son
+  **TRES fórmulas** repartidas sobre **cinco actividades**: `2+3+4` (bienes y servicios), la
+  **Fila 12 completa** (agropecuaria y alta tecnología/informática/ciencia) y `2+3+4+7`
+  (gastronomía). No hay una cuarta fórmula; buscarla hace perder el tiempo. La suite asegura las
+  **cinco actividades**, que es más de lo que pedía esta línea.
 
 ### 2.6 Control C — Método por correlación (Arts. 8, 10, 12 y fila 13)
 
@@ -239,10 +249,17 @@ Registro:
 { id, groupId, version, status: 'borrador'|'aprobada'|'sustituida', name, productId,
   code, unit, productionLevel, capacityPct, activity, method: 'gastos'|'correlacion',
   baseFromSheetId, inputs[], carriers: { fuel, energy, water }, labor[], otherDirect[],
-  rows: { r4, r41, r6, r61, r7, r71, r8, r9, taxSS, taxFT }, correlationPrice, refs[],
+  rows: { r4, r41, r6, r61, r7, r71, r8, r9, taxSS, taxFT }, utilityPct, correlationPrice, refs[],
   elaboratedBy, approvedBy, approvedAt, createdAt, updatedAt, deletedAt }
 ```
 
+- **`utilityPct` (decisión del dueño, 01-09-2026, añadida tras la revisión de F1).** El Anexo II
+  fija tasas **máximas** y para una MYPIME son **referencia, no obligación** (Art. 6), pero el
+  motor calculaba siempre en el techo y la ficha no podía representar un margen menor, que es una
+  situación normal en un negocio. La ficha **nace con el máximo de su actividad ya puesto**, así
+  que sin tocar el campo se comporta **exactamente igual que antes de existir**. Va en
+  **PORCENTAJE** (25 = 25 %), como `capacityPct`. Pasarse del máximo **no se recorta**: sale el
+  aviso `utilidad-sobre-maximo` con el **exceso en importe**.
 - **`inputs` y `labor` como arrays DENTRO del documento**, igual que `recipes`: la ficha la edita
   **un solo actor** (el mando); no hay dos dispositivos añadiendo líneas en segundos, así que el
   argumento que obligó a `orderItems` a ser filas sueltas aquí no aplica.
@@ -278,9 +295,43 @@ Registro:
 
 `src/lib/fichaCosto.js` (sin Dexie, sin React) + `src/lib/fichaCosto.test.mjs`:
 
-`inputsTotal`, `carriersTotal`, `laborTotal` (3×(6+7)×8), `otherDirectTotal`, `taxRow`, `totals`
-(filas 1, 5, 11, 12), `indirectCheck` (Art. 9), `utilityBase` (**4 bases distintas**),
-`maxUtility`, `priceRows` (13, 14, 15), `subsidyWarning`.
+**ESCRITO Y EN VERDE (F1, 01-09-2026): 113 aserciones, 0 fallos.**
+
+`round2`, `inputsTotal`, `carriersTotal`, `laborTotal` (3×(6+7)×8), `otherDirectTotal`, `taxRow`,
+`totals` (las 16 filas), `indirectCheck` (Art. 9), `utilityBase` (**3 fórmulas, 5 actividades**),
+`maxUtility`, `utilityRate`, `priceRows` (13, 14, 15), `subsidyWarning`.
+
+**Tres funciones más de las que listaba este párrafo**, todas para lo mismo: el motor es puro y
+**no lanza** (ningún lib de `src/lib/` lo hace; lanzan los repos), así que lo que sabe y no puede
+resolver lo **devuelve** en vez de callárselo.
+- `missingRateInputs(inputs)` — líneas en divisa sin la tasa congelada. Sin ella, el importe es 0
+  y la pantalla bloquea, como `kitchenRepo.produce`. Exigido por la aserción "insumo en divisa
+  con y sin tasa" del párrafo de abajo.
+- `utilityRate(sheet)` — tasa efectiva en fracción (ver `utilityPct` en §4).
+- `fichaWarnings(sheet)` — **una sola fuente** para los semáforos de los bloques 5 y 7, en vez de
+  que cada pantalla reinvente la condición. Códigos: `insumo-sin-tasa`, `actividad-desconocida`,
+  `correlacion-sin-precio`, `indirectos-exceden`, `utilidad-sobre-maximo`, `subsidio`. **Todos
+  son avisos** (Art. 6): ninguno bloquea la ficha. El orden es estable y sigue el recorrido del
+  editor (bloque 5 antes que bloque 7).
+
+**CONVENCIÓN DE UNIDADES (equivocarse aquí vale 100×):** los campos que acaban en `Pct` van en
+**porcentaje** (`utilityPct: 25`, `capacityPct: 78`); los tipos tributarios `taxSS`/`taxFT` van en
+**fracción** (12,5 % es `0.125`); `maxUtility` y `utilityRate` devuelven **fracción**.
+
+**El redondeo es POR LÍNEA y luego se suma, a propósito.** El anexo imprime la columna (7) fila
+por fila y su *Total* tiene que cuadrar con la suma de lo impreso, que es lo que mira un inspector.
+Sumar en crudo y redondear al final daría un anexo cuyo total no cuadra con sus propias filas.
+**No "arreglarlo" en F9.**
+
+**Tres decisiones que el motor NO puede tomar solo y ya están cerradas con el dueño:**
+- **Actividad desconocida o vacía → `maxUtility` devuelve `null`, nunca 0.** Devolver 0 hacía que
+  la ficha entregara un precio **igual al costo, en silencio**, que es el peor resultado posible
+  en un sistema cuyo trabajo es fijar precios.
+- **Sin salario directo (Fila 2 = 0) el Control A NO OPINA** (`applies: false`, `coefficient:
+  null`). Si no, una comercializacion sin nómina viviría en ámbar permanente y el semáforo se
+  volvería ruido. Decisión del dueño, 01-09-2026.
+- **Por correlación sin precio capturado no hay subsidio.** Un campo en blanco no es un subsidio;
+  antes salía el aviso rojo con −31 565,00 antes de teclear un dígito.
 
 Aserciones: cada fila y subtotal, las cuatro bases de utilidad, el límite 1,5/1,0/gastronomía,
 correlación con y sin subsidio, insumo en divisa con y sin tasa, redondeo a 2, ficha vacía sin
@@ -379,11 +430,18 @@ vista el resultado.
      norma de tiempo" que duplica la operación como exige la norma.
   4. **Otros directos** — depreciación y amortización sugeridas.
   5. **Indirectos** — **semáforo del coeficiente** en `.cuadre-banner` mostrando el **importe
-     exacto del exceso**; aviso y no cerrojo.
+     exacto del exceso**; aviso y no cerrojo. **Sin salario directo (Fila 2 = 0) el semáforo se
+     apaga** y en su lugar va la nota "sin salario directo no hay base para este control": el
+     motor devuelve `applies: false` y `coefficient: null`, y **`null` se pinta "—", nunca
+     "0,00"** (un cero se lee como "perfecto"). La suma de indirectos sí se sigue mostrando.
   6. **Financieros / OSDE / tributos** — **fila 9 plegada** con nota "no aplica a actores no
      estatales"; fila 10 calculada sola con la base visible.
-  7. **Utilidad y precio** — muestra **qué base** se usa y por qué, la tasa máxima, y en
-     correlación deriva la utilidad con **aviso rojo de subsidio**.
+  7. **Utilidad y precio** — muestra **qué base** se usa y por qué, la tasa máxima del Anexo II, y
+     debajo **la tasa del dueño (`utilityPct`) en un campo editable**, que nace con el máximo ya
+     puesto. Pasarse del máximo pinta ámbar con el **exceso en importe**, nunca recorta. En
+     correlación deriva la utilidad y **el campo de tasa no aplica** (ahí la utilidad se deriva
+     del precio del similar, no se elige); el **aviso rojo de subsidio solo sale cuando hay un
+     precio del similar capturado** — un campo en blanco no es un subsidio.
   8. **Precios de referencia.**
   9. **Firmas, Aprobar ficha y Nueva revisión** (+ la hoja de exportación de la decisión 5).
      **La exportación vive AQUÍ y solo aquí, NO en `/reportes`** (corrección 01-09-2026,
@@ -404,7 +462,14 @@ vista el resultado.
   (eso cambiaría el color de los deltas del panel del dueño, que hoy están bien): la ficha
   **elige** la clase según el signo. El nombre de la clase queda contraintuitivo en este uso, así
   que la línea que la asigna lleva su comentario explicando por qué.
-- **No negociable:** `inputMode="decimal"` en todo importe, cada total muestra su fórmula
+- **No negociable:** `type="number"` **junto con** `inputMode="decimal"` en todo importe. **El
+  `type="number"` es la mitad que protege y esta línea no lo pedía** (corrección 01-09-2026): en
+  un teclado cubano el dueño escribe "0,5 kg de levadura" con **coma**, y una coma en un campo de
+  texto libre se convierte en **cero** silenciosamente, dejando ese insumo a coste cero y
+  subvaluando el producto. Con `type="number"` el navegador rechaza la coma y el valor llega
+  vacío, que sí se ve. Verificado que es lo que ya hacen `TransferScreen:182-183`,
+  `MermaScreen:142`, `KitchenScreen:174` y `CashScreen:115`; la ficha hace lo mismo.
+- **No negociable:** cada total muestra su fórmula
   ("1+2+3+4"), autoguardado del borrador con `updatedAt`, `label` real en cada campo, **cero
   scroll horizontal** (la tabla ancha vive solo en el PDF).
 - **Anti-objetivos:** sin gráficas, sin KPIs decorativos, sin animaciones, sin tour de
@@ -444,7 +509,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | Fase | Contenido | Estado |
 |---|---|---|
 | **F0** | Verificación previa **sin código**: colisión de `costSheets` en Dexie comprobada empíricamente, bundle base medido, este documento. Riesgo cero. | ✅ **HECHA 01-09-2026** (evidencia abajo) |
-| **F1** | Motor puro + pruebas (`lib/fichaCosto.js` + `.test.mjs`) con el fixture "Pan suave". **Riesgo cero: nadie lo importa aún.** | Pendiente |
+| **F1** | Motor puro + pruebas (`lib/fichaCosto.js` + `.test.mjs`) con el fixture "Pan suave". **Riesgo cero: nadie lo importa aún.** | ✅ **HECHA 01-09-2026** · 113 aserciones · revisada (ver §9.2) |
 | **F2** | Datos: Dexie v18, `costSheetsRepo`, constantes/etiquetas, `SYNC_COLLECTIONS`. | Pendiente |
 | **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label + gate. | Pendiente |
 | **F4** | Lista + identificación (`/fichas`, bloque 1) + `React.lazy` con medición del bundle. | Pendiente |
@@ -493,6 +558,30 @@ sigue siendo válida y **no** se debe reducir con este resultado.
 Vite informa en **kB de 1000**; el explorador de archivos de Windows enseña **KiB de 1024**. Son el
 mismo fichero: al comparar en F4 hay que usar **la línea de vite**, que es la que dio el 856,45 de
 partida.
+
+---
+
+### 9.2 Revisión de F1 (01-09-2026) y lo que quedó abierto
+
+F1 pasó por una revisión de código independiente que re-derivó el fixture "Pan suave" a mano y
+verificó estructuralmente el aislamiento. **Cero hallazgos críticos.** Confirmó: la aritmética
+cuadra fila por fila, ninguna aserción contradice este documento, cero importadores del módulo,
+sin `import.meta.glob` ni `require.context` en todo `src/`, `SYNC_COLLECTIONS` y `db.js` intactos
+→ Rollup no puede alcanzarlo, **no entra al bundle y no puede tocar la sincronización**.
+
+Sus seis hallazgos importantes ya están **cerrados** y viven en el motor y en este documento:
+tasa de utilidad escribible (§4 `utilityPct`), actividad desconocida devuelve `null` en vez de
+regalar la ganancia, Control A que no opina sin nómina, correlación sin precio que ya no grita
+subsidio, convención de unidades escrita (§5) y este bloque de estado puesto al día.
+
+**Lo que sigue abierto y hay que recordar:**
+- **`otherDirectTotal` ignora importes negativos.** `[600, -100]` da **600**, no 500. Es coherente
+  con que las 16 filas son magnitudes de gasto, pero si en F7 se quiere permitir una línea de
+  corrección negativa, hay que decidirlo entonces.
+- **El §2 sigue sin contrastarse contra el PDF de la Gaceta**, que no está en el repo. Todo el
+  valor del módulo cuelga de esa interpretación: si la Fila 12 o la base de la utilidad
+  estuvieran mal leídas, **las 113 aserciones estarían verificando el error con toda precisión**.
+  Debe salir explícito en la lista de F11.
 
 ---
 

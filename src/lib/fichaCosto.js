@@ -9,18 +9,28 @@
 // DOS COSAS QUE NO SE DEBEN "CORREGIR" SIN LEER EL DOCUMENTO:
 //   1. La Fila 12 es 5 + 11, NO 6 + 11. El cuerpo de la Gaceta (p. 1383) dice
 //      "6+11" pero el modelo del Anexo I (p. 1380) rotula "(5+11)"; con 6+11 la
-//      fila 6 se contaria dos veces y las filas 1-4 desapareceriaan del precio.
+//      fila 6 se contaria dos veces y las filas 1-4 desaparecerian del precio.
 //   2. La base de la utilidad NO es el total (nota ** del Anexo II). Salvo en
 //      agropecuaria / alta tecnologia / informatica / ciencia, es 2 + 3 + 4.
 //
 // Como los demas modulos puros de este repo (custodyMath, productCustodyMath,
 // remesas), este NO lanza excepciones: DEVUELVE la condicion y la pantalla
-// decide si bloquea. Lanzar es cosa de la capa de repositorios.
+// decide si bloquea. Lanzar es cosa de la capa de repositorios. Todo lo que el
+// motor sabe y no puede resolver solo sale por `fichaWarnings`.
+//
+// CONVENCION DE UNIDADES (no mezclarlas: equivocarse aqui vale 100x):
+//   - Los campos que acaban en `Pct` van en PORCENTAJE: `utilityPct: 25` es 25%,
+//     igual que el `capacityPct: 78` del registro.
+//   - Los tipos tributarios `taxSS` y `taxFT` van en FRACCION: 12,5% es 0.125.
+//   - `maxUtility` y `utilityRate` devuelven FRACCION.
 
 // Misma formula que lib/currency.round2 (se replica para que el modulo sea puro
 // y autoexplicativo, sin cadena de imports que impida correrlo en node).
+// Evita -0 igual que productCustodyMath.cleanQty: la Fila 13 lleva signo (puede
+// ser un subsidio) y un -0 se imprimiria "-0,00" en la ficha oficial.
 export function round2(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100
+  const v = Math.round((Number(n) + Number.EPSILON) * 100) / 100
+  return Object.is(v, -0) ? 0 : v
 }
 
 // Magnitud capturada por el dueño: nunca negativa (un insumo no puede pesar -2 kg
@@ -72,6 +82,12 @@ const INDIRECT_COEFFICIENT = {
 
 // --- Anexo "Desagregacion de los insumos fundamentales" ----------------------
 
+// Se redondea CADA LINEA y luego se suma, no al reves. Es deliberado: el anexo
+// imprime la columna (7) fila por fila y su "Total" tiene que cuadrar con la suma
+// de lo impreso, que es lo que mira un inspector. Sumar en crudo y redondear al
+// final daria un anexo cuyo total no cuadra con sus propias filas. Vale igual
+// para la columna (9) del anexo de salario. NO "arreglarlo" en F9.
+//
 // Importe de una linea del anexo: columna (7) = (5) norma de consumo x (6) precio
 // unitario. Si la linea esta en divisa (modulo `divisas`) se convierte a MN con
 // la tasa CONGELADA en la propia linea, nunca con la de hoy.
@@ -177,17 +193,25 @@ export function totals(sheet) {
 // Devuelve el EXCESO EN IMPORTE (no un porcentaje) porque es lo que el dueño
 // necesita ver para decidir. Excederlo exige consulta previa al MFP, asi que la
 // pantalla AVISA: no bloquea nunca (Art. 6).
+// Sin salario directo (Fila 2 = 0) el control NO OPINA (`applies: false`).
+// Decision del dueño del 01-09-2026: el limite saldria 0 y CUALQUIER indirecto lo
+// excederia, asi que una comercializacion donde el dueño trabaja el mismo viviria
+// en ambar permanente y el semaforo se volveria ruido. El coeficiente entonces es
+// INDEFINIDO (`null`), que no es cero: un cero se lee como "perfecto".
 export function indirectCheck(sheet) {
   const t = totals(sheet)
   const coef = INDIRECT_COEFFICIENT[sheet?.activity] ?? 1
   const sum = round2(t.r4 + t.r6 + t.r7)
-  const limit = round2(coef * t.r2)
+  const applies = t.r2 > 0
+  const limit = applies ? round2(coef * t.r2) : 0
+  const over = applies && sum > limit
   return {
     sum,
     limit,
-    excess: sum > limit ? round2(sum - limit) : 0,
-    coefficient: t.r2 > 0 ? round2(sum / t.r2) : 0,
-    ok: sum <= limit
+    applies,
+    excess: over ? round2(sum - limit) : 0,
+    coefficient: applies ? round2(sum / t.r2) : null,
+    ok: !over
   }
 }
 
@@ -207,8 +231,23 @@ export function utilityBase(sheet) {
   return round2(t.r2 + t.r3 + t.r4)
 }
 
+// Tasa MAXIMA del Anexo II, en FRACCION. Una actividad desconocida o ausente
+// devuelve `null` (indefinida), nunca 0: devolver 0 hacia que la ficha entregara
+// un precio igual al costo, en silencio, que es el peor resultado posible en un
+// sistema cuyo trabajo es fijar precios. El aviso sale por `fichaWarnings`.
 export function maxUtility(activity) {
-  return MAX_UTILITY[activity] ?? 0
+  return MAX_UTILITY[activity] ?? null
+}
+
+// Tasa EFECTIVA, en FRACCION. El Anexo II fija maximos y para una MYPIME son
+// referencia, no obligacion (Art. 6), asi que el dueño puede escribir la suya en
+// `utilityPct` (PORCENTAJE). Sin ese campo se usa el maximo de la actividad, que
+// es exactamente como se comportaba antes de existir el campo. Pasarse del
+// maximo NO se recorta: se avisa (aviso, nunca cerrojo).
+export function utilityRate(sheet) {
+  const pct = sheet?.utilityPct
+  if (pct != null && pct !== '' && Number.isFinite(Number(pct))) return pos(pct) / 100
+  return maxUtility(sheet?.activity)
 }
 
 // --- Filas 13, 14 y 15 ------------------------------------------------------
@@ -221,10 +260,17 @@ export function priceRows(sheet) {
   let r13
   let r14
   if (sheet?.method === FICHA_METHODS.CORRELACION) {
-    r14 = round2(pos(sheet?.correlationPrice))
+    const similar = round2(pos(sheet?.correlationPrice))
+    // Sin precio del similar todavia no hay nada que comparar: un campo en blanco
+    // NO es un subsidio. Se devuelven ceros hasta que el dueño lo escriba.
+    if (!similar) return { r13: 0, r14: 0, r15: 0 }
+    r14 = similar
     r13 = round2(r14 - t.r12)
   } else {
-    r13 = round2(utilityBase(sheet) * maxUtility(sheet?.activity))
+    // Tasa indefinida (actividad desconocida): no se inventa una utilidad. La
+    // ficha lo dice por `fichaWarnings`, no lo entierra en un cero.
+    const rate = utilityRate(sheet)
+    r13 = rate == null ? 0 : round2(utilityBase(sheet) * rate)
     r14 = round2(t.r12 + r13)
   }
   return { r13, r14, r15: level ? round2(r14 / level) : 0 }
@@ -235,5 +281,43 @@ export function priceRows(sheet) {
 // Fila 13 sale negativa: eso es un SUBSIDIO, que la norma prohibe como regla.
 // Aviso rojo en la pantalla.
 export function subsidyWarning(sheet) {
+  if (sheet?.method === FICHA_METHODS.CORRELACION && !pos(sheet?.correlationPrice)) return false
   return priceRows(sheet).r13 < 0
+}
+
+// --- Avisos: UNA sola fuente para los semaforos de los bloques 5 y 7 ---------
+// Mismo estilo que `missingRateInputs`: el motor no lanza, no inventa numeros y
+// no se calla lo que sabe; devuelve QUE pasa y con QUE importe, y la pantalla
+// decide como pintarlo. Todos son AVISOS (Art. 6): ninguno bloquea la ficha.
+// Codigos: insumo-sin-tasa · actividad-desconocida · correlacion-sin-precio ·
+//          indirectos-exceden · utilidad-sobre-maximo · subsidio
+export function fichaWarnings(sheet) {
+  const out = []
+
+  const sinTasa = missingRateInputs(sheet?.inputs)
+  if (sinTasa.length) out.push({ code: 'insumo-sin-tasa', lines: sinTasa })
+
+  if (maxUtility(sheet?.activity) == null) out.push({ code: 'actividad-desconocida' })
+
+  const correlacion = sheet?.method === FICHA_METHODS.CORRELACION
+  if (correlacion && !pos(sheet?.correlationPrice)) out.push({ code: 'correlacion-sin-precio' })
+
+  const ind = indirectCheck(sheet)
+  if (ind.applies && !ind.ok) {
+    out.push({ code: 'indirectos-exceden', excess: ind.excess, limit: ind.limit, coefficient: ind.coefficient })
+  }
+
+  // Solo por el metodo de gastos: por correlacion la utilidad se DERIVA del
+  // precio del similar, no se elige, asi que no hay techo que exceder.
+  if (!correlacion) {
+    const rate = utilityRate(sheet)
+    const max = maxUtility(sheet?.activity)
+    if (rate != null && max != null && rate > max) {
+      out.push({ code: 'utilidad-sobre-maximo', excess: round2(utilityBase(sheet) * (rate - max)), rate, max })
+    }
+  }
+
+  if (subsidyWarning(sheet)) out.push({ code: 'subsidio', amount: priceRows(sheet).r13 })
+
+  return out
 }

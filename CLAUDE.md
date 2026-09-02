@@ -59,14 +59,15 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las 5 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (96 aserciones en total). Ojo: cuatro viven en `src/lib/`
+**Pruebas:** NO hay script `npm test` (ni linter). Las 6 suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (**209 aserciones** en total). Ojo: cinco viven en `src/lib/`
 pero `retryQueue.test.mjs` está en `src/features/sync/`, así que un glob `src/lib/*.test.mjs`
 **se la salta**:
 
 ```bash
 for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/productCustodyMath.test.mjs src/lib/remesas.test.mjs \
+         src/lib/fichaCosto.test.mjs \
          src/features/sync/retryQueue.test.mjs; do node "$t"; done
 ```
 

@@ -15,6 +15,7 @@
 import {
   FICHA_ACTIVITIES,
   FICHA_METHODS,
+  round2,
   inputsTotal,
   missingRateInputs,
   carriersTotal,
@@ -25,8 +26,10 @@ import {
   indirectCheck,
   utilityBase,
   maxUtility,
+  utilityRate,
   priceRows,
-  subsidyWarning
+  subsidyWarning,
+  fichaWarnings
 } from './fichaCosto.js'
 
 let pass = 0
@@ -129,8 +132,24 @@ eq('control A alta tecnologia: decision del dueño 01-09-2026 -> 1,0 (lado que a
   indirectCheck({ ...PAN, activity: FICHA_ACTIVITIES.ALTA_TEC }).limit, 5700)
 eq('control A: dentro del limite -> ok=true y exceso 0',
   (() => { const r = indirectCheck({ ...PAN, rows: { ...FILAS, r4: 2000 } }); return [r.ok, r.excess] })(), [true, 0])
-eq('control A: sin salario directo no se inventa un limite (division por cero)',
-  (() => { const r = indirectCheck({ ...PAN, labor: [] }); return [r.limit, r.coefficient] })(), [0, 0])
+eq('control A: con nomina el control SI opina', A.applies, true)
+
+// Sin salario directo (fila 2 = 0) el limite saldria 0 y CUALQUIER indirecto lo
+// excederia: una comercializacion donde el dueño trabaja el mismo quedaria en
+// ambar permanente y el semaforo se volveria ruido. Decision del dueño
+// 01-09-2026: el control NO OPINA. No se inventa un limite ni se pinta un ambar
+// que no significa nada; el coeficiente es INDEFINIDO (null), que no es cero.
+const SIN_NOMINA = indirectCheck({ ...PAN, labor: [] })
+eq('control A sin nomina: el control no opina', SIN_NOMINA.applies, false)
+eq('control A sin nomina: no se inventa un limite', SIN_NOMINA.limit, 0)
+eq('control A sin nomina: coeficiente INDEFINIDO, que no es cero', SIN_NOMINA.coefficient, null)
+eq('control A sin nomina: no se pinta exceso', SIN_NOMINA.excess, 0)
+eq('control A sin nomina: no se pinta rojo', SIN_NOMINA.ok, true)
+eq('control A sin nomina: la suma de indirectos SI se sigue mostrando', SIN_NOMINA.sum, 8900)
+
+// --- Filas capturadas: cada una tiene su asercion (el §5 pide "cada fila") ---
+eq('filas capturadas 6, 6.1, 7, 7.1, 8 y 9 llegan intactas',
+  [T.r6, T.r61, T.r7, T.r71, T.r8, T.r9], [4100, 2400, 1600, 700, 250, 0])
 
 // --- CONTROL B: LA BASE DE LA UTILIDAD NO ES EL TOTAL ------------------------
 // Nota ** del Anexo II. Es el detalle que casi todos pierden.
@@ -241,6 +260,79 @@ eq('nivel de produccion negativo no da un unitario negativo',
 eq('redondeo: 170,075 -> 170,08 (no 170,07)', priceRows(PAN).r15, 170.08)
 eq('redondeo: importe de insumo 0,1 x 0,2 no arrastra binario',
   inputsTotal([{ qty: 0.1, unitPrice: 0.2 }]), 0.02)
+
+// --- Tasa de utilidad ESCRIBIBLE (decision del dueño 01-09-2026) ------------
+// El Anexo II fija tasas MAXIMAS y para una MYPIME son referencia, no obligacion
+// (Art. 6). La ficha nace con el maximo de su actividad, asi que sin tocar nada
+// se comporta igual que antes; pero el dueño puede poner la SUYA.
+// CONVENCION DE UNIDADES: los campos que acaban en `Pct` van en PORCENTAJE
+// (utilityPct: 25 = 25%, igual que capacityPct: 78); los tipos tributarios
+// taxSS/taxFT van en FRACCION (0,125 = 12,5%). No mezclarlas.
+eq('sin utilityPct: se usa el maximo de la actividad (compatibilidad exacta)', priceRows(PAN).r13, 2450)
+eq('utilityPct 15 -> 15% de la base 9800', priceRows({ ...PAN, utilityPct: 15 }).r13, 1470)
+eq('utilityPct 15: el precio unitario baja en consecuencia',
+  priceRows({ ...PAN, utilityPct: 15 }).r15, 165.18)
+eq('utilityPct 0 es una tasa valida (vender al costo a proposito), no "sin dato"',
+  priceRows({ ...PAN, utilityPct: 0 }).r13, 0)
+eq('utilityRate devuelve FRACCION aunque utilityPct sea porcentaje',
+  utilityRate({ ...PAN, utilityPct: 25 }), 0.25)
+eq('utilityRate sin utilityPct cae en el maximo del Anexo II', utilityRate(PAN), 0.25)
+eq('utilityPct por encima del maximo NO se recorta (Art. 6: aviso, no cerrojo)',
+  priceRows({ ...PAN, utilityPct: 30 }).r13, 2940)
+
+// --- Actividad desconocida o vacia: NO se regala la ganancia en silencio -----
+// Antes devolvia tasa 0 y la ficha entregaba un precio igual al costo sin avisar.
+// En un sistema que existe para fijar precios ese es el peor resultado posible.
+eq('actividad desconocida: la tasa maxima es INDEFINIDA, no cero', maxUtility(undefined), null)
+eq('actividad inventada: tambien indefinida', maxUtility('loQueSea'), null)
+eq('actividad desconocida: utilityRate tambien indefinida', utilityRate({ ...PAN, activity: undefined }), null)
+eq('actividad desconocida: la utilidad NO se calcula (no se inventa un 0 legitimo)',
+  priceRows({ ...PAN, activity: undefined }).r13, 0)
+eq('actividad desconocida: sale AVISADA, que es lo que faltaba',
+  fichaWarnings({ ...PAN, activity: undefined }).map((w) => w.code).includes('actividad-desconocida'), true)
+eq('actividad conocida: no avisa de eso',
+  fichaWarnings(PAN).map((w) => w.code).includes('actividad-desconocida'), false)
+
+// --- Correlacion sin precio capturado: un campo en blanco NO es un subsidio --
+// OJO: estas fichas llevan r4 = 2000 en vez de 3200 a proposito. El fixture "Pan
+// suave" YA excede el coeficiente de indirectos, asi que con su r4 original cada
+// una de estas listas traeria ademas el aviso de indirectos y la asercion no
+// estaria mirando lo que dice mirar.
+const CORR_VACIA = { ...PAN, method: FICHA_METHODS.CORRELACION, rows: { ...FILAS, r4: 2000 } }
+eq('correlacion sin precio: filas 13, 14 y 15 en cero, no en -31565',
+  [priceRows(CORR_VACIA).r13, priceRows(CORR_VACIA).r14, priceRows(CORR_VACIA).r15], [0, 0, 0])
+eq('correlacion sin precio: NO se pinta el aviso rojo de subsidio', subsidyWarning(CORR_VACIA), false)
+eq('correlacion sin precio: se avisa de que falta el precio, que es lo cierto',
+  fichaWarnings(CORR_VACIA).map((w) => w.code), ['correlacion-sin-precio'])
+eq('correlacion CON precio por debajo del costo: ahi si es subsidio', subsidyWarning(CORR), true)
+
+// --- fichaWarnings: una sola fuente para los semaforos de los bloques 5 y 7 --
+eq('ficha limpia dentro de limites: sin avisos',
+  fichaWarnings({ ...PAN, rows: { ...FILAS, r4: 2000 } }).map((w) => w.code), [])
+eq('el fixture Pan suave avisa de indirectos, con el exceso en IMPORTE',
+  fichaWarnings(PAN).map((w) => [w.code, w.excess ?? null]), [['indirectos-exceden', 350]])
+// Con el fixture REAL (r4 = 3200) salen DOS avisos, y en orden estable: primero
+// el de indirectos (bloque 5) y despues el de utilidad (bloque 7), que es el
+// orden en que el dueño recorre la ficha.
+eq('tasa 30% sobre el maximo 25%: dos avisos, en orden, con sus importes',
+  fichaWarnings({ ...PAN, utilityPct: 30 }).map((w) => [w.code, w.excess]),
+  [['indirectos-exceden', 350], ['utilidad-sobre-maximo', 490]])
+eq('el exceso de utilidad es 9800 x (30% - 25%) = 490, en IMPORTE y no en puntos',
+  fichaWarnings({ ...PAN, utilityPct: 30 }).find((w) => w.code === 'utilidad-sobre-maximo').excess, 490)
+eq('insumo en divisa sin tasa: tambien entra en la lista de avisos',
+  fichaWarnings({ ...PAN, inputs: SIN_TASA, rows: { ...FILAS, r4: 2000 } })
+    .map((w) => w.code), ['insumo-sin-tasa'])
+eq('subsidio: entra en la lista con su importe canonico, detras del de indirectos',
+  fichaWarnings(CORR).map((w) => [w.code, w.amount ?? null]),
+  [['indirectos-exceden', null], ['subsidio', -3565]])
+eq('por correlacion NO se avisa de "utilidad sobre el maximo": ahi la utilidad se DERIVA',
+  fichaWarnings({ ...CORR, utilityPct: 99 }).map((w) => w.code),
+  ['indirectos-exceden', 'subsidio'])
+eq('ficha vacia: no se avisa de nada (un borrador recien abierto no esta mal)',
+  fichaWarnings(VACIA).map((w) => w.code), [])
+
+// --- round2 nunca devuelve -0 (guarda copiada de productCustodyMath.cleanQty)
+eq('round2 no devuelve -0 (imprimiria "-0,00" en la ficha)', Object.is(round2(-0.0000001), 0), true)
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)
