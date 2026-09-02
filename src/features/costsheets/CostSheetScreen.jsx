@@ -16,10 +16,15 @@ import {
   canEditSheet,
   maxUtility,
   priceRows,
-  totals
+  totals,
+  indirectCheck
 } from '../../lib/fichaCosto'
 import { InputsBlock } from './InputsBlock'
 import { LaborBlock } from './LaborBlock'
+import { OtherDirectBlock } from './OtherDirectBlock'
+import { IndirectBlock } from './IndirectBlock'
+import { TaxesBlock } from './TaxesBlock'
+import { UtilityBlock } from './UtilityBlock'
 import {
   UNITS,
   UNIT_LABELS,
@@ -56,7 +61,13 @@ const EMPTY = {
   inputs: [],
   carriers: { fuel: { qty: 0, unitPrice: 0 }, energy: { qty: 0, unitPrice: 0 }, water: { qty: 0, unitPrice: 0 } },
   // Bloque 3 (F6). Una entrada por operacion del anexo de salario.
-  labor: []
+  labor: [],
+  // Bloques 4 a 7 (F7). `rows` son las filas que se capturan a mano; van TODAS
+  // aunque valgan cero, porque son filas del modelo oficial y no campos
+  // opcionales. `taxSS`/`taxFT` viven aqui en FRACCION (docs §5).
+  otherDirect: [],
+  rows: { r4: 0, r41: 0, r6: 0, r61: 0, r7: 0, r71: 0, r8: 0, r9: 0, taxSS: 0, taxFT: 0 },
+  correlationPrice: ''
 }
 
 // Un bloque del acordeon. Cerrado ensena su total; abierto, la ✕ para plegarlo
@@ -86,7 +97,20 @@ const pick = (s) => ({
   method: s.method || FICHA_METHODS.GASTOS,
   inputs: Array.isArray(s.inputs) ? s.inputs : [],
   carriers: s.carriers || EMPTY.carriers,
-  labor: Array.isArray(s.labor) ? s.labor : []
+  labor: Array.isArray(s.labor) ? s.labor : [],
+  otherDirect: Array.isArray(s.otherDirect) ? s.otherDirect : [],
+  rows: { ...EMPTY.rows, ...(s.rows || {}) },
+  correlationPrice: s.correlationPrice == null ? '' : String(s.correlationPrice)
+  // OJO: `utilityPct` NO se copia aqui, y NO es un olvido. El repo tiene una
+  // regla cruzada: al cambiar de actividad, la ficha adopta el maximo de la
+  // actividad nueva SOLO si el dueño no habia escrito su propia tasa
+  // (costSheetsRepo.update). Si el formulario llevara siempre `utilityPct`, el
+  // autoguardado lo mandaria en cada patch, la segunda rama de esa regla ganaria
+  // siempre y la tasa NUNCA se adaptaria a la actividad nueva.
+  // Mientras el dueño no toque el campo, la clave no existe en el formulario, el
+  // patch no la lleva y manda el repo. En cuanto la toca, `set('utilityPct', ...)`
+  // la añade y a partir de ahi manda el dueño, que es exactamente lo que dice la
+  // regla. Por eso `merged` la toma de `sheet` hasta que se edita.
 })
 
 export function CostSheetScreen() {
@@ -194,8 +218,10 @@ export function CostSheetScreen() {
     () => ({ ...(sheet || {}), ...form, productionLevel: Number(form.productionLevel) || 0 }),
     [sheet, form]
   )
-  const unitPrice = useMemo(() => priceRows(merged).r15, [merged])
+  const pr = useMemo(() => priceRows(merged), [merged])
+  const unitPrice = pr.r15
   const t = useMemo(() => totals(merged), [merged])
+  const ind = useMemo(() => indirectCheck(merged), [merged])
 
   const crear = async () => {
     setError('')
@@ -491,15 +517,95 @@ export function CostSheetScreen() {
         </Block>
       )}
 
-      {/* Honestidad sobre el estado del modulo: los bloques 4 a 9 son las fases
+      {/* Bloque 4 - Otros gastos directos (Fila 3). */}
+      {!isNew && (
+        <Block
+          n="4"
+          title="Otros gastos directos"
+          closedInfo={formatMoney(t.r3, baseCurrency)}
+          open={openBlock === 4}
+          onToggle={() => setOpenBlock(openBlock === 4 ? 0 : 4)}
+        >
+          <OtherDirectBlock
+            items={form.otherDirect}
+            baseCurrency={baseCurrency}
+            editable={editable}
+            onItems={(items) => set('otherDirect', items)}
+          />
+        </Block>
+      )}
+
+      {/* Bloque 5 - Indirectos (Filas 4, 6 y 7) y el semaforo del Art. 9. */}
+      {!isNew && (
+        <Block
+          n="5"
+          title="Indirectos"
+          closedInfo={formatMoney(ind.sum, baseCurrency)}
+          open={openBlock === 5}
+          onToggle={() => setOpenBlock(openBlock === 5 ? 0 : 5)}
+        >
+          <IndirectBlock
+            sheet={merged}
+            rows={form.rows}
+            baseCurrency={baseCurrency}
+            editable={editable}
+            onRows={(rows) => set('rows', rows)}
+          />
+        </Block>
+      )}
+
+      {/* Bloque 6 - Financieros, OSDE y tributos (Filas 8, 9 y 10). */}
+      {!isNew && (
+        <Block
+          n="6"
+          title="Financieros y tributos"
+          closedInfo={formatMoney(t.r8 + t.r9 + t.r10, baseCurrency)}
+          open={openBlock === 6}
+          onToggle={() => setOpenBlock(openBlock === 6 ? 0 : 6)}
+        >
+          {/* `key` por ficha: el bloque guarda el TEXTO tecleado de los dos tipos
+              tributarios (se teclean en % y se guardan en fraccion), asi que abrir
+              otra ficha tiene que reiniciar ese texto. */}
+          <TaxesBlock
+            key={sheet.id}
+            sheet={merged}
+            rows={form.rows}
+            baseCurrency={baseCurrency}
+            editable={editable}
+            onRows={(rows) => set('rows', rows)}
+          />
+        </Block>
+      )}
+
+      {/* Bloque 7 - Utilidad y precio (Filas 13, 14 y 15) con los controles B y C. */}
+      {!isNew && (
+        <Block
+          n="7"
+          title="Utilidad y precio"
+          closedInfo={formatMoney(pr.r13, baseCurrency)}
+          open={openBlock === 7}
+          onToggle={() => setOpenBlock(openBlock === 7 ? 0 : 7)}
+        >
+          <UtilityBlock
+            sheet={merged}
+            baseCurrency={baseCurrency}
+            editable={editable}
+            onMethod={(m) => set('method', m)}
+            onUtilityPct={(v) => set('utilityPct', v === '' ? null : v)}
+            onCorrelationPrice={(v) => set('correlationPrice', v)}
+          />
+        </Block>
+      )}
+
+      {/* Honestidad sobre el estado del modulo: los bloques 8 y 9 son las fases
           siguientes del plan (docs/FICHA-COSTO.md §9). */}
       {!isNew && !picking && (
         <section className="card">
           <h3>Lo que falta de esta ficha</h3>
           <p className="muted">
-            Los otros gastos directos, los indirectos, los tributos, la utilidad, los precios de
-            referencia y la exportación del documento oficial llegan en las fases siguientes. Hoy
-            la ficha guarda su identificación, su gasto material y su salario directo.
+            Los precios de referencia (Fila 16), las firmas, la aprobación con sus revisiones y la
+            exportación del documento oficial llegan en las fases siguientes. Hoy la ficha ya
+            calcula su precio completo, pero todavía no se puede aprobar ni exportar.
           </p>
         </section>
       )}

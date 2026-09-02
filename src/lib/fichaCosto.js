@@ -272,6 +272,27 @@ export function taxRow(sheet) {
   return round2(base * (pos(rows.taxSS) + pos(rows.taxFT)))
 }
 
+// Los tipos tributarios se GUARDAN en FRACCION (12,5 % = 0.125) pero se TECLEAN
+// en PORCENTAJE. Es la trampa de 100x de este modulo, y por eso la conversion
+// vive aqui, probada con node, y no repartida por las pantallas.
+//
+// OJO A LA ASIMETRIA, que es deliberada y esta escrita en docs §5: los campos que
+// acaban en `Pct` (`utilityPct`, `capacityPct`) YA van en porcentaje y NO pasan
+// por aqui; `taxSS` y `taxFT` si. Un solo uso equivocado multiplica o divide la
+// Fila 10 por cien sin que nada avise.
+export function pctToRate(pct) {
+  const v = Number(pct)
+  if (!Number.isFinite(v) || v <= 0) return 0
+  // A la millonesima: 12,5 % -> 0.125 exacto, y un 33,333 % no arrastra binario.
+  return Math.round((v / 100 + Number.EPSILON) * 1e6) / 1e6
+}
+
+export function rateToPct(rate) {
+  const v = Number(rate)
+  if (!Number.isFinite(v) || v <= 0) return 0
+  return Math.round((v * 100 + Number.EPSILON) * 1e4) / 1e4
+}
+
 // --- Las 16 filas del Anexo I -----------------------------------------------
 // Devuelve las filas calculadas y tambien las capturadas, para que la pantalla y
 // los reportes lean de un solo sitio. Nombres: `r1_1..r1_4` son las subfilas de
@@ -324,6 +345,12 @@ export function indirectCheck(sheet) {
     applies,
     excess: over ? round2(sum - limit) : 0,
     coefficient: applies ? round2(sum / t.r2) : null,
+    // Techo de la actividad (1,5 produccion / 1,0 servicios y gastronomia). Se
+    // devuelve SIEMPRE, aunque el control no opine: es una propiedad de la
+    // actividad, no del calculo, y la pantalla lo ensena al lado del aplicado.
+    // Derivarlo dividiendo limit/r2 en la pantalla arrastraria binario y se
+    // rompería justo cuando r2 es cero.
+    max: coef,
     ok: !over
   }
 }
@@ -342,6 +369,17 @@ export function utilityBase(sheet) {
   if (FULL_BASE_ACTIVITIES.has(sheet?.activity)) return t.r12
   if (sheet?.activity === FICHA_ACTIVITIES.GASTRONOMIA) return round2(t.r2 + t.r3 + t.r4 + t.r7)
   return round2(t.r2 + t.r3 + t.r4)
+}
+
+// QUE FILAS componen la base, para que la pantalla pueda ENSEÑAR LA RESTA y no
+// solo el resultado. La rama es NORMATIVA (es la excepcion del Anexo II), asi que
+// vive aqui y no en la pantalla: duplicarla seria tener dos interpretaciones del
+// Anexo II en el mismo programa. La suite comprueba, para las CINCO actividades,
+// que sumar estas filas da exactamente `utilityBase`.
+export function utilityBaseRows(sheet) {
+  if (FULL_BASE_ACTIVITIES.has(sheet?.activity)) return ['r12']
+  if (sheet?.activity === FICHA_ACTIVITIES.GASTRONOMIA) return ['r2', 'r3', 'r4', 'r7']
+  return ['r2', 'r3', 'r4']
 }
 
 // Tasa MAXIMA del Anexo II, en FRACCION. Una actividad desconocida o ausente

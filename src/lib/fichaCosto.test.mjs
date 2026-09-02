@@ -39,7 +39,10 @@ import {
   inputLineFor,
   recipeToInputs,
   emptyLaborOp,
-  splitLaborOp
+  splitLaborOp,
+  pctToRate,
+  rateToPct,
+  utilityBaseRows
 } from './fichaCosto.js'
 import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS } from '../db/constants.js'
 import { LICENSE_MODULES, LICENSE_MODULE_LABELS } from './license.js'
@@ -500,6 +503,71 @@ eq('un adicional negativo no rebaja el salario/hora',
 const MENUDO = [{ workers: 1, hourly: 0.005, hours: 1 }, { workers: 1, hourly: 0.005, hours: 1 }]
 eq('el total cuadra con la suma de lo IMPRESO, no con la suma en crudo',
   laborTotal(MENUDO), MENUDO.reduce((acc, o) => acc + laborTotal([o]), 0))
+
+// --- F7: la trampa de 100x de los tipos tributarios -------------------------
+// `taxSS`/`taxFT` se GUARDAN en fraccion pero se TECLEAN en porcentaje, mientras
+// que `utilityPct`/`capacityPct` ya van en porcentaje (docs §5). Un solo uso
+// equivocado multiplica o divide la Fila 10 por cien sin que nada avise.
+eq('12,5 % tecleado se guarda como 0,125', pctToRate(12.5), 0.125)
+eq('y vuelve a 12,5 para pintarlo', rateToPct(0.125), 12.5)
+eq('ida y vuelta no arrastra binario', rateToPct(pctToRate(33.333)), 33.333)
+eq('vacio, texto y negativo valen 0, nunca NaN',
+  [pctToRate(''), pctToRate('x'), pctToRate(-5), rateToPct(''), rateToPct(-1)], [0, 0, 0, 0, 0])
+eq('0 % es 0', pctToRate(0), 0)
+eq('un porcentaje tecleado como CADENA tambien convierte', pctToRate('12.5'), 0.125)
+// La cadena completa: lo que el dueño teclea -> lo que se guarda -> la Fila 10.
+// Base de la Fila 10 del fixture = 2 + 4.1 + 6.1 + 7.1 = 5700 + 1900 + 2400 + 700.
+eq('base de la Fila 10 del fixture = 10 700',
+  taxRow({ ...PAN, rows: { ...FILAS, taxSS: 1 } }), 10700)
+eq('con 12,5 % de seguridad social la Fila 10 son 1 337,50, no 133 750',
+  taxRow({ ...PAN, rows: { ...FILAS, taxSS: pctToRate(12.5) } }), 1337.5)
+eq('los dos tipos se SUMAN antes de aplicarse (12,5 % + 5 % = 17,5 %)',
+  taxRow({ ...PAN, rows: { ...FILAS, taxSS: pctToRate(12.5), taxFT: pctToRate(5) } }), 1872.5)
+eq('sin tipos configurados la Fila 10 es CERO (la Resolucion no los fija)',
+  taxRow(PAN), 0)
+// La Fila 10 entra en la 11 y por tanto en el precio: si la conversion se
+// equivocara por 100, el precio unitario se iria con ella.
+const CON_TRIBUTOS = { ...PAN, rows: { ...FILAS, taxSS: pctToRate(12.5) } }
+eq('la Fila 10 arrastra a la 11, la 12 y el precio unitario',
+  [totals(CON_TRIBUTOS).r10, totals(CON_TRIBUTOS).r11, totals(CON_TRIBUTOS).r12],
+  [1337.5, 7287.5, 32902.5])
+
+// --- F7: QUE filas componen la base de la utilidad --------------------------
+// La pantalla ensena la RESTA, no solo el resultado, y para eso necesita saber
+// que filas entran. Esa rama es la excepcion del Anexo II: si la pantalla la
+// reimplementara habria DOS interpretaciones del Anexo II en el mismo programa.
+// La asercion que lo ata: sumar las filas devueltas == utilityBase, en las CINCO.
+const suma = (sheet) => round2(
+  utilityBaseRows(sheet).reduce((acc, k) => acc + totals(sheet)[k], 0)
+)
+for (const act of Object.values(FICHA_ACTIVITIES)) {
+  const sheet = { ...PAN, activity: act }
+  eq(`base: sumar sus filas da utilityBase (${act})`, suma(sheet), utilityBase(sheet))
+}
+eq('bienes y servicios: 2 + 3 + 4', utilityBaseRows(PAN), ['r2', 'r3', 'r4'])
+eq('servicios usa la misma formula',
+  utilityBaseRows({ ...PAN, activity: FICHA_ACTIVITIES.SERVICIOS }), ['r2', 'r3', 'r4'])
+eq('agropecuaria: la Fila 12 COMPLETA',
+  utilityBaseRows({ ...PAN, activity: FICHA_ACTIVITIES.AGROPECUARIA }), ['r12'])
+eq('alta tecnologia: tambien la Fila 12',
+  utilityBaseRows({ ...PAN, activity: FICHA_ACTIVITIES.ALTA_TEC }), ['r12'])
+eq('gastronomia (Art. 16): 2 + 3 + 4 + 7, porque NO menciona distribucion y venta',
+  utilityBaseRows({ ...PAN, activity: FICHA_ACTIVITIES.GASTRONOMIA }), ['r2', 'r3', 'r4', 'r7'])
+eq('una actividad desconocida cae en la formula general, no revienta',
+  utilityBaseRows({ ...PAN, activity: 'inventada' }), ['r2', 'r3', 'r4'])
+// El numero que sostiene todo el bloque 7: con la base MAL puesta (Fila 12) la
+// utilidad daria 7 891,25 en vez de 2 450,00 y el unitario 197,28 en vez de 170,08.
+eq('la base del fixture son 9 800, NO los 31 565 de la Fila 12', suma(PAN), 9800)
+
+// El techo del Art. 9 se devuelve SIEMPRE, tambien cuando el control no opina:
+// la pantalla lo ensena al lado del coeficiente aplicado.
+eq('techo 1,5 en produccion de bienes', indirectCheck(PAN).max, 1.5)
+eq('techo 1,0 en servicios', indirectCheck({ ...PAN, activity: FICHA_ACTIVITIES.SERVICIOS }).max, 1)
+eq('techo 1,0 en gastronomia popular (Art. 16)',
+  indirectCheck({ ...PAN, activity: FICHA_ACTIVITIES.GASTRONOMIA }).max, 1)
+eq('sin salario directo el control NO OPINA pero el techo se sigue sabiendo',
+  (() => { const r = indirectCheck({ ...PAN, labor: [] }); return [r.applies, r.coefficient, r.max] })(),
+  [false, null, 1.5])
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)
