@@ -206,3 +206,29 @@ db.version(16).stores({
 db.version(17).stores({
   productCustody: 'id, holder, productId, refId, createdAt, [holder+productId]'
 })
+
+// Modulo 'fichas' (F2): Ficha de costos y gastos de la Res. 148/2023 MFP. UNA sola
+// tabla NUEVA y aditiva (solo agrega una tabla vacia, sin `.upgrade()` y sin tocar
+// ningun store existente), mismo perfil que v13 (cocina) y v16/v17 (remesas).
+//
+// `costSheets` = el documento entero. Sus lineas (`inputs`, `labor`, `otherDirect`,
+// `refs`) viven como ARRAYS DENTRO del registro, igual que `recipes.items` y al
+// reves que `orderItems`: la ficha la edita UN SOLO actor (el mando) y no hay dos
+// dispositivos añadiendo lineas en segundos, que es el caso que obligo a las mesas
+// a usar filas sueltas. LWW por updatedAt, como cualquier cabecera.
+//
+// Append-only: un borrador se edita en sitio; una ficha APROBADA es INMUTABLE y
+// corregirla crea una REVISION nueva (mismo `groupId`, version + 1) que deja la
+// anterior en 'sustituida' y la hereda como columna "Costo Base" (que es
+// exactamente para lo que la norma pide esa columna). Eliminar = logico
+// (`deletedAt`): nada se borra.
+//
+// NOTA (misma disciplina que v15): NO se agrega a SYNC_COLLECTIONS aqui. La tabla
+// se registrara para la sincronizacion en F4, la fase que empieza a escribirla,
+// para no tocar la capa de sync mientras esta vacia. Verificado el coste de
+// registrarla antes de tiempo: cada coleccion añade un getDocs de coleccion
+// completa por pull (syncEngine.js:43) y un onSnapshot permanente por dispositivo
+// (syncEngine.js:83). Sin el modulo, la tabla queda vacia y la app es identica.
+db.version(18).stores({
+  costSheets: 'id, groupId, status, productId, createdAt, updatedAt'
+})

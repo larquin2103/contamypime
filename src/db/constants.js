@@ -391,3 +391,42 @@ export const DELIVERY_FAIL_REASONS = [
   REMITTANCE_STATUS.DISPUTED,
   REMITTANCE_STATUS.FAILED
 ]
+
+// ---------------------------------------------------------------------------
+// Modulo 'fichas' - Ficha de costos y gastos (Res. 148/2023 MFP).
+//
+// Los ENUMS del modulo (FICHA_ACTIVITIES, FICHA_METHODS y FICHA_STATUS) NO viven
+// aqui sino en `src/lib/fichaCosto.js`, a proposito: ese modulo es PURO y sin un
+// solo import, que es lo que permite correrlo con node sin indexedDB. Aqui van
+// solo las ETIQUETAS que se pintan en pantalla y en los reportes.
+//
+// La suite `src/lib/fichaCosto.test.mjs` comprueba que estas tres listas cubren
+// EXACTAMENTE los valores del motor: si mañana se añade una actividad y nadie le
+// pone etiqueta, la prueba se cae ahi en vez de que la pantalla enseñe la clave
+// en crudo ("altaTecnologia") delante del dueño.
+// ---------------------------------------------------------------------------
+
+// Tipo de actividad del Anexo II: manda la tasa maxima de utilidad, la base sobre
+// la que se aplica y el coeficiente maximo de gastos indirectos (Art. 9).
+export const FICHA_ACTIVITY_LABELS = {
+  bienes: 'Producción de bienes',
+  agropecuaria: 'Producción agropecuaria',
+  servicios: 'Servicios y comercialización',
+  altaTecnologia: 'Alta tecnología, informática y ciencia',
+  gastronomia: 'Gastronomía popular'
+}
+
+// Metodo de formacion del precio (Arts. 8, 10 y 12).
+export const FICHA_METHOD_LABELS = {
+  gastos: 'Por gastos',
+  correlacion: 'Por correlación'
+}
+
+// Ciclo de vida de la ficha. Append-only: una aprobada es INMUTABLE y corregirla
+// crea una revision nueva (mismo groupId, version + 1) que deja la anterior
+// 'sustituida'. Nada se borra: eliminar es logico (deletedAt).
+export const FICHA_STATUS_LABELS = {
+  borrador: 'Borrador',
+  aprobada: 'Aprobada',
+  sustituida: 'Sustituida'
+}

@@ -29,8 +29,15 @@ import {
   utilityRate,
   priceRows,
   subsidyWarning,
-  fichaWarnings
+  fichaWarnings,
+  FICHA_STATUS,
+  canEditSheet,
+  canApproveSheet,
+  canReviseSheet,
+  canDeleteSheet,
+  nextVersion
 } from './fichaCosto.js'
+import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS } from '../db/constants.js'
 
 let pass = 0
 let fail = 0
@@ -333,6 +340,55 @@ eq('ficha vacia: no se avisa de nada (un borrador recien abierto no esta mal)',
 
 // --- round2 nunca devuelve -0 (guarda copiada de productCustodyMath.cleanQty)
 eq('round2 no devuelve -0 (imprimiria "-0,00" en la ficha)', Object.is(round2(-0.0000001), 0), true)
+
+// --- F2: ciclo de vida de la ficha (append-only, nada se borra) --------------
+// Las guardas del repo viven aqui, PURAS, por el mismo motivo que las reglas de
+// `lib/remesas.js`: son las que hay que poder probar con node, porque el repo
+// habla con Dexie y no se puede correr sin indexedDB.
+const borrador = (extra = {}) => ({ id: 'F1', status: FICHA_STATUS.BORRADOR, version: 1, ...extra })
+const aprobada = (extra = {}) => ({ id: 'F1', status: FICHA_STATUS.APROBADA, version: 1, ...extra })
+const sustituida = (extra = {}) => ({ id: 'F1', status: FICHA_STATUS.SUSTITUIDA, version: 1, ...extra })
+
+eq('un borrador se edita en sitio', canEditSheet(borrador()), true)
+eq('una ficha APROBADA es inmutable: corregirla es una revision nueva', canEditSheet(aprobada()), false)
+eq('una sustituida tampoco se edita', canEditSheet(sustituida()), false)
+eq('una eliminada no se edita', canEditSheet(borrador({ deletedAt: '2026-09-01T10:00:00.000Z' })), false)
+eq('sin ficha no se edita nada', canEditSheet(null), false)
+
+eq('solo un borrador se puede aprobar', canApproveSheet(borrador()), true)
+eq('una aprobada no se re-aprueba', canApproveSheet(aprobada()), false)
+eq('una eliminada no se aprueba', canApproveSheet(borrador({ deletedAt: '2026-09-01T10:00:00.000Z' })), false)
+
+eq('solo desde una APROBADA nace una revision', canReviseSheet(aprobada()), true)
+eq('un borrador no se revisa: se edita', canReviseSheet(borrador()), false)
+// Una sustituida YA tiene sucesora. Revisarla otra vez abriria una segunda rama
+// del mismo groupId y habria dos "ultimas versiones" del mismo documento.
+eq('una sustituida NO se revisa otra vez (abriria una bifurcacion)', canReviseSheet(sustituida()), false)
+eq('una eliminada no se revisa', canReviseSheet(aprobada({ deletedAt: '2026-09-01T10:00:00.000Z' })), false)
+
+eq('lo no eliminado se puede eliminar (borrado LOGICO)', canDeleteSheet(aprobada()), true)
+eq('lo ya eliminado no se vuelve a eliminar', canDeleteSheet(borrador({ deletedAt: '2026-09-01T10:00:00.000Z' })), false)
+
+eq('la revision siguiente sube la version', nextVersion(aprobada({ version: 1 })), 2)
+eq('y sigue subiendo en la tercera', nextVersion(aprobada({ version: 2 })), 3)
+eq('una ficha vieja sin version se trata como la 1', nextVersion({}), 2)
+
+// --- F2: las etiquetas cubren EXACTAMENTE lo que el motor conoce -------------
+// Esta es la asercion que hace imposible la deriva: si mañana se añade una
+// actividad al motor y nadie le pone etiqueta, la suite se cae aqui en vez de
+// que la pantalla pinte "altaTecnologia" en crudo delante del dueño.
+const cubre = (labels, enumObj) => {
+  const vals = Object.values(enumObj).sort()
+  const keys = Object.keys(labels).sort()
+  return JSON.stringify(vals) === JSON.stringify(keys)
+}
+eq('cada actividad del Anexo II tiene su etiqueta, y no sobra ninguna',
+  cubre(FICHA_ACTIVITY_LABELS, FICHA_ACTIVITIES), true)
+eq('cada metodo tiene su etiqueta', cubre(FICHA_METHOD_LABELS, FICHA_METHODS), true)
+eq('cada estado tiene su etiqueta', cubre(FICHA_STATUS_LABELS, FICHA_STATUS), true)
+eq('ninguna etiqueta esta vacia',
+  [...Object.values(FICHA_ACTIVITY_LABELS), ...Object.values(FICHA_METHOD_LABELS), ...Object.values(FICHA_STATUS_LABELS)]
+    .every((s) => typeof s === 'string' && s.trim().length > 0), true)
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

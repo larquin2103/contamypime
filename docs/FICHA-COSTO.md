@@ -4,12 +4,13 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 01-09-2026: F0 y F1 HECHAS. F2 en adelante, pendientes.**
-> **Ya existe** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
-> (**113 aserciones**). **Todavía NO existen** `costSheetsRepo`, la ruta `/fichas`, la pantalla,
-> ni la versión Dexie v18: la última versión de esquema en producción sigue siendo **v17**.
-> Nadie importa el motor todavía, así que la app desplegada es idéntica a la clásica (verificado:
-> el bundle sale byte a byte igual al de antes de F1).
+> **Estado al 01-09-2026: F0, F1 y F2 HECHAS. F3 en adelante, pendientes.**
+> **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
+> (**134 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
+> `src/repositories/costSheetsRepo.js` y las etiquetas en `src/db/constants.js`.
+> **Todavía NO existen** la licencia `fichas`, la ruta `/fichas` ni ninguna pantalla, y
+> `costSheets` **NO está registrada en `SYNC_COLLECTIONS`** (se registra en F4, ver §9.3).
+> Nadie importa el repo todavía, así que la app desplegada sigue sin ofrecer nada del módulo.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
@@ -295,7 +296,9 @@ Registro:
 
 `src/lib/fichaCosto.js` (sin Dexie, sin React) + `src/lib/fichaCosto.test.mjs`:
 
-**ESCRITO Y EN VERDE (F1, 01-09-2026): 113 aserciones, 0 fallos.**
+**ESCRITO Y EN VERDE: 134 aserciones, 0 fallos** (F1 el motor; F2 le añadió las guardas del
+ciclo de vida: `FICHA_STATUS`, `canEditSheet`, `canApproveSheet`, `canReviseSheet`,
+`canDeleteSheet` y `nextVersion`, que viven aquí y no en el repo para poder probarlas con node).
 
 `round2`, `inputsTotal`, `carriersTotal`, `laborTotal` (3×(6+7)×8), `otherDirectTotal`, `taxRow`,
 `totals` (las 16 filas), `indirectCheck` (Art. 9), `utilityBase` (**3 fórmulas, 5 actividades**),
@@ -510,9 +513,9 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 |---|---|---|
 | **F0** | Verificación previa **sin código**: colisión de `costSheets` en Dexie comprobada empíricamente, bundle base medido, este documento. Riesgo cero. | ✅ **HECHA 01-09-2026** (evidencia abajo) |
 | **F1** | Motor puro + pruebas (`lib/fichaCosto.js` + `.test.mjs`) con el fixture "Pan suave". **Riesgo cero: nadie lo importa aún.** | ✅ **HECHA 01-09-2026** · 113 aserciones · revisada (ver §9.2) |
-| **F2** | Datos: Dexie v18, `costSheetsRepo`, constantes/etiquetas, `SYNC_COLLECTIONS`. | Pendiente |
+| **F2** | Datos: Dexie v18, `costSheetsRepo`, constantes/etiquetas. **`SYNC_COLLECTIONS` se movió a F4** (ver §9.3). | ✅ **HECHA 01-09-2026** · bundle +90 bytes |
 | **F3** | Licencia: `LICENSE_MODULES.COSTSHEETS` + label + gate. | Pendiente |
-| **F4** | Lista + identificación (`/fichas`, bloque 1) + `React.lazy` con medición del bundle. | Pendiente |
+| **F4** | Lista + identificación (`/fichas`, bloque 1) + `React.lazy` con medición del bundle + **registrar `costSheets` en `SYNC_COLLECTIONS`** (viene de F2). | Pendiente |
 | **F5** | Anexo de insumos (bloque 2 + importar receta + portadores). | Pendiente |
 | **F6** | Anexo de salario (bloque 3). | Pendiente |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con semáforos). | Pendiente |
@@ -582,6 +585,51 @@ subsidio, convención de unidades escrita (§5) y este bloque de estado puesto a
   valor del módulo cuelga de esa interpretación: si la Fila 12 o la base de la utilidad
   estuvieran mal leídas, **las 113 aserciones estarían verificando el error con toda precisión**.
   Debe salir explícito en la lista de F11.
+
+---
+
+### 9.3 F2: por qué `SYNC_COLLECTIONS` se movió a F4 (decisión del dueño, 01-09-2026)
+
+El plan ponía el registro de sync en F2. **Se mueve a F4**, que es la fase que empieza a escribir
+fichas de verdad. El motivo no es estético: **`db.js` ya se había impuesto esa disciplina** al
+crear las tablas de `remesas` en v15, con esta nota literal:
+
+> *"NO se agregan a `SYNC_COLLECTIONS` aquí: cada tabla se registrará para la sincronización en la
+> fase que empiece a escribirla (junto a su código), para no tocar la capa de sync mientras están
+> vacías."*
+
+Coste real de registrarla antes de tiempo, **verificado en el código**: cada colección de
+`SYNC_COLLECTIONS` añade un `getDocs` de **colección completa** en cada pull (`syncEngine.js:43`,
+sin cursor) y un **`onSnapshot` permanente por dispositivo** (`syncEngine.js:83`). En el plan
+gratis de Firebase eso es coste puro por una tabla que estará vacía durante F2, F3 y F4.
+
+**Consecuencia buena:** F2 no toca `src/features/sync/` en absoluto, así que su riesgo de romper la
+sincronización es **cero por construcción**, no por revisión. `git status src/features/sync/` sale
+vacío en el commit de F2.
+
+**Lo que hay que acordarse en F4:** añadir `{ name: 'costSheets', pk: 'id' }` a `SYNC_COLLECTIONS`.
+Si se olvida, las fichas **no viajarán entre dispositivos y no habrá ningún error visible**.
+
+### 9.4 F2: verificación (01-09-2026)
+
+- **El esquema v18 es aditivo puro, comprobado sobre el fichero, no de memoria.** `costSheets:`
+  aparece **una sola vez** en todo `db.js` (no redefine ningún store) y el único `.upgrade()` del
+  fichero es el preexistente de v5.
+- **El string de índices se probó contra la Dexie real**, extrayéndolo de `db.js` con `grep` en vez
+  de copiarlo: PK `id` (no autoincremental), índices `groupId, status, productId, createdAt,
+  updatedAt`, y `db.costSheets` resuelve a una `Table` (sin colisión silenciosa).
+- **Bundle: +90 bytes** (856 445 → 856 535; gzip 248,33 → 248,35 kB). Se verificó **qué** son esos
+  bytes buscando dentro del `dist`: está el bloque v18 y **no está nada más** — `fichaWarnings`,
+  `utilityBase`, `missingRateInputs`, `costSheetsRepo` y hasta las etiquetas de `constants.js`
+  salen **ausentes**, porque todavía nadie las importa y Rollup las descarta.
+- **Las guardas del ciclo de vida viven en `lib/fichaCosto.js`, no en el repo**, por el mismo
+  motivo que las reglas de `lib/remesas.js`: el repo habla con Dexie y no se puede correr sin
+  `indexedDB`, así que lo que hay que poder probar con node sale del repo. El repo las usa como
+  candado y la pantalla las usará para habilitar botones: **una sola fuente**.
+- **Las líneas a medio teclear NO se descartan.** A diferencia de `recipesRepo.cleanItems` (que
+  tira las filas con cantidad 0), aquí solo se normaliza la forma: una ficha se escribe a lo largo
+  de un rato con autoguardado, y borrarle al dueño la línea que está escribiendo sería peor que
+  guardar una fila vacía. El motor ya trata lo vacío como cero.
 
 ---
 

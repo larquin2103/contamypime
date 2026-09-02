@@ -321,3 +321,49 @@ export function fichaWarnings(sheet) {
 
   return out
 }
+
+// --- Ciclo de vida de la ficha (append-only, nada se borra) -----------------
+// Estas guardas viven AQUI, puras, por el mismo motivo que las reglas de
+// `lib/remesas.js`: `costSheetsRepo` habla con Dexie y no se puede correr sin
+// indexedDB, asi que las reglas que hay que poder probar con node salen del repo.
+// El repo las usa como candado y la pantalla como para habilitar botones: una
+// sola fuente, sin que cada capa reinvente la condicion.
+//
+// Las ETIQUETAS de estos estados estan en `src/db/constants.js`
+// (FICHA_STATUS_LABELS), y la suite comprueba que cubran esta lista exacta.
+export const FICHA_STATUS = {
+  BORRADOR: 'borrador', // se edita en sitio, sellando updatedAt
+  APROBADA: 'aprobada', // INMUTABLE: corregirla es una revision nueva
+  SUSTITUIDA: 'sustituida' // ya tiene sucesora con el mismo groupId
+}
+
+// Una ficha eliminada (borrado LOGICO) no admite ninguna operacion. Nada se
+// borra de verdad: el registro y su historial se conservan.
+const viva = (sheet) => !!sheet && !sheet.deletedAt
+
+// Solo el borrador se edita en sitio. Una APROBADA es inmutable: es el documento
+// con el que se sostuvo un precio ante control o negociacion, y cambiarlo por
+// debajo dejaria sin respaldo lo ya presentado.
+export function canEditSheet(sheet) {
+  return viva(sheet) && sheet.status === FICHA_STATUS.BORRADOR
+}
+
+export function canApproveSheet(sheet) {
+  return viva(sheet) && sheet.status === FICHA_STATUS.BORRADOR
+}
+
+// Una revision nace SOLO de una aprobada. De una SUSTITUIDA no: esa ya tiene
+// sucesora, y revisarla otra vez abriria una segunda rama del mismo groupId,
+// dejando dos "ultimas versiones" del mismo documento.
+export function canReviseSheet(sheet) {
+  return viva(sheet) && sheet.status === FICHA_STATUS.APROBADA
+}
+
+export function canDeleteSheet(sheet) {
+  return viva(sheet)
+}
+
+// Version de la revision siguiente. Una ficha vieja sin `version` cuenta como 1.
+export function nextVersion(prev) {
+  return (Number(prev?.version) || 1) + 1
+}
