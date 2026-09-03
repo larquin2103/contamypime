@@ -45,7 +45,8 @@ import {
   utilityBaseRows,
   negativeAmounts,
   subOverParentRows,
-  FICHA_WARNING_CODES
+  FICHA_WARNING_CODES,
+  baseCostsFrom
 } from './fichaCosto.js'
 import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS, FICHA_WARNING_LABELS } from '../db/constants.js'
 import { LICENSE_MODULES, LICENSE_MODULE_LABELS } from './license.js'
@@ -652,6 +653,75 @@ eq('pero salta el de "de ello" porque 6.1 (2 400) supera a una Fila 6 que vale 0
 // `round2`: NO "arreglarlo" subiendolo a 149,58.
 eq('y el precio unitario se mueve: 170,08 -> 149,57 sin que se restara nada',
   priceRows(NEG6).r15, 149.57)
+
+// --- F8: las dos columnas "Costo Base" se DERIVAN al revisar ----------------
+// La (4) del anexo de insumos y la (2) del de salario. Sin esto, una revision
+// nace con las dos columnas OFICIALES en ceros y F9 las imprime vacias.
+const BASES = baseCostsFrom(PAN)
+eq('la columna (4): cada insumo congela lo que valia (25x420 = 10 500)',
+  BASES.inputs.map((l) => l.baseCost), [10500, 900, 1425, 760, 60])
+eq('y su suma es la Fila 1.1 de la version anterior',
+  round2(BASES.inputs.reduce((a, l) => a + l.baseCost, 0)), inputsTotal(PAN.inputs))
+eq('la columna (2): cada operacion congela su gasto (2x(350+50)x6 = 4 800)',
+  BASES.labor.map((o) => o.baseCost), [4800, 900])
+eq('y su suma es la Fila 2 de la version anterior',
+  round2(BASES.labor.reduce((a, o) => a + o.baseCost, 0)), laborTotal(PAN.labor))
+// Se calcula por el MISMO camino que la columna nueva: no puede discrepar.
+eq('la columna Base usa el mismo valorador que la Nueva, linea por linea',
+  BASES.inputs.map((l) => l.baseCost), PAN.inputs.map((l) => inputsTotal([l])))
+// Lo demas de la linea queda intacto: solo se rellena `baseCost`.
+eq('derivar la base NO toca norma de consumo ni precio unitario',
+  [BASES.inputs[0].qty, BASES.inputs[0].unitPrice], [PAN.inputs[0].qty, PAN.inputs[0].unitPrice])
+eq('ni muta la ficha original', PAN.inputs[0].baseCost, undefined)
+eq('una ficha sin anexos no revienta y no inventa filas',
+  baseCostsFrom({}), { inputs: [], labor: [] })
+eq('una linea vacia congela cero, no NaN',
+  baseCostsFrom({ inputs: [{}], labor: [{}] }),
+  { inputs: [{ baseCost: 0 }], labor: [{ baseCost: 0 }] })
+// Una linea en divisa congela su importe EN MN, con su tasa congelada: la columna
+// Base tiene que ser comparable con la Nueva, y las dos van en MN.
+eq('una linea en divisa congela su importe en MN (2 x 3 USD x 120)',
+  baseCostsFrom({ inputs: [{ qty: 2, unitPrice: 3, priceCurrency: 'USD', priceRate: 120 }] })
+    .inputs[0].baseCost, 720)
+
+// LA INVARIANTE DE LA REVISION, que no estaba escrita en ninguna parte: CREAR UNA
+// REVISION NO PUEDE MOVER NI UN IMPORTE. Si lo moviera, al dueño le cambiaria el
+// precio de una ficha por el simple hecho de abrir su correccion. Se construye
+// aqui la revision IGUAL que la construye `costSheetsRepo.revise` (que no se
+// puede importar: habla con Dexie).
+const revisionDe = (prev, id) => {
+  const copia = { ...prev }
+  delete copia.id
+  return {
+    ...copia,
+    ...baseCostsFrom(prev), // lo que añade F8; va DESPUES para sobrescribir los arrays
+    id,
+    groupId: prev.groupId || prev.id,
+    version: nextVersion(prev),
+    status: FICHA_STATUS.BORRADOR,
+    baseFromSheetId: prev.id,
+    approvedBy: '',
+    approvedAt: null,
+    deletedAt: null
+  }
+}
+const V1 = { ...PAN, id: 'a', groupId: 'a', version: 1, status: FICHA_STATUS.APROBADA }
+const V2 = revisionDe(V1, 'b')
+eq('la revision NO mueve ninguna de las 16 filas', JSON.stringify(totals(V2)), JSON.stringify(totals(V1)))
+eq('ni el precio: 170,08 sigue siendo 170,08', priceRows(V2).r15, priceRows(V1).r15)
+eq('nace borrador, sin firma, apuntando a la anterior',
+  [V2.version, V2.status, V2.approvedBy, V2.baseFromSheetId],
+  [2, FICHA_STATUS.BORRADOR, '', 'a'])
+eq('y ya se puede editar', canEditSheet(V2), true)
+// Encarecer un insumo en la revision mueve la columna nueva y NO la Base.
+const V2_CARA = { ...V2, inputs: V2.inputs.map((l, i) => (i === 0 ? { ...l, unitPrice: 500 } : l)) }
+eq('la columna (4) no se mueve al reteclear el precio', V2_CARA.inputs[0].baseCost, 10500)
+eq('y la columna nueva si: 25 x 500 = 12 500', inputsTotal([V2_CARA.inputs[0]]), 12500)
+// La v3 hereda de la v2, no de la v1: si heredara de la v1, el Costo Base
+// mentiria sobre cual fue el precio anterior.
+const V3 = revisionDe({ ...V2_CARA, status: FICHA_STATUS.APROBADA }, 'c')
+eq('la v3 hereda de la v2 (12 500), no de la v1 (10 500)',
+  [V3.version, V3.baseFromSheetId, V3.inputs[0].baseCost], [3, 'b', 12500])
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

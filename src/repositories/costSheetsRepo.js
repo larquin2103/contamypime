@@ -7,6 +7,7 @@ import {
   FICHA_METHODS,
   maxUtility,
   rateToPct,
+  baseCostsFrom,
   canEditSheet,
   canApproveSheet,
   canReviseSheet,
@@ -291,6 +292,14 @@ export const costSheetsRepo = {
       delete copia.id
       await db.costSheets.add({
         ...copia,
+        // Columnas "Costo Base" del modelo oficial: la (4) del anexo de insumos y
+        // la (2) del de salario. Se DERIVAN aqui, congelando lo que cada linea
+        // valia en la version anterior, que es exactamente lo que la norma pide
+        // en esas columnas cuando hay modificacion de precio (docs §2.7).
+        // Va DESPUES de `...copia` para que sobrescriba los arrays copiados.
+        // Sin esto, una revision nacia con las dos columnas oficiales EN CEROS y
+        // F9 las imprimiria vacias sin que nadie lo notara.
+        ...baseCostsFrom(prev),
         id: newSheetId,
         groupId: prev.groupId || prev.id,
         version: nextVersion(prev),

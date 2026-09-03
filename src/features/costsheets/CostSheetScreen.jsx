@@ -26,6 +26,8 @@ import { OtherDirectBlock } from './OtherDirectBlock'
 import { IndirectBlock } from './IndirectBlock'
 import { TaxesBlock } from './TaxesBlock'
 import { UtilityBlock } from './UtilityBlock'
+import { RefsBlock } from './RefsBlock'
+import { SignBlock } from './SignBlock'
 import {
   UNITS,
   UNIT_LABELS,
@@ -69,7 +71,11 @@ const EMPTY = {
   // opcionales. `taxSS`/`taxFT` viven aqui en FRACCION (docs §5).
   otherDirect: [],
   rows: { r4: 0, r41: 0, r6: 0, r61: 0, r7: 0, r71: 0, r8: 0, r9: 0, taxSS: 0, taxFT: 0 },
-  correlationPrice: ''
+  correlationPrice: '',
+  // Bloques 8 y 9 (F8). `refs` es la Fila 16 (explicativa, no suma al precio) y
+  // `elaboratedBy` es la primera de las dos firmas del pie de los anexos.
+  refs: [],
+  elaboratedBy: ''
 }
 
 // Un bloque del acordeon. Cerrado ensena su total; abierto, la ✕ para plegarlo
@@ -102,7 +108,9 @@ const pick = (s) => ({
   labor: Array.isArray(s.labor) ? s.labor : [],
   otherDirect: Array.isArray(s.otherDirect) ? s.otherDirect : [],
   rows: { ...EMPTY.rows, ...(s.rows || {}) },
-  correlationPrice: s.correlationPrice == null ? '' : String(s.correlationPrice)
+  correlationPrice: s.correlationPrice == null ? '' : String(s.correlationPrice),
+  refs: Array.isArray(s.refs) ? s.refs : [],
+  elaboratedBy: s.elaboratedBy || ''
   // OJO: `utilityPct` NO se copia aqui, y NO es un olvido. El repo tiene una
   // regla cruzada: al cambiar de actividad, la ficha adopta el maximo de la
   // actividad nueva SOLO si el dueño no habia escrito su propia tasa
@@ -135,6 +143,13 @@ export function CostSheetScreen() {
     [canFichas],
     []
   )
+  // Todas las versiones del grupo (v1, v2, v3...), para el historial del bloque 9.
+  // Gateado en la consulta, como todo lo demas.
+  const versions = useLiveQuery(
+    () => (canFichas && sheet?.groupId ? costSheetsRepo.listByGroup(sheet.groupId) : Promise.resolve([])),
+    [canFichas, sheet?.groupId],
+    []
+  )
 
   const [form, setForm] = useState(EMPTY)
   const [dirty, setDirty] = useState(false)
@@ -148,6 +163,7 @@ export function CostSheetScreen() {
   // Espejos para el volcado final: si se sale de la pantalla con el temporizador
   // del autoguardado pendiente, se escribe igual (Dexie sobrevive al desmontaje).
   const loadedId = useRef(null)
+  const saveTimer = useRef(null)
   const formRef = useRef(form)
   const dirtyRef = useRef(false)
   formRef.current = form
@@ -170,13 +186,13 @@ export function CostSheetScreen() {
   // la nube sin haber cambiado nada.
   useEffect(() => {
     if (!dirty || isNew || !id || !editable) return
-    const t = setTimeout(() => {
+    saveTimer.current = setTimeout(() => {
       costSheetsRepo
         .update(id, form)
         .then(() => { setDirty(false); setSaved(true); setError('') })
         .catch((e) => setError(e.message))
     }, AUTOSAVE_MS)
-    return () => clearTimeout(t)
+    return () => clearTimeout(saveTimer.current)
   }, [dirty, form, id, isNew, editable])
 
   // Volcado al salir: rescata el ultimo tecleo si aun no habia vencido el timer.
@@ -225,6 +241,68 @@ export function CostSheetScreen() {
   const t = useMemo(() => totals(merged), [merged])
   const ind = useMemo(() => indirectCheck(merged), [merged])
   const warns = useMemo(() => fichaWarnings(merged), [merged])
+
+  // VUELCA EL AUTOGUARDADO PENDIENTE antes de cualquier accion del ciclo de vida.
+  // Sin esto pasan dos cosas malas a la vez: (a) lo ultimo tecleado NO entraria en
+  // la ficha que se aprueba ni en la revision que se crea (`revise` copia lo que
+  // hay en la base, no lo que hay en pantalla), y (b) el temporizador venceria
+  // DESPUES y `update` lanzaria "una ficha aprobada no se edita", con el cambio ya
+  // perdido y un error en pantalla que el dueño no podria explicarse.
+  const flush = async () => {
+    // Se DESARMA el temporizador antes de nada. `setDirty(false)` no basta: la
+    // limpieza del efecto corre en el render siguiente, y el temporizador podia
+    // vencer durante el `await` de aprobar y lanzar "una ficha aprobada no se
+    // edita" DESPUES de una aprobacion correcta, dejando un error en pantalla que
+    // el dueño no podria explicarse.
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    if (!dirty || !id || !editable) return
+    await costSheetsRepo.update(id, form)
+    setDirty(false)
+  }
+
+  const aprobar = async (approvedBy) => {
+    setBusy(true)
+    setError('')
+    try {
+      await flush()
+      await costSheetsRepo.approve(id, { approvedBy, userId: user?.id || null })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const revisar = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await flush()
+      const newId = await costSheetsRepo.revise(id, { userId: user?.id || null })
+      setOpenBlock(1)
+      navigate(`/ficha/${newId}`)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const eliminar = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      // No se vuelca nada: la ficha se va. Pero hay que DESARMAR el temporizador,
+      // que si no lanzaria sobre una ficha ya eliminada.
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      setDirty(false)
+      await costSheetsRepo.remove(id, { userId: user?.id || null })
+      navigate('/fichas')
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
 
   const crear = async () => {
     setError('')
@@ -617,15 +695,61 @@ export function CostSheetScreen() {
         </Block>
       )}
 
-      {/* Honestidad sobre el estado del modulo: los bloques 8 y 9 son las fases
-          siguientes del plan (docs/FICHA-COSTO.md §9). */}
+      {/* Bloque 8 - Precios de referencia (Fila 16, explicativa). */}
+      {!isNew && (
+        <Block
+          n="8"
+          title="Precios de referencia"
+          closedInfo={form.refs.length === 1 ? '1 referencia' : `${form.refs.length} referencias`}
+          open={openBlock === 8}
+          onToggle={() => setOpenBlock(openBlock === 8 ? 0 : 8)}
+        >
+          <RefsBlock
+            refs={form.refs}
+            method={merged.method}
+            baseCurrency={baseCurrency}
+            editable={editable}
+            onRefs={(refs) => set('refs', refs)}
+          />
+        </Block>
+      )}
+
+      {/* Bloque 9 - Firmas y ciclo de vida: aprobar, revisar y eliminar. */}
+      {!isNew && (
+        <Block
+          n="9"
+          title="Firmas y aprobación"
+          closedInfo={FICHA_STATUS_LABELS[sheet.status] || sheet.status}
+          open={openBlock === 9}
+          onToggle={() => setOpenBlock(openBlock === 9 ? 0 : 9)}
+        >
+          <SignBlock
+            sheet={merged}
+            versions={versions}
+            refsCount={form.refs.length}
+            warns={warns}
+            baseCurrency={baseCurrency}
+            editable={editable}
+            busy={busy}
+            onElaboratedBy={(v) => set('elaboratedBy', v)}
+            onApprove={aprobar}
+            onRevise={revisar}
+            onRemove={eliminar}
+          />
+        </Block>
+      )}
+
+      {/* Honestidad sobre el estado del modulo: la EXPORTACION del documento
+          oficial (las tres hojas a PDF y Excel) es F9. */}
       {!isNew && !picking && (
         <section className="card">
           <h3>Lo que falta de esta ficha</h3>
           <p className="muted">
-            Los precios de referencia (Fila 16), las firmas, la aprobación con sus revisiones y la
-            exportación del documento oficial llegan en las fases siguientes. Hoy la ficha ya
-            calcula su precio completo, pero todavía no se puede aprobar ni exportar.
+            Falta <strong>exportar el documento oficial</strong>: las tres hojas (la ficha de 16
+            filas, el anexo de insumos y el de salario), cada una a su propio PDF y Excel con su
+            encabezado y su pie de firmas. Llega en la fase siguiente. El Apartado Segundo obliga
+            a mostrar las bases del precio, así que hasta entonces la ficha calcula y se aprueba,
+            pero no se puede presentar.
           </p>
         </section>
       )}

@@ -322,6 +322,28 @@ export function totals(sheet) {
   return { r1_1, r1_2, r1_3, r1_4, r1, r2, r3, r4, r41, r5, r6, r61, r7, r71, r8, r9, r10, r11, r12 }
 }
 
+// --- Las dos columnas "Costo Base" del modelo oficial -----------------------
+// La (4) del anexo de insumos y la (2) del de salario. La norma las pide cuando
+// es una MODIFICACION de precio (§2.7), que es exactamente el caso de una
+// revision: "lo que esta linea valia en la version anterior".
+//
+// SE DERIVAN, NO SE TECLEAN, y el momento de derivarlas es la revision. La clave
+// es que `costSheetsRepo.revise` copia los arrays TAL CUAL: en ese instante la
+// linea i de la copia ES la linea i de la anterior, asi que no hace falta cruzar
+// por `productId` ni por `operation` -ningun emparejamiento heuristico que pueda
+// fallar con dos insumos del mismo producto o dos operaciones del mismo nombre-.
+// Basta con congelar lo que cada linea valia.
+//
+// Se usan las MISMAS funciones que valoran las lineas (`inputsTotal([l])` y
+// `laborTotal([o])`), asi que la columna Base y la columna Nueva se calculan por
+// el mismo camino y no pueden discrepar por redondeo.
+export function baseCostsFrom(sheet) {
+  return {
+    inputs: (sheet?.inputs || []).map((l) => ({ ...l, baseCost: inputsTotal([l]) })),
+    labor: (sheet?.labor || []).map((o) => ({ ...o, baseCost: laborTotal([o]) }))
+  }
+}
+
 // --- CONTROL A: coeficiente maximo de gastos indirectos (Art. 9) ------------
 // Fila 4 + Fila 6 + Fila 7 <= coeficiente x Fila 2.
 // Devuelve el EXCESO EN IMPORTE (no un porcentaje) porque es lo que el dueño
