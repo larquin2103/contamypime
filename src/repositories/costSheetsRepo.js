@@ -6,6 +6,7 @@ import {
   FICHA_ACTIVITIES,
   FICHA_METHODS,
   maxUtility,
+  rateToPct,
   canEditSheet,
   canApproveSheet,
   canReviseSheet,
@@ -106,7 +107,9 @@ const cleanRefs = (list) =>
 // avisa en vez de regalar la ganancia.
 function defaultUtilityPct(activity) {
   const max = maxUtility(activity)
-  return max == null ? null : Math.round(max * 1000) / 10
+  // `rateToPct` es la conversion del motor, probada con node: era la tercera
+  // copia de `Math.round(max * 1000) / 10` en el modulo.
+  return max == null ? null : rateToPct(max)
 }
 
 // Constancia en auditoria. Misma forma que `productsRepo` (que la escribe en

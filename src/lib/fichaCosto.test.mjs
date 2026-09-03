@@ -42,9 +42,12 @@ import {
   splitLaborOp,
   pctToRate,
   rateToPct,
-  utilityBaseRows
+  utilityBaseRows,
+  negativeAmounts,
+  subOverParentRows,
+  FICHA_WARNING_CODES
 } from './fichaCosto.js'
-import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS } from '../db/constants.js'
+import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS, FICHA_WARNING_LABELS } from '../db/constants.js'
 import { LICENSE_MODULES, LICENSE_MODULE_LABELS } from './license.js'
 
 let pass = 0
@@ -394,6 +397,23 @@ eq('cada actividad del Anexo II tiene su etiqueta, y no sobra ninguna',
   cubre(FICHA_ACTIVITY_LABELS, FICHA_ACTIVITIES), true)
 eq('cada metodo tiene su etiqueta', cubre(FICHA_METHOD_LABELS, FICHA_METHODS), true)
 eq('cada estado tiene su etiqueta', cubre(FICHA_STATUS_LABELS, FICHA_STATUS), true)
+// El resumen de avisos que se pinta FUERA del acordeon usa estas etiquetas: un
+// codigo sin etiqueta se le enseñaria al dueño en crudo ("de-ello-sobre-fila").
+eq('TODOS los codigos de aviso tienen etiqueta en español',
+  FICHA_WARNING_CODES.filter((c) => !FICHA_WARNING_LABELS[c]), [])
+eq('y no sobra ninguna etiqueta sin su codigo',
+  Object.keys(FICHA_WARNING_LABELS).filter((c) => !FICHA_WARNING_CODES.includes(c)), [])
+// Y que la lista del motor cubra de verdad lo que fichaWarnings emite: si alguien
+// añade un aviso y olvida la lista, el resumen lo pintaria en crudo.
+eq('ningun aviso emitido queda fuera de FICHA_WARNING_CODES',
+  [
+    ...fichaWarnings({ ...PAN, utilityPct: 30 }),
+    ...fichaWarnings(CORR),
+    ...fichaWarnings(CORR_VACIA),
+    ...fichaWarnings({ ...PAN, inputs: SIN_TASA }),
+    ...fichaWarnings({ ...PAN, activity: undefined }),
+    ...fichaWarnings({ ...PAN, rows: { ...FILAS, r8: -1, r41: 5000 } })
+  ].map((w) => w.code).filter((c) => !FICHA_WARNING_CODES.includes(c)), [])
 eq('ninguna etiqueta esta vacia',
   [...Object.values(FICHA_ACTIVITY_LABELS), ...Object.values(FICHA_METHOD_LABELS), ...Object.values(FICHA_STATUS_LABELS)]
     .every((s) => typeof s === 'string' && s.trim().length > 0), true)
@@ -568,6 +588,70 @@ eq('techo 1,0 en gastronomia popular (Art. 16)',
 eq('sin salario directo el control NO OPINA pero el techo se sigue sabiendo',
   (() => { const r = indirectCheck({ ...PAN, labor: [] }); return [r.applies, r.coefficient, r.max] })(),
   [false, null, 1.5])
+
+// --- F7: datos imposibles que el motor descarta EN SILENCIO -----------------
+// No son controles de la Resolucion: son valores que no pueden ser. El motor los
+// anula con `pos`, y el peligro no era la regla sino que no se viera. Ahora salen
+// por `fichaWarnings`, asi que se ven con el bloque PLEGADO y F8 los podra
+// consultar antes de aprobar.
+eq('el fixture limpio no tiene ningun importe negativo', negativeAmounts(PAN), [])
+eq('un negativo en la Fila 6 se DETECTA (si no, desaparece del precio sin avisar)',
+  negativeAmounts({ ...PAN, rows: { ...FILAS, r6: -4100 } }), ['r6'])
+eq('y de verdad desaparece del precio: la Fila 6 negativa cuenta como cero',
+  totals({ ...PAN, rows: { ...FILAS, r6: -4100 } }).r6, 0)
+eq('se detectan varios a la vez, y en el orden de las filas',
+  negativeAmounts({ ...PAN, rows: { ...FILAS, r4: -1, r8: -2 } }), ['r4', 'r8'])
+eq('tambien en el desglose de la Fila 3, diciendo QUE linea',
+  negativeAmounts({ ...PAN, otherDirect: [{ amount: 600 }, { amount: -100 }] }), ['otherDirect.1'])
+eq('un cero no es un negativo', negativeAmounts({ ...PAN, rows: { ...FILAS, r6: 0 } }), [])
+eq('el texto no numerico no cuenta como negativo',
+  negativeAmounts({ ...PAN, rows: { ...FILAS, r6: 'x' } }), [])
+
+eq('el fixture limpio no tiene "de ello" sobre su fila', subOverParentRows(PAN), [])
+eq('4.1 mayor que la Fila 4 se DETECTA: es una parte, no puede ser mayor',
+  subOverParentRows({ ...PAN, rows: { ...FILAS, r41: 5000 } }), ['r41'])
+eq('los tres subtotales se comprueban',
+  subOverParentRows({ ...PAN, rows: { ...FILAS, r41: 9999, r61: 9999, r71: 9999 } }),
+  ['r41', 'r61', 'r71'])
+eq('igual que su fila NO es pasarse', subOverParentRows({ ...PAN, rows: { ...FILAS, r41: 3200 } }), [])
+// Y por que importa: el subtotal entra en la base de la Fila 10.
+eq('un 4.1 de mas INFLA el impuesto: la base sube de 10 700 a 13 800',
+  taxRow({ ...PAN, rows: { ...FILAS, r41: 5000, taxSS: 1 } }), 13800)
+
+// Los dos avisos entran en la lista unica, y en el orden del recorrido del
+// editor: los bloques 4 a 6 antes del control del 5 y de los del 7.
+// `r8` negativo (que NO entra en 4+6+7) mas un 4.1 de mas: los tres avisos, en el
+// orden del recorrido del editor.
+const TRES = { ...PAN, rows: { ...FILAS, r8: -1, r41: 5000 } }
+eq('los dos avisos nuevos salen por fichaWarnings, delante del de indirectos',
+  fichaWarnings(TRES).map((w) => w.code),
+  ['importe-negativo', 'de-ello-sobre-fila', 'indirectos-exceden'])
+eq('y una ficha limpia sigue sin avisos (no se inventan)',
+  fichaWarnings({ ...PAN, rows: { ...FILAS, r4: 2000 } }).map((w) => w.code), [])
+eq('el aviso dice DONDE esta el problema, no solo que lo hay',
+  fichaWarnings(TRES)
+    .filter((w) => w.code !== 'indirectos-exceden')
+    .map((w) => w.fields || w.rows),
+  [['r8'], ['r41']])
+
+// EFECTO EN CASCADA de un negativo, que es lo que lo hace peligroso y no solo
+// raro: una Fila 6 en -4 100 no se resta, se ANULA. Y al anularse (a) 4 100
+// desaparecen del precio y (b) su propio 6.1 (2 400) queda POR ENCIMA de una
+// fila que ahora vale cero, asi que salta tambien el segundo aviso. Un solo dato
+// mal pegado mueve el precio y ademas deja el impuesto calculado sobre un
+// subtotal huerfano.
+const NEG6 = { ...PAN, rows: { ...FILAS, r6: -4100 } }
+eq('la Fila 6 negativa se anula: 4 + 6 + 7 baja de 8 900 a 4 800',
+  indirectCheck(NEG6).sum, 4800)
+eq('y al bajar deja de excederse el coeficiente: el aviso de indirectos DESAPARECE',
+  fichaWarnings(NEG6).map((w) => w.code).includes('indirectos-exceden'), false)
+eq('pero salta el de "de ello" porque 6.1 (2 400) supera a una Fila 6 que vale 0',
+  fichaWarnings(NEG6).map((w) => w.code), ['importe-negativo', 'de-ello-sobre-fila'])
+// 29 915 / 200 NO es 149,575 en coma flotante: es 149,574999...8863, asi que
+// 149,57 es lo correcto y es tambien lo que daria toFixed(2). No es un fallo de
+// `round2`: NO "arreglarlo" subiendolo a 149,58.
+eq('y el precio unitario se mueve: 170,08 -> 149,57 sin que se restara nada',
+  priceRows(NEG6).r15, 149.57)
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

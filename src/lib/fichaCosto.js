@@ -436,12 +436,63 @@ export function subsidyWarning(sheet) {
   return priceRows(sheet).r13 < 0
 }
 
+// Todos los codigos que puede devolver `fichaWarnings`. Se exporta para que la
+// suite pueda exigir que CADA UNO tenga su etiqueta en español: un codigo sin
+// etiqueta se le enseñaria al dueño en crudo ("de-ello-sobre-fila"), que es el
+// mismo fallo que ya se guarda contra los modulos de licencia.
+export const FICHA_WARNING_CODES = [
+  'insumo-sin-tasa',
+  'actividad-desconocida',
+  'correlacion-sin-precio',
+  'importe-negativo',
+  'de-ello-sobre-fila',
+  'indirectos-exceden',
+  'utilidad-sobre-maximo',
+  'subsidio'
+]
+
+// --- Datos imposibles en las filas capturadas -------------------------------
+// Estas dos condiciones NO son controles de la Resolucion: son datos que no
+// pueden ser, y que el motor descarta en silencio con `pos`. Suben aqui porque
+// descartar en silencio es peor que la regla: un -4 100 pegado en la Fila 6
+// desaparece del precio sin una palabra, y un "de ello, salarios" de mas INFLA
+// EL IMPUESTO de la Fila 10. Viven en el motor y no en la pantalla para que se
+// vean con el bloque PLEGADO y para que F8 los pueda consultar antes de aprobar.
+
+// Filas que el dueño teclea a mano (las derivadas no entran aqui).
+const CAPTURED_ROWS = ['r4', 'r41', 'r6', 'r61', 'r7', 'r71', 'r8', 'r9']
+
+// Importes negativos: en las filas capturadas y en el desglose de la Fila 3. Las
+// 16 filas son magnitudes de gasto, asi que un negativo cuenta como cero; lo que
+// se devuelve es DONDE esta, para poder señalarlo.
+export function negativeAmounts(sheet) {
+  const out = []
+  const rows = sheet?.rows || {}
+  for (const k of CAPTURED_ROWS) if (Number(rows[k]) < 0) out.push(k)
+  const otros = sheet?.otherDirect || []
+  for (let i = 0; i < otros.length; i++) {
+    if (Number(otros[i]?.amount) < 0) out.push(`otherDirect.${i}`)
+  }
+  return out
+}
+
+// "De ello, salarios" es una PARTE de su fila: no puede ser mayor. Ademas entra
+// en la base de la Fila 10 (2 + 4.1 + 6.1 + 7.1), asi que pasarse no es solo
+// raro: sube el impuesto y con el el precio.
+const SUB_OF_ROW = [['r41', 'r4'], ['r61', 'r6'], ['r71', 'r7']]
+
+export function subOverParentRows(sheet) {
+  const rows = sheet?.rows || {}
+  return SUB_OF_ROW.filter(([sub, padre]) => pos(rows[sub]) > pos(rows[padre])).map(([sub]) => sub)
+}
+
 // --- Avisos: UNA sola fuente para los semaforos de los bloques 5 y 7 ---------
 // Mismo estilo que `missingRateInputs`: el motor no lanza, no inventa numeros y
 // no se calla lo que sabe; devuelve QUE pasa y con QUE importe, y la pantalla
 // decide como pintarlo. Todos son AVISOS (Art. 6): ninguno bloquea la ficha.
 // Codigos: insumo-sin-tasa · actividad-desconocida · correlacion-sin-precio ·
-//          indirectos-exceden · utilidad-sobre-maximo · subsidio
+//          importe-negativo · de-ello-sobre-fila · indirectos-exceden ·
+//          utilidad-sobre-maximo · subsidio
 export function fichaWarnings(sheet) {
   const out = []
 
@@ -452,6 +503,12 @@ export function fichaWarnings(sheet) {
 
   const correlacion = sheet?.method === FICHA_METHODS.CORRELACION
   if (correlacion && !pos(sheet?.correlationPrice)) out.push({ code: 'correlacion-sin-precio' })
+
+  const negativos = negativeAmounts(sheet)
+  if (negativos.length) out.push({ code: 'importe-negativo', fields: negativos })
+
+  const subs = subOverParentRows(sheet)
+  if (subs.length) out.push({ code: 'de-ello-sobre-fila', rows: subs })
 
   const ind = indirectCheck(sheet)
   if (ind.applies && !ind.ok) {

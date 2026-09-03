@@ -17,7 +17,8 @@ import {
   maxUtility,
   priceRows,
   totals,
-  indirectCheck
+  indirectCheck,
+  fichaWarnings
 } from '../../lib/fichaCosto'
 import { InputsBlock } from './InputsBlock'
 import { LaborBlock } from './LaborBlock'
@@ -30,7 +31,8 @@ import {
   UNIT_LABELS,
   FICHA_ACTIVITY_LABELS,
   FICHA_METHOD_LABELS,
-  FICHA_STATUS_LABELS
+  FICHA_STATUS_LABELS,
+  FICHA_WARNING_LABELS
 } from '../../db/constants'
 
 // Modulo 'fichas' (F4) - Editor de la ficha de costo. En esta fase vive SOLO el
@@ -222,6 +224,7 @@ export function CostSheetScreen() {
   const unitPrice = pr.r15
   const t = useMemo(() => totals(merged), [merged])
   const ind = useMemo(() => indirectCheck(merged), [merged])
+  const warns = useMemo(() => fichaWarnings(merged), [merged])
 
   const crear = async () => {
     setError('')
@@ -297,6 +300,23 @@ export function CostSheetScreen() {
       {/* FUERA del acordeon a proposito: si el autoguardado falla mientras se
           teclea en otro bloque, el aviso tiene que verse igual. */}
       {error && <p className="error">{error}</p>}
+
+      {/* Resumen de avisos, TAMBIEN fuera del acordeon y por el mismo motivo: solo
+          hay un bloque abierto a la vez, asi que un aviso pintado dentro de su
+          bloque desaparece en cuanto se pasa a otro. Aqui va la PRESENCIA (una
+          sola fuente: `fichaWarnings`) y en cada bloque el detalle con importes.
+          Ninguno bloquea la ficha (Art. 6). */}
+      {!isNew && warns.length > 0 && (
+        <div
+          className={`cuadre-banner ${
+            warns.some((w) => w.code === 'subsidio') ? 'cuadre-banner--red' : 'cuadre-banner--yellow'
+          }`}
+        >
+          {warns.length === 1 ? '1 aviso' : `${warns.length} avisos`}:{' '}
+          {warns.map((w) => FICHA_WARNING_LABELS[w.code] || w.code).join(' · ')}. Ninguno bloquea
+          la ficha: puedes seguir y aprobarla (Art. 6).
+        </div>
+      )}
 
       {/* Por que no se edita. Aprobada NO es un problema (verde): es el estado al
           que aspira la ficha. Sustituida y eliminada son historico (ambar). */}

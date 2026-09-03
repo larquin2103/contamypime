@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatMoney } from '../../lib/currency'
-import { totals, laborTotal, pctToRate, rateToPct, round2 } from '../../lib/fichaCosto'
+import { totals, laborTotal, pctToRate, rateToPct, round2, negativeAmounts } from '../../lib/fichaCosto'
 
 // Modulo 'fichas' (F7) - Bloque 6: FINANCIEROS, OSDE y TRIBUTOS (Filas 8, 9 y 10).
 //
@@ -46,6 +46,28 @@ export function TaxesBlock({ sheet, rows, baseCurrency, editable, onRows }) {
     setRow(key, pctToRate(text))
   }
 
+  // Y si el valor GUARDADO cambia desde FUERA (otra ficha, o una version que baja
+  // de otro dispositivo), el texto local se resincroniza. La guarda es exacta:
+  // `setTax` deja siempre `pctToRate(texto) === guardado`, asi que esto NO puede
+  // dispararse mientras se teclea (que era el bug del punto decimal) y solo
+  // dispara cuando el cambio no vino de este campo.
+  useEffect(() => {
+    setPct((p) => {
+      const next = { ...p }
+      let cambio = false
+      for (const k of ['taxSS', 'taxFT']) {
+        if (pctToRate(p[k]) !== (Number(rows[k]) || 0)) {
+          next[k] = rows[k] ? String(rateToPct(rows[k])) : ''
+          cambio = true
+        }
+      }
+      return cambio ? next : p
+    })
+  }, [rows.taxSS, rows.taxFT])
+
+  // Los negativos los detecta el motor, igual que en los bloques 4 y 5.
+  const negativos = new Set(negativeAmounts(sheet))
+
   // Base de la Fila 10, A LA VISTA: sin verla, el impuesto es un numero magico.
   // Se calcula IGUAL que `taxRow` en el motor, que descarta los negativos con su
   // `pos`: sumar con Number() pintaria una base distinta de la que se multiplica.
@@ -69,6 +91,11 @@ export function TaxesBlock({ sheet, rows, baseCurrency, editable, onRows }) {
             placeholder="0"
           />
         </label>
+        {negativos.has('r8') && (
+          <p className="error">
+            Un importe negativo <strong>no se resta</strong>: esta fila cuenta como cero.
+          </p>
+        )}
         <p className="muted">
           Solo <strong>intereses, comisiones bancarias y primas de seguro</strong>. Ningún otro
           gasto entra en esta fila.

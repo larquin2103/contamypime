@@ -8,7 +8,8 @@ import {
   utilityBaseRows,
   utilityRate,
   maxUtility,
-  fichaWarnings
+  fichaWarnings,
+  rateToPct
 } from '../../lib/fichaCosto'
 import { FICHA_ACTIVITY_LABELS } from '../../db/constants'
 
@@ -57,7 +58,10 @@ export function UtilityBlock({ sheet, baseCurrency, editable, onMethod, onUtilit
   const subsidio = warns.find((w) => w.code === 'subsidio')
   const nivel = Number(sheet.productionLevel) || 0
 
-  const pctText = (v) => (v == null ? '—' : `${Math.round(v * 1000) / 10} %`.replace('.', ','))
+  // La conversion fraccion -> porcentaje la hace el MOTOR (`rateToPct`); aqui
+  // solo se formatea. Habia tres copias de `Math.round(v * 1000) / 10` en una
+  // fase cuya tesis era justo que esa conversion vive en un solo sitio.
+  const pctText = (v) => (v == null ? '—' : `${rateToPct(v)} %`.replace('.', ','))
 
   return (
     <>
@@ -69,7 +73,7 @@ export function UtilityBlock({ sheet, baseCurrency, editable, onMethod, onUtilit
           type="button"
           className={`seg__btn ${!correlacion ? 'seg__btn--on' : ''}`}
           disabled={!editable}
-          onClick={() => onMethod(FICHA_METHODS.GASTOS)}
+          onClick={() => { if (correlacion) onMethod(FICHA_METHODS.GASTOS) }}
         >
           Por gastos
         </button>
@@ -77,7 +81,7 @@ export function UtilityBlock({ sheet, baseCurrency, editable, onMethod, onUtilit
           type="button"
           className={`seg__btn ${correlacion ? 'seg__btn--on' : ''}`}
           disabled={!editable}
-          onClick={() => onMethod(FICHA_METHODS.CORRELACION)}
+          onClick={() => { if (!correlacion) onMethod(FICHA_METHODS.CORRELACION) }}
         >
           Por correlación
         </button>
@@ -182,7 +186,7 @@ export function UtilityBlock({ sheet, baseCurrency, editable, onMethod, onUtilit
               value={sheet.utilityPct == null ? '' : sheet.utilityPct}
               readOnly={!editable}
               onChange={(e) => onUtilityPct(e.target.value)}
-              placeholder={max == null ? '0' : String(Math.round(max * 1000) / 10)}
+              placeholder={max == null ? '0' : String(rateToPct(max))}
             />
           </label>
           {sobreMaximo ? (

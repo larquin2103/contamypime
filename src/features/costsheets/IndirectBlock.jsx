@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { formatMoney } from '../../lib/currency'
-import { indirectCheck, totals } from '../../lib/fichaCosto'
+import { indirectCheck, totals, maxUtility, negativeAmounts, subOverParentRows } from '../../lib/fichaCosto'
 
 // Modulo 'fichas' (F7) - Bloque 5: GASTOS INDIRECTOS y el CONTROL A (Art. 9).
 //
@@ -30,9 +30,17 @@ const FILAS = [
 export function IndirectBlock({ sheet, rows, baseCurrency, editable, onRows }) {
   const chk = useMemo(() => indirectCheck(sheet), [sheet])
   const t = useMemo(() => totals(sheet), [sheet])
+  // Los dos datos imposibles los detecta el MOTOR y viajan por `fichaWarnings`,
+  // asi que se ven tambien con este bloque plegado.
+  const negativos = useMemo(() => new Set(negativeAmounts(sheet)), [sheet])
+  const subOver = useMemo(() => new Set(subOverParentRows(sheet)), [sheet])
+  // El techo del Art. 9 solo se afirma si la actividad esta definida: `max` cae a
+  // 1 por defecto cuando no lo esta, y presentar ese 1 como si fuera la norma
+  // seria inventarla (ademas de contradecir al bloque 7, que dice que no hay tasa
+  // de referencia). Sin actividad se pinta "—".
+  const techoConocido = maxUtility(sheet?.activity) != null
 
   const setRow = (key, value) => onRows({ ...rows, [key]: value })
-  const num = (v) => Number(v) || 0
 
   return (
     <>
@@ -71,6 +79,12 @@ export function IndirectBlock({ sheet, rows, baseCurrency, editable, onRows }) {
               placeholder="0"
             />
           </label>
+          {negativos.has(f.key) && (
+            <p className="error">
+              Un importe negativo <strong>no se resta</strong>: esta fila cuenta como cero y
+              desaparece del precio. Corrige el importe en vez de restar aquí.
+            </p>
+          )}
           {f.help && <p className="muted">Incluye {f.help}.</p>}
           <label className="field">
             <span>{f.n}.1 · De ello, salarios</span>
@@ -84,7 +98,12 @@ export function IndirectBlock({ sheet, rows, baseCurrency, editable, onRows }) {
               placeholder="0"
             />
           </label>
-          {num(rows[f.sub]) > num(rows[f.key]) && (
+          {negativos.has(f.sub) && (
+            <p className="error">
+              Un importe negativo <strong>no se resta</strong>: este subtotal cuenta como cero.
+            </p>
+          )}
+          {subOver.has(f.sub) && (
             <p className="error">
               “De ello, salarios” no puede ser mayor que su propia Fila {f.n}: es una parte de
               ella. Además entra en la base de la Fila 10, así que un valor de más
@@ -105,7 +124,7 @@ export function IndirectBlock({ sheet, rows, baseCurrency, editable, onRows }) {
       </div>
       <div className="total-row">
         <span className="muted">Máximo del Art. 9 para esta actividad</span>
-        <strong>{chk.max.toFixed(2).replace('.', ',')}</strong>
+        <strong>{techoConocido ? chk.max.toFixed(2).replace('.', ',') : '—'}</strong>
       </div>
 
       <div className="total-row total-row--grand">

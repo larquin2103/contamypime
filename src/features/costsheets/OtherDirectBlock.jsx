@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { formatMoney } from '../../lib/currency'
-import { otherDirectTotal } from '../../lib/fichaCosto'
+import { otherDirectTotal, negativeAmounts } from '../../lib/fichaCosto'
 
 // Modulo 'fichas' (F7) - Bloque 4: OTROS GASTOS DIRECTOS (Fila 3 del Anexo I).
 //
@@ -25,7 +25,10 @@ const SUGERIDOS = [
 
 export function OtherDirectBlock({ items, baseCurrency, editable, onItems }) {
   const fila3 = useMemo(() => otherDirectTotal(items), [items])
-  const hayNegativo = items.some((i) => Number(i.amount) < 0)
+  // Quien decide que es un negativo es el MOTOR, no la pantalla: el mismo aviso
+  // viaja por `fichaWarnings` y se ve tambien con el bloque plegado.
+  const negativos = useMemo(() => new Set(negativeAmounts({ otherDirect: items })), [items])
+  const hayNegativo = negativos.size > 0
 
   const setItem = (idx, patch) => onItems(items.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
   const removeItem = (idx) => onItems(items.filter((_, i) => i !== idx))
@@ -37,7 +40,7 @@ export function OtherDirectBlock({ items, baseCurrency, editable, onItems }) {
   return (
     <>
       {items.map((it, idx) => {
-        const negativo = Number(it.amount) < 0
+        const negativo = negativos.has(`otherDirect.${idx}`)
         return (
           <div className="ficha-item" key={idx}>
             <label className="field">
@@ -87,9 +90,12 @@ export function OtherDirectBlock({ items, baseCurrency, editable, onItems }) {
 
       {editable && (
         <>
+          {/* Atajos para teclear. NO usan `.chip-btn` a proposito: en el resto de
+              la app ese pill es un chip de FILTRO (con `is-active`), y aqui la
+              accion es AÑADIR. El mismo pill no puede significar dos cosas. */}
           <div className="chip-row">
             {SUGERIDOS.filter((c) => !yaEsta(c)).map((c) => (
-              <button type="button" key={c} className="chip-btn" onClick={() => addItem(c)}>
+              <button type="button" key={c} className="btn btn--ghost btn--sm" onClick={() => addItem(c)}>
                 + {c.split(' ')[0]}
               </button>
             ))}

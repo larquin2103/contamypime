@@ -4,8 +4,8 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 02-09-2026: F0, F1, F2, F3, F4, F5 y F6 HECHAS. La siguiente es F7 (indirectos,
-> tributos, utilidad y precio). Estado exacto para continuar: §9.10.**
+> **Estado al 03-09-2026: F0 a F7 HECHAS. La ficha YA CALCULA SU PRECIO COMPLETO. La siguiente
+> es F8 (precios de referencia, firmas, aprobación y revisiones). Estado exacto: §9.11.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
@@ -14,9 +14,11 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > `/ficha/:id`, la tarjeta gateada del Home, **`costSheets` YA registrada en
 > `SYNC_COLLECTIONS`** y, de F5, `InputsBlock.jsx` (bloque 2: anexo de insumos, portadores e
 > importación desde receta) con el acordeón de bloques, y de F6 `LaborBlock.jsx` (bloque 3: el
-> anexo de salario en tarjetas). **Todavía NO existen** los bloques 4 a 9 del editor ni
-> `fichaReports.js`, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los eventos de
-> `costSheet` se escriben desde F4 y hoy **no tienen pantalla que los muestre**.
+> anexo de salario en tarjetas) y de F7 `OtherDirectBlock.jsx`, `IndirectBlock.jsx`,
+> `TaxesBlock.jsx` y `UtilityBlock.jsx` (bloques 4 a 7, con los tres controles).
+> **Todavía NO existen** los bloques 8 y 9 del editor ni `fichaReports.js`, así que la ficha
+> **no se puede aprobar ni exportar**, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los
+> eventos de `costSheet` se escriben desde F4 y hoy **no tienen pantalla que los muestre**.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
@@ -358,8 +360,12 @@ resolver lo **devuelve** en vez de callárselo.
   con y sin tasa" del párrafo de abajo.
 - `utilityRate(sheet)` — tasa efectiva en fracción (ver `utilityPct` en §4).
 - `fichaWarnings(sheet)` — **una sola fuente** para los semáforos de los bloques 5 y 7, en vez de
-  que cada pantalla reinvente la condición. Códigos: `insumo-sin-tasa`, `actividad-desconocida`,
-  `correlacion-sin-precio`, `indirectos-exceden`, `utilidad-sobre-maximo`, `subsidio`. **Todos
+  que cada pantalla reinvente la condición. Códigos (**ocho** desde F7; los dos últimos que se añadieron van
+  en el orden del recorrido del editor, ver §9.11): `insumo-sin-tasa`, `actividad-desconocida`,
+  `correlacion-sin-precio`, `importe-negativo`, `de-ello-sobre-fila`, `indirectos-exceden`,
+  `utilidad-sobre-maximo`, `subsidio`. **Cada uno tiene su etiqueta** en
+  `FICHA_WARNING_LABELS` (`src/db/constants.js`) y la suite lo exige: un código sin etiqueta se le
+  enseñaría al dueño en crudo. **Todos
   son avisos** (Art. 6): ninguno bloquea la ficha. El orden es estable y sigue el recorrido del
   editor (bloque 5 antes que bloque 7).
 
@@ -564,7 +570,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F4** | Lista + identificación (`/fichas`, `/ficha/nueva`, `/ficha/:id`, bloque 1) + **import estático** (la decisión de `React.lazy` se revocó con evidencia, ver §3) + **`costSheets` registrada en `SYNC_COLLECTIONS`** (venía de F2) + **el gate de licencia** (venía de F3) + tarjeta del Home. | ✅ **HECHA 02-09-2026** · bundle +22 170 bytes · detalle en §9.8 |
 | **F5** | Anexo de insumos (bloque 2 + importar receta + portadores) + acordeón de bloques + `inputLineFor`/`recipeToInputs` en el motor. | ✅ **HECHA 02-09-2026** · bundle +10 834 bytes · 14 aserciones nuevas · revisada · detalle en §9.9 |
 | **F6** | Anexo de salario (bloque 3) + `emptyLaborOp`/`splitLaborOp` en el motor. | ✅ **HECHA 02-09-2026** · bundle +4 333 bytes · 20 aserciones nuevas · revisada · detalle en §9.10 |
-| **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con semáforos). | Pendiente |
+| **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con los tres controles) + `pctToRate`/`rateToPct`, `utilityBaseRows`, `indirectCheck().max`, `negativeAmounts` y `subOverParentRows` en el motor. | ✅ **HECHA 03-09-2026** · bundle +18 928 bytes · 49 aserciones nuevas · revisada · detalle en §9.11 |
 | **F8** | Firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`). | Pendiente |
 | **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas. **Incluye los campos opcionales `header`/`footer` en `exportPdf`/`exportExcel` (decisión 5 de §3) y la comprobación de que un reporte preexistente sale idéntico.** | Pendiente |
 | **F10** | Integración: tarjeta en Home gateada, **pestaña *Fichas* en `/auditoria` (gateada)**, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
@@ -981,6 +987,122 @@ comprobación aparte del camino real de la pantalla (valores como cadena, vacío
 no numérico y el duplicado), que ya vive en la suite. **No se ejecutó la app**: no se capturó una
 operación real, no se probó el duplicado ni el autoguardado en un teléfono, y nadie midió el ancho
 en una pantalla de 360 px.
+
+---
+
+### 9.11 F7: qué se hizo, qué dijo el revisor y qué queda abierto (03-09-2026)
+
+**Ficheros nuevos:** `OtherDirectBlock.jsx` (bloque 4, Fila 3), `IndirectBlock.jsx` (bloque 5,
+Filas 4/6/7 + Control A), `TaxesBlock.jsx` (bloque 6, Filas 8/9/10) y `UtilityBlock.jsx`
+(bloque 7, Filas 13/14/15 + Controles B y C). **Tocados:** `CostSheetScreen.jsx`,
+`src/lib/fichaCosto.js`, `src/lib/fichaCosto.test.mjs`, `src/db/constants.js`
+(`FICHA_WARNING_LABELS`) y `costSheetsRepo.js` (una sola línea: usa `rateToPct` del motor en vez
+de su propia copia). **No se tocan** `db.js`, `router.jsx`, `collections.js` ni
+`src/features/sync/`.
+
+| | F6 | F7 | Diferencia |
+|---|---|---|---|
+| `dist/assets/index-*.js` | 893 917 B | **912 845 B** | **+18 928 B** |
+| gzip | 258,41 kB | **263,23 kB** | +4,82 kB |
+| Suites node | 267 aserciones | **316 aserciones** | +49 |
+
+**CINCO REGLAS NORMATIVAS QUE SE LLEVARON AL MOTOR** (y no a la pantalla), todas con aserciones:
+
+1. **`pctToRate`/`rateToPct` — la trampa de 100× de esta fase.** Los tipos tributarios se
+   **guardan en fracción** (12,5 % = `0.125`) pero se **teclean en porcentaje**, al revés que
+   `utilityPct`/`capacityPct`. Un solo uso equivocado multiplica o divide la Fila 10 por cien y
+   arrastra la 11, la 12 y el precio. Cadena asegurada: 12,5 % → `0.125` → Fila 10 = **1 337,50**
+   (no 133 750) → Fila 12 = 32 902,50.
+2. **`utilityBaseRows` — qué filas componen la base de la utilidad.** La pantalla enseña **la
+   resta**, no solo el resultado, y para eso necesita saber qué filas entran. Esa rama es la
+   excepción del Anexo II: reimplementarla en la pantalla dejaría **dos interpretaciones del
+   Anexo II** en el mismo programa. Aserción que lo ata: para las **cinco** actividades, sumar
+   las filas devueltas da exactamente `utilityBase`.
+3. **`indirectCheck().max`** — el techo del Art. 9 se devuelve **siempre**, también cuando el
+   control no opina: es propiedad de la actividad, no del cálculo. Derivarlo como `limit/r2` en
+   la pantalla se rompería justo cuando `r2 = 0`, que es cuando el control se apaga.
+4. **`negativeAmounts`** y 5. **`subOverParentRows`** — los dos datos imposibles. Ver abajo.
+
+**DECISIÓN DE F7 SOBRE LOS IMPORTES NEGATIVOS — el punto que el §9.2 dejó abierto: CERRADO.**
+`otherDirectTotal` (y `pos()` en general) los sigue **ignorando**, porque las 16 filas son
+magnitudes de gasto. **No se cambia el motor.** Lo que se arregla es que dejaban de verse: ahora
+`negativeAmounts` los detecta en **las ocho filas capturadas y en el desglose de la Fila 3**, y
+salen por `fichaWarnings`. Y con ellos `subOverParentRows`, porque un “de ello, salarios” mayor
+que su fila entra en la base de la Fila 10 y **sube el impuesto**.
+
+**El efecto en cascada que esto destapó, y que está anclado con aserciones:** una Fila 6 en
+**−4 100** no se resta, **se anula**. Al anularse (a) 4 100 desaparecen del precio —el unitario
+cae de 170,08 a **149,57**—, (b) el aviso de indirectos **desaparece** porque 4+6+7 baja de 8 900
+a 4 800, y (c) salta el otro aviso, porque su propio 6.1 (2 400) queda por encima de una fila que
+ahora vale cero. Un solo dato mal pegado mueve el precio y deja el impuesto sobre un subtotal
+huérfano.
+
+**Lo que el revisor independiente confirmó:** reconstruyó el fixture con los valores **como
+cadena** (que es lo que produce el formulario), sin reusar el fixture de la suite, y comprobó
+**68 valores**: las Filas 1→12, el Control A (8 900 / 8 550 / exceso **350** / coeficiente
+**1,56** / techo 1,50), el Control B (base **9 800**, Fila 13 = 2 450, 15 = **170,08**) y el
+Control C (28 000 → **−3 565**, unitario **140,00**). **Cero discrepancias.** Verificó también que
+ninguna pantalla reimplementa una fórmula, que `cleanRows` persiste **las diez** filas, que los
+tres controles son avisos y nunca cerrojos, que las **30** clases CSS usadas existen (ninguna
+nueva, `global.css` no se tocó), que ninguna afirmación normativa está inventada, y que **cero**
+cambios tocan la sincronización. **Cero hallazgos críticos.**
+
+**Sus tres hallazgos importantes, cerrados:**
+
+1. **La documentación volvió a quedarse sin actualizar** — reincidencia del hallazgo 1 de F6. Es
+   lo que estás leyendo.
+2. **La decisión sobre los negativos se había aplicado a UN bloque de tres.** Las Filas 4, 4.1, 6,
+   6.1, 7, 7.1, 8 y 9 pasaban por el mismo `pos()` sin una palabra, y **esas sí entran en el
+   precio**. Ahora el aviso es el mismo en los tres bloques y lo decide el motor.
+3. **Los dos avisos locales solo existían con su bloque ABIERTO**, y el acordeón abre uno a la vez
+   (misma clase de problema que el hallazgo 3 de F5). Se resolvió como recomendaba: **suben a
+   `fichaWarnings`** y además hay un **resumen de avisos FUERA del acordeón**, así que se ven con
+   los bloques plegados y **F8 tendrá dónde consultarlos antes de aprobar**.
+
+**Sus menores, aplicados:** el texto de los tipos tributarios se **resincroniza** si el valor
+guardado cambia desde fuera (la guarda es exacta: `setTax` deja siempre
+`pctToRate(texto) === guardado`, así que no puede dispararse mientras se teclea); el `.seg` del
+método ya **no reescribe** el método que ya está puesto (sellaba `updatedAt` y subía el registro a
+la nube sin cambio real); las **tres copias** de la conversión fracción→porcentaje se sustituyen
+por `rateToPct` (una de ellas estaba en el repo); con actividad desconocida el techo del Art. 9 se
+pinta **“—”** en vez de afirmar un 1,00 que es un valor por defecto y no la norma; y los atajos
+del bloque 4 dejan de usar `.chip-btn`, que en el resto de la app es un chip de **filtro** y no de
+**añadir**.
+
+**Una corrección al mensaje del commit de F7:** decía que los tres controles salen de
+`fichaWarnings`. El Control A se pinta desde `indirectCheck(sheet)` directamente, porque el bloque
+necesita `sum`/`limit`/`max` de todos modos. **No pueden divergir** (la condición es literalmente
+la misma), pero la frase no describía el código.
+
+**LO QUE QUEDA ABIERTO Y HAY QUE RECORDAR:**
+
+- **F8: DOS columnas de Costo Base que llenar** — la (4) del anexo de insumos y la (2) del de
+  salario. `revise` copia los arrays tal cual, así que una revisión nacería con las dos en ceros y
+  **F9 imprimiría dos columnas oficiales vacías** sin que se note.
+- **F9: filtrar las filas en blanco.** Ya eran las de salario; ahora también **las filas 4.1, 6.1
+  y 7.1 en cero**, que el documento oficial imprimiría vacías.
+- **Fusión de dos dispositivos sobre la MISMA ficha:** el autoguardado manda el `form` **completo**
+  y el formulario solo se recarga una vez por `sheet.id`, así que un cambio remoto en otro anexo de
+  la misma ficha **se pisa**. Es coherente con la decisión “la ficha la edita un solo actor” (§4),
+  pero queda dicho.
+- **Una tasa tecleada igual al máximo de su actividad es indistinguible de “sin tocar”** tras
+  recargar la pantalla (`teniaPropia` compara contra el máximo), así que cambiar de actividad la
+  sustituye. Es la heurística que la regla describe; distinguirlo exigiría un campo nuevo. **No es
+  un bug: está escrito aquí para que no se lea como tal más adelante.**
+- **Decisión del dueño, no de la revisión:** el `uid` por fila (§9.10(a)) ahora afecta a **tres**
+  listas (insumos, salario y otros directos). Sigue sin causar ningún error de valores; solo una
+  aspereza de foco al quitar una fila.
+- **Nota de coma flotante, para que nadie la “arregle”:** `29 915 / 200` **no es** 149,575 en
+  doble precisión, es 149,574999…, así que **149,57 es correcto** y es también lo que daría
+  `toFixed(2)`. No es un fallo de `round2`.
+
+**Lo que NO se puede garantizar de F7 (regla 5):** código + build + 6 suites node, más una
+comprobación aparte de 44 aserciones sobre el fixture completo por los caminos de pantalla. **No
+se ejecutó la app**: ningún semáforo visto, ningún 12,5 % teclado en un teclado real, ningún
+acordeón en un teléfono, ninguna ficha capturada de punta a punta, ninguna fusión entre dos
+dispositivos. Y **el §2 sigue sin contrastarse contra el PDF de la Gaceta**, que no está en el
+repo: si la Fila 12 o la base estuvieran mal leídas, las 316 aserciones estarían verificando el
+error con toda precisión. Sigue siendo tarea de F11.
 
 ---
 

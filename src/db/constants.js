@@ -422,6 +422,22 @@ export const FICHA_METHOD_LABELS = {
   correlacion: 'Por correlación'
 }
 
+// Avisos de la ficha (los devuelve `fichaWarnings`). TODOS son avisos, nunca
+// cerrojos (Art. 6). Estas etiquetas son el resumen corto que se pinta FUERA del
+// acordeon, para que un aviso no dependa de que su bloque quede abierto; el
+// detalle con importes lo pinta cada bloque. La suite comprueba que cubran
+// exactamente los codigos del motor.
+export const FICHA_WARNING_LABELS = {
+  'insumo-sin-tasa': 'insumo en divisa sin tasa',
+  'actividad-desconocida': 'actividad sin definir',
+  'correlacion-sin-precio': 'falta el precio del similar',
+  'importe-negativo': 'hay un importe negativo',
+  'de-ello-sobre-fila': '“de ello, salarios” sobre su fila',
+  'indirectos-exceden': 'los indirectos exceden el límite',
+  'utilidad-sobre-maximo': 'utilidad sobre el máximo',
+  subsidio: 'estarías subsidiando'
+}
+
 // Ciclo de vida de la ficha. Append-only: una aprobada es INMUTABLE y corregirla
 // crea una revision nueva (mismo groupId, version + 1) que deja la anterior
 // 'sustituida'. Nada se borra: eliminar es logico (deletedAt).
