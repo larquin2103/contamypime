@@ -575,7 +575,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F6** | Anexo de salario (bloque 3) + `emptyLaborOp`/`splitLaborOp` en el motor. | ✅ **HECHA 02-09-2026** · bundle +4 333 bytes · 20 aserciones nuevas · revisada · detalle en §9.10 |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con los tres controles) + `pctToRate`/`rateToPct`, `utilityBaseRows`, `indirectCheck().max`, `negativeAmounts` y `subOverParentRows` en el motor. | ✅ **HECHA 03-09-2026** · bundle +18 928 bytes · 49 aserciones nuevas · revisada · detalle en §9.11 |
 | **F8** | Precios de referencia, firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`) + **las dos columnas Costo Base**, derivadas por `reviseFrom` en el motor. | ✅ **HECHA 03-09-2026** · bundle +10 711 bytes · 25 aserciones nuevas · revisada · detalle en §9.12 |
-| **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas + `header`/`footer` opcionales en `exportPdf`/`exportExcel`. | ✅ **HECHA 03-09-2026** · bundle +7 059 bytes · suite propia de 61 aserciones · **identidad byte a byte comprobada** · detalle en §9.13 |
+| **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas + `header`/`footer` opcionales en `exportPdf`/`exportExcel`. | ✅ **HECHA 03-09-2026** · bundle +7 126 bytes · suite propia de 61 aserciones · **identidad byte a byte comprobada** · detalle en §9.13 |
 | **F10** | Integración: tarjeta en Home gateada, **pestaña *Fichas* en `/auditoria` (gateada)**, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
 | **F11** | Auditoría profunda antes de `main` (regla 5): esquema, fugas de licencia, LWW, bundle antes/después, y decir qué NO se probó. | Pendiente |
 
@@ -1242,8 +1242,8 @@ magnitud equivocada y **ninguna de las 337 aserciones fallaría**. Sigue siendo 
 
 | | F8 | F9 | Diferencia |
 |---|---|---|---|
-| `dist/assets/index-*.js` | 923 556 B | **930 615 B** | **+7 059 B** |
-| gzip | 266,03 kB | **268,17 kB** | +2,14 kB |
+| `dist/assets/index-*.js` | 923 556 B | **930 682 B** | **+7 126 B** |
+| gzip | 266,03 kB | **268,21 kB** | +2,18 kB |
 | Suites node | 337 aserciones (6) | **398 aserciones (7)** | +61 |
 
 **LA COMPROBACIÓN OBLIGATORIA DEL §3 (decisión 5), HECHA — y más fuerte de lo que pedía.** El plan
@@ -1320,13 +1320,30 @@ navegador.
   implementó, pero **no pude contrastarla contra el artefacto en esta sesión**; se siguió la
   descripción del §3 y del §8.
 
+**UN FALLO ENCONTRADO Y ARREGLADO MIDIENDO EL DOCUMENTO, no leyéndolo.** Al declarar como *no
+verificado* que el documento cupiera, se comprobó que **eso también se puede medir con node**:
+jsPDF genera el PDF y expone el alto de la página y el `finalY` de la tabla. La medición encontró
+un fallo real: **`doc.text` NO pagina solo**, al revés que `autoTable`. La hoja 1 termina su tabla
+en 230 mm de un A4 de 297, y el pie de firmas arranca 10 mm después, así que **con TRES
+referencias declaradas el pie acababa en 294 mm y con seis en 312**: el documento se habría
+impreso **sin las firmas**, que es justo lo que la norma exige que lleve, y sin ningún aviso.
+Arreglado paginando el pie (`if (y > pageH - 15) { doc.addPage(); y = 20 }`). Medido después: con
+3, 6 y 12 referencias el pie cae en la página 2 y se ve entero. **Los reportes preexistentes no
+pasan pie, así que la identidad byte a byte se volvió a comprobar tras el arreglo y sigue en pie.**
+
+Lo demás del encaje, medido en tres tamaños (5 insumos/2 operaciones, 30/12 y 80/40): la hoja 1
+siempre cabe en una página, y las hojas 2 y 3 se paginan solas (hasta 4 y 3 páginas) con el pie
+siempre dentro. **La tabla nunca se salió por la derecha**, aunque de eso tengo menos certeza: la
+sonda del ancho no pudo leer la propiedad interna de autoTable, así que lo que sé es que autoTable
+no reportó desbordamiento, no que lo haya medido.
+
 **Lo que NO se puede garantizar de F9 (regla 5):** la identidad de los reportes preexistentes está
-probada **generando los ficheros**, que es lo más fuerte que se puede hacer sin navegador; pero
-**nadie ha abierto un PDF ni un Excel de la ficha para mirarlo**. No sé si el encabezado cabe, si
-las 9 columnas del anexo de salario entran en horizontal sin cortarse, ni si el pie de firmas cae
-en la página siguiente cuando la tabla es larga. **Eso solo se ve abriendo el fichero**, y es lo
-primero que conviene mirar en el canal de pruebas. Y el §2 sigue sin contrastarse contra el PDF de
-la Gaceta: si la interpretación estuviera mal, el documento se imprimiría mal con toda precisión.
+probada **generando los ficheros**, y el encaje está **medido**; pero **nadie ha ABIERTO un PDF ni
+un Excel para mirarlo**. No sé si las 9 columnas del anexo de salario se leen bien en horizontal,
+si los nombres largos parten donde deben, ni cómo queda la tipografía. **Eso solo se ve abriendo
+el fichero**, y es lo primero que conviene mirar en el canal de pruebas. Y el §2 sigue sin
+contrastarse contra el PDF de la Gaceta: si la interpretación estuviera mal, el documento se
+imprimiría mal con toda precisión.
 
 ---
 

@@ -1555,11 +1555,22 @@ export async function exportPdf(report) {
   })
 
   // Pie opcional (las firmas del modelo oficial). Igual: sin el, nada cambia.
+  //
+  // OJO: `doc.text` NO pagina solo, al reves que `autoTable`. Sin la guarda de
+  // abajo, un pie largo -la ficha con TRES referencias ya lo es- se dibuja FUERA
+  // del papel y el documento sale SIN LAS FIRMAS, que es justo lo que la norma
+  // exige que lleve. Medido: con 3 referencias el pie acababa en 294 mm de un A4
+  // de 297, y con 6 en 312.
   const footer = Array.isArray(report.footer) ? report.footer : []
   if (footer.length) {
+    const pageH = doc.internal.pageSize.getHeight()
     let y = (doc.lastAutoTable?.finalY || startY) + 10
     doc.setFontSize(9)
     for (const line of footer) {
+      if (y > pageH - 15) {
+        doc.addPage()
+        y = 20
+      }
       doc.text(line == null ? '' : String(line), 14, y)
       y += 6
     }
