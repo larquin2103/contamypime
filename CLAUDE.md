@@ -59,16 +59,17 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las 6 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**337 aserciones** en total). Ojo: cinco viven en `src/lib/`
-pero `retryQueue.test.mjs` está en `src/features/sync/`, así que un glob `src/lib/*.test.mjs`
-**se la salta**:
+**Pruebas:** NO hay script `npm test` (ni linter). Las 7 suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (**398 aserciones** en total). Ojo: cinco viven en `src/lib/`
+pero `retryQueue.test.mjs` está en `src/features/sync/` y `fichaReports.test.mjs` en
+`src/features/reports/`, así que un glob `src/lib/*.test.mjs` **se salta dos**:
 
 ```bash
 for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/productCustodyMath.test.mjs src/lib/remesas.test.mjs \
          src/lib/fichaCosto.test.mjs \
-         src/features/sync/retryQueue.test.mjs; do node "$t"; done
+         src/features/sync/retryQueue.test.mjs \
+         src/features/reports/fichaReports.test.mjs; do node "$t"; done
 ```
 
 `firebase-tools` es una CLI **global por máquina** (no viene con `npm install`):
@@ -283,7 +284,7 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
-- **`fichas`** — **EN CURSO (F8 de F11).** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
+- **`fichas`** — **EN CURSO (F9 de F11).** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
   reutiliza el catálogo y el stock para construir el documento oficial de 16 filas con sus dos
   anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por defecto. Hecho hasta
   hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18** (`costSheets`),
@@ -300,16 +301,22 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   **ciclo de vida** —firmas *Elaborado por* / *Aprobado por* con cargo, **aprobar** (la ficha
   queda inmutable), **nueva revisión** (hereda la anterior como **Costo Base**, derivado por
   `reviseFrom` en el motor, y la deja *sustituida*), **eliminar** en lógico e historial de
-  versiones—. Con esto **el editor está completo**: la ficha calcula su precio y se aprueba. **`costSheets` YA está en
+  versiones—. Con esto **el editor está completo**: la ficha calcula su precio y se aprueba. Y de
+  F9 la **exportación**: `features/reports/fichaReports.js` arma las **tres hojas oficiales** —la
+  ficha de 16 filas con sus dos columnas de valores, el anexo de insumos (7 columnas) y el de
+  salario (9, horizontal)—, **cada una a su propio PDF y Excel** con su encabezado de
+  identificación y su pie de firmas, desde el bloque 9 del editor. Para eso `exportPdf` y
+  `exportExcel` de `reportsService.js` ganan dos campos **opcionales** (`header`/`footer`): los
+  ~20 reportes existentes no los pasan y **su salida queda idéntica byte a byte**, comprobado
+  generando los ficheros con `xlsx` y `jspdf` en node (ver `docs/FICHA-COSTO.md` §9.13). **`costSheets` YA está en
   `SYNC_COLLECTIONS`** (LWW por `updatedAt`, lote de 400). Las pantallas entran por **import
   estático** como las demás: la decisión de `React.lazy` se revocó con evidencia (el service
   worker precachea todos los chunks, así que diferir no ahorra datos a nadie). **Regla de escala
   cerrada en F5:** la receta define el consumo de **una** unidad y la columna (5) del anexo es el
   del **nivel de producción completo**, así que al importar se **multiplica por el nivel** (sin
-  eso la ficha se subvalúa ×nivel, en silencio). **Faltan** `fichaReports.js` (F9: exportar el
-  documento oficial, que es lo que el Apartado Segundo obliga a mostrar) y la pestaña *Fichas* de
-  `/auditoria` (F10: los eventos ya se escriben y hoy no tienen pantalla). Todo el traspaso está
-  en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
+  eso la ficha se subvalúa ×nivel, en silencio). **Falta** la pestaña *Fichas* de `/auditoria`
+  (F10: los eventos ya se escriben y hoy no tienen pantalla) y la integración final. Todo el
+  traspaso está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
 
 ## Entregas (módulo `remesas`)
 

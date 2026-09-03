@@ -1489,9 +1489,27 @@ export async function buildKitchenProduction({ from = null, to = null } = {}) {
 
 // --- Exportadores (carga diferida de las librerias) ---
 
+// `report.header` y `report.footer` son OPCIONALES y solo los usa el modulo
+// 'fichas' (F9): son el encabezado de identificacion y el pie de firmas que la
+// Res. 148/2023 pide en CADA hoja. Los ~20 reportes de esta pantalla NO los
+// pasan, asi que su salida queda IDENTICA -y no de palabra: se comparo el .xlsx
+// byte a byte antes y despues del cambio (docs/FICHA-COSTO.md §9.13)-.
+//
+// OJO: `head` (las columnas de la tabla) y `header` (las lineas de arriba) son
+// cosas DISTINTAS y se parecen demasiado. No confundirlas.
+const extraLines = (v) =>
+  (Array.isArray(v) ? v : []).map((t) => [t == null ? '' : String(t)])
+
 export async function exportExcel(report) {
   const XLSX = await import('xlsx')
-  const ws = XLSX.utils.aoa_to_sheet([report.head, ...report.rows])
+  // Sin `header` ni `footer` esto es EXACTAMENTE `[report.head, ...report.rows]`,
+  // que es lo que habia antes.
+  const ws = XLSX.utils.aoa_to_sheet([
+    ...extraLines(report.header),
+    report.head,
+    ...report.rows,
+    ...extraLines(report.footer)
+  ])
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Reporte')
   const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
@@ -1512,12 +1530,40 @@ export async function exportPdf(report) {
   doc.setTextColor(120)
   doc.text(`MypiCuadre · ${report.subtitle || ''}`, 14, 22)
   doc.setTextColor(0)
+
+  // Encabezado opcional (modulo 'fichas'): lineas de identificacion entre el
+  // subtitulo y la tabla. SIN el, `startY` sigue valiendo 28, exactamente como
+  // antes, y no se pinta ni un pixel de mas.
+  let startY = 28
+  const header = Array.isArray(report.header) ? report.header : []
+  if (header.length) {
+    doc.setFontSize(9)
+    for (const line of header) {
+      doc.text(line == null ? '' : String(line), 14, startY)
+      startY += 5
+    }
+    startY += 3
+    doc.setFontSize(10)
+  }
+
   autoTable(doc, {
     head: [report.head],
     body: report.rows,
-    startY: 28,
+    startY,
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [15, 118, 110] }
   })
+
+  // Pie opcional (las firmas del modelo oficial). Igual: sin el, nada cambia.
+  const footer = Array.isArray(report.footer) ? report.footer : []
+  if (footer.length) {
+    let y = (doc.lastAutoTable?.finalY || startY) + 10
+    doc.setFontSize(9)
+    for (const line of footer) {
+      doc.text(line == null ? '' : String(line), 14, y)
+      y += 6
+    }
+  }
+
   doc.save(`${report.filename}.pdf`)
 }

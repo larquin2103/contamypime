@@ -4,6 +4,8 @@ import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { FICHA_METHODS, FICHA_STATUS, canApproveSheet, canReviseSheet, canDeleteSheet, priceRows } from '../../lib/fichaCosto'
 import { FICHA_STATUS_LABELS, FICHA_WARNING_LABELS } from '../../db/constants'
+import { FICHA_SHEETS } from '../reports/fichaReports'
+import { exportExcel, exportPdf } from '../reports/reportsService'
 
 // Modulo 'fichas' (F8) - Bloque 9: FIRMAS Y CICLO DE VIDA.
 //
@@ -36,7 +38,31 @@ export function SignBlock({
   onRemove
 }) {
   const [approvedBy, setApprovedBy] = useState('')
+  const [exportando, setExportando] = useState('')
+  const [errorExp, setErrorExp] = useState('')
   const navigate = useNavigate()
+
+  // La version anterior alimenta la columna "Costo Base" de la hoja 1. Sale del
+  // historial que ya se carga aqui: no hace falta otra consulta.
+  const base = versions.find((v) => v.id === sheet.baseFromSheetId) || null
+
+  // Cada hoja, a su PROPIO fichero (decision 5): no hay un PDF unico con los tres
+  // anexos, porque cada uno se presenta por separado. Se exporta lo que hay EN
+  // PANTALLA (incluido lo que aun no ha llegado al autoguardado), que es lo que el
+  // dueño esta mirando, y el encabezado dice si es borrador o aprobada.
+  const exportar = async (hoja, formato) => {
+    setExportando(`${hoja.key}:${formato}`)
+    setErrorExp('')
+    try {
+      const report = hoja.build({ sheet, base, baseCurrency })
+      if (formato === 'pdf') await exportPdf(report)
+      else await exportExcel(report)
+    } catch (e) {
+      setErrorExp(e?.message || 'No se pudo exportar')
+    } finally {
+      setExportando('')
+    }
+  }
 
   const puedeAprobar = canApproveSheet(sheet)
   const puedeRevisar = canReviseSheet(sheet)
@@ -217,6 +243,47 @@ export function SignBlock({
           </p>
         </div>
       )}
+
+      {/* --- Exportar el documento oficial (F9): tres hojas x (PDF | Excel) --- */}
+      <div className="ficha-item">
+        <h4 className="section-title">Exportar el documento</h4>
+        <p className="muted">
+          El <strong>Apartado Segundo</strong> obliga a <strong>mostrar las bases</strong> del
+          precio ante un control, una negociación o una concertación: no basta con calcularlo en
+          pantalla. Cada hoja se descarga por separado y <strong>se sostiene sola</strong>, con su
+          encabezado de identificación y su pie de firmas.
+        </p>
+        {errorExp && <p className="error">{errorExp}</p>}
+        {FICHA_SHEETS.map((h) => (
+          <div className="kv" key={h.key}>
+            <span className="muted">{h.label}</span>
+            <span>
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!exportando}
+                onClick={() => exportar(h, 'pdf')}
+              >
+                {exportando === `${h.key}:pdf` ? '…' : 'PDF'}
+              </button>{' '}
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!exportando}
+                onClick={() => exportar(h, 'excel')}
+              >
+                {exportando === `${h.key}:excel` ? '…' : 'Excel'}
+              </button>
+            </span>
+          </div>
+        ))}
+        {sheet.status !== FICHA_STATUS.APROBADA && (
+          <p className="muted">
+            Esta ficha todavía es un <strong>borrador</strong> y el documento lo dirá en su
+            encabezado. Para presentarla, apruébala antes.
+          </p>
+        )}
+      </div>
 
       {/* --- Eliminar (borrado logico) --- */}
       {puedeEliminar && (

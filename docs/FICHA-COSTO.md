@@ -4,10 +4,10 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 03-09-2026: F0 a F8 HECHAS. El EDITOR ESTÁ COMPLETO: la ficha calcula su precio,
-> se aprueba (y queda inmutable), se corrige con una revisión que hereda la anterior como Costo
-> Base, y se elimina en lógico. Faltan F9 (exportar el documento oficial), F10 (integración) y
-> F11 (auditoría antes de `main`). Estado exacto: §9.12.**
+> **Estado al 03-09-2026: F0 a F9 HECHAS. El módulo está FUNCIONALMENTE COMPLETO: la ficha
+> calcula su precio, se aprueba, se revisa, y las TRES HOJAS OFICIALES se exportan a PDF y Excel.
+> Faltan F10 (integración: pestaña de auditoría y ayuda) y F11 (auditoría antes de `main`).
+> Estado exacto: §9.13.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
@@ -18,10 +18,10 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > importación desde receta) con el acordeón de bloques, y de F6 `LaborBlock.jsx` (bloque 3: el
 > anexo de salario en tarjetas) y de F7 `OtherDirectBlock.jsx`, `IndirectBlock.jsx`,
 > `TaxesBlock.jsx` y `UtilityBlock.jsx` (bloques 4 a 7, con los tres controles) y de F8
-> `RefsBlock.jsx` y `SignBlock.jsx` (bloques 8 y 9: Fila 16, firmas y ciclo de vida).
-> **Todavía NO existe** `fichaReports.js`, así que la ficha se aprueba pero **no se puede
-> exportar**, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los eventos de `costSheet` se
-> escriben desde F4 y hoy **no tienen pantalla que los muestre**.
+> `RefsBlock.jsx` y `SignBlock.jsx` (bloques 8 y 9: Fila 16, firmas y ciclo de vida) y de F9
+> `features/reports/fichaReports.js` con su suite propia (las tres hojas oficiales).
+> **`/auditoria` sigue sin pestaña de Fichas** (F10): los eventos de `costSheet` se escriben desde
+> F4 y hoy **no tienen pantalla que los muestre**. Las suites pasan de 6 a **7**.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
@@ -575,7 +575,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F6** | Anexo de salario (bloque 3) + `emptyLaborOp`/`splitLaborOp` en el motor. | ✅ **HECHA 02-09-2026** · bundle +4 333 bytes · 20 aserciones nuevas · revisada · detalle en §9.10 |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con los tres controles) + `pctToRate`/`rateToPct`, `utilityBaseRows`, `indirectCheck().max`, `negativeAmounts` y `subOverParentRows` en el motor. | ✅ **HECHA 03-09-2026** · bundle +18 928 bytes · 49 aserciones nuevas · revisada · detalle en §9.11 |
 | **F8** | Precios de referencia, firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`) + **las dos columnas Costo Base**, derivadas por `reviseFrom` en el motor. | ✅ **HECHA 03-09-2026** · bundle +10 711 bytes · 25 aserciones nuevas · revisada · detalle en §9.12 |
-| **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas. **Incluye los campos opcionales `header`/`footer` en `exportPdf`/`exportExcel` (decisión 5 de §3) y la comprobación de que un reporte preexistente sale idéntico.** | Pendiente |
+| **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas + `header`/`footer` opcionales en `exportPdf`/`exportExcel`. | ✅ **HECHA 03-09-2026** · bundle +7 059 bytes · suite propia de 61 aserciones · **identidad byte a byte comprobada** · detalle en §9.13 |
 | **F10** | Integración: tarjeta en Home gateada, **pestaña *Fichas* en `/auditoria` (gateada)**, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
 | **F11** | Auditoría profunda antes de `main` (regla 5): esquema, fugas de licencia, LWW, bundle antes/después, y decir qué NO se probó. | Pendiente |
 
@@ -1231,6 +1231,102 @@ se aprobó una ficha real, no se creó una revisión real, no se vio un `confirm
 que el §4 marca como peligroso. Y **el §2 sigue sin contrastarse contra el PDF de la Gaceta**: si
 la columna (4) fuera el precio unitario base en vez del importe, el anexo de F9 imprimiría la
 magnitud equivocada y **ninguna de las 337 aserciones fallaría**. Sigue siendo tarea de F11.
+
+---
+
+### 9.13 F9: exportación de las tres hojas oficiales (03-09-2026)
+
+**Fichero nuevo:** `src/features/reports/fichaReports.js` — las tres hojas, con su suite propia
+`fichaReports.test.mjs` (**61 aserciones**; las suites pasan de 6 a **7**). **Tocados:**
+`reportsService.js` (los dos exportadores) y `SignBlock.jsx` (la hoja de exportación del bloque 9).
+
+| | F8 | F9 | Diferencia |
+|---|---|---|---|
+| `dist/assets/index-*.js` | 923 556 B | **930 615 B** | **+7 059 B** |
+| gzip | 266,03 kB | **268,17 kB** | +2,14 kB |
+| Suites node | 337 aserciones (6) | **398 aserciones (7)** | +61 |
+
+**LA COMPROBACIÓN OBLIGATORIA DEL §3 (decisión 5), HECHA — y más fuerte de lo que pedía.** El plan
+exigía exportar un reporte preexistente antes y después del cambio y comprobar que el archivo sale
+igual, y decía que *"sin esa comprobación F9 no se da por hecha"*. No hay navegador aquí, pero **sí
+hay algo mejor**: `xlsx` y `jspdf` corren en **node**, y son ellos quienes construyen el fichero
+(`downloadBlob` solo lo entrega). Así que se generaron los ficheros de verdad con el código viejo y
+con el nuevo y se compararon **byte a byte**:
+
+- **Excel:** *Inventario por ubicación* y *Ventas (detalle)* salen **idénticos**, con la escritura
+  probada determinista primero (dos escrituras iguales dan los mismos bytes). También con
+  `header`/`footer` a `null`, a `undefined` y a algo que no es una lista: la guarda es
+  `Array.isArray`.
+- **PDF:** *Inventario por ubicación* y *Cierres de turno* salen **idénticos**. jsPDF sella en el
+  trailer un `/ID [ <hex32> <hex32> ]` **aleatorio** que hace que dos PDF iguales difieran en 62
+  bytes; se comprobó que **esa es la única diferencia** (mismo tamaño, todo lo demás igual) y se
+  normaliza para comparar. La fecha de creación se fija con `setCreationDate`.
+- Y la prueba complementaria, para que las anteriores no sean vacías: **con** `header`/`footer` el
+  fichero **sí cambia**, el encabezado va en la primera fila y el pie al final.
+
+**Cómo son los dos campos nuevos.** `report.header` y `report.footer` son **listas de líneas**
+opcionales. En Excel entran como filas al principio y al final; en PDF se pintan entre el subtítulo
+y la tabla, y bajo ella. Sin ellos, `startY` sigue valiendo **28** y la hoja sigue siendo
+`[head, ...rows]`: exactamente lo de antes. **Ojo: `head` (las columnas de la tabla) y `header`
+(las líneas de arriba) son cosas distintas y se parecen demasiado**; hay un comentario en el código
+avisándolo.
+
+**Los builders son PUROS, al revés que todos los demás del proyecto.** Reciben la ficha ya cargada
+(la pantalla la tiene en memoria) y no tocan Dexie. No es un capricho: permite **probarlos con
+node**, y lo que imprimen es el documento con el que el dueño sostiene un precio ante un control —
+lo último del módulo que puede fallar en silencio, porque nadie lee un PDF con una calculadora al
+lado. **La aserción que más importa de esa suite: en los dos anexos, la SUMA DE LO IMPRESO da el
+TOTAL IMPRESO.** Es lo que mira un inspector, y es la razón por la que el motor redondea por línea
+y no al final (§5).
+
+**Consecuencia de la pureza:** `fichaReports.js` importa con **extensión `.js`**, al revés que el
+resto del proyecto. Node la exige en ESM y Vite la acepta igual; sin ella el fichero no se podría
+correr con `node`. Los cuatro módulos que importa (`lib/currency`, `lib/dates`, `lib/fichaCosto`,
+`db/constants`) no tienen a su vez ningún import, así que la cadena entera es ejecutable fuera del
+navegador.
+
+**Decisiones de esta fase:**
+
+- **El agua NO aparece en el anexo de insumos.** El modelo del §2.7 lleva al pie **dos** filas
+  fijas —combustibles y lubricantes (LITROS) y energía eléctrica (kw)— y no una tercera. Se
+  respeta el modelo y **no se inventa una fila**: el agua está en la **Fila 1.4 de la hoja 1**.
+  Queda dicho por si el dueño prefiere lo contrario.
+- **Las referencias de la Fila 16 van al PIE de la hoja 1, no en la tabla.** La fila es
+  explicativa y no lleva importe, así que en la tabla solo consta cuántas hay; el detalle
+  (fuente, qué se compara y precio) va abajo, que es donde el Apartado Segundo quiere las
+  **bases** del precio. De paso resuelve el filtro que §9.12 dejó anotado: las referencias vacías
+  **no se imprimen**.
+- **La columna "Costo Base" de la hoja 1 existe siempre**, aunque vaya vacía cuando no hay versión
+  anterior: es una de las dos columnas del modelo oficial, y vacía dice *"no hay con qué
+  comparar"*, que es la verdad.
+- **Se exporta lo que hay EN PANTALLA**, incluido lo que aún no ha llegado al autoguardado: es lo
+  que el dueño está mirando. El encabezado dice si la ficha es **borrador** o **aprobada**, y la
+  pantalla lo avisa.
+- **Los importes van como números**, no como texto, igual que en el resto de los reportes: así
+  Excel los suma.
+
+**LO QUE QUEDA ABIERTO:**
+
+- **Los filtros de filas en blanco que §9.10 y §9.11 dejaron anotados**: las de salario y las
+  Filas 4.1/6.1/7.1 en cero **siguen imprimiéndose**. Se decidió NO filtrarlas: son filas del
+  modelo oficial (la 4.1 existe aunque valga cero) y una operación de salario a medio teclear es
+  visible en el anexo, que es donde el dueño la va a ver antes de firmar. **Si el dueño prefiere
+  que se filtren, es una línea por anexo.** Lo que sí se filtra son las referencias vacías, porque
+  la Fila 16 no es una fila del modelo sino una lista.
+- **La segunda mitad del §2.7** (columna (4) para un producto nuevo **con comparable**) sigue sin
+  vía de captura: §9.12 la dejó como decisión del dueño y F9 no la cambia. Hoy esa columna solo se
+  llena en una revisión.
+- **La maqueta enseña la hoja de exportación con 3 filas × (PDF | Excel)**, que es lo que se
+  implementó, pero **no pude contrastarla contra el artefacto en esta sesión**; se siguió la
+  descripción del §3 y del §8.
+
+**Lo que NO se puede garantizar de F9 (regla 5):** la identidad de los reportes preexistentes está
+probada **generando los ficheros**, que es lo más fuerte que se puede hacer sin navegador; pero
+**nadie ha abierto un PDF ni un Excel de la ficha para mirarlo**. No sé si el encabezado cabe, si
+las 9 columnas del anexo de salario entran en horizontal sin cortarse, ni si el pie de firmas cae
+en la página siguiente cuando la tabla es larga. **Eso solo se ve abriendo el fichero**, y es lo
+primero que conviene mirar en el canal de pruebas. Y el §2 sigue sin contrastarse contra el PDF de
+la Gaceta: si la interpretación estuviera mal, el documento se imprimiría mal con toda precisión.
 
 ---
 
