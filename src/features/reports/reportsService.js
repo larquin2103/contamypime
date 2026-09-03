@@ -1534,13 +1534,23 @@ export async function exportPdf(report) {
   // Encabezado opcional (modulo 'fichas'): lineas de identificacion entre el
   // subtitulo y la tabla. SIN el, `startY` sigue valiendo 28, exactamente como
   // antes, y no se pinta ni un pixel de mas.
+  // Ancho util: los 14 mm de margen a cada lado. `doc.text` NO parte el texto
+  // solo, asi que una linea larga -una referencia con fuente y nota de texto
+  // libre, que no tienen limite de longitud- se dibuja FUERA del papel y se
+  // pierde en silencio. Y lo que se pierde ahi son las BASES del precio, que el
+  // Apartado Segundo obliga a mostrar. Es el mismo modo de fallo que el
+  // desbordamiento vertical del pie, por el otro eje.
+  const anchoUtil = doc.internal.pageSize.getWidth() - 28
+
   let startY = 28
   const header = Array.isArray(report.header) ? report.header : []
   if (header.length) {
     doc.setFontSize(9)
     for (const line of header) {
-      doc.text(line == null ? '' : String(line), 14, startY)
-      startY += 5
+      for (const parte of doc.splitTextToSize(line == null ? '' : String(line), anchoUtil)) {
+        doc.text(parte, 14, startY)
+        startY += 5
+      }
     }
     startY += 3
     doc.setFontSize(10)
@@ -1567,12 +1577,14 @@ export async function exportPdf(report) {
     let y = (doc.lastAutoTable?.finalY || startY) + 10
     doc.setFontSize(9)
     for (const line of footer) {
-      if (y > pageH - 15) {
-        doc.addPage()
-        y = 20
+      for (const parte of doc.splitTextToSize(line == null ? '' : String(line), anchoUtil)) {
+        if (y > pageH - 15) {
+          doc.addPage()
+          y = 20
+        }
+        doc.text(parte, 14, y)
+        y += 6
       }
-      doc.text(line == null ? '' : String(line), 14, y)
-      y += 6
     }
   }
 

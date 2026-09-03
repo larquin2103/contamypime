@@ -5,7 +5,7 @@
 // ningun import, asi que la cadena entera es ejecutable fuera del navegador.
 import { round2 } from '../../lib/currency.js'
 import { formatDateTime } from '../../lib/dates.js'
-import { totals, priceRows, inputsTotal, laborTotal } from '../../lib/fichaCosto.js'
+import { totals, priceRows, inputsTotal, laborTotal, carrierAmount } from '../../lib/fichaCosto.js'
 import {
   UNIT_LABELS,
   FICHA_ACTIVITY_LABELS,
@@ -160,7 +160,10 @@ export function buildInputsSheet({ sheet, baseCurrency = 'MN' } = {}) {
       l.code || '',
       `${l.name || ''}${foreign ? ` (precio en ${l.priceCurrency}, tasa ${num(l.priceRate)})` : ''}`,
       l.unit || 'u',
-      money(l.baseCost), // columna (4): la rellena `reviseFrom` al crear una revision
+      // Columna (4): la rellena `reviseFrom` al crear una revision. VACIA si no la
+      // hay, nunca 0: para un inspector "el costo base era cero" no es lo mismo
+      // que "no hay costo base". Es el mismo criterio que la hoja 1.
+      l.baseCost ? money(l.baseCost) : '',
       num(l.qty), // (5) norma de consumo, para el NIVEL DE PRODUCCION completo
       num(l.unitPrice), // (6) el monto que se paga al suministrador, en su moneda
       // (7) se pide al MOTOR linea a linea: el redondeo por linea es el que hace
@@ -171,10 +174,14 @@ export function buildInputsSheet({ sheet, baseCurrency = 'MN' } = {}) {
   })
 
   rows.push(['', 'TOTAL INSUMOS', '', '', '', '', inputsTotal(lineas)])
+  // El importe se le pide al MOTOR (`carrierAmount`), no se recalcula: es el
+  // mismo numero que la hoja 1 imprime en las Filas 1.2 y 1.3, y recalcularlo
+  // aqui con `Number` en vez de con el `pos` del motor las habria puesto en
+  // desacuerdo ante una cantidad negativa.
   rows.push(['', 'Combustibles y lubricantes', 'LITROS', '', num(c.fuel?.qty), num(c.fuel?.unitPrice),
-    money(num(c.fuel?.qty) * num(c.fuel?.unitPrice))])
+    carrierAmount(c.fuel)])
   rows.push(['', 'Energía eléctrica', 'kw', '', num(c.energy?.qty), num(c.energy?.unitPrice),
-    money(num(c.energy?.qty) * num(c.energy?.unitPrice))])
+    carrierAmount(c.energy)])
 
   return {
     title: 'Desagregación de los insumos fundamentales',
@@ -201,7 +208,7 @@ export function buildLaborSheet({ sheet, baseCurrency = 'MN' } = {}) {
 
   const rows = ops.map((o) => [
     o.operation || '',
-    money(o.baseCost), // (2) la rellena `reviseFrom` al crear una revision
+    o.baseCost ? money(o.baseCost) : '', // (2) vacia si no hay revision, nunca 0
     num(o.workers),
     o.category || '',
     o.scaleGroup || '',

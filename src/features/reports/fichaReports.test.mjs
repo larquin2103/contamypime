@@ -113,6 +113,27 @@ eq('el TOTAL INSUMOS es 13 645', I.rows[5][6], 13645)
 // LA ASERCION DEL INSPECTOR: la suma de lo impreso da el total impreso.
 eq('la suma de las columnas (7) impresas ES el TOTAL impreso',
   I.rows.slice(0, 5).reduce((a, r) => a + r[6], 0), I.rows[5][6])
+// OJO: con los cinco insumos de "Pan suave" la asercion de arriba NO discrimina:
+// sus importes son exactos, asi que pasaria IGUAL si el redondeo se moviera al
+// final. Este caso si la hace valer: tres lineas de 0,335 imprimen 0,34 cada una
+// y el total impreso tiene que ser 1,02. Con redondeo al final saldria 1,01 y el
+// anexo NO CUADRARIA CONSIGO MISMO, que es lo que mira un inspector.
+const MENUDO = buildInputsSheet({
+  sheet: { ...PAN, inputs: [1, 2, 3].map((i) => ({ code: `M${i}`, name: `Menudo ${i}`, unit: 'u', qty: 1, unitPrice: 0.335 })) }
+})
+eq('cada linea menuda se imprime redondeada a 0,34',
+  [MENUDO.rows[0][6], MENUDO.rows[1][6], MENUDO.rows[2][6]], [0.34, 0.34, 0.34])
+eq('y el TOTAL impreso es la suma DE LO IMPRESO (1,02), no 1,01', MENUDO.rows[3][6], 1.02)
+eq('o sea: total impreso === suma de lo impreso, tambien con decimales',
+  MENUDO.rows[3][6], MENUDO.rows.slice(0, 3).reduce((a2, r) => a2 + r[6], 0))
+
+// La columna "Costo Base" va VACIA si no hay revision, nunca 0: para un inspector
+// "el costo base era cero" no es lo mismo que "no hay costo base". Es el mismo
+// criterio que la hoja 1.
+eq('anexo de insumos: la columna (4) va vacia en una v1', I.rows[0][3], '')
+eq('y con revision se llena',
+  buildInputsSheet({ sheet: { ...PAN, inputs: [{ ...PAN.inputs[0], baseCost: 9000 }] } }).rows[0][3], 9000)
+
 eq('el anexo lleva las dos filas fijas de la norma, con su UM',
   [I.rows[6][1], I.rows[6][2], I.rows[7][1], I.rows[7][2]],
   ['Combustibles y lubricantes', 'LITROS', 'Energía eléctrica', 'kw'])
@@ -136,6 +157,9 @@ eq('la del empaque: 1 x (300+0) x 3', S.rows[1][8], 900)
 eq('el TOTAL es la Fila 2 de la ficha', S.rows[2][8], 5700)
 eq('la suma de las columnas (9) impresas ES el TOTAL impreso',
   S.rows.slice(0, 2).reduce((a, r) => a + r[8], 0), S.rows[2][8])
+eq('anexo de salario: la columna (2) va vacia en una v1', S.rows[0][1], '')
+eq('y con revision se llena',
+  buildLaborSheet({ sheet: { ...PAN, labor: [{ ...PAN.labor[0], baseCost: 4500 }] } }).rows[0][1], 4500)
 eq('se imprimen categoria y grupo escala, que la norma pide',
   [S.rows[0][3], S.rows[0][4]], ['Obrero', 'IV'])
 eq('nueve columnas NO caben en vertical: la hoja va horizontal', S.orientation, 'landscape')

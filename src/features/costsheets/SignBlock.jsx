@@ -45,6 +45,10 @@ export function SignBlock({
   // La version anterior alimenta la columna "Costo Base" de la hoja 1. Sale del
   // historial que ya se carga aqui: no hace falta otra consulta.
   const base = versions.find((v) => v.id === sheet.baseFromSheetId) || null
+  // Si la ficha es una REVISION pero su version anterior todavia no ha llegado
+  // (`versions` viene de un useLiveQuery), exportar imprimiria la columna "Costo
+  // Base" vacia sin decir por que. Se espera: son milisegundos.
+  const faltaBase = !!sheet.baseFromSheetId && !base
 
   // Cada hoja, a su PROPIO fichero (decision 5): no hay un PDF unico con los tres
   // anexos, porque cada uno se presenta por separado. Se exporta lo que hay EN
@@ -261,7 +265,7 @@ export function SignBlock({
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                disabled={!!exportando}
+                disabled={!!exportando || faltaBase}
                 onClick={() => exportar(h, 'pdf')}
               >
                 {exportando === `${h.key}:pdf` ? '…' : 'PDF'}
@@ -269,7 +273,7 @@ export function SignBlock({
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
-                disabled={!!exportando}
+                disabled={!!exportando || faltaBase}
                 onClick={() => exportar(h, 'excel')}
               >
                 {exportando === `${h.key}:excel` ? '…' : 'Excel'}
@@ -277,6 +281,9 @@ export function SignBlock({
             </span>
           </div>
         ))}
+        {faltaBase && (
+          <p className="muted">Cargando la versión anterior, que es la columna “Costo Base”…</p>
+        )}
         {sheet.status !== FICHA_STATUS.APROBADA && (
           <p className="muted">
             Esta ficha todavía es un <strong>borrador</strong> y el documento lo dirá en su

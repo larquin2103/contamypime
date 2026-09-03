@@ -765,20 +765,10 @@ export function CostSheetScreen() {
         </Block>
       )}
 
-      {/* Honestidad sobre el estado del modulo: la EXPORTACION del documento
-          oficial (las tres hojas a PDF y Excel) es F9. */}
-      {!isNew && !picking && (
-        <section className="card">
-          <h3>Lo que falta de esta ficha</h3>
-          <p className="muted">
-            Falta <strong>exportar el documento oficial</strong>: las tres hojas (la ficha de 16
-            filas, el anexo de insumos y el de salario), cada una a su propio PDF y Excel con su
-            encabezado y su pie de firmas. Llega en la fase siguiente. El Apartado Segundo obliga
-            a mostrar las bases del precio, así que hasta entonces la ficha calcula y se aprueba,
-            pero no se puede presentar.
-          </p>
-        </section>
-      )}
+      {/* La tarjeta "Lo que falta de esta ficha" se retiro en F9: decia que la
+          exportacion no existia, y estaba DOS CENTIMETROS DEBAJO de los botones
+          que la hacen. El editor esta completo; lo que queda (la pestaña de
+          Fichas en /auditoria) es de otra pantalla y se anuncia alli, en F10. */}
 
       {!isNew && (
         <div className="pay-bar">

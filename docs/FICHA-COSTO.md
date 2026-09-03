@@ -9,7 +9,7 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > Faltan F10 (integración: pestaña de auditoría y ayuda) y F11 (auditoría antes de `main`).
 > Estado exacto: §9.13.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
-> (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
+> (**241 aserciones**; el total del proyecto son **405** en **7** suites), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
 > licencia `fichas`, las pantallas `src/features/costsheets/CostSheetsScreen.jsx` (lista) y
 > `CostSheetScreen.jsx` (editor, **solo el bloque 1**), las rutas `/fichas`, `/ficha/nueva` y
@@ -575,7 +575,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F6** | Anexo de salario (bloque 3) + `emptyLaborOp`/`splitLaborOp` en el motor. | ✅ **HECHA 02-09-2026** · bundle +4 333 bytes · 20 aserciones nuevas · revisada · detalle en §9.10 |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con los tres controles) + `pctToRate`/`rateToPct`, `utilityBaseRows`, `indirectCheck().max`, `negativeAmounts` y `subOverParentRows` en el motor. | ✅ **HECHA 03-09-2026** · bundle +18 928 bytes · 49 aserciones nuevas · revisada · detalle en §9.11 |
 | **F8** | Precios de referencia, firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`) + **las dos columnas Costo Base**, derivadas por `reviseFrom` en el motor. | ✅ **HECHA 03-09-2026** · bundle +10 711 bytes · 25 aserciones nuevas · revisada · detalle en §9.12 |
-| **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas + `header`/`footer` opcionales en `exportPdf`/`exportExcel`. | ✅ **HECHA 03-09-2026** · bundle +7 126 bytes · suite propia de 61 aserciones · **identidad byte a byte comprobada** · detalle en §9.13 |
+| **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas + `header`/`footer` opcionales en `exportPdf`/`exportExcel`. | ✅ **HECHA 03-09-2026** · bundle +6 769 bytes · suite propia de 68 aserciones · **identidad byte a byte comprobada** · detalle en §9.13 |
 | **F10** | Integración: tarjeta en Home gateada, **pestaña *Fichas* en `/auditoria` (gateada)**, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
 | **F11** | Auditoría profunda antes de `main` (regla 5): esquema, fugas de licencia, LWW, bundle antes/después, y decir qué NO se probó. | Pendiente |
 
@@ -1242,9 +1242,9 @@ magnitud equivocada y **ninguna de las 337 aserciones fallaría**. Sigue siendo 
 
 | | F8 | F9 | Diferencia |
 |---|---|---|---|
-| `dist/assets/index-*.js` | 923 556 B | **930 682 B** | **+7 126 B** |
-| gzip | 266,03 kB | **268,21 kB** | +2,18 kB |
-| Suites node | 337 aserciones (6) | **398 aserciones (7)** | +61 |
+| `dist/assets/index-*.js` | 923 556 B | **930 325 B** | **+6 769 B** |
+| gzip | 266,03 kB | **268,16 kB** | +2,13 kB |
+| Suites node | 337 aserciones (6) | **405 aserciones (7)** | +68 |
 
 **LA COMPROBACIÓN OBLIGATORIA DEL §3 (decisión 5), HECHA — y más fuerte de lo que pedía.** El plan
 exigía exportar un reporte preexistente antes y después del cambio y comprobar que el archivo sale
@@ -1333,17 +1333,59 @@ pasan pie, así que la identidad byte a byte se volvió a comprobar tras el arre
 
 Lo demás del encaje, medido en tres tamaños (5 insumos/2 operaciones, 30/12 y 80/40): la hoja 1
 siempre cabe en una página, y las hojas 2 y 3 se paginan solas (hasta 4 y 3 páginas) con el pie
-siempre dentro. **La tabla nunca se salió por la derecha**, aunque de eso tengo menos certeza: la
-sonda del ancho no pudo leer la propiedad interna de autoTable, así que lo que sé es que autoTable
-no reportó desbordamiento, no que lo haya medido.
+siempre dentro.
+
+**Y EL MISMO FALLO, POR EL OTRO EJE, LO ENCONTRÓ EL REVISOR** (hallazgo importante 2): el arreglo
+de arriba cerraba el desbordamiento **vertical** del pie, pero el **horizontal** seguía abierto y
+es idéntico en su naturaleza — el texto se dibuja fuera del papel, el PDF se genera igual y nadie
+se entera. `doc.text` tampoco parte por ancho. Lo midió: a 9 pt caben ~125 caracteres, y la fuente
+y la nota de una referencia son **texto libre sin límite de longitud**. Una referencia realista
+(*"Solicitud de información a Comercializadora del MINCIN — precio del pan suave en la red
+minorista — 28500 MN"*) mide 177,5 mm de 196: cabe **por 18 mm**. Un poco más larga, o un nombre
+de producto largo en el encabezado, y se corta contra el borde — perdiendo justo **las bases del
+precio que el Apartado Segundo obliga a mostrar**. Cerrado con `doc.splitTextToSize` en los dos
+bucles, y **la identidad byte a byte comprobada otra vez** después.
+
+**La incertidumbre que este documento declaraba sobre el ancho de la TABLA, cerrada por el
+revisor:** leyó `doc.lastAutoTable.columns[].width` y midió que el anexo de salario ocupa 268,8 mm
+sobre 268,8 mm útiles en horizontal, y el de insumos 181,8 sobre 181,8. `autoTable` ajusta al
+ancho disponible y parte el texto dentro de la celda: **el desbordamiento horizontal de la tabla
+es imposible por construcción**. Lo que desbordaba era el texto suelto del encabezado y el pie, que
+es lo que se acaba de arreglar.
+
+**Sus otros hallazgos, cerrados:** la pantalla seguía diciendo *"falta exportar el documento
+oficial"* en una tarjeta situada **dos centímetros debajo de los botones que lo exportan** (se
+retiró: el editor está completo y lo que queda es de otra pantalla); la columna "Costo Base" de
+los **anexos** imprimía `0` mientras la hoja 1 la dejaba en blanco (para un inspector *"el costo
+base era cero"* no es lo mismo que *"no hay costo base"*: ahora las tres hojas usan el mismo
+criterio); el importe de los portadores se **recalculaba** en el anexo en vez de pedírselo al
+motor, lo que ante una cantidad negativa habría puesto **dos hojas del mismo documento en
+desacuerdo** (ahora se exporta `carrierAmount` y hay una sola fuente); exportar una **revisión**
+antes de que cargue su versión anterior imprimía la columna Base vacía sin decir por qué (los
+botones esperan); y la cifra de aserciones de la cabecera de este documento estaba obsoleta.
+
+**Y una aserción que no discriminaba, corregida:** el revisor notó que *"la suma de lo impreso da
+el total impreso"* pasaría **igual** con redondeo al final, porque los cinco insumos de "Pan
+suave" dan importes exactos. Se añadió el caso que sí la hace valer: tres líneas de 0,335 imprimen
+0,34 cada una y el total impreso debe ser **1,02**; con redondeo al final saldría 1,01 y el anexo
+no cuadraría consigo mismo.
 
 **Lo que NO se puede garantizar de F9 (regla 5):** la identidad de los reportes preexistentes está
-probada **generando los ficheros**, y el encaje está **medido**; pero **nadie ha ABIERTO un PDF ni
-un Excel para mirarlo**. No sé si las 9 columnas del anexo de salario se leen bien en horizontal,
-si los nombres largos parten donde deben, ni cómo queda la tipografía. **Eso solo se ve abriendo
-el fichero**, y es lo primero que conviene mirar en el canal de pruebas. Y el §2 sigue sin
-contrastarse contra el PDF de la Gaceta: si la interpretación estuviera mal, el documento se
-imprimiría mal con toda precisión.
+probada **generando los ficheros** —y el revisor la reprodujo por su cuenta, comprobando además
+que el `/ID` que se normaliza es **aleatorio por documento** y no un efecto del cambio: generó dos
+PDF con la versión vieja y difieren entre sí en ese mismo campo—; el encaje está **medido** en los
+dos ejes. Pero **nadie ha ABIERTO un PDF ni un Excel para mirarlo**: no sé si las 9 columnas del
+anexo de salario se **leen** bien en horizontal, cómo parte `autoTable` los nombres largos dentro
+de la celda, ni cómo queda la tipografía. Sé que **no se sale** de la página, no **cómo se lee**.
+**Eso solo se ve abriendo el fichero**, y es lo primero que conviene mirar en el canal de pruebas.
+Tampoco se comprobó que el service worker sirva los chunks de `xlsx`/`jspdf` sin red. Y el §2
+sigue sin contrastarse contra el PDF de la Gaceta: si la interpretación estuviera mal, el
+documento se imprimiría mal con toda precisión.
+
+**Anotado para F10/F11 (decisión del dueño):** blindar de raíz el desbordamiento horizontal
+poniendo `maxLength` a la fuente y la nota de una referencia en `RefsBlock` sería más barato que
+partir el texto en cada exportador. Hoy el corte por ancho ya lo cubre, así que es preferencia, no
+necesidad.
 
 ---
 

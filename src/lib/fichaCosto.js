@@ -189,7 +189,11 @@ export function recipeToInputs({
 // --- Portadores (filas 1.2, 1.3 y 1.4) --------------------------------------
 // En una MYPIME el combustible, la electricidad y el agua NO son productos del
 // catalogo: se capturan como cantidad x precio unitario.
-const carrierAmount = (c) => round2(pos(c?.qty) * pos(c?.unitPrice))
+// Se EXPORTA para que el anexo de insumos no lo recalcule: `pos` clampa los
+// negativos y `Number` no, asi que una cantidad negativa habria hecho que la Fila
+// 1.2 de la hoja 1 dijera 0 y el anexo dijera un negativo. Dos hojas del MISMO
+// documento en desacuerdo es peor que cualquiera de los dos numeros.
+export const carrierAmount = (c) => round2(pos(c?.qty) * pos(c?.unitPrice))
 
 export function carriersTotal(carriers) {
   return round2(
