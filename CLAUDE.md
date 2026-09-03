@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). Las 6 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**316 aserciones** en total). Ojo: cinco viven en `src/lib/`
+que se corren **uno a uno con node** (**337 aserciones** en total). Ojo: cinco viven en `src/lib/`
 pero `retryQueue.test.mjs` está en `src/features/sync/`, así que un glob `src/lib/*.test.mjs`
 **se la salta**:
 
@@ -283,7 +283,7 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
-- **`fichas`** — **EN CURSO (F7 de F11).** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
+- **`fichas`** — **EN CURSO (F8 de F11).** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
   reutiliza el catálogo y el stock para construir el documento oficial de 16 filas con sus dos
   anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por defecto. Hecho hasta
   hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18** (`costSheets`),
@@ -296,16 +296,20 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   **Control B** (la base del Anexo II **no es el total**) y el **Control C** (subsidio por
   correlación). Los tres controles son **avisos y nunca cerrojos** (Art. 6), y salen de
   `fichaWarnings`, con un resumen **fuera del acordeón** para que no dependan de qué bloque quede
-  abierto. Con esto la ficha **ya calcula su precio completo**. **`costSheets` YA está en
+  abierto. Y de F8 los **bloques 8 y 9**: precios de referencia (Fila 16, explicativa) y el
+  **ciclo de vida** —firmas *Elaborado por* / *Aprobado por* con cargo, **aprobar** (la ficha
+  queda inmutable), **nueva revisión** (hereda la anterior como **Costo Base**, derivado por
+  `reviseFrom` en el motor, y la deja *sustituida*), **eliminar** en lógico e historial de
+  versiones—. Con esto **el editor está completo**: la ficha calcula su precio y se aprueba. **`costSheets` YA está en
   `SYNC_COLLECTIONS`** (LWW por `updatedAt`, lote de 400). Las pantallas entran por **import
   estático** como las demás: la decisión de `React.lazy` se revocó con evidencia (el service
   worker precachea todos los chunks, así que diferir no ahorra datos a nadie). **Regla de escala
   cerrada en F5:** la receta define el consumo de **una** unidad y la columna (5) del anexo es el
   del **nivel de producción completo**, así que al importar se **multiplica por el nivel** (sin
-  eso la ficha se subvalúa ×nivel, en silencio). **Faltan** los bloques 8 y 9 del editor,
-  `fichaReports.js` y la pestaña *Fichas* de `/auditoria` (los eventos ya se escriben y hoy no
-  tienen pantalla). Todo el traspaso está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar
-  nada del módulo).
+  eso la ficha se subvalúa ×nivel, en silencio). **Faltan** `fichaReports.js` (F9: exportar el
+  documento oficial, que es lo que el Apartado Segundo obliga a mostrar) y la pestaña *Fichas* de
+  `/auditoria` (F10: los eventos ya se escriben y hoy no tienen pantalla). Todo el traspaso está
+  en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
 
 ## Entregas (módulo `remesas`)
 

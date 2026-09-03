@@ -4,8 +4,10 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 03-09-2026: F0 a F7 HECHAS. La ficha YA CALCULA SU PRECIO COMPLETO. La siguiente
-> es F8 (precios de referencia, firmas, aprobación y revisiones). Estado exacto: §9.11.**
+> **Estado al 03-09-2026: F0 a F8 HECHAS. El EDITOR ESTÁ COMPLETO: la ficha calcula su precio,
+> se aprueba (y queda inmutable), se corrige con una revisión que hereda la anterior como Costo
+> Base, y se elimina en lógico. Faltan F9 (exportar el documento oficial), F10 (integración) y
+> F11 (auditoría antes de `main`). Estado exacto: §9.12.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**137 aserciones**), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
@@ -15,10 +17,11 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > `SYNC_COLLECTIONS`** y, de F5, `InputsBlock.jsx` (bloque 2: anexo de insumos, portadores e
 > importación desde receta) con el acordeón de bloques, y de F6 `LaborBlock.jsx` (bloque 3: el
 > anexo de salario en tarjetas) y de F7 `OtherDirectBlock.jsx`, `IndirectBlock.jsx`,
-> `TaxesBlock.jsx` y `UtilityBlock.jsx` (bloques 4 a 7, con los tres controles).
-> **Todavía NO existen** los bloques 8 y 9 del editor ni `fichaReports.js`, así que la ficha
-> **no se puede aprobar ni exportar**, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los
-> eventos de `costSheet` se escriben desde F4 y hoy **no tienen pantalla que los muestre**.
+> `TaxesBlock.jsx` y `UtilityBlock.jsx` (bloques 4 a 7, con los tres controles) y de F8
+> `RefsBlock.jsx` y `SignBlock.jsx` (bloques 8 y 9: Fila 16, firmas y ciclo de vida).
+> **Todavía NO existe** `fichaReports.js`, así que la ficha se aprueba pero **no se puede
+> exportar**, y **`/auditoria` sigue sin pestaña de Fichas** (F10): los eventos de `costSheet` se
+> escriben desde F4 y hoy **no tienen pantalla que los muestre**.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
@@ -571,7 +574,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F5** | Anexo de insumos (bloque 2 + importar receta + portadores) + acordeón de bloques + `inputLineFor`/`recipeToInputs` en el motor. | ✅ **HECHA 02-09-2026** · bundle +10 834 bytes · 14 aserciones nuevas · revisada · detalle en §9.9 |
 | **F6** | Anexo de salario (bloque 3) + `emptyLaborOp`/`splitLaborOp` en el motor. | ✅ **HECHA 02-09-2026** · bundle +4 333 bytes · 20 aserciones nuevas · revisada · detalle en §9.10 |
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con los tres controles) + `pctToRate`/`rateToPct`, `utilityBaseRows`, `indirectCheck().max`, `negativeAmounts` y `subOverParentRows` en el motor. | ✅ **HECHA 03-09-2026** · bundle +18 928 bytes · 49 aserciones nuevas · revisada · detalle en §9.11 |
-| **F8** | Firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`). | Pendiente |
+| **F8** | Precios de referencia, firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`) + **las dos columnas Costo Base**, derivadas por `reviseFrom` en el motor. | ✅ **HECHA 03-09-2026** · bundle +10 711 bytes · 25 aserciones nuevas · revisada · detalle en §9.12 |
 | **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas. **Incluye los campos opcionales `header`/`footer` en `exportPdf`/`exportExcel` (decisión 5 de §3) y la comprobación de que un reporte preexistente sale idéntico.** | Pendiente |
 | **F10** | Integración: tarjeta en Home gateada, **pestaña *Fichas* en `/auditoria` (gateada)**, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
 | **F11** | Auditoría profunda antes de `main` (regla 5): esquema, fugas de licencia, LWW, bundle antes/después, y decir qué NO se probó. | Pendiente |
@@ -1103,6 +1106,131 @@ acordeón en un teléfono, ninguna ficha capturada de punta a punta, ninguna fus
 dispositivos. Y **el §2 sigue sin contrastarse contra el PDF de la Gaceta**, que no está en el
 repo: si la Fila 12 o la base estuvieran mal leídas, las 316 aserciones estarían verificando el
 error con toda precisión. Sigue siendo tarea de F11.
+
+---
+
+### 9.12 F8: qué se hizo, qué dijo el revisor y qué queda abierto (03-09-2026)
+
+**Ficheros nuevos:** `RefsBlock.jsx` (bloque 8, Fila 16) y `SignBlock.jsx` (bloque 9: firmas,
+aprobar, revisar, eliminar e historial). **Tocados:** `CostSheetScreen.jsx`,
+`src/lib/fichaCosto.js` (+`baseCostsFrom`, +`reviseFrom`), `src/repositories/costSheetsRepo.js`
+(`revise` delega en el motor), `InputsBlock.jsx` y `LaborBlock.jsx` (pintan el Costo Base por
+línea) y la suite. **No se tocan** `db.js`, `router.jsx`, `collections.js` ni
+`src/features/sync/`. Los eventos de auditoría (`create`/`approve`/`revise`/`delete`) los
+escribía ya el repo desde F2: F8 solo los dispara, y **siguen sin pantalla hasta F10**.
+
+| | F7 | F8 | Diferencia |
+|---|---|---|---|
+| `dist/assets/index-*.js` | 912 845 B | **923 556 B** | **+10 711 B** |
+| gzip | 263,23 kB | **266,03 kB** | +2,80 kB |
+| Suites node | 316 aserciones | **337 aserciones** | +21 |
+
+**LAS DOS COLUMNAS "COSTO BASE" QUEDAN CERRADAS. Se DERIVAN, no se teclean.** Era la apertura que
+§9.9 (hallazgo 5) y §9.10 dejaron asignada a F8: la columna (4) del anexo de insumos y la (2) del
+de salario no las llenaba nadie, `revise` copiaba los arrays tal cual y **una revisión nacía con
+las dos columnas oficiales en ceros**, que F9 habría impreso vacías sin que se notara.
+
+La clave es que la revisión copia los arrays **posicionalmente**: en ese instante la línea *i* de
+la copia **es** la línea *i* de la anterior, así que **no hay ningún emparejamiento heurístico**
+que pueda fallar con dos insumos del mismo producto o dos operaciones del mismo nombre (el
+revisor lo comprobó a propósito con esos dos casos). Y se calculan con las **mismas** funciones
+que valoran la columna nueva (`inputsTotal([l])`, `laborTotal([o])`), así que Base y Nueva no
+pueden discrepar por redondeo. Una línea en divisa congela su importe **en MN** con su tasa
+congelada, para que las dos columnas sean comparables.
+
+**Interpretación normativa (confirmada por el revisor):** la columna (4) es un **importe**, no un
+precio unitario. §2.7 la pone en paralelo a (7) *Costo propuesto = 5 × 6*, y §2.8 pone la (2) en
+paralelo a (9) *Gasto = 3 × (6+7) × 8*. El argumento decisivo es de cuadre: **solo con esa lectura
+la suma de la columna (4) es la Fila 1.1 de la versión anterior**, que es lo que la columna *Costo
+Base* del Anexo I necesita.
+
+**`reviseFrom` vive en el MOTOR, no en el repo.** Es el mismo movimiento que `recipeToInputs`
+(F5), `splitLaborOp` y `emptyLaborOp` (F6), y por el mismo motivo: el repo habla con Dexie y no se
+puede correr con node, así que un literal armado allí **queda sin cobertura**. El revisor lo
+demostró: con `...baseCostsFrom(prev)` puesto **antes** de `...copia`, las dos columnas nacen en
+`undefined` (→ 0 al primer autoguardado), las 16 filas siguen idénticas y **ninguna aserción
+falla**. Ahora `costSheetsRepo.revise` no arma ningún literal: llama a `reviseFrom`, y la suite
+prueba **el código real**.
+
+**UNA INVARIANTE QUE NO ESTABA ESCRITA: crear una revisión no puede mover ni un importe.** Si lo
+moviera, al dueño le cambiaría el precio de una ficha por el simple hecho de abrir su corrección.
+Se comprueba que las 16 filas y el precio salen idénticos, que la columna (4) no se mueve al
+reteclear el precio (y la nueva sí), que las dos columnas nacen con **número** y nunca en
+`undefined`, y que **la v3 hereda de la v2 y no de la v1** — si heredara de la v1, el Costo Base
+mentiría sobre cuál fue el precio anterior.
+
+**Lo que el revisor independiente confirmó:** `approve` sella `updatedAt`, `revise` lo sella en
+**los dos** registros que toca y `remove` también, así que **la aprobación sí sube a la nube** (el
+peligro del §4: `approvedAt` no está en `TS_FIELDS`). Las tres corren en transacción, así que **no
+puede quedar una sustituida sin sucesora**, y `revise` relee `canReviseSheet` **dentro** de la
+transacción, así que un doble toque no puede abrir dos ramas del mismo grupo. La UI ofrece
+exactamente lo que el repo permite (usa las mismas funciones puras). Las 18 clases CSS usadas
+existen, ninguna nueva. `toCloud` es `JSON.parse(JSON.stringify(...))` y `baseCostsFrom` solo
+escribe números: **ningún `undefined` que Firestore rechace**. **Cero hallazgos críticos.**
+
+**Sus cinco hallazgos importantes, cerrados:**
+
+1. **La documentación sin actualizar, TERCERA vez consecutiva** (fue hallazgo 1 en F6 y en F7). Es
+   lo que estás leyendo. **Cambio de proceso, no solo de fichero: desde F9 el §9.x va DENTRO del
+   commit de la fase.**
+2. **A `SignBlock` le faltaba `key={sheet.id}`.** Guarda en estado local la firma tecleada, y la
+   pantalla **no se desmonta** al navegar a la revisión: el camino *aprobar v1 → Nueva revisión*
+   dejaba el campo *Aprobado por* **preescrito con la firma de la v1** y el botón de aprobar
+   habilitado sin que nadie hubiera escrito nada. Perforaba justo la garantía que esta fase añade.
+   El precedente estaba en el mismo fichero (`TaxesBlock`, F7).
+3. **El autoguardado podía escribir el formulario de la ficha ANTERIOR sobre la revisión nueva.**
+   Tras `revise`, `navigate` cambia `id` de inmediato y el `form` sigue siendo el de la versión
+   anterior; teclear en esa ventana habría borrado las columnas recién derivadas, **en silencio**.
+   Cerrado con `if (loadedId.current !== id) return` en el efecto, en `flush` y en el volcado al
+   desmontar.
+4. **La suite replicaba el literal de `revise` a mano.** Cerrado extrayendo `reviseFrom` (arriba).
+5. **La columna derivada no se pintaba en ninguna parte**, así que cualquier error sobre ella era
+   silencioso hasta el PDF. Ahora cada línea de los bloques 2 y 3 muestra su **(4)/(2) Costo
+   base** con su delta **de color invertido** (subir el costo es malo), que es literalmente lo que
+   pide el §7 y que hasta hoy solo existía como delta *agregado* de la Fila 1.
+
+**Sus menores, aplicados:** el autoguardado no arma temporizador mientras corre una acción del
+ciclo de vida (si el dueño teclea **durante** el `await` de aprobar, a los 600 ms saltaba *"una
+ficha aprobada no se edita"* sobre una aprobación correcta); el historial de versiones es
+**navegable** (sin eso, desde la v2 no había forma de abrir la v1) y dice **las dos cosas** de una
+versión eliminada (*"aprobada, eliminada"*); eliminar una **aprobada** avisa con todas las letras
+de que el grupo queda **sin sucesión posible**; `type="button"` en la cabecera del acordeón; y los
+comentarios que decían *"queda asignada a F8"* ya no mienten.
+
+**LO QUE QUEDA ABIERTO:**
+
+- **§2.7 dice que la columna (4) se usa "si es modificación de precio O EL PRODUCTO NUEVO TIENE UN
+  COMPARABLE".** F8 cierra el primer caso (la derivación al revisar) y **el segundo se queda sin
+  vía**: no hay campo para teclear un Costo Base en una v1 con comparable externo. **Decisión del
+  dueño:** ¿se añade un campo capturable por línea, o se acepta que ese caso se resuelve
+  declarando el comparable en la Fila 16?
+- **F9 hereda TRES filtros de filas en blanco, no dos:** las de salario (§9.10), las Filas 4.1,
+  6.1 y 7.1 en cero (§9.11) y ahora las **referencias de la Fila 16 vacías** — `cleanRefs` no
+  descarta una referencia sin fuente ni precio, a propósito, por el autoguardado.
+- **F9 debe imprimir el `baseCost` POR LÍNEA** en las columnas (4) y (2). Es el consumidor único
+  de lo que F8 deriva.
+- **`currentOfGroup` (`costSheetsRepo.js`) sigue sin ningún llamador** desde F2. Se conserva a
+  propósito para F9/F10 (marcar cuál es la versión viva de un grupo); sin linter, nadie más lo va
+  a ver. Si F10 no lo usa, hay que quitarlo.
+- **Doble revisión desde dos dispositivos:** si A revisa la v1 estando B offline con la v1 aún
+  aprobada, B también revisa, y tras la fusión el grupo tiene **dos v2 borrador**. Es coherente
+  con la decisión "la ficha la edita un solo actor" (§4) y con el aviso de fusión de `CLAUDE.md`,
+  pero queda dicho.
+- **Eliminar una aprobada no tiene vuelta atrás desde la interfaz.** El dato no se pierde
+  (borrado lógico + auditoría), pero no hay pantalla de restauración. **Decisión del dueño:** o se
+  limita el borrado a borrador/sustituida, o F10 añade un "restaurar" en la pestaña de auditoría.
+- **Discrepancia con la maqueta, declarada:** su vista del bloque 8 pinta un clip (📎) en cada
+  referencia, o sea un **adjunto**. El registro del §4 no tiene campo para eso (`refs` es
+  `{source, price, note}`) y **no se ha inventado uno**. Si el dueño quiere adjuntar el
+  comprobante, es un campo nuevo y probablemente el módulo `imagenes`.
+
+**Lo que NO se puede garantizar de F8 (regla 5):** código + build + 6 suites node, más una
+comprobación aparte de 25 aserciones sobre el ciclo de vida entero. **No se ejecutó la app**: no
+se aprobó una ficha real, no se creó una revisión real, no se vio un `confirm()` en un teléfono, y
+**nadie ha comprobado en runtime que una aprobación viaje entre dos dispositivos**, que es el caso
+que el §4 marca como peligroso. Y **el §2 sigue sin contrastarse contra el PDF de la Gaceta**: si
+la columna (4) fuera el precio unitario base en vez del importe, el anexo de F9 imprimiría la
+magnitud equivocada y **ninguna de las 337 aserciones fallaría**. Sigue siendo tarea de F11.
 
 ---
 

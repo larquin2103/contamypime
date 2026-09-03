@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { FICHA_METHODS, FICHA_STATUS, canApproveSheet, canReviseSheet, canDeleteSheet, priceRows } from '../../lib/fichaCosto'
@@ -35,6 +36,7 @@ export function SignBlock({
   onRemove
 }) {
   const [approvedBy, setApprovedBy] = useState('')
+  const navigate = useNavigate()
 
   const puedeAprobar = canApproveSheet(sheet)
   const puedeRevisar = canReviseSheet(sheet)
@@ -75,10 +77,21 @@ export function SignBlock({
   }
 
   const eliminar = () => {
+    // Eliminar una APROBADA es distinto de eliminar un borrador: una eliminada
+    // ya no se puede revisar (`canReviseSheet` exige viva), asi que el grupo
+    // queda SIN SUCESION POSIBLE y ese precio ya no se podra corregir con una
+    // revision. No se bloquea -el dato no se pierde: borrado logico mas
+    // auditoria-, pero el aviso lo dice con todas las letras.
+    const grave = sheet.status === FICHA_STATUS.APROBADA
     if (!confirm(
       `¿Eliminar la ficha "${sheet.name || 'sin nombre'}"?\n\n` +
       'Es un borrado lógico: desaparece de la lista pero NADA se borra, y queda constancia en ' +
-      'Auditoría. Úsalo para una ficha de prueba o creada por error.'
+      'Auditoría.' +
+      (grave
+        ? '\n\nOJO: esta ficha está APROBADA. Una vez eliminada ya no se le podrá crear una ' +
+          'revisión, así que ese precio se queda sin forma de corregirse. Si lo que quieres es ' +
+          'cambiarlo, usa “Nueva revisión” en vez de eliminar.'
+        : ' Úsalo para una ficha de prueba o creada por error.')
     )) return
     onRemove()
   }
@@ -170,19 +183,33 @@ export function SignBlock({
       {versions.length > 1 && (
         <div className="ficha-item">
           <h4 className="section-title">Versiones de esta ficha</h4>
+          {/* Cada version se puede ABRIR: sin esto, desde la v2 no habia forma de
+              llegar a la v1 mas que volviendo a la lista y buscando en "Todas".
+              `listByGroup` NO filtra las eliminadas, y hace bien -el historial es
+              el historial-, pero una eliminada conserva su `status`, asi que se
+              dicen LAS DOS COSAS ("aprobada, eliminada"): quedarse solo con
+              "eliminada" perderia si estaba aprobada o sustituida. La palabra va
+              inline y NO en FICHA_STATUS_LABELS, que la suite exige que cubra
+              EXACTAMENTE los tres estados del motor. */}
           {versions.map((v) => (
-            <div className="total-row" key={v.id}>
-              {/* `listByGroup` NO filtra las eliminadas, y hace bien: el historial
-                  es el historial. Pero una eliminada conserva su `status`
-                  ('borrador'), asi que sin esto se pintaria como si estuviera
-                  viva. La palabra va inline y NO en FICHA_STATUS_LABELS, que la
-                  suite exige que cubra EXACTAMENTE los tres estados del motor. */}
-              <span className={v.id === sheet.id ? '' : 'muted'}>
-                v{v.version || 1} · {v.deletedAt ? 'eliminada' : (FICHA_STATUS_LABELS[v.status] || v.status)}
-                {v.id === sheet.id && ' · esta'}
-              </span>
-              <strong>{formatMoney(priceRows(v).r15, baseCurrency)}</strong>
-            </div>
+            <button
+              type="button"
+              className="product-row"
+              key={v.id}
+              disabled={v.id === sheet.id}
+              onClick={() => navigate(`/ficha/${v.id}`)}
+            >
+              <div className="product-row__main">
+                <strong>v{v.version || 1}{v.id === sheet.id ? ' · esta' : ''}</strong>
+                <span className="muted">
+                  {FICHA_STATUS_LABELS[v.status] || v.status}{v.deletedAt ? ', eliminada' : ''}
+                </span>
+              </div>
+              <div className="product-row__meta">
+                <span className="price">{formatMoney(priceRows(v).r15, baseCurrency)}</span>
+                <span className="stock">precio unitario</span>
+              </div>
+            </button>
           ))}
           <p className="muted">
             Nada se borra: cada versión se conserva entera con su precio, que es lo que permite

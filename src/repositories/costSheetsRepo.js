@@ -7,7 +7,7 @@ import {
   FICHA_METHODS,
   maxUtility,
   rateToPct,
-  baseCostsFrom,
+  reviseFrom,
   canEditSheet,
   canApproveSheet,
   canReviseSheet,
@@ -288,29 +288,12 @@ export const costSheetsRepo = {
       if (!canReviseSheet(prev)) {
         throw new Error('Solo una ficha aprobada se puede revisar')
       }
-      const copia = { ...prev }
-      delete copia.id
-      await db.costSheets.add({
-        ...copia,
-        // Columnas "Costo Base" del modelo oficial: la (4) del anexo de insumos y
-        // la (2) del de salario. Se DERIVAN aqui, congelando lo que cada linea
-        // valia en la version anterior, que es exactamente lo que la norma pide
-        // en esas columnas cuando hay modificacion de precio (docs §2.7).
-        // Va DESPUES de `...copia` para que sobrescriba los arrays copiados.
-        // Sin esto, una revision nacia con las dos columnas oficiales EN CEROS y
-        // F9 las imprimiria vacias sin que nadie lo notara.
-        ...baseCostsFrom(prev),
-        id: newSheetId,
-        groupId: prev.groupId || prev.id,
-        version: nextVersion(prev),
-        status: FICHA_STATUS.BORRADOR,
-        baseFromSheetId: prev.id,
-        approvedBy: '',
-        approvedAt: null,
-        createdAt: ts,
-        updatedAt: ts,
-        deletedAt: null
-      })
+      // El registro de la revision lo construye el MOTOR (`reviseFrom`), que es
+      // donde se puede probar con node. Incluye las columnas "Costo Base" (la (4)
+      // del anexo de insumos y la (2) del de salario) derivadas de esta version:
+      // sin ellas, una revision nacia con las dos columnas OFICIALES en ceros y
+      // F9 las imprimiria vacias sin que nadie lo notara.
+      await db.costSheets.add(reviseFrom(prev, newSheetId, ts))
       await db.costSheets.update(prev.id, { status: FICHA_STATUS.SUSTITUIDA, updatedAt: ts })
       await db.auditEvents.add(
         auditRow({ ...prev, id: newSheetId }, 'revise', userId, `Revisión v${nextVersion(prev)} de ${prev.id}`)

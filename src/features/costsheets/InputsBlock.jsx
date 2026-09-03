@@ -7,7 +7,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { formatMoney, isForeignPriced } from '../../lib/currency'
-import { inputsTotal, carriersTotal, totals, inputLineFor, recipeToInputs } from '../../lib/fichaCosto'
+import { inputsTotal, carriersTotal, totals, inputLineFor, recipeToInputs, round2 } from '../../lib/fichaCosto'
 import { UNIT_LABELS } from '../../db/constants'
 
 // Modulo 'fichas' (F5) - Bloque 2: GASTO MATERIAL (Fila 1 del Anexo I).
@@ -55,9 +55,10 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
     []
   )
 
-  // Costo Base (columna 4 del anexo): solo existe cuando la ficha es una REVISION,
-  // que es exactamente para lo que la norma pide esa columna. Hasta F8 no nacen
-  // revisiones, asi que esto queda dormido: es data-driven, no una pantalla aparte.
+  // Costo Base AGREGADO de la Fila 1 (el delta del bloque). Solo existe cuando la
+  // ficha es una REVISION, que es para lo que la norma pide esa columna. El
+  // Costo Base POR LINEA -la columna (4) del anexo- se pinta arriba, en cada
+  // linea, y lo deriva `reviseFrom` al crear la revision.
   const baseSheet = useLiveQuery(
     () => (sheet?.baseFromSheetId ? costSheetsRepo.get(sheet.baseFromSheetId) : Promise.resolve(null)),
     [sheet?.baseFromSheetId],
@@ -65,6 +66,8 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
   )
 
   const usedIds = useMemo(() => new Set(inputs.map((i) => i.productId).filter(Boolean)), [inputs])
+  // La columna (4) solo aplica en una revision: en una v1 no hay con que comparar.
+  const esRevision = !!sheet?.baseFromSheetId
 
   // Un solo paso por el motor: `r1_1` es el total del anexo y `r1` la Fila 1
   // completa (1.1 + 1.2 + 1.3 + 1.4). No se recalcula nada aqui.
@@ -291,6 +294,25 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
                   <span className="muted">(5) × (6){foreign && ` · tasa congelada ${l.priceRate || 0}`}</span>
                   <strong>{formatMoney(lineAmount(l), baseCurrency)}</strong>
                 </div>
+                {/* Columna (4) "Costo Base" de la linea: lo que valia en la
+                    version anterior. Solo existe si la ficha es una REVISION
+                    (`reviseFrom` la deriva al crearla), que es cuando la norma la
+                    pide. El COLOR VA INVERTIDO respecto al signo: en una ficha de
+                    costo subir es MALO, y `.kpi__delta--down` es el rojo. */}
+                {esRevision && (
+                  <div className="total-row">
+                    <span className="muted">(4) Costo base {formatMoney(l.baseCost, baseCurrency)}</span>
+                    {(() => {
+                      const d = round2(lineAmount(l) - (Number(l.baseCost) || 0))
+                      const cls = d === 0 ? 'kpi__delta--flat' : d > 0 ? 'kpi__delta--down' : 'kpi__delta--up'
+                      return (
+                        <span className={`kpi__delta ${cls}`}>
+                          {d > 0 ? '▲' : d < 0 ? '▼' : '='} {formatMoney(Math.abs(d), baseCurrency)}
+                        </span>
+                      )
+                    })()}
+                  </div>
+                )}
                 {foreign && !(Number(l.priceRate) > 0) && (
                   <p className="error">
                     Esta línea está en {l.priceCurrency} y no tiene tasa congelada: su importe

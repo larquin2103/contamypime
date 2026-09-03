@@ -46,7 +46,8 @@ import {
   negativeAmounts,
   subOverParentRows,
   FICHA_WARNING_CODES,
-  baseCostsFrom
+  baseCostsFrom,
+  reviseFrom
 } from './fichaCosto.js'
 import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS, FICHA_WARNING_LABELS } from '../db/constants.js'
 import { LICENSE_MODULES, LICENSE_MODULE_LABELS } from './license.js'
@@ -686,25 +687,15 @@ eq('una linea en divisa congela su importe en MN (2 x 3 USD x 120)',
 
 // LA INVARIANTE DE LA REVISION, que no estaba escrita en ninguna parte: CREAR UNA
 // REVISION NO PUEDE MOVER NI UN IMPORTE. Si lo moviera, al dueño le cambiaria el
-// precio de una ficha por el simple hecho de abrir su correccion. Se construye
-// aqui la revision IGUAL que la construye `costSheetsRepo.revise` (que no se
-// puede importar: habla con Dexie).
-const revisionDe = (prev, id) => {
-  const copia = { ...prev }
-  delete copia.id
-  return {
-    ...copia,
-    ...baseCostsFrom(prev), // lo que añade F8; va DESPUES para sobrescribir los arrays
-    id,
-    groupId: prev.groupId || prev.id,
-    version: nextVersion(prev),
-    status: FICHA_STATUS.BORRADOR,
-    baseFromSheetId: prev.id,
-    approvedBy: '',
-    approvedAt: null,
-    deletedAt: null
-  }
-}
+// precio de una ficha por el simple hecho de abrir su correccion.
+//
+// Se prueba `reviseFrom`, que es EL MISMO CODIGO que corre en produccion:
+// `costSheetsRepo.revise` no arma ningun literal, llama a esta funcion. Antes la
+// suite replicaba el literal a mano, y eso dejaba sin cubrir la trampa de orden
+// del spread (poner `baseCostsFrom` antes de `...copia` deja las dos columnas en
+// `undefined` sin que ninguna asercion falle).
+const TS = '2026-09-03T12:00:00.000Z'
+const revisionDe = (prev, id) => reviseFrom(prev, id, TS)
 const V1 = { ...PAN, id: 'a', groupId: 'a', version: 1, status: FICHA_STATUS.APROBADA }
 const V2 = revisionDe(V1, 'b')
 eq('la revision NO mueve ninguna de las 16 filas', JSON.stringify(totals(V2)), JSON.stringify(totals(V1)))
@@ -722,6 +713,20 @@ eq('y la columna nueva si: 25 x 500 = 12 500', inputsTotal([V2_CARA.inputs[0]]),
 const V3 = revisionDe({ ...V2_CARA, status: FICHA_STATUS.APROBADA }, 'c')
 eq('la v3 hereda de la v2 (12 500), no de la v1 (10 500)',
   [V3.version, V3.baseFromSheetId, V3.inputs[0].baseCost], [3, 'b', 12500])
+// La trampa de orden del spread, cubierta de verdad: si `baseCostsFrom` se
+// aplicara antes de `...copia`, esto saldria `undefined` (y `num(undefined)` = 0
+// al primer autoguardado, dejando las dos columnas oficiales en ceros).
+eq('las dos columnas nacen con NUMERO, nunca en undefined',
+  [typeof V2.inputs[0].baseCost, typeof V2.labor[0].baseCost], ['number', 'number'])
+// Y la linea conserva lo que NO es importe: sin esto, el anexo perderia el codigo
+// y la UM que F9 tiene que imprimir en las columnas (1), (2) y (3).
+eq('la revision conserva los campos no numericos de la linea',
+  [V2.inputs[0].name, V2.inputs[0].unit, V2.inputs[0].qty],
+  [PAN.inputs[0].name, PAN.inputs[0].unit, PAN.inputs[0].qty])
+eq('y sella createdAt y updatedAt con la marca que le pasa el repo',
+  [V2.createdAt, V2.updatedAt], [TS, TS])
+eq('una ficha sin groupId (muy vieja) no nace huerfana: se agrupa sola',
+  reviseFrom({ id: 'x', version: 1 }, 'y', TS).groupId, 'x')
 
 console.log(`\n${pass} pass, ${fail} fail`)
 if (fail > 0) process.exit(1)

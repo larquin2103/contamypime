@@ -37,8 +37,11 @@ import {
   FICHA_WARNING_LABELS
 } from '../../db/constants'
 
-// Modulo 'fichas' (F4) - Editor de la ficha de costo. En esta fase vive SOLO el
-// bloque 1 (Identificacion); los bloques 2 a 9 llegan en F5 a F8.
+// Modulo 'fichas' - Editor de la ficha de costo. Los NUEVE bloques del acordeon,
+// uno abierto a la vez: 1 identificacion (F4), 2 gasto material (F5), 3 salario
+// (F6), 4 otros directos, 5 indirectos, 6 financieros y tributos, 7 utilidad y
+// precio (F7), 8 precios de referencia y 9 firmas y ciclo de vida (F8). Falta
+// exportar el documento oficial (F9).
 //
 // La identificacion va primero porque el TIPO DE ACTIVIDAD del Anexo II y el
 // METODO de formacion del precio cambian todo lo de abajo: la tasa maxima de
@@ -85,7 +88,7 @@ const EMPTY = {
 function Block({ n, title, closedInfo, open, onToggle, children }) {
   return (
     <section className="card">
-      <button className="ficha-block__head" onClick={onToggle}>
+      <button type="button" className="ficha-block__head" onClick={onToggle}>
         <h3 className="section-title">{n} · {title}</h3>
         <span className="ficha-block__total">{open ? '✕' : closedInfo}</span>
       </button>
@@ -186,6 +189,18 @@ export function CostSheetScreen() {
   // la nube sin haber cambiado nada.
   useEffect(() => {
     if (!dirty || isNew || !id || !editable) return
+    // El `form` pertenece a la ficha que se CARGO, no necesariamente a la que
+    // dice la URL: tras crear una revision, `navigate` cambia `id` de inmediato y
+    // el formulario sigue siendo el de la version anterior hasta que llega la
+    // nueva. Sin esta guarda, teclear en esa ventana escribiria los anexos VIEJOS
+    // sobre la revision nueva y borraria las columnas "Costo Base" que acaba de
+    // derivar `reviseFrom` (`num(undefined)` = 0), en silencio.
+    if (loadedId.current !== id) return
+    // Y mientras corre una accion del ciclo de vida no se arma ningun
+    // temporizador: si el dueño teclea DURANTE el `await` de aprobar, a los 600 ms
+    // `update` lanzaria "una ficha aprobada no se edita" sobre una aprobacion ya
+    // correcta, que es el sintoma que `flush` existe para eliminar.
+    if (busy) return
     saveTimer.current = setTimeout(() => {
       costSheetsRepo
         .update(id, form)
@@ -193,12 +208,14 @@ export function CostSheetScreen() {
         .catch((e) => setError(e.message))
     }, AUTOSAVE_MS)
     return () => clearTimeout(saveTimer.current)
-  }, [dirty, form, id, isNew, editable])
+  }, [dirty, form, id, isNew, editable, busy])
 
   // Volcado al salir: rescata el ultimo tecleo si aun no habia vencido el timer.
   useEffect(() => {
     return () => {
-      if (dirtyRef.current && id) {
+      // Misma guarda que el autoguardado: solo se vuelca si el formulario es de
+      // ESTA ficha. Si no, se escribirian los anexos de la version anterior.
+      if (dirtyRef.current && id && loadedId.current === id) {
         costSheetsRepo.update(id, formRef.current).catch(() => { /* la pantalla ya se fue */ })
       }
     }
@@ -256,6 +273,7 @@ export function CostSheetScreen() {
     // el dueño no podria explicarse.
     if (saveTimer.current) clearTimeout(saveTimer.current)
     if (!dirty || !id || !editable) return
+    if (loadedId.current !== id) return // el formulario es de otra ficha: no se vuelca
     await costSheetsRepo.update(id, form)
     setDirty(false)
   }
@@ -610,6 +628,7 @@ export function CostSheetScreen() {
             labor={form.labor}
             baseCurrency={baseCurrency}
             editable={editable}
+            esRevision={!!merged.baseFromSheetId}
             onLabor={(labor) => set('labor', labor)}
           />
         </Block>
@@ -723,7 +742,14 @@ export function CostSheetScreen() {
           open={openBlock === 9}
           onToggle={() => setOpenBlock(openBlock === 9 ? 0 : 9)}
         >
+          {/* `key` por ficha, como en TaxesBlock y por el MISMO motivo: el bloque
+              guarda en estado local la firma tecleada. Sin esto, el camino
+              "aprobar v1 -> Nueva revision" dejaba el campo "Aprobado por"
+              PREESCRITO con la firma de la v1 y el boton de aprobar habilitado sin
+              que nadie hubiera escrito nada, que es justo la garantia que esta
+              fase añade. La pantalla no se desmonta al navegar a la revision. */}
           <SignBlock
+            key={sheet.id}
             sheet={merged}
             versions={versions}
             refsCount={form.refs.length}

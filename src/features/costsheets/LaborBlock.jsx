@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { formatMoney } from '../../lib/currency'
-import { laborTotal, emptyLaborOp, splitLaborOp } from '../../lib/fichaCosto'
+import { laborTotal, emptyLaborOp, splitLaborOp, round2 } from '../../lib/fichaCosto'
 
 // Modulo 'fichas' (F6) - Bloque 3: SALARIO DIRECTO (Fila 2 del Anexo I).
 //
@@ -18,9 +18,10 @@ import { laborTotal, emptyLaborOp, splitLaborOp } from '../../lib/fichaCosto'
 // Cada etiqueta lleva SU NUMERO DE COLUMNA, para que el pie "3 x (6 + 7) x 8"
 // se pueda seguir campo por campo (y para que cuadre con lo que imprime F9).
 //
-// La columna (2) "Costo Base" NO se captura aqui: solo aplica cuando la ficha es
-// una revision, igual que la columna (4) del anexo de insumos. Las DOS quedan
-// asignadas a F8 en docs/FICHA-COSTO.md §9.10.
+// La columna (2) "Costo Base" NO se teclea: se DERIVA. Solo aplica cuando la
+// ficha es una revision, y `reviseFrom` (motor) la rellena al crearla con lo que
+// esta operacion valia en la version anterior, que es lo que la norma pide en esa
+// columna cuando hay modificacion de precio. Aqui solo se PINTA, con su delta.
 //
 // La forma de una fila (`emptyLaborOp`) y la regla de partirla en dos
 // (`splitLaborOp`) viven en el MOTOR, no aqui: son reglas del §2.8 y ahi se
@@ -32,7 +33,7 @@ import { laborTotal, emptyLaborOp, splitLaborOp } from '../../lib/fichaCosto'
 // documento, y su Total cuadra con la suma de lo impreso.
 const opAmount = (op) => laborTotal([op])
 
-export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
+export function LaborBlock({ labor, baseCurrency, editable, esRevision, onLabor }) {
   const fila2 = useMemo(() => laborTotal(labor), [labor])
 
   const setOp = (idx, patch) => {
@@ -140,6 +141,23 @@ export function LaborBlock({ labor, baseCurrency, editable, onLabor }) {
             <span className="muted">3 × (6 + 7) × 8</span>
             <strong>{formatMoney(opAmount(op), baseCurrency)}</strong>
           </div>
+          {/* Columna (2) "Gasto de salario del Costo Base": lo que esta operacion
+              valia en la version anterior. Solo en una REVISION. Color invertido:
+              subir el costo es MALO, y `.kpi__delta--down` es el rojo. */}
+          {esRevision && (
+            <div className="total-row">
+              <span className="muted">(2) Costo base {formatMoney(op.baseCost, baseCurrency)}</span>
+              {(() => {
+                const d = round2(opAmount(op) - (Number(op.baseCost) || 0))
+                const cls = d === 0 ? 'kpi__delta--flat' : d > 0 ? 'kpi__delta--down' : 'kpi__delta--up'
+                return (
+                  <span className={`kpi__delta ${cls}`}>
+                    {d > 0 ? '▲' : d < 0 ? '▼' : '='} {formatMoney(Math.abs(d), baseCurrency)}
+                  </span>
+                )
+              })()}
+            </div>
+          )}
 
           {editable && (
             <div className="kv">

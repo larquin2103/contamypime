@@ -597,3 +597,39 @@ export function canDeleteSheet(sheet) {
 export function nextVersion(prev) {
   return (Number(prev?.version) || 1) + 1
 }
+
+// LA REVISION ENTERA, construida aqui y no en el repo. Vive en el motor por el
+// mismo motivo que `recipeToInputs`, `splitLaborOp` y `emptyLaborOp`: el repo
+// habla con Dexie y no se puede correr con node, asi que un literal armado alli
+// queda SIN COBERTURA. Y este literal tiene una trampa de orden: si
+// `...baseCostsFrom(prev)` se pusiera ANTES de `...copia`, las dos columnas
+// oficiales nacerian en `undefined` -> 0 al primer autoguardado, las 16 filas
+// seguirian identicas y NINGUNA asercion se enteraria. Con la construccion aqui,
+// la suite prueba el codigo real y no una copia suya.
+//
+// Lo que hace, y por que cada linea:
+//  - copia todo lo de la version anterior (los importes NO se mueven: revisar no
+//    puede cambiar el precio de una ficha por el hecho de abrir su correccion),
+//  - rellena las columnas "Costo Base" (la (4) de insumos y la (2) de salario)
+//    con lo que cada linea valia, que es justo lo que la norma pide en ellas
+//    cuando hay modificacion de precio (docs §2.7),
+//  - nace BORRADOR, sin firma de aprobacion y apuntando a la anterior,
+//  - hereda el `groupId`, de modo que las dos versiones son el mismo documento.
+export function reviseFrom(prev, id, ts) {
+  const copia = { ...prev }
+  delete copia.id
+  return {
+    ...copia,
+    ...baseCostsFrom(prev), // DESPUES de `...copia`: sobrescribe los arrays copiados
+    id,
+    groupId: prev?.groupId || prev?.id || id,
+    version: nextVersion(prev),
+    status: FICHA_STATUS.BORRADOR,
+    baseFromSheetId: prev?.id ?? null,
+    approvedBy: '',
+    approvedAt: null,
+    createdAt: ts,
+    updatedAt: ts,
+    deletedAt: null
+  }
+}
