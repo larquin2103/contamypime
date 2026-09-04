@@ -462,17 +462,21 @@ export function subsidyWarning(sheet) {
   return priceRows(sheet).r13 < 0
 }
 
-// Todos los codigos que puede devolver `fichaWarnings`. Se exporta para que la
-// suite pueda exigir que CADA UNO tenga su etiqueta en español: un codigo sin
-// etiqueta se le enseñaria al dueño en crudo ("de-ello-sobre-fila"), que es el
-// mismo fallo que ya se guarda contra los modulos de licencia.
-// Las cuatro acciones que el repo escribe en `auditEvents`. Se declaran aqui
-// -y el repo las usa desde aqui- para que no puedan divergir de sus etiquetas: la
-// pestaña "Fichas" de /auditoria pinta `FICHA_AUDIT_LABELS[action]`, y una accion
-// nueva sin etiqueta se le enseñaria al dueño en crudo. La suite lo exige.
-// OJO: los VALORES no se pueden cambiar. Ya hay filas escritas con ellos en la
-// base de datos de cualquiera que haya usado el modulo, y el historial es
-// inmutable: renombrarlos dejaria esas filas sin etiqueta para siempre.
+// Las cuatro acciones que el repo escribe en `auditEvents`. Se declaran aqui -y
+// el repo las usa DESDE AQUI, sin literales- para que no puedan divergir de sus
+// etiquetas: la pestaña "Fichas" de /auditoria pinta `FICHA_AUDIT_LABELS[action]`,
+// y una accion nueva sin etiqueta se le enseñaria al dueño en crudo. La suite lo
+// exige.
+//
+// OJO 1: los VALORES no se pueden cambiar. Ya hay filas escritas con ellos en la
+// base de cualquiera que haya usado el modulo, y `auditEvents` SINCRONIZA, asi que
+// tambien estan en la nube y en los otros dispositivos. El historial es inmutable:
+// renombrarlos dejaria esas filas sin etiqueta para siempre.
+//
+// OJO 2 (limite honesto de esta guarda): protege que ninguna accion DECLARADA
+// quede sin etiqueta. Si alguien volviera a escribir un literal en el repo
+// -`auditRow(s, 'archive', ...)`- ninguna asercion fallaria. Erradicar los
+// literales fue justo lo que hizo F10; nada impide reintroducirlos.
 export const FICHA_AUDIT_ACTIONS = {
   CREATE: 'create',
   APPROVE: 'approve',
@@ -480,6 +484,10 @@ export const FICHA_AUDIT_ACTIONS = {
   DELETE: 'delete'
 }
 
+// Todos los codigos que puede devolver `fichaWarnings`. Se exporta para que la
+// suite pueda exigir que CADA UNO tenga su etiqueta en español: un codigo sin
+// etiqueta se le enseñaria al dueño en crudo ("de-ello-sobre-fila"), que es el
+// mismo fallo que ya se guarda contra los modulos de licencia.
 export const FICHA_WARNING_CODES = [
   'insumo-sin-tasa',
   'actividad-desconocida',

@@ -8,7 +8,7 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > exporta, deja rastro en `/auditoria` y se explica en `/help`. **Falta solo F11**, la auditoría
 > profunda antes de `main` (regla 5). Estado exacto: §9.14.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
-> (**241 aserciones**; el total del proyecto son **405** en **7** suites), la versión **Dexie v18** con la tabla `costSheets`,
+> (**243 aserciones**; el total del proyecto son **407** en **7** suites), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
 > licencia `fichas`, las pantallas `src/features/costsheets/CostSheetsScreen.jsx` (lista) y
 > `CostSheetScreen.jsx` (editor, **solo el bloque 1**), las rutas `/fichas`, `/ficha/nueva` y
@@ -1211,7 +1211,7 @@ comentarios que decían *"queda asignada a F8"* ya no mienten.
   de lo que F8 deriva.
 - **`currentOfGroup` (`costSheetsRepo.js`) sigue sin ningún llamador** desde F2. Se conserva a
   propósito para F9/F10 (marcar cuál es la versión viva de un grupo); sin linter, nadie más lo va
-  a ver. Si F10 no lo usa, hay que quitarlo.
+  a ver. Si F10 no lo usa, hay que quitarlo. **→ F10 no lo usó: RETIRADO en F10 (§9.14).**
 - **Doble revisión desde dos dispositivos:** si A revisa la v1 estando B offline con la v1 aún
   aprobada, B también revisa, y tras la fusión el grupo tiene **dos v2 borrador**. Es coherente
   con la decisión "la ficha la edita un solo actor" (§4) y con el aviso de fusión de `CLAUDE.md`,
@@ -1457,8 +1457,32 @@ falta.
   verificando el error con toda precisión** y el documento oficial se imprimiría mal.
 - **Nadie ha ejecutado la app.** Ni una ficha capturada de punta a punta, ni un semáforo visto, ni
   un `12,5 %` teclado en un teclado real, ni un PDF abierto para mirarlo, ni una aprobación
-  viajando entre dos dispositivos (el caso que el §4 marca como peligroso).
+  viajando entre dos dispositivos (el caso que el §4 marca como peligroso). **Y desde F10, tampoco
+  se ha visto ni una fila de la pestaña *Fichas* de `/auditoria`**, ni el índice de `/help` con y
+  sin la licencia, ni el PDF de la guía con los dos artículos nuevos (los `steps` de
+  *"Llenar una ficha"* son largos y el `clean()` del PDF come símbolos).
+- **Las afirmaciones NORMATIVAS de los dos artículos de ayuda hay que contrastarlas contra la
+  Gaceta.** Es un hallazgo de la revisión de F10 y sube la prioridad de la deuda del §2: hasta
+  ahora una mala lectura de la norma se quedaba en cálculos internos, pero **ahora la app le
+  afirma al dueño una obligación legal** (*"su confección es OBLIGATORIA también para un actor no
+  estatal"*). La revisión verificó que los textos coinciden con lo que el código hace, que es cosa
+  distinta de que coincidan con la Resolución.
 - **v18 es de ida** (§9.6): el respaldo de retroceso hay que tomarlo **antes** de desplegar.
+- **DECISIÓN NUEVA que crea F10 (planteada por su revisión).** Al **caducar o quitarse** la
+  licencia `fichas`, el rastro de quién aprobó el documento que sostuvo un precio **deja de ser
+  legible** (los datos siguen ahí, append-only). El gate es correcto y no descuadra ninguna suma
+  —a diferencia del caso de `remesas` en *Ingresos por concepto*, donde el dueño decidió que el
+  histórico se siguiera mostrando porque si no la suma de conceptos no cuadraba con el saldo—,
+  pero es información que un control podría pedir. Si el dueño quiere que ese histórico sobreviva
+  a la licencia, es **data-driven y sin fuga**: pintar la pestaña cuando `fichaEvents.length > 0`
+  aunque falte el módulo (quien nunca lo tuvo no tiene eventos y no ve nada). **No implementado:
+  es su decisión, no de la revisión.**
+- **Deuda que F10 deja visible:** `cocina`, `mesas`, `divisas` y `remesas` **no tienen ayuda
+  ninguna**. El mecanismo para gatearla ya existe desde F10, así que ahora es solo contenido.
+- **Límite de la guarda de acciones de auditoría, dicho con precisión:** protege que ninguna acción
+  **declarada** quede sin etiqueta. Si alguien volviera a escribir un literal
+  (`auditRow(s, 'archive', …)`), ninguna aserción fallaría. Erradicar los literales fue justo lo
+  que hizo F10, pero nada impide reintroducirlos.
 - **Decisiones del dueño pendientes**, recogidas por las revisiones de F5 a F9: la columna (4)
   para un producto nuevo **con comparable** (§9.12), el `uid` por fila en las tres listas
   (§9.10/§9.11), si eliminar una ficha **aprobada** debe poder deshacerse (§9.12), el `maxLength`
@@ -1468,15 +1492,24 @@ falta.
 
 ---
 
-**Por qué F10 lleva pestaña de auditoría** (corrección 01-09-2026, verificada). F8 escribe eventos
-en `auditEvents`, pero **hoy nadie podría leerlos**: `AuditScreen.jsx:152-161` tiene las pestañas
-fijas (Turnos, Ventas, Inventario, Precios, Bajas, + Cocina y Entregas gateadas) y la de *Bajas*
-(`:165-180`) no lista `auditEvents` en general, sino lo que devuelve `productsRepo.listDeleted()`,
-que filtra `entity === 'product' && action === 'delete'` (`productsRepo.js:121-124`). Un evento con
-`entity: 'costSheet'` quedaría escrito y **sin ninguna pantalla que lo muestre**: dato ciego. F10
-añade la pestaña siguiendo el patrón exacto de Cocina y Entregas (`:158` y `:161`), **gateada con
-`hasModule` y con la consulta gateada también** (`canFichas ? costSheetsRepo.list() : []`), no solo
-el render.
+**Por qué F10 llevaba pestaña de auditoría, y por qué ya está** (nota abierta el 01-09-2026 y
+**cerrada por F10 el 04-09-2026**; corregida tras la revisión, porque describía mal el código).
+
+El requisito nacía de un dato ciego real: **`costSheetsRepo` escribe eventos en `auditEvents`
+desde F2** —no desde F8, como decía la versión anterior de esta nota— y ninguna pantalla los leía.
+`AuditScreen` tiene las pestañas fijas (Turnos, Ventas, Inventario, Precios, Bajas, y Cocina y
+Entregas gateadas), y la de *Bajas* **no** lista `auditEvents` en general: lista lo que devuelve
+**`productsRepo.listDeletions()`** —así se llama, no `listDeleted()`—, que filtra
+`entity === 'product' && action === 'delete'`. Ese filtro es además la razón por la que un evento
+de ficha **nunca** se pudo colar en la pestaña *Bajas* de un negocio sin la licencia: lo verificó
+la revisión de F10, y era el vector de fuga no obvio.
+
+**F10 añadió la pestaña** siguiendo el patrón exacto de Cocina y Entregas, gateada con `hasModule`
+y **con la consulta gateada también**: `canFichas ? costSheetsRepo.listAudit() : Promise.resolve([])`
+—es `listAudit()`, no `list()`—. Ya no queda dato ciego.
+
+*No se citan números de línea a propósito: la versión anterior de esta nota los llevaba y este
+mismo commit los desplazó, dejándola apuntando a sitios equivocados.*
 
 **Cómo releer el PDF de la Gaceta** (si hiciera falta desde otra máquina): en la PC original
 `Read` no podía abrirlo (falta `poppler`) y python no tenía librerías de PDF; la receta que

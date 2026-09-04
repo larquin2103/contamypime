@@ -602,15 +602,24 @@ cuentas* ahora separan **por moneda**. Con un negocio solo en MN la salida es **
 byte**; con USD/MLC cambia porque antes se sumaban todas las monedas en un número etiquetado "MN"
 (un cobro en USD engordaba el total como si fuera MN). Es corrección de un error real.
 
-## Próximo módulo: `fichas` (Ficha de costo, Res. 148/2023 MFP)
+## Módulo `fichas` (Ficha de costo, Res. 148/2023 MFP) — F0 a F10 hechas, falta F11
 
-**DISEÑO APROBADO POR EL DUEÑO (31-08-2026), CERO CÓDIGO ESCRITO.** Todo el traspaso vive en
-**`docs/FICHA-COSTO.md`** (leerlo ANTES de escribir una línea): interpretación normativa completa
-de las 16 filas, la errata de la Gaceta (Fila 12 = **5+11**), los tres controles, las **cuatro**
-bases de utilidad, las 5 decisiones cerradas con el dueño, el esquema Dexie **v18** (`costSheets`,
-aditiva pura), el motor puro `lib/fichaCosto.js` con su fixture obligado ("Pan suave", 200 u), la
-interfaz de 9 bloques y las fases **F0–F11**. Diseño visual aprobado (artefacto v2):
+**Todo el traspaso vive en `docs/FICHA-COSTO.md`: LEERLO ANTES DE TOCAR NADA DEL MÓDULO.** Ahí
+está la interpretación normativa completa de las 16 filas, la errata de la Gaceta (Fila 12 =
+**5+11**), los tres controles, las **tres** fórmulas de la base de utilidad sobre cinco
+actividades, las decisiones cerradas con el dueño, el esquema Dexie **v18**, el motor puro
+`lib/fichaCosto.js` con su fixture obligado ("Pan suave", 200 u), la interfaz de 9 bloques, las
+fases **F0–F11** con lo que hizo cada una (§9.8 a §9.14) y **la lista de lo que sigue abierto**,
+que es con la que hay que auditar F11.
+
+Diseño visual aprobado por el dueño el 31-08-2026:
 https://claude.ai/code/artifact/1134b7b2-d636-4a6a-9856-19e3ddb3a879
+
+**Lo que F11 tiene que mirar y no puede darse por bueno:** el §2 **nunca** se ha contrastado
+contra el PDF de la Gaceta (si la Fila 12 o la base de la utilidad estuvieran mal leídas, las 407
+aserciones estarían verificando el error con toda precisión, y desde F10 la ayuda **le afirma al
+dueño una obligación legal**); **nadie ha ejecutado la app**; y **v18 es de ida**, así que el
+respaldo de retroceso hay que tomarlo **antes** de desplegar.
 
 ## Reportes (`features/reports/reportsService.js`, solo lectura)
 
