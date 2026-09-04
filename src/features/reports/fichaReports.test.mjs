@@ -106,7 +106,7 @@ eq('y el detalle de cada una va al pie',
 // --- HOJA 2: anexo de insumos (7 columnas) ---------------------------------
 const I = buildInputsSheet({ sheet: PAN })
 eq('la hoja 2 tiene las SIETE columnas del anexo', I.head.length, 7)
-eq('cinco insumos + TOTAL + los dos portadores fijos = 8 filas', I.rows.length, 8)
+eq('cinco insumos + TOTAL + los TRES portadores = 9 filas', I.rows.length, 9)
 eq('la columna (7) de la harina: 25 x 420', I.rows[0][6], 10500)
 eq('la (5) y la (6) se imprimen tal cual', [I.rows[0][4], I.rows[0][5]], [25, 420])
 eq('el TOTAL INSUMOS es 13 645', I.rows[5][6], 13645)
@@ -134,10 +134,18 @@ eq('anexo de insumos: la columna (4) va vacia en una v1', I.rows[0][3], '')
 eq('y con revision se llena',
   buildInputsSheet({ sheet: { ...PAN, inputs: [{ ...PAN.inputs[0], baseCost: 9000 }] } }).rows[0][3], 9000)
 
-eq('el anexo lleva las dos filas fijas de la norma, con su UM',
-  [I.rows[6][1], I.rows[6][2], I.rows[7][1], I.rows[7][2]],
-  ['Combustibles y lubricantes', 'LITROS', 'Energía eléctrica', 'kw'])
-eq('y sus importes', [I.rows[6][6], I.rows[7][6]], [1200, 850])
+// La Resolucion nombra los tres al describir las columnas 1 y 2 de este modelo:
+// combustible y lubricante, energia electrica y EL AGUA "cuando su valor dentro
+// del costo sea significativo y su consumo sea medible" (verificado en F11).
+eq('el anexo lleva los TRES portadores de la norma, con su UM',
+  [I.rows[6][1], I.rows[6][2], I.rows[7][1], I.rows[7][2], I.rows[8][1], I.rows[8][2]],
+  ['Combustibles y lubricantes', 'LITROS', 'Energía eléctrica', 'kw', 'Agua', 'm³'])
+eq('y sus importes', [I.rows[6][6], I.rows[7][6], I.rows[8][6]], [1200, 850, 120])
+// Y cuadran con las Filas 1.2, 1.3 y 1.4 de la hoja 1: el mismo numero en las dos
+// hojas del mismo documento (el importe lo da el motor, no se recalcula).
+eq('los portadores del anexo son los mismos de la hoja 1',
+  [I.rows[6][6], I.rows[7][6], I.rows[8][6]],
+  [nuevoDe('1.2'), nuevoDe('1.3'), nuevoDe('1.4')])
 eq('el anexo va VERTICAL (7 columnas caben)', I.orientation, 'portrait')
 // Un insumo en divisa dice su moneda y su tasa CONGELADA, y su importe va en MN.
 const USD = buildInputsSheet({

@@ -4,9 +4,10 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 04-09-2026: F0 a F10 HECHAS. El módulo está COMPLETO: calcula, aprueba, revisa,
-> exporta, deja rastro en `/auditoria` y se explica en `/help`. **Falta solo F11**, la auditoría
-> profunda antes de `main` (regla 5). Estado exacto: §9.14.**
+> **Estado al 04-09-2026: LAS DOCE FASES (F0–F11) HECHAS. El módulo está completo y auditado, y
+> el §2 YA SE CONTRASTÓ CONTRA LA GACETA. NO ESTÁ FUSIONADO a `main`: espera la aprobación del
+> dueño. Informe de la auditoría, con lo que cumple, lo que se corrigió y lo que la Resolución no
+> dice: §9.15.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**243 aserciones**; el total del proyecto son **407** en **7** suites), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
@@ -45,6 +46,13 @@ filas, los tres controles, la hoja de exportación, los anti-objetivos y las doc
 > **Lo que la maqueta aprobada NO trae: el bloque 1 (*Identificación*).** Sus seis vistas no lo
 > incluyen. Se programó en F4 desde la prosa del §7, con los mismos tokens y clases, y con el
 > visto bueno del dueño (02-09-2026) para hacerlo así.
+
+**EL TEXTO DE LA RESOLUCION YA ESTA EN EL REPO** (F11, 04-09-2026):
+**`docs/res148-2023-texto-extraido.txt`**. Se descargo el PDF oficial de
+`mfp.gob.cu/ficheros/publicaciones/` y se extrajo con `pdftotext -layout`. Durante once fases
+nadie pudo contrastar el §2 con la fuente; ahora cualquier sesion puede hacerlo **sin volver a
+buscarla**. Ojo: `-layout` aplana las tablas, asi que la rejilla del modelo del Anexo I sale
+desordenada, y para eso hay que guiarse por el cuerpo, que describe cada fila una por una.
 
 **Fuente normativa:** Gaceta Oficial No. 64 Ordinaria del 6-jul-2023, pp. 1376-1387,
 Resolución **148/2023** del Ministerio de Finanzas y Precios: *"Metodología para la elaboración
@@ -577,7 +585,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F8** | Precios de referencia, firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`) + **las dos columnas Costo Base**, derivadas por `reviseFrom` en el motor. | ✅ **HECHA 03-09-2026** · bundle +10 711 bytes · 25 aserciones nuevas · revisada · detalle en §9.12 |
 | **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas + `header`/`footer` opcionales en `exportPdf`/`exportExcel`. | ✅ **HECHA 03-09-2026** · bundle +6 769 bytes · suite propia de 68 aserciones · **identidad byte a byte comprobada** · detalle en §9.13 |
 | **F10** | Integración: pestaña *Fichas* en `/auditoria` (gateada), dos artículos en `/help` (con el mecanismo de gate de la ayuda), retirada de código muerto, este documento y `CLAUDE.md`. | ✅ **HECHA 04-09-2026** · bundle +5 275 bytes · detalle en §9.14 |
-| **F11** | Auditoría profunda antes de `main` (regla 5): esquema, fugas de licencia, LWW, bundle antes/después, y decir qué NO se probó. | Pendiente |
+| **F11** | Auditoría profunda antes de `main` (regla 5) + **verificación contra el PDF de la Gaceta**: esquema, fugas de licencia, sync, bundle contra `main`, y qué NO se probó. | ✅ **HECHA 04-09-2026** · 2 incumplimientos corregidos · informe en §9.15 |
 
 ### 9.1 Evidencia de F0 (ejecutada el 01-09-2026)
 
@@ -1489,6 +1497,157 @@ falta.
   de las referencias (§9.13), si el agua debe salir en el anexo de insumos (§9.13), si las filas
   4.1/6.1/7.1 en cero deben filtrarse al imprimir (§9.13), y el visto bueno a los dos botones del
   bloque 3 (§9.10) y a la regla de escala de la receta (§3 decisión 3).
+
+---
+
+### 9.15 F11 — Auditoría antes de `main` (04-09-2026)
+
+**El módulo NO está fusionado. La fusión la decide el dueño.**
+
+#### A. LA VERIFICACIÓN CONTRA LA RESOLUCIÓN — la deuda más vieja, CERRADA
+
+El §2 de este documento se escribió leyendo la Gaceta en otra máquina y **nunca se había vuelto a
+contrastar**; §9.2 lo dejó abierto y cada fase lo repitió como el riesgo más grave. F11 lo cierra:
+se descargó el **PDF oficial** de la Resolución desde `mfp.gob.cu/ficheros/publicaciones/` y se
+extrajo su texto con **`pdftotext`**, que sí está en el entorno (el lector de PDF busca
+`pdftoppm`, que no está — de ahí que en su día se diera por imposible).
+
+**Lo que CUADRA con la norma, citado literalmente:**
+
+| Lo que el módulo hace | Lo que dice la Resolución |
+|---|---|
+| Fila 12 = **5 + 11** | El modelo del Anexo I rotula `TOTAL DE COSTOS Y GASTOS (5+11)`. El cuerpo dice *"Fila 12: … (suma de las Filas 6+11)"*. **La errata es real y literal**, y la lectura del módulo es la coherente |
+| Base de la utilidad = **2 + 3 + 4** | *"La Tasa Máxima de Utilidad se aplica sobre el total de costos y gastos, descontando de ello el consumo material, los gastos generales y de administración, de distribución y venta, financieros y tributarios, así como los gastos de financiamiento al OSDE"* → `12 − (1+6+7+8+9+10) = 2+3+4` |
+| Excepción: base = Fila 12 en agropecuaria y alta tecnología/informática/ciencia | *"excepto en la actividad de producción agropecuaria, para las empresas de alta tecnología y las actividades de informática, de ciencia e investigación, cuya base … es el total de costos y gastos"* |
+| Tasas 25 / 30 / 15 / 30 % | Anexo II: bienes **25**, agropecuaria **30** (*"excepcionalmente … hasta el 40 %"*), servicios y comercialización **15**, alta tecnología **30** |
+| El Anexo II es **referencia** para una MYPIME | Su encabezado: *"… DE LAS ENTIDADES ESTATALES Y SOCIEDADES MERCANTILES DE CAPITAL CIENTO POR CIENTO CUBANO"* |
+| Control A: `4+6+7 ≤ coef × Fila 2`, 1,5 producción / 1,0 servicios | Art. 9: *"Coeficiente Máximo de Gastos Indirectos de hasta 1,5 veces en las actividades de producción y hasta de 1,0 veces en las actividades de servicios, el cual se aplica sobre el gasto de salario directo"*. Y la descripción de las Filas 4/6/7 lo repite: *"Para reconocer montos superiores deben consultar al MFP, previa demostración"* |
+| Gastronomía: coeficiente 1,0 y tasa **10 %** con base **2+3+4+7** | Art. 16: *"un coeficiente máximo de gastos indirectos que no exceda del importe del salario directo. El límite de utilidad de hasta el diez (10 %) sobre el costo y los gastos totales, descontando de ellos el consumo material, los gastos generales y de administración, los financieros, tributarios y el importe del financiamiento a la OSDE"* → **no menciona distribución y venta**, luego la Fila 7 se queda dentro de la base. **La lectura más delicada del plan es literalmente correcta** |
+| Fila 10 = (2 + 4.1 + 6.1 + 7.1) × tipos | *"cuya base imponible es la suma del salario directo e indirecto"*, y *"No se considera el importe por la Contribución al Desarrollo Local"* |
+| Fila 11 = 6+7+8+9+10 · Fila 14 = 12+13 | Literal en el cuerpo |
+| Correlación: 13 = precio del similar − 12, y el subsidio avisa | *"la masa de utilidad se determina al deducir del precio propuesto por correlación … el total de costos y gastos"*, *"siempre que con ello no se generen subsidios"* |
+| Anexo de salario: **(9) = 3 × (6+7) × 8** | *"el que se obtiene al multiplicar la columna 3 por (columnas 6 más columna 7) por columna 8"*. **La fórmula del motor ES la de la norma** |
+| "Otra norma de tiempo" abre filas independientes | *"De existir diferentes normas de tiempo para una misma operación, entonces se habilitan tantas filas para dicha operación como normas de tiempo diferentes posea"*, y lo mismo por Grupo Escala |
+| Anexo de insumos: **(7) = 5 × 6** | *"Columna 7: Es el resultado de multiplicar la columna 5 por la 6"* |
+| Columna (6) = lo que se paga al suministrador, o al costo sin utilidad si es propio | Literal en la columna 6 |
+| Las dos columnas "Costo Base" solo en revisión o con comparable | *"La sección «COSTO BASE» se utilizará si se trata de una modificación de precios o si el producto o servicio nuevo tuviera un comparable determinado"* (idéntico en los dos anexos) |
+| Encabezado: código, UM, nivel de producción, % de capacidad | El modelo lo lleva literal: `Código Prod. o Serv.: UM: Nivel de Producción: % utilización capacidad:` |
+| Fila 2 incluye vacaciones | *"Se consignan el salario y las vacaciones"* |
+| El combustible incluye sus tasas de recargo | *"incluye el valor de las tasas de recargo"* |
+| Firmas *Elaborado por* / *Aprobado por* con cargo | El modelo las lleva al pie, con `Firma:` y `Cargo:` |
+| Exportar el documento | *"SEGUNDO: Todos los actores económicos, estatales y no estatales quedan obligados a mostrar las bases de las determinaciones de sus precios y tarifas en las evaluaciones, negociaciones y concertaciones … así como a las autoridades e instituciones de control"* |
+| Avisos y nunca cerrojos | Art. 4: *"Los modelos … tienen carácter referencial, y se pueden ajustar"*; Art. 6 lo repite para los actores no estatales; y los "Aspectos fundamentales" añaden *"Se pueden mostrar otras filas o sintetizar la desagregación"* |
+| Los dos anexos son obligatorios | Art. 5: *"Es de obligatorio cumplimiento la desagregación de los principales insumos y del gasto de salario directo"*, **con una excepción que corrobora el diseño del motor**: *"excepto en los casos en que la retribución no sea por concepto de salario o no forme parte del costo"* — que es justo por lo que el Control A no opina sin nómina |
+
+**DOS INCUMPLIMIENTOS ENCONTRADOS Y CORREGIDOS EN ESTA FASE:**
+
+1. **El anexo de insumos NO llevaba el agua.** F9 la omitió guiándose por las dos filas fijas del
+   modelo impreso, y lo declaró como decisión. Pero el texto de la Resolución, al describir las
+   columnas 1 y 2 de ese modelo, dice que los insumos *"incluye[n] el combustible y lubricante y
+   energía eléctrica utilizados con fines tecnológicos, cuando sean clasificados como directos,
+   **así como el agua, cuando su valor dentro del costo sea significativo y su consumo sea
+   medible**"*. Con el texto delante, omitirla era un incumplimiento. **Corregido:** el anexo lleva
+   los tres portadores, y hay una aserción nueva que comprueba que **son los mismos números que
+   las Filas 1.2, 1.3 y 1.4 de la hoja 1** (el importe lo da el motor, no se recalcula).
+2. **La ayuda afirmaba una obligación más amplia que la norma.** Decía *"Su confección es
+   OBLIGATORIA también para un actor no estatal"*, a secas. Pero el **Art. 3** enmarca la
+   obligatoriedad *"para la evaluación de precios y tarifas **mayoristas**"*, y el **Art. 2** limita
+   el alcance a los actores *"que sean **productores** y prestadores de servicios
+   técnico-productivos, elaboradores de ofertas gastronómicas y para los que prestan otros
+   servicios minoristas **que así lo requieran**"*. **Un negocio que solo REVENDE —que es el caso
+   principal de MypiCuadre— no está claramente dentro de ese alcance**, y la app no puede
+   afirmarle que su ficha es obligatoria. **Corregido:** se dice lo que la norma dice, se cita el
+   Art. 2 y se remata con *"la app no decide eso por ti"*.
+
+**TRES COSAS QUE LA RESOLUCIÓN NO DICE Y EL MÓDULO INTERPRETA. Decisión del dueño:**
+
+1. **La Fila 15 la calcula el módulo como `Fila 14 ÷ nivel de producción`, y la norma NO da esa
+   fórmula.** Dice solo: *"Fila 15: Se consigna el precio o tarifa en la expresión unitaria"*, y el
+   modelo la rotula *"PRECIO O TARIFA UNITARIO AJUSTADO"*. Que exista una fila 14 (*"PRECIO O
+   TARIFA"*) y otra 15 (*"UNITARIO AJUSTADO"*) apunta a que el cuerpo va a la escala del nivel y la
+   15 lo baja a la unidad, que es lo que hace el módulo. **Pero el riesgo es de ×nivel y hay texto
+   que empuja al revés:** la columna 5 del anexo habla de *"los índices de consumo"* y los dos
+   anexos piden en su encabezado *"las cantidades físicas previstas a producir **anualmente**"*.
+   Si el dueño capturara consumos **por unidad**, el módulo dividiría otra vez y el precio saldría
+   `nivel` veces más bajo. **El módulo lo mitiga diciéndolo en tres sitios** (la nota del bloque 2,
+   el aviso al importar una receta y el artículo de ayuda), y la Fila 15 **imprime su fórmula** en
+   el documento, así que no engaña. Aun así: es una interpretación, no la norma.
+2. **La Fila 10 no admite "otros tributos autorizados".** El modelo la rotula *"Gastos Tributarios
+   (Contribución a la Seguridad Social e Impuesto sobre la Utilización de la Fuerza de Trabajo.
+   **Otros autorizados**)"* y el cuerpo lo repite: *"Incluye otros tributos autorizados por la
+   legislación vigente"*. El módulo la calcula **entera** como `base × (taxSS + taxFT)`, así que no
+   hay dónde poner un tributo que no sea un porcentaje de la nómina. **No se puede representar.**
+   Arreglarlo es un campo nuevo en el registro (§4), o sea decisión del dueño.
+3. **El nivel de producción no está acotado a un período.** Los anexos piden *"las cantidades
+   físicas previstas a producir anualmente"*; el módulo deja el nivel libre (200 u de un lote). El
+   Art. 6 permite el ajuste, pero conviene saberlo antes de presentar una ficha.
+
+#### B. AUDITORÍA TÉCNICA (todo medido, nada asumido)
+
+**Aditividad — la comprobación que más importa para no romper producción.** El diff completo de la
+rama contra `main` son **29 ficheros, 6 854 líneas añadidas y 22 borradas**. Se revisaron **las 22
+una a una**: en `src/` son **16**, y **todas** son líneas reemplazadas por su versión ampliada —un
+`import` con un icono más, un filtro con un parámetro más, `startY: 28` que pasa a variable,
+la última entrada de una lista que gana una coma—. **Ni una línea de lógica de producción
+desapareció.**
+
+| Comprobación | Cómo se verificó | Resultado |
+|---|---|---|
+| Esquema aditivo | `db.js` leído | 18 versiones; `costSheets:` aparece **una vez**; el único `.upgrade()` sigue siendo el de v5 |
+| Sync sin tocar | `git diff` de `src/features/sync/` | Solo `collections.js`, y solo para **añadir una línea**. `pushEngine` y `syncEngine` **intactos** |
+| Lote de subida | `pushEngine.js:42` | `costSheets` no está en `PHOTO_COLLECTIONS` → lote de 400 |
+| `undefined` en Firestore | `toCloud` + los `clean*` del repo | Todos los campos se normalizan; ningún `undefined` |
+| Reglas de Firestore | `firestore.rules` leído entero | `match /{document=**}` bajo `/businesses/{businessId}` cubre `costSheets`, y `allow delete: if false`. **NO hay que redesplegar reglas** |
+| Respaldo y restauración | `backupService.js:39` y `:103` | Enumeran `db.tables` dinámicamente → `costSheets` entra sola |
+| Fugas de licencia | `grep` de **toda** referencia al módulo fuera de su carpeta | **8 puntos de contacto, los 8 gateados**; `ReportsScreen` tiene **cero** referencias |
+| Bundle contra `main` | `main` construido en un **worktree aparte** | `main` = **856 445 B** (coincide con la línea base de F0). Rama = **936 251 B**. **El módulo cuesta 79 806 B (+9,3 %)**; gzip 248,33 → 270,62 kB |
+| Pruebas | 7 suites, una a una con node | **408 aserciones, 0 fallos** |
+| Build | `npm run build` | **exit 0** |
+| Restos de depuración | `grep` de `console.`/`debugger`/`FIXME` | ninguno |
+
+**Qué ve un negocio SIN la licencia `fichas`:** nada. Sin tarjeta en el Home, sin pestaña en
+auditoría, sin artículos de ayuda (ni en pantalla ni en el PDF), y las rutas responden *"el módulo
+no está activo en esta licencia"* **sin leer un solo registro** (el gate va en la consulta). Lo que
+sí paga: los **79 806 bytes** del bundle, un `getDocs` y un `onSnapshot` más sobre una colección
+**vacía**, y el salto de esquema a v18 (una tabla vacía).
+
+#### C. LO QUE NO SE PUEDE GARANTIZAR (regla 5)
+
+1. **NADIE HA EJECUTADO LA APP.** Ni una ficha capturada de punta a punta, ni un semáforo visto, ni
+   un `12,5 %` teclado en un teclado real, ni un PDF abierto para mirarlo, ni una fila de la
+   pestaña de auditoría, ni el índice de `/help` con y sin licencia, ni una aprobación viajando
+   entre dos dispositivos. **Todo lo de arriba es código, build, pruebas node y lectura de la
+   Gaceta.** Es la validación que solo el dueño puede dar.
+2. **La extracción del PDF se hizo con `pdftotext -layout`**, que aplana tablas. Las cifras del
+   Anexo II y los rótulos se leyeron correctamente y se citan arriba, pero **la rejilla del modelo
+   del Anexo I salió desordenada** (los números de fila quedan desplazados de sus conceptos): esa
+   parte se verificó por los rótulos y por el cuerpo de la resolución, no por la tabla.
+3. **v18 es DE IDA.** En cuanto un teléfono abre el build nuevo su IndexedDB queda en v18 y un
+   build v17 ya no puede abrirla; y `backupService.js:86` **rechaza** restaurar un respaldo cuyo
+   `meta.schema` supere al de la app. **El respaldo de retroceso hay que tomarlo ANTES de
+   desplegar**, y guardarlo fuera del teléfono.
+4. **No se probó que el service worker sirva los chunks de `xlsx`/`jspdf` sin red** en este build.
+5. **La legibilidad del documento** (cómo se leen las 9 columnas en horizontal, cómo parte
+   `autoTable` los nombres largos, la tipografía) no se puede medir: se sabe que **no se sale** de
+   la página, en los dos ejes, no **cómo se lee**.
+
+#### D. DECISIONES DEL DUEÑO PENDIENTES (acumuladas de F5 a F11)
+
+Ninguna bloquea el uso del módulo; todas son suyas.
+
+1. La **Fila 15** (`÷ nivel`), la **Fila 10** (*"otros autorizados"*) y el **período del nivel de
+   producción** — las tres del apartado A.
+2. La columna (4) para un producto nuevo **con comparable** (§9.12): hoy solo se llena en una
+   revisión.
+3. Un **`uid` por fila** en las tres listas (§9.10/§9.11): hoy la clave es el índice, sin error de
+   valores.
+4. Si **eliminar una ficha aprobada** debe poder deshacerse (§9.12).
+5. Si el **rastro de auditoría** debe sobrevivir a la caducidad de la licencia (§9.14).
+6. `maxLength` en las referencias (§9.13) y si las **Filas 4.1/6.1/7.1 en cero** deben filtrarse al
+   imprimir (§9.13).
+7. Visto bueno a los **dos botones** del bloque 3 (§9.10) y a la **regla de escala** de la receta
+   (§3 decisión 3).
+8. `cocina`, `mesas`, `divisas` y `remesas` **no tienen ayuda**; el mecanismo ya existe (§9.14).
 
 ---
 

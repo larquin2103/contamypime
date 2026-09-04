@@ -147,9 +147,14 @@ export function buildFichaSheet({ sheet, base = null, baseCurrency = 'MN' } = {}
 // (1) Codigo (2) Productos (3) UM (4) Costo Base (5) Norma de consumo
 // (6) Precio unitario (7) Costo propuesto = 5 x 6.
 //
-// El modelo del anexo lleva al pie DOS filas fijas: combustibles y lubricantes
-// (en litros) y energia electrica (en kw). El AGUA no esta en este anexo -si en
-// la Fila 1.4 de la ficha-, y se respeta el modelo: no se inventan filas.
+// Al pie van los TRES portadores. La Resolucion, al describir las columnas 1 y 2
+// de este modelo, dice que los insumos "incluye[n] el combustible y lubricante y
+// energia electrica utilizados con fines tecnologicos, cuando sean clasificados
+// como directos, ASI COMO EL AGUA, cuando su valor dentro del costo sea
+// significativo y su consumo sea medible" (verificado contra la Gaceta en F11).
+// F9 habia omitido el agua guiandose por las dos filas fijas del modelo impreso;
+// con el texto delante, omitirla es un incumplimiento. El dueño la deja en cero
+// si su valor no es significativo, que es la condicion que pone la norma.
 export function buildInputsSheet({ sheet, baseCurrency = 'MN' } = {}) {
   const lineas = sheet?.inputs || []
   const c = sheet?.carriers || {}
@@ -182,6 +187,8 @@ export function buildInputsSheet({ sheet, baseCurrency = 'MN' } = {}) {
     carrierAmount(c.fuel)])
   rows.push(['', 'Energía eléctrica', 'kw', '', num(c.energy?.qty), num(c.energy?.unitPrice),
     carrierAmount(c.energy)])
+  rows.push(['', 'Agua', 'm³', '', num(c.water?.qty), num(c.water?.unitPrice),
+    carrierAmount(c.water)])
 
   return {
     title: 'Desagregación de los insumos fundamentales',

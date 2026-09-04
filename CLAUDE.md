@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). Las 7 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**407 aserciones** en total). Ojo: cinco viven en `src/lib/`
+que se corren **uno a uno con node** (**408 aserciones** en total). Ojo: cinco viven en `src/lib/`
 pero `retryQueue.test.mjs` está en `src/features/sync/` y `fichaReports.test.mjs` en
 `src/features/reports/`, así que un glob `src/lib/*.test.mjs` **se salta dos**:
 
@@ -291,7 +291,7 @@ parámetro `modules` de `downloadHelpPdf` llega **vacío por defecto**, que es e
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
-- **`fichas`** — **EN CURSO (F10 de F11).** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
+- **`fichas`** — **F0 a F11 HECHAS. SIN FUSIONAR a `main`: espera la aprobación del dueño.** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
   reutiliza el catálogo y el stock para construir el documento oficial de 16 filas con sus dos
   anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por defecto. Hecho hasta
   hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18** (`costSheets`),
@@ -615,11 +615,16 @@ que es con la que hay que auditar F11.
 Diseño visual aprobado por el dueño el 31-08-2026:
 https://claude.ai/code/artifact/1134b7b2-d636-4a6a-9856-19e3ddb3a879
 
-**Lo que F11 tiene que mirar y no puede darse por bueno:** el §2 **nunca** se ha contrastado
-contra el PDF de la Gaceta (si la Fila 12 o la base de la utilidad estuvieran mal leídas, las 407
-aserciones estarían verificando el error con toda precisión, y desde F10 la ayuda **le afirma al
-dueño una obligación legal**); **nadie ha ejecutado la app**; y **v18 es de ida**, así que el
-respaldo de retroceso hay que tomarlo **antes** de desplegar.
+**F11 CONTRASTÓ EL §2 CONTRA LA GACETA (04-09-2026), y era la deuda más vieja del módulo.** Se
+descargó el PDF oficial de la Resolución desde `mfp.gob.cu` y se extrajo su texto con `pdftotext`
+(que **sí** está en el entorno, aunque el lector de PDF busque `pdftoppm`, que no). Resultado: la
+aritmética del precio **cuadra con la norma**, incluida la errata de la Fila 12 y la base de la
+utilidad. El detalle, cita por cita, en `docs/FICHA-COSTO.md` §9.15, junto con **lo que NO cumplía
+y se corrigió** y **tres cosas que la Resolución no dice y el módulo interpreta**.
+
+**Lo que sigue sin poder garantizarse: NADIE HA EJECUTADO LA APP.** Y **v18 es de ida**, así que el
+respaldo de retroceso hay que tomarlo **antes** de desplegar (`backupService.js` rechaza restaurar
+un respaldo cuyo esquema supere al de la app).
 
 ## Reportes (`features/reports/reportsService.js`, solo lectura)
 
