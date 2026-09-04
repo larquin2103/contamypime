@@ -422,6 +422,16 @@ export const FICHA_METHOD_LABELS = {
   correlacion: 'Por correlación'
 }
 
+// Acciones de la ficha que quedan en `auditEvents`, tal como se pintan en la
+// pestaña "Fichas" de /auditoria. La suite comprueba que cubran EXACTAMENTE las
+// cuatro del motor: una accion sin etiqueta se le enseñaria al dueño en crudo.
+export const FICHA_AUDIT_LABELS = {
+  create: 'Ficha creada',
+  approve: 'Ficha aprobada',
+  revise: 'Revisión creada',
+  delete: 'Ficha eliminada'
+}
+
 // Avisos de la ficha (los devuelve `fichaWarnings`). TODOS son avisos, nunca
 // cerrojos (Art. 6). Estas etiquetas son el resumen corto que se pinta FUERA del
 // acordeon, para que un aviso no dependa de que su bloque quede abierto; el

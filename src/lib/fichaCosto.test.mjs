@@ -46,10 +46,11 @@ import {
   negativeAmounts,
   subOverParentRows,
   FICHA_WARNING_CODES,
+  FICHA_AUDIT_ACTIONS,
   baseCostsFrom,
   reviseFrom
 } from './fichaCosto.js'
-import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS, FICHA_WARNING_LABELS } from '../db/constants.js'
+import { FICHA_ACTIVITY_LABELS, FICHA_METHOD_LABELS, FICHA_STATUS_LABELS, FICHA_WARNING_LABELS, FICHA_AUDIT_LABELS } from '../db/constants.js'
 import { LICENSE_MODULES, LICENSE_MODULE_LABELS } from './license.js'
 
 let pass = 0
@@ -405,6 +406,15 @@ eq('TODOS los codigos de aviso tienen etiqueta en español',
   FICHA_WARNING_CODES.filter((c) => !FICHA_WARNING_LABELS[c]), [])
 eq('y no sobra ninguna etiqueta sin su codigo',
   Object.keys(FICHA_WARNING_LABELS).filter((c) => !FICHA_WARNING_CODES.includes(c)), [])
+// Lo mismo con las acciones que quedan en auditoria (F10): la pestaña "Fichas"
+// pinta `FICHA_AUDIT_LABELS[action]`, asi que una accion sin etiqueta se le
+// enseñaria al dueño en crudo ("revise").
+eq('cada accion de auditoria tiene su etiqueta, y no sobra ninguna',
+  cubre(FICHA_AUDIT_LABELS, FICHA_AUDIT_ACTIONS), true)
+// Y los VALORES no se pueden cambiar: ya hay filas escritas con ellos en la base
+// de cualquiera que haya usado el modulo, y el historial es inmutable.
+eq('los valores de las acciones son los que ya estan escritos en auditEvents',
+  Object.values(FICHA_AUDIT_ACTIONS), ['create', 'approve', 'revise', 'delete'])
 // Y que la lista del motor cubra de verdad lo que fichaWarnings emite: si alguien
 // añade un aviso y olvida la lista, el resumen lo pintaria en crudo.
 eq('ningun aviso emitido queda fuera de FICHA_WARNING_CODES',

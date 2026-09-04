@@ -11,6 +11,7 @@ import { kitchenRepo } from '../../repositories/kitchenRepo'
 import { transfersRepo } from '../../repositories/transfersRepo'
 import { deliveriesRepo } from '../../repositories/deliveriesRepo'
 import { settlementsRepo } from '../../repositories/settlementsRepo'
+import { costSheetsRepo } from '../../repositories/costSheetsRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -19,7 +20,7 @@ import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { cleanQty } from '../../lib/qty'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { SHIFT_STATUS, locationLabel, areaLabel, COCINA, DELIVERY_RESULT } from '../../db/constants'
+import { SHIFT_STATUS, locationLabel, areaLabel, COCINA, DELIVERY_RESULT, FICHA_AUDIT_LABELS } from '../../db/constants'
 
 const MOVE_LABEL = {
   purchase_in: 'Entrada (almacén)',
@@ -54,6 +55,7 @@ export function AuditScreen() {
   const { hasModule } = useLicense()
   const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
   const canRemesas = hasModule(LICENSE_MODULES.REMESAS)
+  const canFichas = hasModule(LICENSE_MODULES.COSTSHEETS)
   const [tab, setTab] = useState('shifts')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -72,6 +74,10 @@ export function AuditScreen() {
   // Modulo 'remesas' (gateado): entregas y liquidaciones para la auditoria.
   const rmDeliveries = useLiveQuery(() => (canRemesas ? deliveriesRepo.listAll() : Promise.resolve([])), [canRemesas], [])
   const rmSettlements = useLiveQuery(() => (canRemesas ? settlementsRepo.list() : Promise.resolve([])), [canRemesas], [])
+  // Modulo 'fichas': el ciclo de vida de cada ficha de costo (creada, aprobada,
+  // revisada, eliminada). El repo las escribe desde F2 y hasta F10 NADIE las
+  // leia: eran dato ciego. Gateado EN LA CONSULTA, no solo en el render.
+  const fichaEvents = useLiveQuery(() => (canFichas ? costSheetsRepo.listAudit() : Promise.resolve([])), [canFichas], [])
 
   const userName = useMemo(() => {
     const m = {}
@@ -116,6 +122,20 @@ export function AuditScreen() {
     return [...entregas, ...liqs].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }, [rmDeliveries, rmSettlements, userName])
 
+  // Una fila por evento del ciclo de vida de una ficha. La accion se pinta con su
+  // etiqueta (`FICHA_AUDIT_LABELS`), no en crudo, y la suite del motor exige que
+  // las cuatro la tengan.
+  const fichaRows = useMemo(
+    () => (fichaEvents || []).map((e) => ({
+      id: e.id,
+      createdAt: e.createdAt,
+      userId: e.userId,
+      title: `${e.name || 'Ficha sin nombre'}${e.code ? ` · ${e.code}` : ''}`,
+      detail: `${FICHA_AUDIT_LABELS[e.action] || e.action}${e.note ? ` · ${e.note}` : ''}`
+    })),
+    [fichaEvents]
+  )
+
   if (!isManager) {
     return (
       <div className="screen">
@@ -135,6 +155,7 @@ export function AuditScreen() {
   const deletionsF = deletions.filter((d) => inRange(d.createdAt, from, to)).slice(0, MAX)
   const cocinaF = cocinaRows.filter((x) => inRange(x.createdAt, from, to)).slice(0, MAX)
   const remesaF = remesaRows.filter((x) => inRange(x.createdAt, from, to)).slice(0, MAX)
+  const fichaF = fichaRows.filter((x) => inRange(x.createdAt, from, to)).slice(0, MAX)
 
   return (
     <div className="screen">
@@ -159,6 +180,9 @@ export function AuditScreen() {
         )}
         {canRemesas && (
           <button className={`tab ${tab === 'remesas' ? 'is-active' : ''}`} onClick={() => setTab('remesas')}>Entregas</button>
+        )}
+        {canFichas && (
+          <button className={`tab ${tab === 'fichas' ? 'is-active' : ''}`} onClick={() => setTab('fichas')}>Fichas</button>
         )}
       </div>
 
@@ -269,6 +293,24 @@ export function AuditScreen() {
             </div>
           ))}
           {remesaF.length === 0 && <p className="muted">Sin actividad de entregas en el rango.</p>}
+        </div>
+      )}
+
+      {/* Modulo 'fichas': quien creo, aprobo, reviso o elimino cada ficha de
+          costo, y cuando. Una ficha aprobada es el documento con el que se
+          sostuvo un precio, asi que su rastro importa tanto como el precio. */}
+      {tab === 'fichas' && canFichas && (
+        <div className="list">
+          {fichaF.map((row) => (
+            <div key={row.id} className="audit-row">
+              <div className="audit-row__head">
+                <strong>{row.title}</strong>
+                <span className="muted">{formatDateTime(row.createdAt)}</span>
+              </div>
+              <span className="muted">{row.detail} · {userName[row.userId] || '—'}</span>
+            </div>
+          ))}
+          {fichaF.length === 0 && <p className="muted">Sin actividad de fichas de costo en el rango.</p>}
         </div>
       )}
     </div>

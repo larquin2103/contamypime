@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). Las 7 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**405 aserciones** en total). Ojo: cinco viven en `src/lib/`
+que se corren **uno a uno con node** (**407 aserciones** en total). Ojo: cinco viven en `src/lib/`
 pero `retryQueue.test.mjs` está en `src/features/sync/` y `fichaReports.test.mjs` en
 `src/features/reports/`, así que un glob `src/lib/*.test.mjs` **se salta dos**:
 
@@ -245,6 +245,13 @@ Sin el campo → **ningún módulo** y la app es idéntica a la versión clásic
 autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no rompe ni borra nada
 (append-only) — solo deja de ofrecerse.
 
+**La AYUDA también se gatea (desde F10).** Un artículo de `src/features/help/helpContent.js` puede
+llevar un campo **opcional** `module`: con él, solo se ve si ese módulo está desbloqueado. Explicar
+en la ayuda una función que el negocio no tiene comprada es una fuga como cualquier otra. Filtran
+los **dos** consumidores —`HelpScreen` y `helpPdf`, que si no la colaría por el PDF— y el
+parámetro `modules` de `downloadHelpPdf` llega **vacío por defecto**, que es el lado seguro
+(oculta, no cuela). Sin el campo, el artículo se ve siempre, igual que antes.
+
 - **`mayorista`** — venta desde el almacén central por el vendedor (con permiso del dueño),
   precios por escala (mayoreo), pago mixto, conversión/fraccionamiento de productos. Trae dos
   permisos que el dueño activa en Ajustes → *Ventas mayoristas* (ambos apagados por defecto,
@@ -284,7 +291,7 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
-- **`fichas`** — **EN CURSO (F9 de F11).** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
+- **`fichas`** — **EN CURSO (F10 de F11).** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
   reutiliza el catálogo y el stock para construir el documento oficial de 16 filas con sus dos
   anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por defecto. Hecho hasta
   hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18** (`costSheets`),
@@ -308,7 +315,10 @@ autoactivar). Regla de oro: **todo lo de un módulo va gateado**; quitarlo no ro
   identificación y su pie de firmas, desde el bloque 9 del editor. Para eso `exportPdf` y
   `exportExcel` de `reportsService.js` ganan dos campos **opcionales** (`header`/`footer`): los
   ~20 reportes existentes no los pasan y **su salida queda idéntica byte a byte**, comprobado
-  generando los ficheros con `xlsx` y `jspdf` en node (ver `docs/FICHA-COSTO.md` §9.13). **`costSheets` YA está en
+  generando los ficheros con `xlsx` y `jspdf` en node (ver `docs/FICHA-COSTO.md` §9.13). Y de F10
+  la **integración**: pestaña *Fichas* en `/auditoria` (quién creó, aprobó, revisó o eliminó cada
+  ficha — los eventos se escribían desde F2 y **nadie los leía**) y dos artículos en `/help`.
+  **Falta solo F11**, la auditoría profunda antes de `main`. **`costSheets` YA está en
   `SYNC_COLLECTIONS`** (LWW por `updatedAt`, lote de 400). Las pantallas entran por **import
   estático** como las demás: la decisión de `React.lazy` se revocó con evidencia (el service
   worker precachea todos los chunks, así que diferir no ahorra datos a nadie). **Regla de escala

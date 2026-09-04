@@ -5,6 +5,7 @@ import {
   FICHA_STATUS,
   FICHA_ACTIVITIES,
   FICHA_METHODS,
+  FICHA_AUDIT_ACTIONS,
   maxUtility,
   rateToPct,
   reviseFrom,
@@ -147,12 +148,6 @@ export const costSheetsRepo = {
     return rows.sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0))
   },
 
-  // La version viva de un grupo: la que no esta sustituida ni eliminada.
-  async currentOfGroup(groupId) {
-    const rows = await this.listByGroup(groupId)
-    return rows.find((s) => !s.deletedAt && s.status !== FICHA_STATUS.SUSTITUIDA)
-  },
-
   async create({
     name,
     productId = null,
@@ -206,7 +201,7 @@ export const costSheetsRepo = {
     }
     await db.transaction('rw', db.costSheets, db.auditEvents, async () => {
       await db.costSheets.add(sheet)
-      await db.auditEvents.add(auditRow(sheet, 'create', userId))
+      await db.auditEvents.add(auditRow(sheet, FICHA_AUDIT_ACTIONS.CREATE, userId))
     })
     return id
   },
@@ -270,7 +265,7 @@ export const costSheetsRepo = {
         approvedAt: ts,
         updatedAt: ts
       })
-      await db.auditEvents.add(auditRow(s, 'approve', userId, txt(approvedBy)))
+      await db.auditEvents.add(auditRow(s, FICHA_AUDIT_ACTIONS.APPROVE, userId, txt(approvedBy)))
     })
   },
 
@@ -296,7 +291,8 @@ export const costSheetsRepo = {
       await db.costSheets.add(reviseFrom(prev, newSheetId, ts))
       await db.costSheets.update(prev.id, { status: FICHA_STATUS.SUSTITUIDA, updatedAt: ts })
       await db.auditEvents.add(
-        auditRow({ ...prev, id: newSheetId }, 'revise', userId, `Revisión v${nextVersion(prev)} de ${prev.id}`)
+        auditRow({ ...prev, id: newSheetId }, FICHA_AUDIT_ACTIONS.REVISE, userId,
+          `Revisión v${nextVersion(prev)} de ${prev.id}`)
       )
     })
     return newSheetId
@@ -311,7 +307,7 @@ export const costSheetsRepo = {
       if (!s) throw new Error('La ficha no existe')
       if (!canDeleteSheet(s)) throw new Error('La ficha ya está eliminada')
       await db.costSheets.update(id, { deletedAt: ts, deletedBy: userId, updatedAt: ts })
-      await db.auditEvents.add(auditRow(s, 'delete', userId, note))
+      await db.auditEvents.add(auditRow(s, FICHA_AUDIT_ACTIONS.DELETE, userId, note))
     })
   },
 

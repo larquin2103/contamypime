@@ -466,6 +466,20 @@ export function subsidyWarning(sheet) {
 // suite pueda exigir que CADA UNO tenga su etiqueta en español: un codigo sin
 // etiqueta se le enseñaria al dueño en crudo ("de-ello-sobre-fila"), que es el
 // mismo fallo que ya se guarda contra los modulos de licencia.
+// Las cuatro acciones que el repo escribe en `auditEvents`. Se declaran aqui
+// -y el repo las usa desde aqui- para que no puedan divergir de sus etiquetas: la
+// pestaña "Fichas" de /auditoria pinta `FICHA_AUDIT_LABELS[action]`, y una accion
+// nueva sin etiqueta se le enseñaria al dueño en crudo. La suite lo exige.
+// OJO: los VALORES no se pueden cambiar. Ya hay filas escritas con ellos en la
+// base de datos de cualquiera que haya usado el modulo, y el historial es
+// inmutable: renombrarlos dejaria esas filas sin etiqueta para siempre.
+export const FICHA_AUDIT_ACTIONS = {
+  CREATE: 'create',
+  APPROVE: 'approve',
+  REVISE: 'revise',
+  DELETE: 'delete'
+}
+
 export const FICHA_WARNING_CODES = [
   'insumo-sin-tasa',
   'actividad-desconocida',

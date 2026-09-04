@@ -4,10 +4,9 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 03-09-2026: F0 a F9 HECHAS. El módulo está FUNCIONALMENTE COMPLETO: la ficha
-> calcula su precio, se aprueba, se revisa, y las TRES HOJAS OFICIALES se exportan a PDF y Excel.
-> Faltan F10 (integración: pestaña de auditoría y ayuda) y F11 (auditoría antes de `main`).
-> Estado exacto: §9.13.**
+> **Estado al 04-09-2026: F0 a F10 HECHAS. El módulo está COMPLETO: calcula, aprueba, revisa,
+> exporta, deja rastro en `/auditoria` y se explica en `/help`. **Falta solo F11**, la auditoría
+> profunda antes de `main` (regla 5). Estado exacto: §9.14.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
 > (**241 aserciones**; el total del proyecto son **405** en **7** suites), la versión **Dexie v18** con la tabla `costSheets`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
@@ -19,9 +18,10 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > anexo de salario en tarjetas) y de F7 `OtherDirectBlock.jsx`, `IndirectBlock.jsx`,
 > `TaxesBlock.jsx` y `UtilityBlock.jsx` (bloques 4 a 7, con los tres controles) y de F8
 > `RefsBlock.jsx` y `SignBlock.jsx` (bloques 8 y 9: Fila 16, firmas y ciclo de vida) y de F9
-> `features/reports/fichaReports.js` con su suite propia (las tres hojas oficiales).
-> **`/auditoria` sigue sin pestaña de Fichas** (F10): los eventos de `costSheet` se escriben desde
-> F4 y hoy **no tienen pantalla que los muestre**. Las suites pasan de 6 a **7**.
+> `features/reports/fichaReports.js` con su suite propia (las tres hojas oficiales). De F10, la
+> pestaña **Fichas** en `/auditoria` y dos artículos en `/help` (gateados). **Ya no queda dato
+> ciego:** los eventos de `costSheet` se escribían desde F2 y ahora tienen pantalla. Las suites
+> son **7**, con **407 aserciones**.
 > Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
@@ -576,7 +576,7 @@ sigue abierta: ver `docs/SEGURIDAD-LICENCIAS.md`.
 | **F7** | Indirectos, tributos, utilidad y precio (bloques 4-7 con los tres controles) + `pctToRate`/`rateToPct`, `utilityBaseRows`, `indirectCheck().max`, `negativeAmounts` y `subOverParentRows` en el motor. | ✅ **HECHA 03-09-2026** · bundle +18 928 bytes · 49 aserciones nuevas · revisada · detalle en §9.11 |
 | **F8** | Precios de referencia, firmas, aprobación y revisiones (bloques 8-9 + `auditEvents`) + **las dos columnas Costo Base**, derivadas por `reviseFrom` en el motor. | ✅ **HECHA 03-09-2026** · bundle +10 711 bytes · 25 aserciones nuevas · revisada · detalle en §9.12 |
 | **F9** | Exportación por hoja (`fichaReports.js`): 3 hojas, cada una a su propio PDF y Excel, con encabezado de identificación y pie de firmas + `header`/`footer` opcionales en `exportPdf`/`exportExcel`. | ✅ **HECHA 03-09-2026** · bundle +6 769 bytes · suite propia de 68 aserciones · **identidad byte a byte comprobada** · detalle en §9.13 |
-| **F10** | Integración: tarjeta en Home gateada, **pestaña *Fichas* en `/auditoria` (gateada)**, sección en `/help`, este documento y `CLAUDE.md` (6 suites). | Pendiente |
+| **F10** | Integración: pestaña *Fichas* en `/auditoria` (gateada), dos artículos en `/help` (con el mecanismo de gate de la ayuda), retirada de código muerto, este documento y `CLAUDE.md`. | ✅ **HECHA 04-09-2026** · bundle +5 275 bytes · detalle en §9.14 |
 | **F11** | Auditoría profunda antes de `main` (regla 5): esquema, fugas de licencia, LWW, bundle antes/después, y decir qué NO se probó. | Pendiente |
 
 ### 9.1 Evidencia de F0 (ejecutada el 01-09-2026)
@@ -1386,6 +1386,85 @@ documento se imprimiría mal con toda precisión.
 poniendo `maxLength` a la fuente y la nota de una referencia en `RefsBlock` sería más barato que
 partir el texto en cada exportador. Hoy el corte por ancho ya lo cubre, así que es preferencia, no
 necesidad.
+
+---
+
+### 9.14 F10: integración (04-09-2026)
+
+**Tocados:** `AuditScreen.jsx` (la pestaña *Fichas*), `helpContent.js` (dos artículos + el campo
+`module`), `HelpScreen.jsx` y `helpPdf.js` (el filtro por licencia), `src/lib/fichaCosto.js`
+(+`FICHA_AUDIT_ACTIONS`), `src/db/constants.js` (+`FICHA_AUDIT_LABELS`),
+`costSheetsRepo.js` (usa las constantes y pierde una función muerta) y la suite. **Ningún fichero
+nuevo.** **No se tocan** `db.js`, `router.jsx`, `collections.js` ni `src/features/sync/`.
+
+| | F9 | F10 | Diferencia |
+|---|---|---|---|
+| `dist/assets/index-*.js` | 930 325 B | **935 600 B** | **+5 275 B** |
+| gzip | 268,16 kB | **270,36 kB** | +2,20 kB |
+| Suites node | 405 aserciones | **407 aserciones** | +2 |
+
+**LA PESTAÑA *FICHAS* CIERRA UN DATO CIEGO DE OCHO FASES.** El repo escribía en `auditEvents`
+desde **F2** (`create`, `approve`, `revise`, `delete`) y **nadie los leía**: este documento lo
+avisaba desde entonces (*"un evento con `entity: 'costSheet'` quedaría escrito y sin ninguna
+pantalla que lo muestre"*). Ahora la pestaña los pinta, siguiendo el patrón exacto de Cocina y
+Entregas, **gateada y con la consulta gateada también**
+(`canFichas ? costSheetsRepo.listAudit() : Promise.resolve([])`), con el mismo filtro de rango de
+fechas que el resto de la pantalla.
+
+**Y una guarda para que ninguna acción quede sin etiqueta.** Las cuatro acciones se declaran en el
+motor (`FICHA_AUDIT_ACTIONS`), el repo las usa **desde ahí** en vez de escribir literales, sus
+etiquetas viven en `FICHA_AUDIT_LABELS` y **la suite exige que se cubran exactamente**. Sin eso,
+una acción nueva se le pintaría al dueño en crudo (*"revise"*), que es el mismo fallo que ya se
+guarda contra los módulos de licencia y contra los códigos de aviso. **Los VALORES no se pueden
+cambiar nunca**: ya hay filas escritas con ellos en la base de cualquiera que haya usado el
+módulo, y el historial es inmutable — renombrarlos dejaría esas filas sin etiqueta para siempre.
+Hay una aserción que lo fija.
+
+**LA AYUDA HABÍA QUE GATEARLA, Y EL MECANISMO NO EXISTÍA.** Ningún artículo de `helpContent.js`
+estaba gateado por licencia (ni los de `cocina`, `mesas` o `remesas`, que tampoco tienen ayuda).
+Añadir la ayuda de la ficha sin más habría explicado a todo el mundo una función que su licencia
+no incluye: una fuga como cualquier otra. Se añadió un campo **opcional** `module` al artículo, y
+filtran **los dos** consumidores:
+
+- `HelpScreen` usa la lista `modules` que ya expone el proveedor de licencia — **la misma** que se
+  le pasa al PDF, así que pantalla y PDF no pueden discrepar.
+- `helpPdf` recibe `modules` y **por defecto llega vacío**: si alguien lo llamara sin pasarlo, la
+  ayuda de los módulos se **oculta** en vez de colarse. Es el lado seguro.
+
+Sin el campo, un artículo se ve siempre, igual que antes. **Queda el mecanismo listo** para que
+`cocina`, `mesas`, `divisas` y `remesas` tengan su ayuda cuando toque.
+
+**Los dos artículos** (*"Qué es la ficha de costos y gastos"* y *"Llenar una ficha, aprobarla y
+presentarla"*) van en *Gestión y avanzado*, para el mando. Dicen lo que la app hace y lo que
+**no** hace: que la ficha **nunca cambia un precio del catálogo**, que los tres controles avisan y
+no bloquean (Art. 6), que las normas de consumo son las del **nivel de producción completo** y no
+las de una unidad —la trampa de ×nivel del §9.11, dicha en el idioma del dueño— y que el Apartado
+Segundo obliga a **mostrar las bases**, así que hay que descargar y guardar las tres hojas.
+
+**Código muerto retirado:** `costSheetsRepo.currentOfGroup` no tenía **ningún llamador desde
+F2**; el revisor de F8 lo señaló y F9 no lo usó. F10 tampoco lo necesita, así que se va. Sin
+linter en el proyecto, nadie más lo iba a ver. Volverlo a poner es una línea si algún día hace
+falta.
+
+**La tarjeta del Home** que el plan pedía en esta fase ya existía **desde F4** (gateada con
+`hasModule` en la sección *Gestión*), así que no había nada que hacer.
+
+**LO QUE QUEDA ABIERTO — todo para F11, y esto es la lista con la que hay que auditar:**
+
+- **El §2 NUNCA se ha contrastado contra el PDF de la Gaceta**, que no está en el repo. Es la
+  deuda más vieja del módulo (§9.2 la abrió) y la más grave: si la Fila 12, la base de la utilidad
+  o el sentido de las columnas de Costo Base estuvieran mal leídos, **las 407 aserciones estarían
+  verificando el error con toda precisión** y el documento oficial se imprimiría mal.
+- **Nadie ha ejecutado la app.** Ni una ficha capturada de punta a punta, ni un semáforo visto, ni
+  un `12,5 %` teclado en un teclado real, ni un PDF abierto para mirarlo, ni una aprobación
+  viajando entre dos dispositivos (el caso que el §4 marca como peligroso).
+- **v18 es de ida** (§9.6): el respaldo de retroceso hay que tomarlo **antes** de desplegar.
+- **Decisiones del dueño pendientes**, recogidas por las revisiones de F5 a F9: la columna (4)
+  para un producto nuevo **con comparable** (§9.12), el `uid` por fila en las tres listas
+  (§9.10/§9.11), si eliminar una ficha **aprobada** debe poder deshacerse (§9.12), el `maxLength`
+  de las referencias (§9.13), si el agua debe salir en el anexo de insumos (§9.13), si las filas
+  4.1/6.1/7.1 en cero deben filtrarse al imprimir (§9.13), y el visto bueno a los dos botones del
+  bloque 3 (§9.10) y a la regla de escala de la receta (§3 decisión 3).
 
 ---
 

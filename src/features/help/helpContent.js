@@ -1,12 +1,20 @@
+import { LICENSE_MODULES } from '../../lib/license'
+
 // Material de ayuda de MypiCuadre (Fase A). Contenido como DATOS editables para
 // poder retocar los textos sin tocar la interfaz. Cada artículo:
-//   { id, section, audience, title, teaser, body:[bloques] }
+//   { id, section, audience, title, teaser, body:[bloques], module? }
 // El icono de cada artículo vive en HelpScreen (ARTICLE_ICONS, lucide por id).
 // Bloques soportados por HelpScreen: { p } párrafo · { steps:[...] } pasos
 //   numerados · { tip } consejo (verde) · { warn } aviso (amarillo).
 //
 // audience: 'owner'  -> lo ve el dueño/administrativo (recorrido principal)
 //           'seller' -> guía corta para el vendedor (el dueño también la ve)
+//
+// module (F10, OPCIONAL): si está, el artículo SOLO se ve con ese módulo de
+// licencia desbloqueado. Sin el campo, el artículo se ve siempre, igual que antes
+// de que existiera. Hace falta porque explicar en la ayuda una función que el
+// negocio no tiene comprada es una fuga de licencia como cualquier otra: filtran
+// `HelpScreen` y también `helpPdf`, que si no la colaría por el PDF.
 //
 // El orden del array ES el orden en que se muestran.
 
@@ -240,6 +248,44 @@ export const HELP_ARTICLES = [
         'Revisa el resumen y confirma "Recibir turno".'
       ] },
       { tip: 'Es una de las mayores ventajas de la app: el negocio sigue aunque no haya conexión.' }
+    ]
+  },
+  {
+    id: 'ficha-que-es',
+    section: 'Gestión y avanzado',
+    audience: 'owner',
+    module: LICENSE_MODULES.COSTSHEETS,
+    title: 'Qué es la ficha de costos y gastos',
+    teaser: 'El documento con el que sostienes tu precio ante un control.',
+    body: [
+      { p: 'La ficha de costos y gastos es el documento de la Resolución 148/2023 del Ministerio de Finanzas y Precios. Su confección es OBLIGATORIA también para un actor no estatal, con independencia del método que uses para formar tus precios.' },
+      { p: 'La app la arma reutilizando lo que ya tienes: tu catálogo, tus costos y tus existencias. Tú capturas lo que falta (el salario, los gastos indirectos, los tributos) y ella calcula las 16 filas del modelo oficial y te propone el precio.' },
+      { warn: 'La ficha NO cambia ningún precio de tu catálogo. Es un documento de análisis: te dice a cuánto deberías vender, y decidir es tuyo. Si quieres aplicar el precio, lo cambias tú en Precios como siempre.' },
+      { p: 'La ficha tiene tres controles de la norma, y los tres AVISAN, nunca te bloquean: el límite de gastos indirectos del Art. 9, la tasa máxima de utilidad del Anexo II y el aviso de subsidio si formas el precio por correlación y queda por debajo de tus costos. Un actor no estatal puede ajustar el modelo a sus características (Art. 6), así que la app te dice por cuánto te pasas y tú decides.' },
+      { tip: 'Solo el dueño y el administrativo ven las fichas: exponen tus costos y tu ganancia.' }
+    ]
+  },
+  {
+    id: 'ficha-llenar',
+    section: 'Gestión y avanzado',
+    audience: 'owner',
+    module: LICENSE_MODULES.COSTSHEETS,
+    title: 'Llenar una ficha, aprobarla y presentarla',
+    teaser: 'Nueve bloques, y el precio unitario siempre a la vista.',
+    body: [
+      { p: 'La ficha se llena por bloques, uno abierto a la vez, y el precio unitario vive fijo en la barra de abajo: se mueve mientras escribes.' },
+      { steps: [
+        'Inicio → Fichas de costo → "+ Nueva ficha". Elige el producto de tu catálogo (o escribe un nombre, si es un servicio), el tipo de actividad y el método. Pon el NIVEL DE PRODUCCIÓN: es cuántas unidades cubre esta ficha.',
+        'Bloque 2, gasto material: trae los insumos de tu catálogo (vienen con su costo ya puesto, y lo puedes cambiar) y anota el combustible, la corriente y el agua, que no son productos.',
+        'Bloque 3, salario: una tarjeta por operación. Si una misma operación lleva tiempos o grupos escala distintos, usa "Otra norma de tiempo": la norma exige que vayan en filas separadas.',
+        'Bloques 4 a 6: los otros gastos directos, los indirectos y los financieros y tributarios.',
+        'Bloque 7: ahí ves la base de la utilidad y el precio. Bloque 8: los precios de referencia que respaldan tu número.',
+        'Bloque 9: firma, aprueba y descarga el documento.'
+      ] },
+      { warn: 'Las normas de consumo del bloque 2 son las del NIVEL DE PRODUCCIÓN completo, no las de una unidad. Si tu ficha es de 200 panes, ahí van los 25 kg de harina de los 200 panes. Si cambias el nivel después, hay que revisarlas.' },
+      { p: 'Al aprobar, la ficha queda INMUTABLE: es el documento con el que sostuviste ese precio. Para corregirla se crea una revisión nueva, que hereda la anterior como "Costo Base" y conserva la vieja entera. Nada se borra.' },
+      { p: 'La exportación está en el bloque 9. Son TRES hojas y cada una se descarga por separado, en PDF o en Excel: la ficha de 16 filas, el anexo de los insumos y el anexo del salario. Cada hoja lleva su encabezado y su pie de firmas, así que se sostiene sola.' },
+      { tip: 'La Resolución obliga a MOSTRAR LAS BASES del precio ante un control, una negociación o una concertación: no basta con tenerlo calculado en el teléfono. Descarga las tres hojas y guárdalas.' }
     ]
   },
   {

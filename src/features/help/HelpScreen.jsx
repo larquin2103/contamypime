@@ -1,17 +1,20 @@
 import { useMemo, useState } from 'react'
 import {
   ArrowLeftRight, BarChart3, BookOpen, Calculator, ChevronLeft, ChevronRight,
-  ClipboardList, Coins, Download, Gauge, HelpCircle, Hourglass, KeyRound,
-  Lightbulb, LockOpen, Package, ShoppingCart, Smartphone, Store, TriangleAlert,
-  Truck, UserCog, Users,
+  ClipboardList, Coins, Download, FileSpreadsheet, Gauge, HelpCircle, Hourglass,
+  KeyRound, Lightbulb, LockOpen, Package, Receipt, ShoppingCart, Smartphone,
+  Store, TriangleAlert, Truck, UserCog, Users,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
 import { HELP_ARTICLES, HELP_SECTIONS } from './helpContent'
 import { downloadHelpPdf } from './helpPdf'
 
 // Icono lucide de cada artículo (mismos iconos que el Home para los mismos conceptos).
 const ARTICLE_ICONS = {
+  'ficha-que-es': Receipt,
+  'ficha-llenar': FileSpreadsheet,
   'que-es': Smartphone,
   'activar-licencia': KeyRound,
   'crear-dueno': UserCog,
@@ -39,6 +42,10 @@ const ARTICLE_ICONS = {
 // vendedor, para poder enseñarla); el vendedor ve solo su guía corta.
 export function HelpScreen() {
   const { isManager } = useAuth()
+  // `modules` es la lista de modulos desbloqueados que ya expone el proveedor.
+  // Se usa DIRECTAMENTE en vez de derivarla: es la misma lista que se le pasa al
+  // PDF, asi que pantalla y PDF filtran con el mismo dato y no pueden discrepar.
+  const { modules } = useLicense()
   const navigate = useNavigate()
   const [openId, setOpenId] = useState(null)
   const [pdfBusy, setPdfBusy] = useState(false)
@@ -46,16 +53,22 @@ export function HelpScreen() {
   const downloadPdf = async () => {
     setPdfBusy(true)
     try {
-      await downloadHelpPdf({ isManager })
+      // El PDF recibe los modulos: si no, colaria por ahi la ayuda de una
+      // funcion que este negocio no tiene comprada.
+      await downloadHelpPdf({ isManager, modules })
     } finally {
       setPdfBusy(false)
     }
   }
 
-  // Artículos visibles según el rol.
+  // Artículos visibles según el rol Y según la licencia: un artículo con `module`
+  // solo se ve con ese módulo desbloqueado (explicar una función que el negocio no
+  // tiene comprada es una fuga como cualquier otra). Sin el campo, se ve siempre.
   const visible = useMemo(
-    () => HELP_ARTICLES.filter((a) => (isManager ? true : a.audience === 'seller')),
-    [isManager]
+    () => HELP_ARTICLES.filter(
+      (a) => (isManager ? true : a.audience === 'seller') && (!a.module || modules.includes(a.module))
+    ),
+    [isManager, modules]
   )
 
   const article = openId ? visible.find((a) => a.id === openId) : null

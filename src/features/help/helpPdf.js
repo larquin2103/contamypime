@@ -13,7 +13,7 @@ function clean(text) {
     .trim()
 }
 
-export async function downloadHelpPdf({ isManager = true } = {}) {
+export async function downloadHelpPdf({ isManager = true, modules = [] } = {}) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
@@ -44,7 +44,12 @@ export async function downloadHelpPdf({ isManager = true } = {}) {
   write('Guia rapida de uso', { size: 13, style: 'bold', color: 90, gap: 2 })
   write('Sistema de ventas y cuadre de caja. Funciona sin internet.', { size: 10, color: 120, gap: 8 })
 
-  const articles = HELP_ARTICLES.filter((a) => (isManager ? true : a.audience === 'seller'))
+  // Mismo filtro que la pantalla: rol Y licencia. `modules` llega por defecto
+  // VACIO a proposito -si alguien llama sin pasarlo, se OCULTA la ayuda de los
+  // modulos en vez de colarla-, que es el lado seguro.
+  const articles = HELP_ARTICLES.filter(
+    (a) => (isManager ? true : a.audience === 'seller') && (!a.module || modules.includes(a.module))
+  )
   const sections = HELP_SECTIONS.filter((label) => articles.some((a) => a.section === label))
 
   for (const section of sections) {
