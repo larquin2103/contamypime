@@ -318,14 +318,14 @@ parámetro `modules` de `downloadHelpPdf` llega **vacío por defecto**, que es e
   generando los ficheros con `xlsx` y `jspdf` en node (ver `docs/FICHA-COSTO.md` §9.13). Y de F10
   la **integración**: pestaña *Fichas* en `/auditoria` (quién creó, aprobó, revisó o eliminó cada
   ficha — los eventos se escribían desde F2 y **nadie los leía**) y dos artículos en `/help`.
-  **Falta solo F11**, la auditoría profunda antes de `main`. **`costSheets` YA está en
+  **F11 (la auditoría profunda antes de `main`) HECHA.** **`costSheets` YA está en
   `SYNC_COLLECTIONS`** (LWW por `updatedAt`, lote de 400). Las pantallas entran por **import
   estático** como las demás: la decisión de `React.lazy` se revocó con evidencia (el service
   worker precachea todos los chunks, así que diferir no ahorra datos a nadie). **Regla de escala
   cerrada en F5:** la receta define el consumo de **una** unidad y la columna (5) del anexo es el
   del **nivel de producción completo**, así que al importar se **multiplica por el nivel** (sin
-  eso la ficha se subvalúa ×nivel, en silencio). **Falta** la pestaña *Fichas* de `/auditoria`
-  (F10: los eventos ya se escriben y hoy no tienen pantalla) y la integración final. Todo el
+  eso la ficha se subvalúa ×nivel, en silencio). **No queda nada del módulo por programar**: lo
+  que sigue abierto es la decisión del dueño de fusionar y dos hallazgos, abajo. Todo el
   traspaso está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
 
 ## Entregas (módulo `remesas`)
@@ -509,14 +509,17 @@ solo mando), `RecipeForm` (editor) y `KitchenScreen` (tablero `/cocina`). Repos:
 
 ## Estado del trabajo en curso (28-08-2026)
 
-**FUSIONADO A `main`.** `origin/main` está en **`864a440`**, idéntico byte a byte a
+**FUSIONADO A `main`.** `origin/main` quedó entonces en **`864a440`**, idéntico byte a byte a
 `claude/awesome-dirac-484azm` (`git diff HEAD origin/main` vacío, divergencia `0/0`). El
 fast-forward se registró el **28-08-2026 21:20**. Subieron los **34 commits** del módulo de
 Entregas (`remesas`, Fases F1–F9 + Entregas 1–6c) **más** la corrección de la pérdida de estado
 entre dispositivos. **Ojo:** el ref local `origin/main` se queda viejo; **hacer `git fetch` antes
 de juzgar** si algo está fusionado (sin él se lee `64542b9` y parece que falta subir). La rama
 local `main` también se queda atrás: es solo el ref, no afecta a lo publicado
-(`git branch -f main origin/main` la realinea).
+(`git branch -f main origin/main` la realinea). **Al 05-09-2026 `origin/main` ya no está en
+`864a440` sino en `4e28ab0`** (le siguieron la validación de saldo de `returnFund` y
+`docs/SEGURIDAD-LICENCIAS.md`): **no dar por bueno ningún commit escrito aquí; comprobarlo con
+`git rev-parse origin/main` después de un `git fetch`.**
 
 **Auditoría de la fusión (28-08-2026, verificada, no asumida):**
 - **Esquema:** v15/v16/v17 solo **añaden tablas vacías**, sin `.upgrade()` y sin tocar ningún
@@ -602,7 +605,7 @@ cuentas* ahora separan **por moneda**. Con un negocio solo en MN la salida es **
 byte**; con USD/MLC cambia porque antes se sumaban todas las monedas en un número etiquetado "MN"
 (un cobro en USD engordaba el total como si fuera MN). Es corrección de un error real.
 
-## Módulo `fichas` (Ficha de costo, Res. 148/2023 MFP) — F0 a F10 hechas, falta F11
+## Módulo `fichas` (Ficha de costo, Res. 148/2023 MFP) — F0 a F11 hechas, SIN FUSIONAR
 
 **Todo el traspaso vive en `docs/FICHA-COSTO.md`: LEERLO ANTES DE TOCAR NADA DEL MÓDULO.** Ahí
 está la interpretación normativa completa de las 16 filas, la errata de la Gaceta (Fila 12 =
@@ -625,6 +628,52 @@ y se corrigió** y **tres cosas que la Resolución no dice y el módulo interpre
 **Lo que sigue sin poder garantizarse: NADIE HA EJECUTADO LA APP.** Y **v18 es de ida**, así que el
 respaldo de retroceso hay que tomarlo **antes** de desplegar (`backupService.js` rechaza restaurar
 un respaldo cuyo esquema supere al de la app).
+
+### Auditoría de la rama antes de `main` (05-09-2026, verificada, no asumida)
+
+Ejecutado, no citado: `npm run build` **exit 0**; **408/408** aserciones en las 7 suites node; el
+build de `origin/main` en un worktree aparte para medir; y el Anexo II **releído del texto de la
+Gaceta**, no de `docs/FICHA-COSTO.md`.
+
+- **Aritmética contra la norma:** tasas **25 / 30 / 15 / 30** del Anexo II, base de utilidad
+  `r2+r3+r4` (la nota `(**)` descuenta consumo material, generales y admin, distribución y venta,
+  financieros, tributarios y OSDE), excepción de base completa para agropecuaria y alta tecnología,
+  Art. 9 **1,5 / 1,0** y Art. 16 **10 %** con coeficiente que no excede el salario directo. **Todo
+  coincide con el motor.**
+- **Sin fugas de licencia**, y gateado **en la consulta**: Home, `/auditoria`, `/help` (pantalla
+  **y** PDF), `/fichas` y `/ficha/*`. Los eventos van con `entity:'costSheet'` y la pestaña *Bajas*
+  filtra `entity==='product'` (`productsRepo.js:121`): no se cuelan ahí.
+- **Cero escrituras a tablas ajenas** desde el módulo (`grep` de `db.products/sales/stockMovements/
+  priceChanges/config/accounts` = 0). Solo escribe `costSheets` y `auditEvents`.
+- **`exportPdf`/`exportExcel`:** sin `header`/`footer`, `startY` sigue valiendo 28 y el AOA sigue
+  siendo exactamente `[head, ...rows]`. Los ~20 reportes existentes no cambian.
+- **`firestore.rules`** usa comodín `{document=**}` → cubre `costSheets`. **No hay que redesplegar
+  reglas.**
+- **Peso:** el chunk principal pasa de **856.45 kB** (gzip 248.33) a **936.25 kB** (gzip 270.62):
+  **+79.80 kB**, +9 %. Lo pagan **también** los negocios sin la licencia (import estático). Y como
+  el chunk lleva hash, **actualizar cuesta ~271 kB gzip por teléfono**, no 22.
+- **Sync:** `SYNC_COLLECTIONS` pasa de 32 a **33**. Un `getDocs` más por barrido inicial (consulta
+  vacía = 1 lectura) y un `onSnapshot` permanente más. Ruido frente a la cuota Spark.
+
+**Dos hallazgos ABIERTOS (no bloqueantes, decisión del dueño):**
+
+1. **Dos mandos editando la misma ficha: uno pierde sus anexos, en silencio.** `costSheets` fusiona
+   por **LWW sobre el documento entero** y ese documento lleva dentro cuatro arrays (`inputs`,
+   `labor`, `otherDirect`, `refs`). La justificación escrita es "la ficha la edita UN SOLO actor",
+   pero **hay dos roles de mando** (dueño y administrativo). Es la misma clase de problema que
+   obligó a `orderItems` a ser filas sueltas, y aquí no se aplicó ese patrón. El autoguardado a
+   600 ms más el push a 20 s hacen la ventana real. **Mientras siga abierto: que el dueño y el
+   administrativo no editen la misma ficha a la vez.**
+2. **Carrera al crear revisiones.** `revise` calcula `nextVersion(prev)` en una transacción
+   **local**: dos dispositivos que revisen la misma ficha aprobada crean **dos v2** con el mismo
+   `groupId`. Nada se pierde (append-only), pero el historial queda con dos "v2" y hay que elegir a
+   mano. Probabilidad baja; consecuencia: confusión, no dinero.
+
+**Dos interpretaciones que conviene tener presentes:** la Gaceta imprime literal *"Fila 12 … suma
+de las Filas 6+11"* y el motor calcula **5+11** (6+11 duplicaría la Fila 6 y dejaría fuera las
+filas 1 a 4: es errata evidente, pero es apartarse de la letra impresa). Y el Anexo II y el Art. 9
+están escritos para **entidades estatales**; aplicarlos a una MYPIME se sostiene en el Art. 6 y en
+que los tres controles **avisan y nunca bloquean**.
 
 ## Reportes (`features/reports/reportsService.js`, solo lectura)
 
