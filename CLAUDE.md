@@ -291,7 +291,7 @@ parámetro `modules` de `downloadHelpPdf` llega **vacío por defecto**, que es e
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
-- **`fichas`** — **F0 a F11 HECHAS. SIN FUSIONAR a `main`: espera la aprobación del dueño.** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
+- **`fichas`** — **F0 a F11 HECHAS y H3 CERRADO (07-09-2026). SIN FUSIONAR a `main`: espera la aprobación del dueño.** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
   reutiliza el catálogo y el stock para construir el documento oficial de 16 filas con sus dos
   anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por defecto. Hecho hasta
   hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18** (`costSheets`),
@@ -610,7 +610,7 @@ cuentas* ahora separan **por moneda**. Con un negocio solo en MN la salida es **
 byte**; con USD/MLC cambia porque antes se sumaban todas las monedas en un número etiquetado "MN"
 (un cobro en USD engordaba el total como si fuera MN). Es corrección de un error real.
 
-## Módulo `fichas` (Ficha de costo, Res. 148/2023 MFP) — F0 a F11 hechas, SIN FUSIONAR
+## Módulo `fichas` (Ficha de costo, Res. 148/2023 MFP) — F0 a F11 + H3, SIN FUSIONAR
 
 **Todo el traspaso vive en `docs/FICHA-COSTO.md`: LEERLO ANTES DE TOCAR NADA DEL MÓDULO.** Ahí
 está la interpretación normativa completa de las 16 filas, la errata de la Gaceta (Fila 12 =
@@ -856,7 +856,9 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   `remesas` ✅ (entregas de dinero o producto: cobro a tesorería, fondo del mensajero que sale de
   las cuentas del negocio, custodia de efectivo y de producto con saldo derivado, liquidación con
   semáforo, editar/eliminar, cinco reportes y pestaña de auditoría; rol acotado `COURIER`). Cada
-  uno gateado con `hasModule(...)`.
+  uno gateado con `hasModule(...)`. **`fichas` está TERMINADO pero NO fusionado a `main`**
+  (F0–F11 + el cierre de H3): vive solo en `claude/awesome-dirac-484azm` y espera la aprobación
+  del dueño. Los que llevan ✅ arriba sí están en `main`.
 
 ## Fase 4 — Sincronización (cómo funciona)
 
