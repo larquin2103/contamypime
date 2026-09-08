@@ -1,5 +1,6 @@
 import { formatMoney } from '../../lib/currency'
 import { FICHA_METHODS } from '../../lib/fichaCosto'
+import { newId } from '../../lib/ids'
 
 // Modulo 'fichas' (F8) - Bloque 8: DATOS SOBRE PRECIOS DE REFERENCIA (Fila 16).
 //
@@ -23,7 +24,8 @@ export function RefsBlock({ refs, method, baseCurrency, editable, onRefs }) {
 
   const setRef = (idx, patch) => onRefs(refs.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
   const removeRef = (idx) => onRefs(refs.filter((_, i) => i !== idx))
-  const addRef = (source = '') => onRefs([...refs, { source, price: '', note: '' }])
+  // Con su id: la linea es una fila suelta de `costSheetLines` (H3).
+  const addRef = (source = '') => onRefs([...refs, { id: newId(), source, price: '', note: '' }])
 
   return (
     <>
@@ -36,7 +38,7 @@ export function RefsBlock({ refs, method, baseCurrency, editable, onRefs }) {
       )}
 
       {refs.map((r, idx) => (
-        <div className="ficha-item" key={idx}>
+        <div className="ficha-item" key={r.id || idx}>
           <label className="field">
             <span>Fuente y evidencia</span>
             <input

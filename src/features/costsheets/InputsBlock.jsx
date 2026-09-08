@@ -6,6 +6,7 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
+import { newId } from '../../lib/ids'
 import { formatMoney, isForeignPriced } from '../../lib/currency'
 import { inputsTotal, carriersTotal, totals, inputLineFor, recipeToInputs, round2 } from '../../lib/fichaCosto'
 import { UNIT_LABELS } from '../../db/constants'
@@ -91,7 +92,10 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
   const addProduct = (p) => {
     setMsg('')
     setError('')
-    onInputs([...inputs, inputLineFor(p, { rateOf })])
+    // Con su id: la linea es una fila suelta de `costSheetLines` (H3). El id lo
+    // pone la pantalla y NO el motor, para no cambiarle la forma a `inputLineFor`,
+    // que esta anclada por las aserciones de node.
+    onInputs([...inputs, { id: newId(), ...inputLineFor(p, { rateOf }) }])
     setMode(null)
     setQuery('')
   }
@@ -139,7 +143,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
       return
     }
     // Se AÑADE, no se reemplaza: borrarle al dueño lo que ya capturó seria peor.
-    onInputs([...inputs, ...res.lines])
+    onInputs([...inputs, ...res.lines.map((l) => ({ id: newId(), ...l }))])
     setMode(null)
     setMsg(
       `Traídos ${res.lines.length} insumos de «${r.name}», multiplicados por el nivel de producción (${level}).` +
@@ -254,7 +258,7 @@ export function InputsBlock({ sheet, inputs, carriers, products, editable, onInp
           {inputs.map((l, idx) => {
             const foreign = !!(l.priceCurrency && l.priceCurrency !== baseCurrency)
             return (
-              <div className="ficha-item" key={`${l.productId || 'libre'}-${idx}`}>
+              <div className="ficha-item" key={l.id || `${l.productId || 'libre'}-${idx}`}>
                 <div className="kv">
                   <span><strong>{l.name || 'Insumo sin nombre'}</strong></span>
                   {editable && (

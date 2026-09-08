@@ -78,7 +78,15 @@ export const SYNC_COLLECTIONS = [
   // ademas escribe `approvedAt`, campo que NO esta en TS_FIELDS). Sin fotos, asi
   // que no entra en PHOTO_COLLECTIONS y sube en lotes de 400. Sin el modulo la
   // tabla queda vacia y no hay costo de sync.
-  { name: 'costSheets', pk: 'id' }
+  { name: 'costSheets', pk: 'id' },
+  // Modulo 'fichas' (H3): las LINEAS de los cuatro anexos, una fila por linea.
+  // CORRIGE la nota de `costSheets` de aqui arriba: los anexos NO podian vivir
+  // como arrays dentro del documento, porque la ficha la editan DOS mandos (el
+  // dueño y el administrativo) y la fusion LWW del documento entero le borraba
+  // al otro el anexo completo. Ahora cada linea se fusiona por separado, como
+  // `orderItems`. Se anulan (`voided`), nunca se borran. Sin fotos: lotes de 400.
+  // Sin el modulo la tabla queda vacia y no hay costo de sync.
+  { name: 'costSheetLines', pk: 'id' }
 ]
 
 // Claves de `config` que son LOCALES de cada dispositivo y NO deben viajar a

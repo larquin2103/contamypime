@@ -59,15 +59,15 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las 7 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**408 aserciones** en total). Ojo: cinco viven en `src/lib/`
+**Pruebas:** NO hay script `npm test` (ni linter). Las 8 suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (**462 aserciones** en total). Ojo: seis viven en `src/lib/`
 pero `retryQueue.test.mjs` está en `src/features/sync/` y `fichaReports.test.mjs` en
 `src/features/reports/`, así que un glob `src/lib/*.test.mjs` **se salta dos**:
 
 ```bash
 for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/productCustodyMath.test.mjs src/lib/remesas.test.mjs \
-         src/lib/fichaCosto.test.mjs \
+         src/lib/fichaCosto.test.mjs src/lib/fichaLines.test.mjs \
          src/features/sync/retryQueue.test.mjs \
          src/features/reports/fichaReports.test.mjs; do node "$t"; done
 ```
@@ -318,14 +318,19 @@ parámetro `modules` de `downloadHelpPdf` llega **vacío por defecto**, que es e
   generando los ficheros con `xlsx` y `jspdf` en node (ver `docs/FICHA-COSTO.md` §9.13). Y de F10
   la **integración**: pestaña *Fichas* en `/auditoria` (quién creó, aprobó, revisó o eliminó cada
   ficha — los eventos se escribían desde F2 y **nadie los leía**) y dos artículos en `/help`.
-  **F11 (la auditoría profunda antes de `main`) HECHA.** **`costSheets` YA está en
+  **F11 (la auditoría profunda antes de `main`) HECHA.** Y del **07-09-2026** el cierre del
+  hallazgo **H3**: los cuatro anexos pasaron a ser **filas sueltas** (`costSheetLines`, Dexie
+  **v19**) y el editor guarda **por diferencias** y se **resincroniza**, porque la ficha la
+  llenan **dos** mandos y con los anexos dentro del documento la fusión LWW le borraba al otro el
+  anexo entero (§9.16). **`costSheets` y `costSheetLines` YA están en
   `SYNC_COLLECTIONS`** (LWW por `updatedAt`, lote de 400). Las pantallas entran por **import
   estático** como las demás: la decisión de `React.lazy` se revocó con evidencia (el service
   worker precachea todos los chunks, así que diferir no ahorra datos a nadie). **Regla de escala
   cerrada en F5:** la receta define el consumo de **una** unidad y la columna (5) del anexo es el
   del **nivel de producción completo**, así que al importar se **multiplica por el nivel** (sin
   eso la ficha se subvalúa ×nivel, en silencio). **No queda nada del módulo por programar**: lo
-  que sigue abierto es la decisión del dueño de fusionar y dos hallazgos, abajo. Todo el
+  que sigue abierto es la decisión del dueño de fusionar y **un** hallazgo (la carrera al crear
+  revisiones), abajo. Todo el
   traspaso está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
 
 ## Entregas (módulo `remesas`)
@@ -610,7 +615,7 @@ byte**; con USD/MLC cambia porque antes se sumaban todas las monedas en un núme
 **Todo el traspaso vive en `docs/FICHA-COSTO.md`: LEERLO ANTES DE TOCAR NADA DEL MÓDULO.** Ahí
 está la interpretación normativa completa de las 16 filas, la errata de la Gaceta (Fila 12 =
 **5+11**), los tres controles, las **tres** fórmulas de la base de utilidad sobre cinco
-actividades, las decisiones cerradas con el dueño, el esquema Dexie **v18**, el motor puro
+actividades, las decisiones cerradas con el dueño, el esquema Dexie **v18 + v19**, el motor puro
 `lib/fichaCosto.js` con su fixture obligado ("Pan suave", 200 u), la interfaz de 9 bloques, las
 fases **F0–F11** con lo que hizo cada una (§9.8 a §9.14) y **la lista de lo que sigue abierto**,
 que es con la que hay que auditar F11.
@@ -630,6 +635,10 @@ respaldo de retroceso hay que tomarlo **antes** de desplegar (`backupService.js`
 un respaldo cuyo esquema supere al de la app).
 
 ### Auditoría de la rama antes de `main` (05-09-2026, verificada, no asumida)
+
+*Acta de esa fecha, se deja tal cual. El cierre de H3 el 07-09 movió tres cifras: esquema **v19**,
+**8 suites / 462 aserciones**, y el chunk **941.56 kB** (gzip **272.49**) con **34** colecciones
+de sync. Ver `docs/FICHA-COSTO.md` §9.16.*
 
 Ejecutado, no citado: `npm run build` **exit 0**; **408/408** aserciones en las 7 suites node; el
 build de `origin/main` en un worktree aparte para medir; y el Anexo II **releído del texto de la
@@ -655,16 +664,22 @@ Gaceta**, no de `docs/FICHA-COSTO.md`.
 - **Sync:** `SYNC_COLLECTIONS` pasa de 32 a **33**. Un `getDocs` más por barrido inicial (consulta
   vacía = 1 lectura) y un `onSnapshot` permanente más. Ruido frente a la cuota Spark.
 
-**Dos hallazgos ABIERTOS (no bloqueantes, decisión del dueño):**
+**Hallazgo 1 (los anexos por LWW): CERRADO el 07-09-2026.** El dueño confirmó que la ficha la
+llenan **el dueño Y el administrativo**, con lo que la justificación escrita ("la ficha la edita
+UN SOLO actor") quedó falsada. Se aplicó el patrón de `orderItems`: los cuatro anexos son ahora
+**filas sueltas** en `costSheetLines` (Dexie **v19**, en `SYNC_COLLECTIONS`), y el editor guarda
+**por diferencias** —solo lo que el mando cambió respecto de lo último que él mismo guardó—, así
+que una línea que no tocó no se escribe nunca y no puede pisar la del otro. Además el editor **se
+resincroniza**: si la ficha cambió en la base, se recarga sola cuando no hay nada a medio teclear
+y **avisa** con una banda cuando sí lo hay. La aritmética **no se tocó** (la ficha se *hidrata* al
+leerla). Lo que **no** cierra, y hay que saberlo: los **campos de cabecera** siguen fusionándose
+por LWW de documento entero, como en toda la app; la diferencia es que ahora se ve. Todo el
+detalle —incluido un fallo real que apareció haciéndolo, la copia de "otra norma de tiempo" que
+heredaba el id— en `docs/FICHA-COSTO.md` **§9.16**.
 
-1. **Dos mandos editando la misma ficha: uno pierde sus anexos, en silencio.** `costSheets` fusiona
-   por **LWW sobre el documento entero** y ese documento lleva dentro cuatro arrays (`inputs`,
-   `labor`, `otherDirect`, `refs`). La justificación escrita es "la ficha la edita UN SOLO actor",
-   pero **hay dos roles de mando** (dueño y administrativo). Es la misma clase de problema que
-   obligó a `orderItems` a ser filas sueltas, y aquí no se aplicó ese patrón. El autoguardado a
-   600 ms más el push a 20 s hacen la ventana real. **Mientras siga abierto: que el dueño y el
-   administrativo no editen la misma ficha a la vez.**
-2. **Carrera al crear revisiones.** `revise` calcula `nextVersion(prev)` en una transacción
+**Un hallazgo sigue ABIERTO (no bloqueante, decisión del dueño):**
+
+1. **Carrera al crear revisiones.** `revise` calcula `nextVersion(prev)` en una transacción
    **local**: dos dispositivos que revisen la misma ficha aprobada crean **dos v2** con el mismo
    `groupId`. Nada se pierde (append-only), pero el historial queda con dos "v2" y hay que elegir a
    mano. Probabilidad baja; consecuencia: confusión, no dinero.
@@ -779,6 +794,18 @@ Versiones en `src/db/db.js`:
   mensajero, **aislado del inventario general** (no entra en el recálculo de `products.stock`).
   El área `__entregas` sí es inventario y se mueve por `DELIVERY_OUT/IN` en `stockMovements`.
   Migración aditiva.
+- **v18**: `costSheets` (módulo `fichas`): la **cabecera** de la ficha de costo de la
+  Res. 148/2023 (identificación, portadores, filas capturadas del Anexo I, tasa de utilidad,
+  firmas, estado y versión). LWW por `updatedAt`; **toda** mutación lo sella (incluida `approve`,
+  porque `approvedAt` NO está en `TS_FIELDS` y sin `updatedAt` la aprobación no se subiría nunca,
+  en silencio). Migración aditiva.
+- **v19**: `costSheetLines` (módulo `fichas`): las **líneas** de los cuatro anexos (insumos,
+  salario, otros gastos directos, precios de referencia), **una fila por línea** —como
+  `orderItems` y al revés que `recipes.items`—. `{ id, sheetId, kind, pos, voided, ...campos }`.
+  Nació de un hallazgo: la ficha la llenan **dos** mandos (dueño y administrativo), y con los
+  anexos dentro del documento la fusión LWW le borraba al otro el anexo **entero**, en silencio.
+  Se anulan (`voided`), nunca se borran. La ficha se **hidrata** al leerla, así que el motor y los
+  reportes siguen viendo `sheet.inputs` y compañía. Migración aditiva.
 
 **Multimoneda:** base **MN**; efectivo **MN/USD**; **MLC** electrónico. Tasas = "cuánta MN
 vale 1 unidad de la moneda", append-only en `exchangeRates`. El módulo `divisas` añade el campo

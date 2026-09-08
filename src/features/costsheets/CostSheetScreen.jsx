@@ -9,6 +9,9 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { formatMoney } from '../../lib/currency'
+import { newId } from '../../lib/ids'
+import { now } from '../../lib/dates'
+import { diffSheet, isEmptyDelta } from '../../lib/fichaLines'
 import {
   FICHA_ACTIVITIES,
   FICHA_METHODS,
@@ -171,18 +174,39 @@ export function CostSheetScreen() {
   const dirtyRef = useRef(false)
   formRef.current = form
   dirtyRef.current = dirty
+  // LO ULTIMO QUE ESCRIBIMOS NOSOTROS. Es la referencia contra la que se calcula
+  // la diferencia al guardar, y la que distingue un cambio nuestro de uno que
+  // llego del otro dispositivo. Ver `guardar` y el efecto de cambio remoto.
+  const savedRef = useRef(EMPTY)
 
   const editable = isNew || canEditSheet(sheet)
 
-  // Carga el borrador en el formulario UNA sola vez por ficha. NO se resincroniza
-  // en cada cambio de la base: eso pisaria lo que se esta escribiendo. El otro
-  // sentido (formulario -> base) lo hace el autoguardado.
+  // Carga el borrador en el formulario UNA sola vez por ficha. La
+  // resincronizacion NO va aqui (pisaria lo que se esta escribiendo): la hace,
+  // con cuidado, el efecto de cambio remoto de mas abajo.
   useEffect(() => {
     if (isNew || !sheet || loadedId.current === sheet.id) return
     loadedId.current = sheet.id
-    setForm(pick(sheet))
+    const cargado = pick(sheet)
+    setForm(cargado)
+    savedRef.current = cargado
     setDirty(false)
   }, [sheet, isNew])
+
+  // GUARDADO POR DIFERENCIAS (hallazgo H3). No se escribe el formulario entero:
+  // se escribe SOLO lo que cambio respecto de lo ultimo que guardamos nosotros.
+  //
+  // Antes, el autoguardado mandaba el documento completo cada 600 ms. Con el
+  // dueño y el administrativo en la misma ficha eso significaba que quien tenia
+  // la pantalla abierta le REVERTIA al otro, con la siguiente tecla, lo que el
+  // otro acababa de guardar; y como los anexos viajaban dentro del documento, se
+  // perdia el anexo entero, sin aviso y sin rastro. Ahora una linea que este
+  // mando no toco no se escribe nunca, asi que no puede pisar nada.
+  const guardar = async (sheetId, snapshot) => {
+    const delta = diffSheet(savedRef.current, snapshot, { sheetId, ts: now(), mintId: newId })
+    if (!isEmptyDelta(delta)) await costSheetsRepo.saveEdit(sheetId, delta)
+    savedRef.current = snapshot
+  }
 
   // Autoguardado del BORRADOR. Solo corre si el dueño toco algo (`dirty`): sin esa
   // guarda, con solo ABRIR la ficha se sellaria `updatedAt` y el registro subiria a
@@ -202,8 +226,7 @@ export function CostSheetScreen() {
     // correcta, que es el sintoma que `flush` existe para eliminar.
     if (busy) return
     saveTimer.current = setTimeout(() => {
-      costSheetsRepo
-        .update(id, form)
+      guardar(id, form)
         .then(() => { setDirty(false); setSaved(true); setError('') })
         .catch((e) => setError(e.message))
     }, AUTOSAVE_MS)
@@ -216,10 +239,33 @@ export function CostSheetScreen() {
       // Misma guarda que el autoguardado: solo se vuelca si el formulario es de
       // ESTA ficha. Si no, se escribirian los anexos de la version anterior.
       if (dirtyRef.current && id && loadedId.current === id) {
-        costSheetsRepo.update(id, formRef.current).catch(() => { /* la pantalla ya se fue */ })
+        guardar(id, formRef.current).catch(() => { /* la pantalla ya se fue */ })
       }
     }
   }, [id])
+
+  // CAMBIO VENIDO DE OTRO DISPOSITIVO. La ficha en la base ya no coincide con lo
+  // ultimo que guardamos nosotros: o la toco el otro mando, o llego por la
+  // sincronizacion. Antes esto era invisible -el formulario se cargaba una vez y
+  // no se resincronizaba nunca-, asi que el dueño trabajaba sobre datos viejos
+  // sin enterarse.
+  //   - Si NO hay nada a medio teclear, se recarga en silencio: no hay nada que
+  //     perder y ver el dato al dia siempre es mejor.
+  //   - Si SI lo hay, NO se toca el formulario (eso seria borrarle al dueño lo
+  //     que esta escribiendo): se avisa, y se recarga solo cuando el guardado
+  //     deja el formulario limpio. Lo suyo ya no se pierde, porque el guardado
+  //     por diferencias no reescribe lo que no toco.
+  const [remoto, setRemoto] = useState(false)
+  useEffect(() => {
+    if (isNew || !sheet || loadedId.current !== sheet.id) { setRemoto(false); return }
+    const enLaBase = pick(sheet)
+    const ajeno = !isEmptyDelta(diffSheet(savedRef.current, enLaBase, { sheetId: sheet.id, ts: 0 }))
+    if (!ajeno) { setRemoto(false); return }
+    if (dirty) { setRemoto(true); return }
+    setForm(enLaBase)
+    savedRef.current = enLaBase
+    setRemoto(false)
+  }, [sheet, isNew, dirty])
 
   const set = (k, v) => {
     setForm((f) => ({ ...f, [k]: v }))
@@ -274,7 +320,7 @@ export function CostSheetScreen() {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     if (!dirty || !id || !editable) return
     if (loadedId.current !== id) return // el formulario es de otra ficha: no se vuelca
-    await costSheetsRepo.update(id, form)
+    await guardar(id, form)
     setDirty(false)
   }
 
@@ -396,6 +442,17 @@ export function CostSheetScreen() {
       {/* FUERA del acordeon a proposito: si el autoguardado falla mientras se
           teclea en otro bloque, el aviso tiene que verse igual. */}
       {error && <p className="error">{error}</p>}
+
+      {/* Cambio de otro dispositivo con algo a medio teclear. Solo sale en ese
+          caso: sin nada pendiente la ficha se recarga sola y no hay nada que
+          decir. Lo que este mando teclee NO se pierde ni pisa lo del otro: se
+          guarda solo lo que cambio (ver `guardar`). */}
+      {remoto && (
+        <div className="cuadre-banner cuadre-banner--yellow">
+          Otro dispositivo cambió esta ficha mientras la tenías abierta. Lo que estás escribiendo
+          no se pierde: al guardarse, la ficha se pone al día sola con los dos cambios.
+        </div>
+      )}
 
       {/* Resumen de avisos, TAMBIEN fuera del acordeon y por el mismo motivo: solo
           hay un bloque abierto a la vez, asi que un aviso pintado dentro de su

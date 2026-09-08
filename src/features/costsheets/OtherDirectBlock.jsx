@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { formatMoney } from '../../lib/currency'
 import { otherDirectTotal, negativeAmounts } from '../../lib/fichaCosto'
+import { newId } from '../../lib/ids'
 
 // Modulo 'fichas' (F7) - Bloque 4: OTROS GASTOS DIRECTOS (Fila 3 del Anexo I).
 //
@@ -32,7 +33,8 @@ export function OtherDirectBlock({ items, baseCurrency, editable, onItems }) {
 
   const setItem = (idx, patch) => onItems(items.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
   const removeItem = (idx) => onItems(items.filter((_, i) => i !== idx))
-  const addItem = (concept = '') => onItems([...items, { concept, amount: '' }])
+  // Con su id: la linea es una fila suelta de `costSheetLines` (H3).
+  const addItem = (concept = '') => onItems([...items, { id: newId(), concept, amount: '' }])
 
   // Un concepto sugerido solo se ofrece si no esta ya en la lista.
   const yaEsta = (c) => items.some((i) => (i.concept || '').trim() === c)
@@ -42,7 +44,7 @@ export function OtherDirectBlock({ items, baseCurrency, editable, onItems }) {
       {items.map((it, idx) => {
         const negativo = negativos.has(`otherDirect.${idx}`)
         return (
-          <div className="ficha-item" key={idx}>
+          <div className="ficha-item" key={it.id || idx}>
             <label className="field">
               <span>Concepto</span>
               <input

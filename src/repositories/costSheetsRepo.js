@@ -15,6 +15,14 @@ import {
   canDeleteSheet,
   nextVersion
 } from '../lib/fichaCosto'
+import {
+  cleanCarriers,
+  cleanRows,
+  hydrateSheet,
+  groupLinesBySheet,
+  linesFromArrays,
+  isEmptyDelta
+} from '../lib/fichaLines'
 
 // Fichas de costo del modulo 'fichas' (Res. 148/2023 MFP). Este repo guarda el
 // DOCUMENTO; el calculo entero vive en `lib/fichaCosto.js` (puro y probado con
@@ -35,73 +43,61 @@ import {
 //    puro para poder probarlas con node; aqui se usan como candado y en la
 //    pantalla para habilitar botones. Una sola fuente.
 //
+//  - Los CUATRO ANEXOS (insumos, salario, otros directos, referencias) NO viven
+//    dentro del documento: cada linea es un registro de `costSheetLines` (Dexie
+//    v19, hallazgo H3). La ficha la editan DOS mandos -el dueño y el
+//    administrativo- y con los anexos dentro del documento la fusion LWW le
+//    borraba el anexo entero al otro, en silencio. Al leer se HIDRATA, asi que
+//    el motor, los reportes y la pantalla siguen viendo `sheet.inputs` y
+//    compañia, exactamente igual que antes.
+//
 // Forma de un registro `costSheets` (docs/FICHA-COSTO.md §4):
 //   { id, groupId, version, status, name, productId, code, unit,
 //     productionLevel, capacityPct, activity, method, baseFromSheetId,
-//     inputs[], carriers:{fuel,energy,water}, labor[], otherDirect[],
+//     carriers:{fuel,energy,water},
 //     rows:{ r4, r41, r6, r61, r7, r71, r8, r9, taxSS, taxFT }, utilityPct,
-//     correlationPrice, refs[], elaboratedBy, approvedBy, approvedAt,
-//     createdAt, updatedAt, deletedAt }
+//     correlationPrice, elaboratedBy, approvedBy, approvedAt,
+//     createdAt, updatedAt, deletedAt,
+//     inputs[], labor[], otherDirect[], refs[] <- FOSIL: solo se leen en fichas
+//       anteriores a v19, y solo hasta que esa ficha se edita por primera vez }
 
 const txt = (v) => String(v ?? '').trim()
 const num = (v) => Number(v) || 0
 
-// Portadores (filas 1.2, 1.3 y 1.4). Forma fija: siempre las tres, aunque vayan
-// en cero, para que la pantalla no tenga que comprobar si existen.
-function cleanCarriers(c) {
-  const one = (x) => ({ qty: num(x?.qty), unitPrice: num(x?.unitPrice) })
-  return { fuel: one(c?.fuel), energy: one(c?.energy), water: one(c?.water) }
+// La normalizacion de las lineas y de las dos filas fijas (`cleanLines`,
+// `cleanCarriers`, `cleanRows`) vivia AQUI y se mudo a `lib/fichaLines.js`: ahi
+// es pura y se prueba con node, y ademas la usa el diff del autoguardado, que
+// tiene que comparar exactamente con el mismo criterio con el que se escribe.
+
+// Lee las lineas de una ficha y devuelve el documento HIDRATADO, que es como lo
+// espera el resto del programa (`sheet.inputs`, `sheet.labor`, ...). Ni el motor
+// ni los reportes ni los bloques de la pantalla saben que las lineas viven en su
+// propia tabla.
+async function withLines(sheet) {
+  if (!sheet) return sheet
+  const lines = await db.costSheetLines.where('sheetId').equals(sheet.id).toArray()
+  return hydrateSheet(sheet, lines)
 }
 
-// Filas capturadas del Anexo I. Se guardan TODAS aunque valgan cero: son filas
-// del modelo oficial, no campos opcionales.
-function cleanRows(r) {
-  return {
-    r4: num(r?.r4), r41: num(r?.r41),
-    r6: num(r?.r6), r61: num(r?.r61),
-    r7: num(r?.r7), r71: num(r?.r71),
-    r8: num(r?.r8),
-    r9: num(r?.r9), // OSDE: no aplica a un actor no estatal, pero la fila existe
-    taxSS: num(r?.taxSS), // FRACCION (12,5% = 0.125), no porcentaje
-    taxFT: num(r?.taxFT)
-  }
+// Lo mismo para una lista, con UNA sola lectura de la tabla de lineas (la
+// pantalla de fichas calcula el precio de cada una: hidratarlas de una en una
+// serian N consultas).
+async function withLinesAll(sheets) {
+  if (!sheets.length) return sheets
+  const all = await db.costSheetLines.toArray()
+  const byId = groupLinesBySheet(all)
+  return sheets.map((s) => {
+    const lines = byId.get(s.id) || []
+    const h = hydrateSheet(s, lines)
+    // Marca DERIVADA para ordenar la lista: la ficha se "toco" tambien cuando se
+    // edito una linea, y una edicion de linea NO sella la cabecera a proposito
+    // (sellarla la re-subiria entera y volveria a abrir la puerta que cierra H3).
+    // Derivada, no guardada: como `products.stock` sale del libro mayor.
+    let touchedAt = h.updatedAt || h.createdAt || 0
+    for (const l of lines) if (l?.updatedAt > touchedAt) touchedAt = l.updatedAt
+    return { ...h, touchedAt }
+  })
 }
-
-// Lineas de los anexos. A DIFERENCIA de `recipesRepo.cleanItems`, aqui NO se
-// descartan las filas incompletas: una ficha se teclea a lo largo de un rato con
-// autoguardado, y tirar la linea a medio escribir le borraria al dueño lo que
-// acaba de poner. Se normaliza la FORMA y ya; el motor trata lo vacio como cero.
-const cleanInputs = (list) =>
-  (list || []).map((i) => ({
-    productId: txt(i?.productId) || null,
-    code: txt(i?.code),
-    name: txt(i?.name),
-    unit: txt(i?.unit),
-    baseCost: num(i?.baseCost), // columna (4), solo si hay comparable
-    qty: num(i?.qty), // columna (5) norma de consumo
-    unitPrice: num(i?.unitPrice), // columna (6)
-    // Modulo 'divisas': par CONGELADO en la linea, como en las ventas.
-    priceCurrency: txt(i?.priceCurrency) || null,
-    priceRate: num(i?.priceRate)
-  }))
-
-const cleanLabor = (list) =>
-  (list || []).map((o) => ({
-    operation: txt(o?.operation), // columna (1)
-    baseCost: num(o?.baseCost), // columna (2)
-    workers: num(o?.workers), // columna (3)
-    category: txt(o?.category), // columna (4)
-    scaleGroup: txt(o?.scaleGroup), // columna (5)
-    hourly: num(o?.hourly), // columna (6)
-    extraHourly: num(o?.extraHourly), // columna (7) nocturnidad, peligrosidad
-    hours: num(o?.hours) // columna (8) norma de tiempo
-  }))
-
-const cleanOtherDirect = (list) =>
-  (list || []).map((x) => ({ concept: txt(x?.concept), amount: num(x?.amount) }))
-
-const cleanRefs = (list) =>
-  (list || []).map((x) => ({ source: txt(x?.source), price: num(x?.price), note: txt(x?.note) }))
 
 // La ficha nace con la tasa MAXIMA de su actividad ya puesta, para que sin tocar
 // el campo se comporte igual que cuando la tasa no era editable. En PORCENTAJE
@@ -130,22 +126,58 @@ function auditRow(sheet, action, userId, note = '') {
   }
 }
 
+// Parche de CABECERA. Devuelve `null` si no hay nada que escribir: sin esa
+// guarda, guardar "nada" sellaria `updatedAt` y subiria la ficha entera a la
+// nube sin haber cambiado un solo campo (y en la nube, subirla entera es
+// exactamente lo que le pisa la cabecera al otro mando).
+function headerPatch(s, fields = {}, ts) {
+  const patch = {}
+  if (fields.name != null) patch.name = txt(fields.name)
+  if (fields.productId !== undefined) patch.productId = fields.productId || null
+  if (fields.code != null) patch.code = txt(fields.code)
+  if (fields.unit != null) patch.unit = txt(fields.unit) || 'u'
+  if (fields.productionLevel != null) patch.productionLevel = num(fields.productionLevel)
+  if (fields.capacityPct != null) patch.capacityPct = num(fields.capacityPct)
+  if (fields.method != null) patch.method = fields.method
+  if (fields.carriers != null) patch.carriers = cleanCarriers(fields.carriers)
+  if (fields.rows != null) patch.rows = cleanRows(fields.rows)
+  if (fields.correlationPrice != null) patch.correlationPrice = num(fields.correlationPrice)
+  if (fields.elaboratedBy != null) patch.elaboratedBy = txt(fields.elaboratedBy)
+
+  // Cambiar de actividad cambia el techo del Anexo II. Si el dueño no habia
+  // escrito su propia tasa, la ficha adopta el maximo de la actividad nueva;
+  // si SI la habia escrito, se respeta (es suya, Art. 6).
+  if (fields.activity != null) {
+    patch.activity = fields.activity
+    const teniaPropia = s.utilityPct != null && s.utilityPct !== defaultUtilityPct(s.activity)
+    if (!teniaPropia && fields.utilityPct == null) patch.utilityPct = defaultUtilityPct(fields.activity)
+  }
+  if (fields.utilityPct !== undefined) {
+    patch.utilityPct = fields.utilityPct == null ? null : num(fields.utilityPct)
+  }
+
+  if (!Object.keys(patch).length) return null
+  patch.updatedAt = ts
+  return patch
+}
+
 export const costSheetsRepo = {
   // Las eliminadas (borrado logico) no se listan, pero siguen en la base.
   async list() {
     const all = await db.costSheets.toArray()
-    return all.filter((s) => !s.deletedAt)
+    return withLinesAll(all.filter((s) => !s.deletedAt))
   },
 
   async get(id) {
-    return db.costSheets.get(id)
+    return withLines(await db.costSheets.get(id))
   },
 
   // Todas las versiones de una misma ficha (v1, v2, v3...), de la mas nueva a la
   // mas vieja. Es lo que alimenta la columna "Costo Base" y el historial.
   async listByGroup(groupId) {
     const rows = await db.costSheets.where('groupId').equals(groupId).toArray()
-    return rows.sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0))
+    rows.sort((a, b) => (Number(b.version) || 0) - (Number(a.version) || 0))
+    return withLinesAll(rows)
   },
 
   async create({
@@ -184,14 +216,18 @@ export const costSheetsRepo = {
       activity,
       method,
       baseFromSheetId: null, // la v1 no tiene Costo Base salvo comparable externo
-      inputs: cleanInputs(inputs),
+      // Los cuatro anexos nacen VACIOS en la cabecera: sus lineas viven en
+      // `costSheetLines` (H3). Los arrays se conservan en el registro por
+      // compatibilidad de lectura de fichas viejas, pero una ficha nueva no los
+      // usa nunca: la fuente es la tabla de lineas.
+      inputs: [],
       carriers: cleanCarriers(carriers),
-      labor: cleanLabor(labor),
-      otherDirect: cleanOtherDirect(otherDirect),
+      labor: [],
+      otherDirect: [],
       rows: cleanRows(rows),
       utilityPct: utilityPct === undefined ? defaultUtilityPct(activity) : num(utilityPct),
       correlationPrice: num(correlationPrice),
-      refs: cleanRefs(refs),
+      refs: [],
       elaboratedBy: txt(elaboratedBy),
       approvedBy: '',
       approvedAt: null,
@@ -199,53 +235,80 @@ export const costSheetsRepo = {
       updatedAt: ts,
       deletedAt: null
     }
-    await db.transaction('rw', db.costSheets, db.auditEvents, async () => {
+    // Si el alta trae anexos (hoy la pantalla crea la ficha con el bloque 1 y ya,
+    // pero la firma los acepta desde F4), nacen como LINEAS, no dentro del
+    // documento. Los ids son deterministas: dos dispositivos no pueden duplicar.
+    const lines = linesFromArrays({ id, inputs, labor, otherDirect, refs }, ts)
+    await db.transaction('rw', db.costSheets, db.costSheetLines, db.auditEvents, async () => {
       await db.costSheets.add(sheet)
+      if (lines.length) await db.costSheetLines.bulkAdd(lines)
       await db.auditEvents.add(auditRow(sheet, FICHA_AUDIT_ACTIONS.CREATE, userId))
     })
     return id
   },
 
-  // Edicion en sitio del BORRADOR (autoguardado). Solo se tocan los campos que
-  // llegan; el resto queda como estaba. Una ficha aprobada rebota aqui: para
-  // corregirla hay que crear una revision.
+  // Edicion en sitio del BORRADOR: SOLO LA CABECERA. Los cuatro anexos ya no se
+  // escriben por aqui (viven en `costSheetLines`); si llegaran en `fields` se
+  // ignoran a proposito, para que nadie los devuelva al documento por descuido.
+  // Solo se tocan los campos que llegan; el resto queda como estaba. Una ficha
+  // aprobada rebota aqui: para corregirla hay que crear una revision.
   async update(id, fields = {}) {
     const s = await db.costSheets.get(id)
     if (!s) throw new Error('La ficha no existe')
     if (!canEditSheet(s)) {
       throw new Error('Una ficha aprobada no se edita: crea una revisión para corregirla')
     }
+    const patch = headerPatch(s, fields, now())
+    if (patch) await db.costSheets.update(id, patch)
+  },
 
-    const patch = { updatedAt: now() }
-    if (fields.name != null) patch.name = txt(fields.name)
-    if (fields.productId !== undefined) patch.productId = fields.productId || null
-    if (fields.code != null) patch.code = txt(fields.code)
-    if (fields.unit != null) patch.unit = txt(fields.unit) || 'u'
-    if (fields.productionLevel != null) patch.productionLevel = num(fields.productionLevel)
-    if (fields.capacityPct != null) patch.capacityPct = num(fields.capacityPct)
-    if (fields.method != null) patch.method = fields.method
-    if (fields.inputs != null) patch.inputs = cleanInputs(fields.inputs)
-    if (fields.carriers != null) patch.carriers = cleanCarriers(fields.carriers)
-    if (fields.labor != null) patch.labor = cleanLabor(fields.labor)
-    if (fields.otherDirect != null) patch.otherDirect = cleanOtherDirect(fields.otherDirect)
-    if (fields.rows != null) patch.rows = cleanRows(fields.rows)
-    if (fields.correlationPrice != null) patch.correlationPrice = num(fields.correlationPrice)
-    if (fields.refs != null) patch.refs = cleanRefs(fields.refs)
-    if (fields.elaboratedBy != null) patch.elaboratedBy = txt(fields.elaboratedBy)
+  // GUARDADO DEL EDITOR (H3): escribe SOLO lo que el dueño cambio.
+  //
+  // El `delta` lo calcula `diffSheet` (`lib/fichaLines.js`, puro y probado con
+  // node) comparando el formulario contra lo ultimo que guardamos NOSOTROS. Por
+  // eso una linea que este mando no toco no se escribe nunca, y no puede pisar
+  // la que el otro acaba de guardar desde su telefono.
+  //
+  // La cabecera se sella SOLO si cambio un campo de cabecera: una edicion de
+  // linea no la toca. Sellarla en cada tecleo re-subiria el documento entero y
+  // volveria a abrir, por la puerta de al lado, el problema que esto cierra.
+  async saveEdit(id, delta = {}) {
+    if (isEmptyDelta(delta)) return
+    const ts = now()
+    const { adds = [], patches = [], voids = [] } = delta.lines || {}
+    await db.transaction('rw', db.costSheets, db.costSheetLines, async () => {
+      const s = await db.costSheets.get(id)
+      if (!s) throw new Error('La ficha no existe')
+      if (!canEditSheet(s)) {
+        throw new Error('Una ficha aprobada no se edita: crea una revisión para corregirla')
+      }
 
-    // Cambiar de actividad cambia el techo del Anexo II. Si el dueño no habia
-    // escrito su propia tasa, la ficha adopta el maximo de la actividad nueva;
-    // si SI la habia escrito, se respeta (es suya, Art. 6).
-    if (fields.activity != null) {
-      patch.activity = fields.activity
-      const teniaPropia = s.utilityPct != null && s.utilityPct !== defaultUtilityPct(s.activity)
-      if (!teniaPropia && fields.utilityPct == null) patch.utilityPct = defaultUtilityPct(fields.activity)
-    }
-    if (fields.utilityPct !== undefined) {
-      patch.utilityPct = fields.utilityPct == null ? null : num(fields.utilityPct)
-    }
+      // Ficha del formato viejo (anexos dentro del documento) que se edita por
+      // primera vez: se convierte a lineas ANTES de aplicar nada, porque los
+      // parches y las anulaciones apuntan a los ids deterministas de esa
+      // conversion. Los arrays del documento NO se borran (regla 6): quedan como
+      // fosil y dejan de leerse en cuanto existe una linea.
+      const yaTieneLineas = await db.costSheetLines.where('sheetId').equals(id).count()
+      if (!yaTieneLineas) {
+        const legado = linesFromArrays(s, ts)
+        if (legado.length) await db.costSheetLines.bulkAdd(legado)
+      }
 
-    await db.costSheets.update(id, patch)
+      // Altas CON GUARDA DE EXISTENCIA: un doble toque, un reintento o una
+      // fusion que ya trajo la linea no la duplican (mismo patron que los ids
+      // deterministas de las entregas).
+      if (adds.length) {
+        const previas = await db.costSheetLines.bulkGet(adds.map((a) => a.id))
+        const nuevas = adds.filter((_, i) => !previas[i])
+        if (nuevas.length) await db.costSheetLines.bulkAdd(nuevas)
+      }
+      for (const p of [...patches, ...voids]) {
+        await db.costSheetLines.update(p.id, p.fields)
+      }
+
+      const patch = headerPatch(s, delta.header || {}, ts)
+      if (patch) await db.costSheets.update(id, patch)
+    })
   },
 
   // Aprobar: la ficha queda INMUTABLE y lista para exportar como documento.
@@ -277,18 +340,29 @@ export const costSheetsRepo = {
   async revise(id, { userId = null } = {}) {
     const ts = now()
     const newSheetId = newId()
-    await db.transaction('rw', db.costSheets, db.auditEvents, async () => {
-      const prev = await db.costSheets.get(id)
-      if (!prev) throw new Error('La ficha no existe')
-      if (!canReviseSheet(prev)) {
+    await db.transaction('rw', db.costSheets, db.costSheetLines, db.auditEvents, async () => {
+      const raw = await db.costSheets.get(id)
+      if (!raw) throw new Error('La ficha no existe')
+      if (!canReviseSheet(raw)) {
         throw new Error('Solo una ficha aprobada se puede revisar')
       }
+      // La version anterior se lee HIDRATADA: las columnas "Costo Base" salen de
+      // sus lineas, que ya no viven dentro del documento.
+      const prevLines = await db.costSheetLines.where('sheetId').equals(id).toArray()
+      const prev = hydrateSheet(raw, prevLines)
       // El registro de la revision lo construye el MOTOR (`reviseFrom`), que es
       // donde se puede probar con node. Incluye las columnas "Costo Base" (la (4)
       // del anexo de insumos y la (2) del de salario) derivadas de esta version:
       // sin ellas, una revision nacia con las dos columnas OFICIALES en ceros y
       // F9 las imprimiria vacias sin que nadie lo notara.
-      await db.costSheets.add(reviseFrom(prev, newSheetId, ts))
+      const nueva = reviseFrom(prev, newSheetId, ts)
+      // Y sus anexos nacen como LINEAS PROPIAS, con ids nuevos (deterministas de
+      // la revision): copiar los ids de la version anterior habria hecho que dos
+      // fichas compartieran las mismas lineas, y editar una habria cambiado la
+      // otra, que es una ficha YA APROBADA e inmutable.
+      const nuevasLineas = linesFromArrays(nueva, ts)
+      await db.costSheets.add({ ...nueva, inputs: [], labor: [], otherDirect: [], refs: [] })
+      if (nuevasLineas.length) await db.costSheetLines.bulkAdd(nuevasLineas)
       await db.costSheets.update(prev.id, { status: FICHA_STATUS.SUSTITUIDA, updatedAt: ts })
       await db.auditEvents.add(
         auditRow({ ...prev, id: newSheetId }, FICHA_AUDIT_ACTIONS.REVISE, userId,

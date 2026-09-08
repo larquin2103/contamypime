@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { formatMoney } from '../../lib/currency'
 import { laborTotal, emptyLaborOp, splitLaborOp, round2 } from '../../lib/fichaCosto'
+import { newId } from '../../lib/ids'
 
 // Modulo 'fichas' (F6) - Bloque 3: SALARIO DIRECTO (Fila 2 del Anexo I).
 //
@@ -41,12 +42,27 @@ export function LaborBlock({ labor, baseCurrency, editable, esRevision, onLabor 
   }
 
   const removeOp = (idx) => onLabor(labor.filter((_, i) => i !== idx))
-  const addOp = () => onLabor([...labor, emptyLaborOp()])
+  // La linea nace CON SU ID: cada operacion es una fila suelta de
+  // `costSheetLines` (H3), y el indice no puede ser su identidad -borrar una le
+  // cambiaria la identidad a todas las de abajo-.
+  const addOp = () => onLabor([...labor, { id: newId(), ...emptyLaborOp() }])
+
+  // "Otra norma de tiempo" (§2.8): el MOTOR parte la operacion en dos, pero la
+  // copia sale de un `{ ...src }` y por tanto HEREDA EL ID de la original. Con
+  // las lineas como filas sueltas (H3) eso serian dos lineas con una sola
+  // identidad: al guardar, la segunda se comeria a la primera y una operacion
+  // desapareceria en silencio. La copia estrena id aqui, no en el motor, para no
+  // meterle impureza (`newId`) a un modulo que se prueba con node.
+  const partirOp = (idx) => {
+    const lista = splitLaborOp(labor, idx)
+    if (lista.length === labor.length) return onLabor(lista) // no habia nada que partir
+    onLabor(lista.map((o, i) => (i === idx + 1 ? { ...o, id: newId() } : o)))
+  }
 
   return (
     <>
       {labor.map((op, idx) => (
-        <div className="ficha-item" key={idx}>
+        <div className="ficha-item" key={op.id || idx}>
           <div className="kv">
             <span><strong>{op.operation || 'Operación sin nombre'}</strong></span>
             <span className="muted">{idx + 1} / {labor.length}</span>
@@ -164,7 +180,7 @@ export function LaborBlock({ labor, baseCurrency, editable, esRevision, onLabor 
               {/* Parte la operacion en dos filas independientes (§2.8). NO es una
                   accion destructiva, asi que NO va en rojo (`.link-del` es
                   `var(--danger)`): el rojo queda solo para "quitar". */}
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => onLabor(splitLaborOp(labor, idx))}>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={() => partirOp(idx)}>
                 Otra norma de tiempo
               </button>
               <button type="button" className="link-del" onClick={() => removeOp(idx)}>quitar</button>

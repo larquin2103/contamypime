@@ -232,3 +232,29 @@ db.version(17).stores({
 db.version(18).stores({
   costSheets: 'id, groupId, status, productId, createdAt, updatedAt'
 })
+
+// Modulo 'fichas' (H3): las LINEAS de los cuatro anexos, como FILAS SUELTAS.
+// Tabla NUEVA y aditiva (sin `.upgrade()`, sin tocar ningun store existente),
+// mismo perfil que v18.
+//
+// CORRIGE LO QUE DICE LA NOTA DE v18 DE ARRIBA, y hay que leerlo entero: la
+// justificacion "la ficha la edita UN SOLO actor" era FALSA. El dueño confirmo
+// el 07-09-2026 que la llenan el dueño Y el administrativo, y con los anexos
+// dentro del documento la fusion LWW (`pullEngine` hace `bulkPut` del registro
+// entero, no fusiona campos) le borra al otro el anexo COMPLETO, sin aviso.
+// Es el mismo caso que obligo a `orderItems` a ser filas sueltas.
+//
+// Cada linea es su propio registro: `{ id, sheetId, kind, pos, voided, ...campos,
+// createdAt, updatedAt }`, donde `kind` es 'inputs' | 'labor' | 'otherDirect' |
+// 'refs'. Se fusiona linea a linea (LWW por updatedAt), asi que dos mandos
+// editando la misma ficha ya no pueden pisarse. Quitar una linea la marca
+// `voided` (append-only, regla 6): NADA se borra.
+//
+// Los arrays de `costSheets` NO se tocan ni se vacian (regla 6): una ficha vieja
+// se sigue leyendo de ellos hasta que se edita, y ahi se convierte en lineas con
+// ids DETERMINISTAS (`fl:<ficha>:<clase>:<indice>`), que es lo que impide que dos
+// dispositivos dupliquen la misma conversion. La regla de procedencia vive en
+// `hydrateSheet` (`src/lib/fichaLines.js`, probado con node).
+db.version(19).stores({
+  costSheetLines: 'id, sheetId, kind, [sheetId+kind], createdAt, updatedAt'
+})

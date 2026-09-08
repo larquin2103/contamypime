@@ -73,8 +73,12 @@ export function CostSheetsScreen() {
   const visible = useMemo(() => {
     const byTab = tab === 'todas' ? sheets : sheets.filter((s) => s.status === tab)
     const byQuery = query.trim() ? byTab.filter((s) => matchesQuery(s, query)) : byTab
-    // Lo ultimo tocado primero: es lo que se estaba escribiendo.
-    return [...byQuery].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+    // Lo ultimo tocado primero: es lo que se estaba escribiendo. Se ordena por
+    // `touchedAt`, que el repo DERIVA de la cabecera y de sus lineas: editar una
+    // linea ya no sella la cabecera (asi no se re-sube el documento entero, que
+    // es lo que le pisaba la ficha al otro mando), asi que `updatedAt` por si
+    // solo dejaria abajo una ficha cuyo anexo se acaba de tocar.
+    return [...byQuery].sort((a, b) => ((a.touchedAt || a.updatedAt) < (b.touchedAt || b.updatedAt) ? 1 : -1))
   }, [sheets, tab, query])
 
   // Compuerta del modulo: sin la licencia 'fichas', la pantalla no ofrece nada.

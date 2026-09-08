@@ -298,6 +298,8 @@ cubierto** (`main.jsx:26-35` atiende `vite:preloadError` con una recarga única 
 
 ```js
 db.version(18).stores({ costSheets: 'id, groupId, status, productId, createdAt, updatedAt' })
+// Y desde el 07-09-2026 (H3, §9.16), las lineas de los cuatro anexos, sueltas:
+db.version(19).stores({ costSheetLines: 'id, sheetId, kind, [sheetId+kind], createdAt, updatedAt' })
 ```
 
 Aditiva pura: una tabla vacía, **sin `.upgrade()`**, sin tocar stores existentes (mismo perfil
@@ -308,9 +310,14 @@ Registro:
 ```js
 { id, groupId, version, status: 'borrador'|'aprobada'|'sustituida', name, productId,
   code, unit, productionLevel, capacityPct, activity, method: 'gastos'|'correlacion',
-  baseFromSheetId, inputs[], carriers: { fuel, energy, water }, labor[], otherDirect[],
-  rows: { r4, r41, r6, r61, r7, r71, r8, r9, taxSS, taxFT }, utilityPct, correlationPrice, refs[],
+  baseFromSheetId, carriers: { fuel, energy, water },
+  rows: { r4, r41, r6, r61, r7, r71, r8, r9, taxSS, taxFT }, utilityPct, correlationPrice,
   elaboratedBy, approvedBy, approvedAt, createdAt, updatedAt, deletedAt }
+// Y una fila de `costSheetLines` por cada linea de anexo (desde v19, §9.16):
+{ id, sheetId, kind: 'inputs'|'labor'|'otherDirect'|'refs', pos, voided,
+  ...campos de la linea, createdAt, updatedAt }
+// Los `inputs[] labor[] otherDirect[] refs[]` del documento son FOSIL: solo se leen
+// en fichas anteriores a v19, y solo hasta que esa ficha se edita por primera vez.
 ```
 
 - **`utilityPct` (decisión del dueño, 01-09-2026, añadida tras la revisión de F1).** El Anexo II
@@ -320,9 +327,13 @@ Registro:
   que sin tocar el campo se comporta **exactamente igual que antes de existir**. Va en
   **PORCENTAJE** (25 = 25 %), como `capacityPct`. Pasarse del máximo **no se recorta**: sale el
   aviso `utilidad-sobre-maximo` con el **exceso en importe**.
-- **`inputs` y `labor` como arrays DENTRO del documento**, igual que `recipes`: la ficha la edita
-  **un solo actor** (el mando); no hay dos dispositivos añadiendo líneas en segundos, así que el
-  argumento que obligó a `orderItems` a ser filas sueltas aquí no aplica.
+- ~~**`inputs` y `labor` como arrays DENTRO del documento**, igual que `recipes`: la ficha la
+  edita **un solo actor** (el mando).~~ **REVOCADO el 07-09-2026 (hallazgo H3, §9.16).** La
+  premisa era falsa: la ficha la llenan el **dueño Y el administrativo**, y con los anexos dentro
+  del documento la fusión LWW le borraba al otro el anexo entero, en silencio. Los cuatro anexos
+  viven ahora como **filas sueltas** en `costSheetLines` (Dexie **v19**), igual que `orderItems`.
+  La ficha se **hidrata** al leerla, así que todo lo de abajo —el motor, los reportes, la
+  pantalla— sigue viendo `sheet.inputs` y compañía sin cambio alguno.
 - **Append-only real:** el borrador se edita en sitio (con `updatedAt`); una ficha **aprobada es
   inmutable** y "corregirla" crea una **revisión nueva** (mismo `groupId`, `version + 1`),
   marcando la anterior `sustituida`. La revisión hereda la anterior como **Costo Base**, que es
@@ -1605,6 +1616,10 @@ desapareció.**
 | Build | `npm run build` | **exit 0** |
 | Restos de depuración | `grep` de `console.`/`debugger`/`FIXME` | ninguno |
 
+*Esta tabla es la foto del **05-09-2026** y se deja tal cual (es el acta de esa auditoría). Tres
+de sus cifras las movió el cierre de H3 el 07-09: el esquema va por **v19**, las pruebas son **8
+suites y 462 aserciones**, y el bundle **941 562 B** (gzip 272,49). Ver §9.16.*
+
 **Qué ve un negocio SIN la licencia `fichas`:** nada. Sin tarjeta en el Home, sin pestaña en
 auditoría, sin artículos de ayuda (ni en pantalla ni en el PDF), y las rutas responden *"el módulo
 no está activo en esta licencia"* **sin leer un solo registro** (el gate va en la consulta). Lo que
@@ -1674,6 +1689,112 @@ mismo commit los desplazó, dejándola apuntando a sitios equivocados.*
 `Read` no podía abrirlo (falta `poppler`) y python no tenía librerías de PDF; la receta que
 funcionó fue extraer los streams con `re` + `zlib` y decodificar con el `ToUnicode` del propio
 PDF. Con la §2 de este documento **no debería hacer falta volver al PDF**.
+
+---
+
+### 9.16 H3 CERRADO: los anexos, como filas sueltas (07-09-2026)
+
+**Qué se cerró y por qué se pudo cerrar.** El hallazgo H3 de la auditoría del 05-09-2026 decía
+que dos mandos editando la misma ficha se pierden los anexos en silencio. Su única defensa
+escrita era la frase del §4: *"la ficha la edita un solo actor"*. **El dueño respondió el
+07-09-2026 que no: la llenan el dueño Y el administrativo.** Con eso, la premisa que justificaba
+guardar los anexos dentro del documento quedó falsada, y el camino era el mismo que obligó a
+`orderItems` a ser filas sueltas.
+
+**El mecanismo del fallo, verificado en código antes de tocar nada** (no citado de la nota
+anterior): `pullEngine` fusiona haciendo `bulkPut` del **documento entero** —no fusiona campos—;
+el editor cargaba la ficha **una sola vez** y no se resincronizaba nunca (guarda
+`loadedId.current === sheet.id`); y el autoguardado mandaba el **formulario completo** cada
+`AUTOSAVE_MS` = 600 ms, con el push cada `PUSH_INTERVAL_MS` = 20 s. El resultado no era solo
+"gana el último": quien dejaba la pantalla abierta **revertía con la siguiente tecla** el trabajo
+ya guardado del otro, desde un formulario viejo, y como los cuatro anexos viajaban dentro del
+documento, se perdía el anexo entero.
+
+**Las dos mitades de la solución.** Ninguna basta sola:
+
+1. **Filas sueltas — Dexie v19, tabla `costSheetLines`.** Cada línea de los cuatro anexos es su
+   propio registro `{ id, sheetId, kind, pos, voided, ...campos, createdAt, updatedAt }`, con
+   `kind` ∈ `inputs | labor | otherDirect | refs`. Se sincroniza línea a línea (LWW por
+   `updatedAt`), así que perder un anexo completo ya no es posible. Quitar una línea la marca
+   `voided`: **nada se borra** (regla 6). Migración **aditiva pura**, sin `.upgrade()`.
+2. **Guardado por diferencias.** El editor ya no escribe el formulario: escribe **solo lo que
+   cambió** respecto de lo último que guardó él mismo (`savedRef`). Lo calcula `diffSheet` en
+   `src/lib/fichaLines.js` —puro, 54 aserciones de node—. Una línea que este mando no tocó **no
+   se escribe nunca**, así que no puede pisar la del otro; y de las que sí tocó viajan **solo los
+   campos cambiados**, no la fila entera.
+
+**Lo que NO cambió, a propósito:** ni una línea de la aritmética. Al leer, el repo **hidrata** la
+ficha (`hydrateSheet`), así que el motor, los reportes, los nueve bloques y el ticket siguen
+recibiendo `sheet.inputs`, `sheet.labor`, `sheet.otherDirect` y `sheet.refs` exactamente como
+antes. Las **243 aserciones** de `fichaCosto.test.mjs` y las **69** de `fichaReports.test.mjs`
+pasan **sin tocarlas**, que era la condición para no arriesgar el activo más valioso del módulo
+(el cálculo ya contrastado contra la Gaceta).
+
+**Decisiones de diseño que conviene no deshacer:**
+
+- **La cabecera se sella solo si cambió un campo de cabecera.** Editar una línea ya **no** toca
+  `costSheets.updatedAt`. Si lo tocara, el push volvería a subir el documento entero en cada
+  tecleo y le pisaría al otro mando la cabecera: sería reabrir H3 por la puerta de al lado. Como
+  la lista ordenaba por `updatedAt`, ahora ordena por **`touchedAt`**, que el repo **deriva** de
+  la cabecera y de sus líneas (derivado, no guardado, como `products.stock` sale del libro mayor).
+- **Ids deterministas para la conversión del formato viejo** (`fl:<ficha>:<clase>:<índice>`). Una
+  ficha anterior a v19 se sigue leyendo de sus arrays hasta que se edita; en esa primera edición
+  se convierte a líneas. Que el id sea determinista es lo que impide que dos dispositivos que
+  conviertan la misma ficha dupliquen sus líneas. Los arrays del documento **no se vacían**
+  (regla 6): quedan como fósil y dejan de leerse en cuanto existe una línea.
+- **Regla de procedencia sin campo bandera:** si la ficha tiene alguna línea de esa clase
+  —incluidas las anuladas— mandan las líneas; si no tiene ninguna, se lee el array viejo. Funciona
+  porque las anuladas no se borran: una clase que llegó a tener líneas nunca vuelve a cero
+  registros, así que el array viejo no puede resucitar.
+- **Las altas llevan guarda de existencia** (`bulkGet` y solo inserta las que faltan): un doble
+  toque, un reintento o una fusión que ya trajo la línea no la duplican.
+- **La revisión estrena ids.** `revise` lee la versión anterior **hidratada** (de ahí salen las
+  columnas "Costo Base"), y las líneas de la revisión nacen con ids nuevos: copiar los de la
+  versión anterior habría hecho que dos fichas compartieran líneas, y editar la revisión habría
+  cambiado una ficha **ya aprobada e inmutable**.
+
+**UN FALLO REAL ENCONTRADO AL HACER ESTO, que no estaba en la lista de hallazgos.** El botón
+*"Otra norma de tiempo"* del bloque 3 parte una operación en dos con `{ ...src }` en el motor
+(`splitLaborOp`), así que **la copia heredaba el id de la original**. Con los anexos como arrays
+eso daba igual; con filas sueltas serían dos líneas con una sola identidad y al guardar **la
+segunda se comería a la primera**: una operación de salario desaparecida en silencio, que es
+justo la clase de fallo que este trabajo existe para eliminar. Se cerró **por partida doble**: la
+copia estrena id en `LaborBlock` (el `newId()` no entra al motor, que se prueba con node) y
+`diffLines` trata como línea **nueva** cualquier segunda fila que repita un id, venga de donde
+venga.
+
+**Lo que este cambio NO cierra, dicho claro:** los **campos de cabecera** (nombre, actividad,
+nivel de producción, tasa de utilidad, portadores, las filas 4 a 10) siguen fusionándose por LWW
+sobre el documento entero, porque el push sube documentos completos. Es el comportamiento de
+**toda** la app (`products`, `recipes`, cualquier cabecera) y no es específico de las fichas. Lo
+que cambia es que ahora **se ve**: si la ficha en la base deja de coincidir con lo último que
+guardó este dispositivo, el editor **se recarga solo** cuando no hay nada a medio teclear, y
+**avisa** con una banda cuando sí lo hay (nunca borra lo que se está escribiendo). Antes esto era
+invisible.
+
+**Lo que se descartó, y por qué.** El dueño eligió "editar de todos modos siempre disponible"
+para un eventual **candado suave** (`lockedBy`/`lockedAt`). No se implementó: para que el otro
+teléfono vea el candado, el candado tiene que sincronizar, y para sincronizar hay que sellar
+`updatedAt` de la cabecera **al abrir la ficha** —lo que sube el documento entero sin que nadie
+haya cambiado nada, que es exactamente lo que le pisa la cabecera al otro—. Con la recarga
+automática y el aviso, el candado añadía ese coste a cambio de una protección que su propio
+"editar de todos modos" deja en consejo. **Queda disponible si el dueño lo pide igualmente.**
+
+**Verificado (ejecutado, no citado):** `npm run build` **exit 0**; **8 suites, 462 aserciones, 0
+fallos** (las 408 de siempre + 54 nuevas, ninguna de las viejas tocada); el chunk principal pasa
+de **936.25 kB** (gzip 248.33 → 270.62 en F11) a **941.56 kB** (gzip **272.49**): el cierre de H3
+cuesta **+5.31 kB** (+1.87 kB gzip). `SYNC_COLLECTIONS` pasa de 33 a **34**: un `getDocs` y un
+`onSnapshot` más sobre una colección que sin la licencia queda **vacía**. `firestore.rules` usa
+comodín: **no hay que redesplegar reglas**. El respaldo enumera `db.tables` dinámicamente, así que
+`costSheetLines` entra sola.
+
+**Lo que sigue sin poder garantizarse:** igual que todo el módulo, **nadie ha ejecutado la app**.
+No se ha visto una línea guardándose en dos teléfonos a la vez, ni la banda de aviso, ni la
+recarga automática. Y **v19 es otro viaje de ida**: el respaldo de retroceso hay que tomarlo
+**antes** de desplegar.
+
+**H4 sigue abierto** (dos dispositivos revisando la misma ficha aprobada crean dos "v2" con el
+mismo `groupId`): no se tocó, no se pierde nada y es confusión, no dinero.
 
 ---
 
