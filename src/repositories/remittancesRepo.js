@@ -77,13 +77,30 @@ function cleanParty(p = {}) {
 }
 
 // Lineas de PRODUCTO de una entrega (snapshot): { productId, name, qty } con qty > 0.
+//
+// Cuando la linea viene VALORADA (alta de una entrega de producto) conserva ademas su
+// PRECIO UNITARIO CONGELADO —ya en la moneda de la entrega—, con la moneda y la tasa
+// de origen si el producto tenia su precio en divisa. Es el mismo congelado que el
+// precio de una linea de venta: que mañana suba el catalogo no cambia lo que costo
+// esta entrega.
+//
+// Los tres campos son OPCIONALES y solo se copian si vienen: `returnProduct` comparte
+// esta funcion y manda lineas sin precio (devolver mercancia no vale nada), y las
+// entregas anteriores tampoco los traen. Sin ellos, la linea queda EXACTAMENTE como
+// hasta ahora.
 function cleanItems(items = []) {
   return (items || [])
-    .map((it) => ({
-      productId: it.productId,
-      name: String(it.name || '').trim(),
-      qty: Math.abs(Number(it.qty) || 0)
-    }))
+    .map((it) => {
+      const line = {
+        productId: it.productId,
+        name: String(it.name || '').trim(),
+        qty: Math.abs(Number(it.qty) || 0)
+      }
+      if (Number(it.unitPrice) > 0) line.unitPrice = round2(Number(it.unitPrice))
+      if (it.priceCurrency) line.priceCurrency = it.priceCurrency
+      if (Number(it.priceRate) > 0) line.priceRate = Number(it.priceRate)
+      return line
+    })
     .filter((it) => it.productId && it.qty > 0)
 }
 

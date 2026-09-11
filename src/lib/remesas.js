@@ -123,3 +123,42 @@ export function remittanceEquivalent(r, base = 'MN') {
     ? { amount: round2(amount * rate), currency: base }
     : { amount: round2(amount / rate), currency: rateCur }
 }
+
+// --- Importe de una entrega de PRODUCTO -------------------------------------
+//
+// El monto que paga el remitente sale del PRECIO DE CATALOGO de lo que se entrega.
+// Como un producto puede tener su precio en divisa (modulo 'divisas') y la entrega
+// se cobra en la moneda que el dueño elija, hay que convertir entre las dos.
+//
+// La tasa del proyecto es "cuanta MONEDA BASE vale 1 unidad de esta moneda" (1 USD
+// = 320 MN -> 320), y la base vale 1. Asi, pasar de una moneda a otra es ir a la
+// base y volver:  valor x tasaOrigen / tasaDestino.
+//   - producto MN  -> entrega MN :  v x 1   / 1
+//   - producto USD -> entrega MN :  v x 320 / 1    (multiplica)
+//   - producto MN  -> entrega USD:  v x 1   / 320  (divide)
+//   - producto USD -> entrega MLC:  v x 320 / 250  (las dos tasas)
+//
+// Devuelve null si falta alguna tasa: sin ella no se puede afirmar el importe, y es
+// preferible no decir nada a decir un numero inventado (la pantalla lo avisa y deja
+// crear la entrega igual — el importe es una AYUDA, no un candado).
+export function convertAmount(value, fromRate, toRate) {
+  const v = Number(value) || 0
+  const from = Number(fromRate) || 0
+  const to = Number(toRate) || 0
+  if (from <= 0 || to <= 0) return null
+  return round2((v * from) / to)
+}
+
+// Suma de las lineas ya valoradas: cantidad x precio unitario CONGELADO (que se
+// guarda ya en la moneda de la entrega, ver `cleanItems` en remittancesRepo). Las
+// lineas sin precio —las de una entrega anterior a esto, o un producto sin precio—
+// suman 0 en vez de romper la cuenta.
+export function itemsTotal(items = []) {
+  let total = 0
+  for (const it of items || []) {
+    const qty = Math.abs(Number(it?.qty) || 0)
+    const unit = Number(it?.unitPrice) || 0
+    total += qty * unit
+  }
+  return round2(total)
+}

@@ -11,7 +11,7 @@
 // constancia de ENTREGADA, la entrega no puede marcarse fallida.
 import {
   shouldReconcileDelivered, isPendingCollection, remittanceGroup, REMITTANCE_GROUP,
-  rateCurrencyFor, remittanceEquivalent
+  rateCurrencyFor, remittanceEquivalent, convertAmount, itemsTotal
 } from './remesas.js'
 import { REMITTANCE_STATUS, DELIVERY_RESULT, PAYMENT_MODE } from '../db/constants.js'
 
@@ -137,6 +137,42 @@ eq('entrega nula -> null', remittanceEquivalent(null, 'MN'), null)
     remittanceEquivalent(entrega, 'MN'), { amount: 32000, currency: 'MN' })
   eq('y sigue igual al volver a leerla',
     remittanceEquivalent({ ...entrega }, 'MN'), { amount: 32000, currency: 'MN' })
+}
+
+// --- Importe de una entrega de PRODUCTO -------------------------------------
+// Conversion entre la moneda del precio del producto y la de la entrega.
+eq('producto MN -> entrega MN: no convierte', convertAmount(450, 1, 1), 450)
+eq('producto USD -> entrega MN: multiplica', convertAmount(2, 320, 1), 640)
+eq('producto MN -> entrega USD: divide', convertAmount(640, 1, 320), 2)
+eq('producto USD -> entrega MLC: las dos tasas', convertAmount(2, 320, 250), 2.56)
+eq('redondea a 2 decimales', convertAmount(100, 1, 3), 33.33)
+eq('importe 0 -> 0 (no es un fallo)', convertAmount(0, 320, 1), 0)
+
+// Sin tasa no se inventa un numero.
+eq('sin tasa de origen -> null', convertAmount(100, 0, 1), null)
+eq('sin tasa de destino -> null', convertAmount(100, 1, 0), null)
+eq('tasa negativa -> null', convertAmount(100, -5, 1), null)
+eq('tasa ausente -> null', convertAmount(100, undefined, 1), null)
+
+// Suma de las lineas ya valoradas (precio congelado por linea).
+eq('suma dos lineas',
+  itemsTotal([{ qty: 3, unitPrice: 150 }, { qty: 2, unitPrice: 75.5 }]), 601)
+eq('una linea sin precio suma 0, no rompe la cuenta',
+  itemsTotal([{ qty: 3, unitPrice: 150 }, { qty: 9, name: 'sin precio' }]), 450)
+eq('entrega anterior a esto (items sin precio) -> 0',
+  itemsTotal([{ productId: 'p1', name: 'Refresco', qty: 5 }]), 0)
+eq('sin lineas -> 0', itemsTotal([]), 0)
+eq('items nulo -> 0', itemsTotal(null), 0)
+eq('cantidad negativa se toma en valor absoluto',
+  itemsTotal([{ qty: -2, unitPrice: 100 }]), 200)
+eq('decimales sin arrastre de coma flotante',
+  itemsTotal([{ qty: 3, unitPrice: 0.1 }]), 0.3)
+
+// El precio CONGELADO manda: que suba el catalogo no cambia la entrega.
+{
+  const lineas = [{ productId: 'p1', name: 'Refresco', qty: 4, unitPrice: 120 }]
+  eq('la entrega vale lo de su dia', itemsTotal(lineas), 480)
+  eq('y el catalogo no la toca', itemsTotal([...lineas]), 480)
 }
 
 console.log(`\n${pass} pass, ${fail} fail`)

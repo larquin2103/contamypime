@@ -19,7 +19,10 @@ import { fileToThumbnail } from '../../lib/image'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
-import { remittanceGroup, isPendingCollection, rateCurrencyFor, remittanceEquivalent } from '../../lib/remesas'
+import {
+  remittanceGroup, isPendingCollection, rateCurrencyFor, remittanceEquivalent,
+  convertAmount, itemsTotal
+} from '../../lib/remesas'
 import {
   CASH_CURRENCIES, ROLES, ROLE_LABELS, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
   REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS, DELIVERY_FAIL_REASONS,
@@ -938,11 +941,52 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
   const needsAmount = !isProduct || paymentMode === PAYMENT_MODE.UPFRONT
   useEscapeClose(onClose)
 
-  // Agrega/quita una linea de producto (se acumula por producto).
+  // --- Importe de una entrega de PRODUCTO, tomado del precio de catalogo -------
+  //
+  // Cada linea se VALORA al agregarla: precio del producto convertido a la moneda de
+  // la entrega y congelado ahi (ver `cleanItems`). El monto se rellena solo con la
+  // suma, y el dueño puede sobrescribirlo (descuento, redondeo, entrega sin cobro):
+  // en cuanto lo teclea, deja de recalcularse para no pisarle lo que escribio.
+  //
+  // La conversion NO va gateada por 'divisas', a proposito y por la misma razon que
+  // el resto del proyecto: aqui el importe es DINERO REAL (lo que paga el remitente),
+  // asi que un producto en divisa tiene que valorarse bien tenga o no el modulo. Lo
+  // que 'divisas' gatea es poder FIJAR el precio de un producto en divisa.
+  //
+  // En EDICION arranca "tocado": el monto ya existe y no se pisa nunca.
+  const [amountTouched, setAmountTouched] = useState(isEdit)
+  // Tasa de una moneda para convertir (la base vale 1; sin tasa cargada, 0 = no se
+  // puede). `rateOf` viene de las tasas vigentes, que son reactivas.
+  const rateFor = (cur) => (!cur || cur === baseCurrency ? 1 : rateOf(cur))
+  // Importe de lo ya agregado, con el precio CONGELADO de cada linea.
+  const itemsTotalNow = itemsTotal(items)
+  // ¿Alguna linea se quedo sin valorar por falta de tasa? Se avisa, no se bloquea.
+  // Solo cuenta mientras el monto se esta calculando solo: si el dueño lo lleva a mano
+  // —o esta EDITANDO una entrega anterior a esto, que no tiene precios— el aviso
+  // sobraria, y esa entrega vieja se ve exactamente igual que antes.
+  const someUnpriced = isProduct && !amountTouched && items.some((it) => !(Number(it.unitPrice) > 0))
+
+  // Valora una linea con el precio de catalogo del producto, ya convertido a la
+  // moneda `toCur` de la entrega. Devuelve los campos a congelar (o ninguno si falta
+  // la tasa: la linea se queda sin precio, suma 0 y la pantalla lo avisa).
+  const pricedFields = (p, toCur) => {
+    const unit = convertAmount(Number(p?.price) || 0, rateFor(p?.priceCurrency), rateFor(toCur))
+    if (!(unit > 0)) return {}
+    const foreign = p?.priceCurrency && p.priceCurrency !== baseCurrency
+    return {
+      unitPrice: unit,
+      ...(foreign ? { priceCurrency: p.priceCurrency, priceRate: rateFor(p.priceCurrency) } : {})
+    }
+  }
+
+  // Agrega/quita una linea de producto (se acumula por producto). Al agregarla se
+  // CONGELA su precio unitario en la moneda de la entrega; al acumular cantidad se
+  // conserva el precio con que entro (no se revalora sola).
   const addItem = () => {
     const p = entregasProducts.find((x) => x.id === pickProduct)
     const qty = Number(pickQty) || 0
     if (!p || qty <= 0) return
+    const priced = pricedFields(p, currency)
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.productId === p.id)
       if (idx >= 0) {
@@ -950,12 +994,36 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
         next[idx] = { ...next[idx], qty: round2(Number(next[idx].qty) + qty) }
         return next
       }
-      return [...prev, { productId: p.id, name: p.name, qty }]
+      return [...prev, { productId: p.id, name: p.name, qty, ...priced }]
     })
     setPickProduct('')
     setPickQty('')
   }
   const removeItem = (i) => setItems((prev) => prev.filter((_, idx) => idx !== i))
+
+  // Cambiar la MONEDA de la entrega revalora lo ya agregado: un precio congelado en
+  // MN no puede quedarse ahi si la entrega pasa a cobrarse en USD. Un producto que ya
+  // no este en el catalogo conserva su linea tal cual (no se pierde nada).
+  const changeCurrency = (next) => {
+    setCurrency(next)
+    if (!isProduct) return // en dinero no hay lineas que revalorar: nada que hacer
+    setItems((prev) => prev.map((it) => {
+      const p = products.find((x) => x.id === it.productId)
+      if (!p) return it
+      // Se vuelve a sellar desde cero: se queda con lo identitario de la linea y se
+      // valora otra vez en la moneda nueva (si se conservara el precio viejo, la
+      // linea quedaria en una moneda y la entrega en otra).
+      const { productId, name, qty } = it
+      return { productId, name, qty, ...pricedFields(p, next) }
+    }))
+  }
+
+  // Rellena el monto con el importe de los productos mientras el dueño no lo haya
+  // tecleado el mismo. Si lo toca, manda lo suyo (descuento, redondeo, sin cobro).
+  useEffect(() => {
+    if (!isProduct || amountTouched || moneyLocked) return
+    setAmount(itemsTotalNow > 0 ? String(itemsTotalNow) : '')
+  }, [isProduct, amountTouched, moneyLocked, itemsTotalNow])
 
   const save = async () => {
     setError('')
@@ -1091,6 +1159,14 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
                   <div key={i} className="list-item" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ flex: 1 }}>
                       {it.name} × {it.qty}
+                      {/* Importe de la linea al precio de catalogo CONGELADO al
+                          agregarla, ya en la moneda de la entrega. Sin precio (falta
+                          la tasa de su divisa) se dice, en vez de sumar un cero mudo. */}
+                      {Number(it.unitPrice) > 0 ? (
+                        <span className="muted"> · {formatMoney(round2(Number(it.qty) * Number(it.unitPrice)), currency)}</span>
+                      ) : someUnpriced ? (
+                        <span className="warn-text"> · sin precio</span>
+                      ) : null}
                       {Number(it.qty) > Number(stockById[it.productId] || 0) && (
                         <span className="warn-text"> · en {ENTREGAS_AREA_LABEL} solo hay {Number(stockById[it.productId] || 0)}</span>
                       )}
@@ -1112,17 +1188,35 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
                 type="number"
                 inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => { setAmount(e.target.value); setAmountTouched(true) }}
                 placeholder="0"
               />
             </label>
             <label className="field">
               <span>Moneda</span>
-              <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              <select value={currency} onChange={(e) => changeCurrency(e.target.value)}>
                 {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </label>
           </div>
+        )}
+        {/* De donde sale el monto en una entrega de producto, y que se puede cambiar. */}
+        {!moneyLocked && isProduct && items.length > 0 && (
+          <>
+            {someUnpriced && (
+              <p className="warn-text">
+                <small>
+                  Hay productos <strong>sin precio</strong> (falta la tasa de su moneda): no entran
+                  en el importe. Puedes poner el monto a mano.
+                </small>
+              </p>
+            )}
+            {!amountTouched && (
+              <p className="muted">
+                <small>El monto sale del precio de catálogo de los productos. Puedes cambiarlo.</small>
+              </p>
+            )}
+          </>
         )}
         {/* Equivalente INFORMATIVO mientras se teclea, a la tasa vigente —que es la
             que se congela al guardar—. Gateado por 'divisas'; sin tasa cargada solo
