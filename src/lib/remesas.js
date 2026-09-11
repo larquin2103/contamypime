@@ -9,7 +9,8 @@
 // este modulo —que es puro— se puede ejecutar con node para probarlo
 // (`node src/lib/remesas.test.mjs`), como custodyMath/productCustodyMath. Vite lo
 // resuelve igual; `db/constants` tampoco importa nada, por lo que la cadena es pura.
-import { REMITTANCE_STATUS, PAYMENT_MODE, DELIVERY_RESULT } from '../db/constants.js'
+import { REMITTANCE_STATUS, PAYMENT_MODE, DELIVERY_RESULT, FOREIGN_PRICE_CURRENCIES } from '../db/constants.js'
+import { round2 } from './currency.js'
 
 const S = REMITTANCE_STATUS
 
@@ -76,4 +77,49 @@ export function shouldReconcileDelivered(remittance, deliveries = []) {
   return (deliveries || []).some(
     (d) => d && d.result === DELIVERY_RESULT.DELIVERED && d.voided !== true
   )
+}
+
+// --- Equivalente INFORMATIVO en la otra moneda (modulos 'remesas' + 'divisas') ---
+//
+// Una entrega guarda su monto en UNA moneda (`amount` + `currency`). Para que el
+// mando vea "cuanto es eso" en la otra, al CREARLA se congela la tasa vigente
+// (`rate`) y de que moneda es (`rateCurrency`) — exactamente como una linea de venta
+// congela `priceCurrency`/`priceRate`: si mañana cambia la tasa, la entrega de hoy
+// sigue diciendo lo que valia hoy. Sin congelarla, el historico cambiaria de valor
+// cada vez que el dueño mueve la tasa (es el mismo motivo por el que el panel de
+// cuentas NO convierte los conceptos a MN).
+//
+// Es INFORMATIVO y nada mas: no entra en la custodia, ni en la liquidacion, ni en
+// ninguna suma ni reporte. Es texto en pantalla.
+//
+// Que tasa hace falta, segun la moneda de la entrega:
+//   - Entrega en DIVISA (USD/MLC) -> equivalente en la BASE: amount x tasa.
+//   - Entrega en la BASE (MN)     -> equivalente en la divisa de REFERENCIA
+//                                    (la primera de FOREIGN_PRICE_CURRENCIES, hoy
+//                                    USD): amount / tasa.
+const REFERENCE_CURRENCY = FOREIGN_PRICE_CURRENCIES[0] || 'USD'
+
+// De QUE moneda hay que congelar la tasa para una entrega en `currency`. Devuelve
+// null cuando no hay nada que convertir (no deberia pasar con la config de hoy).
+export function rateCurrencyFor(currency, base = 'MN') {
+  const cur = String(currency || base)
+  if (cur !== base) return cur
+  return REFERENCE_CURRENCY === base ? null : REFERENCE_CURRENCY
+}
+
+// Equivalente de la entrega con su tasa CONGELADA, o null si no se puede decir nada
+// (sin monto, sin tasa, o con una tasa que no corresponde a esta moneda). PURA: no
+// lee la base ni la tasa de hoy, solo lo que la entrega lleva dentro.
+export function remittanceEquivalent(r, base = 'MN') {
+  const amount = Number(r?.amount) || 0
+  const rate = Number(r?.rate) || 0
+  const cur = String(r?.currency || base)
+  const rateCur = String(r?.rateCurrency || '')
+  if (amount <= 0 || rate <= 0 || !rateCur) return null
+  // La tasa congelada tiene que ser la de ESTA moneda. Si no cuadra (una entrega
+  // vieja, o una moneda corregida sin recalcular) no se inventa nada: no se muestra.
+  if (rateCur !== rateCurrencyFor(cur, base)) return null
+  return cur !== base
+    ? { amount: round2(amount * rate), currency: base }
+    : { amount: round2(amount / rate), currency: rateCur }
 }

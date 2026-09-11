@@ -18,7 +18,8 @@ import { formatDateTime } from '../../lib/dates'
 import { fileToThumbnail } from '../../lib/image'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { remittanceGroup, isPendingCollection } from '../../lib/remesas'
+import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { remittanceGroup, isPendingCollection, rateCurrencyFor, remittanceEquivalent } from '../../lib/remesas'
 import {
   CASH_CURRENCIES, ROLES, ROLE_LABELS, REMITTANCE_STATUS, REMITTANCE_STATUS_LABELS,
   REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS, DELIVERY_FAIL_REASONS,
@@ -90,6 +91,24 @@ function StatusBadge({ status }) {
       {REMITTANCE_STATUS_LABELS[status] || status}
     </span>
   )
+}
+
+// Equivalente INFORMATIVO del monto en la otra moneda. Lee la tasa CONGELADA en la
+// entrega (`rate`/`rateCurrency`), asi que dice lo que valia el dia que se creo y no
+// cambia cuando el dueño mueve la tasa — igual que el precio congelado de una venta.
+// No entra en ninguna suma: es texto.
+//
+// Gateado por la licencia 'divisas' ADEMAS de 'remesas' (que ya cubre la pantalla
+// entera): sin ella no pinta NADA y la pantalla queda identica a la clasica. Tampoco
+// pinta nada si la entrega no trae tasa congelada (las creadas antes de esto, o las
+// creadas sin la licencia), asi que quitar el modulo no rompe ni borra nada.
+function EquivalentNote({ remittance }) {
+  const { hasModule } = useLicense()
+  const { baseCurrency } = useCurrency()
+  if (!hasModule(LICENSE_MODULES.MULTICURRENCY)) return null
+  const eq = remittanceEquivalent(remittance, baseCurrency)
+  if (!eq) return null
+  return <p className="muted">≈ {formatMoney(eq.amount, eq.currency)}</p>
 }
 
 // Badge del GRUPO legible (Por cobrar / En proceso / Completado): lo ve el dueno en
@@ -407,6 +426,8 @@ function RemittanceDetail({ remittance: r, userId, isManager, couriers, userName
           <span>Monto</span>
           <strong className="total-amount">{formatMoney(Number(r.amount) || 0, r.currency)}</strong>
         </div>
+        {/* Equivalente informativo a la tasa CONGELADA al crear la entrega. */}
+        <EquivalentNote remittance={r} />
         <div className="kv">
           <span className="muted">Estado</span>
           <StatusBadge status={r.status} />
@@ -847,6 +868,13 @@ function CollectModal({ remittance: r, userId, thenAssignCourier = null, onClose
 // detalle) no llegan y el campo ni se pinta.
 function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssign = null, onClose }) {
   const isEdit = !!existing
+  const { hasModule } = useLicense()
+  const { baseCurrency, rateOf } = useCurrency()
+  // Equivalente informativo (modulo 'divisas' ademas de 'remesas'). La tasa VIGENTE
+  // se congela en la entrega al guardar, para que su equivalente no cambie de valor
+  // cuando el dueño mueva la tasa. Sin la licencia no se calcula ni se guarda nada:
+  // la entrega nace exactamente como hasta ahora.
+  const canCurrency = hasModule(LICENSE_MODULES.MULTICURRENCY)
   const [amount, setAmount] = useState(existing ? String(existing.amount ?? '') : '')
   const [currency, setCurrency] = useState(existing?.currency || 'MN')
   const [fee, setFee] = useState(existing ? String(existing.fee ?? '') : '')
@@ -895,6 +923,12 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
   }, [products])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // Moneda cuya tasa hace falta para el equivalente (divisa -> la suya; base -> la de
+  // referencia) y su tasa VIGENTE. Sin tasa cargada no se muestra ni se congela nada:
+  // es informativo y NO puede estorbar el alta.
+  const rateCurrency = canCurrency ? rateCurrencyFor(currency, baseCurrency) : null
+  const liveRate = rateCurrency ? rateOf(rateCurrency) : 0
+  const hasRate = liveRate > 0
   // Dinero y mercancía CONGELADOS: solo se corrigen antes de cobrar. Después ya hay un
   // cobro en una cuenta y/o producto cargado; se editan solo los datos de contacto.
   const moneyLocked = isEdit && existing.status !== REMITTANCE_STATUS.CREATED
@@ -944,6 +978,9 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
         paymentMode,
         kind,
         items,
+        // Tasa CONGELADA del equivalente informativo. Solo con la licencia 'divisas'
+        // y solo si hay tasa cargada; si no, no viaja el campo y todo queda igual.
+        ...(canCurrency && hasRate ? { rate: liveRate, rateCurrency } : {}),
         sender: { name: sName, phone: sPhone, idDoc: sId },
         beneficiary: { name: bName, phone: bPhone, address: bAddr, idDoc: bId }
       }
@@ -1086,6 +1123,26 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
               </select>
             </label>
           </div>
+        )}
+        {/* Equivalente INFORMATIVO mientras se teclea, a la tasa vigente —que es la
+            que se congela al guardar—. Gateado por 'divisas'; sin tasa cargada solo
+            se avisa: nunca impide crear la entrega (a diferencia del POS, donde el
+            equivalente SI es el cobro y sin tasa no se puede vender). */}
+        {!moneyLocked && canCurrency && rateCurrency && (
+          hasRate ? (
+            <>
+              <EquivalentNote
+                remittance={{ amount: Number(amount) || 0, currency, rate: liveRate, rateCurrency }}
+              />
+              <p className="muted">
+                <small>Tasa {rateCurrency} {liveRate} · se guarda con la entrega, así este equivalente no cambia después.</small>
+              </p>
+            </>
+          ) : (
+            <p className="muted">
+              <small>Sin tasa de {rateCurrency} no se puede mostrar el equivalente. La entrega se crea igual.</small>
+            </p>
+          )
         )}
         {/* Modo de cobro: IGUAL para dinero y para producto. El dinero del remitente
             entra a la cuenta de tesoreria que elija el dueño al registrar el pago

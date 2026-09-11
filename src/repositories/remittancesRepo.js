@@ -44,8 +44,10 @@ const EDITABLE_CONTACT = new Set([
   REMITTANCE_STATUS.IN_ROUTE,
   REMITTANCE_STATUS.DELIVERED
 ])
-// Campos que mueven dinero o mercancia (los del primer nivel).
-const MONEY_FIELDS = ['amount', 'currency', 'fee', 'paymentMode', 'items']
+// Campos que mueven dinero o mercancia (los del primer nivel). `rate`/`rateCurrency`
+// van aqui porque acompañan al monto: son la tasa CONGELADA con la que se muestra su
+// equivalente informativo, y solo tienen sentido mientras el monto se pueda corregir.
+const MONEY_FIELDS = ['amount', 'currency', 'fee', 'paymentMode', 'items', 'rate', 'rateCurrency']
 
 // Marca de tiempo de una MUTACION de la cabecera: nunca por debajo de la version
 // que reemplaza (ver `tsAfter` en lib/dates). Hace falta porque la cabecera la
@@ -170,7 +172,15 @@ export const remittancesRepo = {
 
   // Crea la orden. Congela remitente/beneficiario/monto (snapshot). Estado inicial
   // CREATED. Todo en una transaccion junto al evento de auditoria.
-  async create({ amount, currency = 'MN', sender = {}, beneficiary = {}, fee = 0, note = '', paymentMode = null, kind = DELIVERY_KIND.MONEY, items = [], createdBy = null }) {
+  //
+  // `rate`/`rateCurrency` son OPCIONALES: la tasa vigente al crearla y de que moneda
+  // es, para poder mostrar despues el equivalente INFORMATIVO en la otra moneda sin
+  // que el historico cambie de valor cuando el dueño mueva la tasa (mismo congelado
+  // que `priceCurrency`/`priceRate` en una linea de venta). Los calcula la PANTALLA,
+  // que es quien sabe si la licencia 'divisas' esta desbloqueada; sin ellos la
+  // entrega nace exactamente como hasta ahora. Campos nuevos SIN indice y SIN
+  // migracion Dexie, como `sales.area`. No entran en ninguna suma: son para leer.
+  async create({ amount, currency = 'MN', sender = {}, beneficiary = {}, fee = 0, note = '', paymentMode = null, kind = DELIVERY_KIND.MONEY, items = [], rate = null, rateCurrency = null, createdBy = null }) {
     const isProduct = kind === DELIVERY_KIND.PRODUCT
     const amt = round2(Number(amount) || 0)
     // El monto es obligatorio en entregas de DINERO; en producto puede ser 0 (sin cobro).
@@ -217,6 +227,8 @@ export const remittancesRepo = {
         currency,
         fee: round2(Number(fee) || 0),
         paymentMode: mode,
+        // Tasa congelada (solo si la pantalla la mando; ver el comentario de arriba).
+        ...(Number(rate) > 0 && rateCurrency ? { rate: Number(rate), rateCurrency } : {}),
         sender: s,
         beneficiary: b,
         // Se asignara a un mensajero en una fase posterior (con el libro de custodia).
@@ -269,6 +281,11 @@ export const remittancesRepo = {
         patch.amount = amt
       }
       if (fields.currency != null) patch.currency = fields.currency
+      // Tasa congelada del equivalente informativo: se recalcula con el monto (si se
+      // corrige la moneda hay que volver a sellarla, o diria un equivalente que no
+      // corresponde). `remittanceEquivalent` tambien lo comprueba al leer.
+      if (fields.rate != null) patch.rate = Number(fields.rate) > 0 ? Number(fields.rate) : null
+      if (fields.rateCurrency != null) patch.rateCurrency = fields.rateCurrency || null
       if (fields.fee != null) patch.fee = round2(Number(fields.fee) || 0)
       if (fields.paymentMode != null) {
         patch.paymentMode = fields.paymentMode === PAYMENT_MODE.ON_CREDIT ? PAYMENT_MODE.ON_CREDIT : PAYMENT_MODE.UPFRONT

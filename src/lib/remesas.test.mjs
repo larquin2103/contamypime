@@ -9,7 +9,10 @@
 //
 // Es la MISMA condicion que usa el candado de `failReturn` (Capa 3): si hay
 // constancia de ENTREGADA, la entrega no puede marcarse fallida.
-import { shouldReconcileDelivered, isPendingCollection, remittanceGroup, REMITTANCE_GROUP } from './remesas.js'
+import {
+  shouldReconcileDelivered, isPendingCollection, remittanceGroup, REMITTANCE_GROUP,
+  rateCurrencyFor, remittanceEquivalent
+} from './remesas.js'
 import { REMITTANCE_STATUS, DELIVERY_RESULT, PAYMENT_MODE } from '../db/constants.js'
 
 let pass = 0
@@ -87,6 +90,53 @@ eq('fila basura -> false', shouldReconcileDelivered(rem(REMITTANCE_STATUS.ASSIGN
   eq('una reparada cae en Completado',
     remittanceGroup({ status: REMITTANCE_STATUS.DELIVERED, paymentMode: PAYMENT_MODE.UPFRONT }).key,
     REMITTANCE_GROUP.DONE.key)
+}
+
+// --- Equivalente informativo con la tasa CONGELADA --------------------------
+// Que tasa hay que congelar segun la moneda de la entrega.
+eq('tasa a congelar de una entrega en USD -> USD', rateCurrencyFor('USD', 'MN'), 'USD')
+eq('tasa a congelar de una entrega en MLC -> MLC', rateCurrencyFor('MLC', 'MN'), 'MLC')
+eq('tasa a congelar de una entrega en MN -> la de referencia (USD)', rateCurrencyFor('MN', 'MN'), 'USD')
+eq('sin moneda se asume la base -> USD', rateCurrencyFor('', 'MN'), 'USD')
+
+// Divisa -> base (se multiplica).
+eq('100 USD a 320 -> 32000 MN',
+  remittanceEquivalent({ amount: 100, currency: 'USD', rate: 320, rateCurrency: 'USD' }, 'MN'),
+  { amount: 32000, currency: 'MN' })
+eq('50 MLC a 250 -> 12500 MN',
+  remittanceEquivalent({ amount: 50, currency: 'MLC', rate: 250, rateCurrency: 'MLC' }, 'MN'),
+  { amount: 12500, currency: 'MN' })
+
+// Base -> divisa de referencia (se divide, y se redondea a 2).
+eq('32000 MN a 320 -> 100 USD',
+  remittanceEquivalent({ amount: 32000, currency: 'MN', rate: 320, rateCurrency: 'USD' }, 'MN'),
+  { amount: 100, currency: 'USD' })
+eq('1000 MN a 320 -> 3.13 USD (redondeo a 2)',
+  remittanceEquivalent({ amount: 1000, currency: 'MN', rate: 320, rateCurrency: 'USD' }, 'MN'),
+  { amount: 3.13, currency: 'USD' })
+
+// Lo que NO se puede decir: no se inventa nada (informativo, nunca estorba).
+eq('sin tasa congelada -> null',
+  remittanceEquivalent({ amount: 100, currency: 'USD' }, 'MN'), null)
+eq('tasa 0 -> null (no divide por cero ni multiplica por cero)',
+  remittanceEquivalent({ amount: 100, currency: 'USD', rate: 0, rateCurrency: 'USD' }, 'MN'), null)
+eq('monto 0 -> null',
+  remittanceEquivalent({ amount: 0, currency: 'USD', rate: 320, rateCurrency: 'USD' }, 'MN'), null)
+eq('entrega sin nada (las de antes de este campo) -> null',
+  remittanceEquivalent({ amount: 100, currency: 'MN' }, 'MN'), null)
+eq('tasa que NO corresponde a la moneda (se corrigio la moneda) -> null',
+  remittanceEquivalent({ amount: 100, currency: 'USD', rate: 320, rateCurrency: 'MLC' }, 'MN'), null)
+eq('entrega en MN con la tasa de MLC congelada -> null (la referencia es USD)',
+  remittanceEquivalent({ amount: 100, currency: 'MN', rate: 250, rateCurrency: 'MLC' }, 'MN'), null)
+eq('entrega nula -> null', remittanceEquivalent(null, 'MN'), null)
+
+// La tasa CONGELADA manda: mover la tasa de hoy no cambia lo que dice la entrega.
+{
+  const entrega = { amount: 100, currency: 'USD', rate: 320, rateCurrency: 'USD' }
+  eq('la entrega vale lo de su dia, no lo de hoy',
+    remittanceEquivalent(entrega, 'MN'), { amount: 32000, currency: 'MN' })
+  eq('y sigue igual al volver a leerla',
+    remittanceEquivalent({ ...entrega }, 'MN'), { amount: 32000, currency: 'MN' })
 }
 
 console.log(`\n${pass} pass, ${fail} fail`)
