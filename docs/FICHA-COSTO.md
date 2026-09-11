@@ -1835,6 +1835,7 @@ con **17 líneas borradas en todo `src/`**. Esos 12 se leyeron enteros.
 | Que el CSS no pise nada | `grep` de `.ficha` en `4e28ab0` | 0 antes, 3 clases nuevas al final |
 | Escrituras en tablas de producción | `grep` de `db.<tabla>` en todo el módulo | Solo `costSheets`, `costSheetLines` y **`auditEvents`**, con `entity:'costSheet'`; su **único** lector filtra `entity==='product'` (`productsRepo.js:121`) |
 | Uso de repos ajenos | `grep` en `features/costsheets/` | Solo `productsRepo.listActive()` y `recipesRepo.listActive()`, **lectura y gateados** |
+| Migración **v17 → v19 con datos dentro** | Base sembrada con el esquema real de `4e28ab0` (2 productos, venta, movimiento del libro mayor, usuario, evento de auditoría, turno), cerrada y **reabierta con el esquema de hoy**, sobre `fake-indexeddb` | **Abre sin `VersionError`**, `verno` = 19, **todos los datos intactos**, los índices viejos siguen consultando (`*searchTokens`, `active`), y las dos tablas nuevas nacen **vacías** con su índice compuesto operativo. **0 fallos** |
 | Convivencia de versiones (un teléfono actualizado y otro no) | Lectura de `SYNC_COLLECTIONS` en las dos versiones | El build viejo no conoce las colecciones nuevas: ni las consulta. Los `auditEvents` de ficha que le lleguen los ignora por el filtro de arriba |
 
 **Lo que SÍ cambia para todos, incluidos los negocios sin la licencia.** No es una ruptura, pero es
@@ -1843,13 +1844,25 @@ el precio del import estático y hay que saberlo antes de desplegar:
 - **Peso**, medido construyendo `4e28ab0` en un **worktree aparte**: chunk principal **856.45 kB**
   (gzip 248.33) → **941.56 kB** (gzip **272.49**). **+85.11 kB, +9.9 %**; el CSS, +0.44 kB. Como el
   chunk lleva hash, **actualizar cuesta la descarga completa (~272 kB gzip por teléfono)**.
-- **Sync**: `SYNC_COLLECTIONS` pasa de 32 a **34**. Dos `getDocs` más por barrido (una consulta
-  vacía cuenta igual) y dos `onSnapshot` permanentes más por dispositivo, **haya o no licencia**.
-  Va en contra de lo que propone `docs/SYNC-LECTURAS.md`.
+- **Sync**: `SYNC_COLLECTIONS` pasa de 32 a **34**: dos `onSnapshot` permanentes más por
+  dispositivo y dos consultas más por enganche en frío, **haya o no licencia**. **Cuantificado para
+  no alarmar de más:** por el modelo de `docs/SYNC-LECTURAS.md` (lecturas ≈ documentos × arranques
+  en frío × dispositivos), dos colecciones **vacías** son ~1 lectura cada una por enganche —
+  **decenas al día frente a 60.000 medidas**. La avería de cuota (120 % del tope) es
+  **preexistente** y este módulo no la agrava de forma apreciable.
+
+**Sobre el retroceso, un resultado que NO confirma lo que dice §9.6.** En la misma prueba, el
+esquema viejo **sí** pudo reabrir la base ya migrada. Es un IndexedDB **simulado**, así que **no
+sirve para afirmar que el retroceso funciona** en un navegador real —ni para desmentir §9.6—, y
+además el bloqueo documentado de `backupService.js:86` (rechazar un respaldo de esquema superior)
+es independiente y sigue en pie. **La regla no cambia: respaldo ANTES de desplegar.** Queda
+anotado porque es una discrepancia real entre lo escrito y lo observado, y quien la retome debe
+saber que está sin resolver.
 
 **Lo que esta auditoría NO dice.** Que la app funcione. **No se ejecutó**: ni una ficha creada, ni
-un PDF descargado desde el teléfono, ni una fusión entre dos aparatos. Es código, build y node.
-Y sigue abierto el hallazgo de la **carrera al crear revisiones** (§9.15): se fusionó con él dentro.
+un PDF descargado desde el teléfono, ni una fusión entre dos aparatos. Es código, build y node —
+con la salvedad de la migración de arriba, que sí se ejecutó de verdad. Y sigue abierto el
+hallazgo de la **carrera al crear revisiones** (§9.15): se fusionó con él dentro.
 
 ## 10. Lo que NO se puede garantizar (regla 5: decirlo siempre)
 

@@ -683,6 +683,15 @@ despliega, ¿puede romper algo de lo que hoy funciona?* **Ejecutado, no citado**
   Su **único** lector filtra `entity === 'product'` (`productsRepo.js:121`): no se cruzan. De los
   repos ajenos solo usa `productsRepo.listActive()` y `recipesRepo.listActive()`, **en lectura y
   gateados**.
+- **Migración v17 → v19 CON DATOS DENTRO, ejecutada** (no leída): se sembró una base con el
+  esquema real de `4e28ab0` —productos, venta, movimiento del libro mayor, usuario, evento de
+  auditoría y turno—, se cerró y se **reabrió con el esquema de hoy** sobre `fake-indexeddb`.
+  **Abre sin `VersionError`, los datos quedan intactos, los índices viejos siguen consultando** y
+  las dos tablas nuevas nacen vacías. **0 fallos.** Es la prueba que faltaba: lo que le pasa al
+  teléfono del dueño al abrir el build nuevo. *(En esa misma prueba el esquema viejo pudo reabrir
+  la base migrada, lo que NO concuerda con lo escrito sobre el retroceso; es un IndexedDB simulado,
+  así que no prueba nada en un navegador real y **la regla del respaldo previo no cambia** — ver
+  `docs/FICHA-COSTO.md` §9.17.)*
 - **Convivencia de versiones** (un teléfono actualizado y otro no, que es lo normal mientras la PWA
   se refresca): el build viejo no tiene las dos colecciones nuevas en `SYNC_COLLECTIONS`, así que ni
   las consulta; y los `auditEvents` de ficha que sí le llegan los ignora por el filtro de arriba.
@@ -695,9 +704,13 @@ un coste que hay que saber antes de desplegar):
   +0.44 kB. Se paga por el **import estático** de las pantallas en `router.jsx`. Y como el chunk
   lleva hash, **la actualización cuesta la descarga completa (~272 kB gzip por teléfono)**, no el
   delta.
-- **Sync:** `SYNC_COLLECTIONS` pasa de 32 a **34**. Son **dos `getDocs` más por barrido** (una
-  consulta vacía cuenta igual como lectura) y **dos `onSnapshot` permanentes más** por dispositivo,
-  aunque el negocio no tenga el módulo. Va en la dirección contraria a `docs/SYNC-LECTURAS.md`.
+- **Sync:** `SYNC_COLLECTIONS` pasa de 32 a **34**: dos `onSnapshot` permanentes más por
+  dispositivo y dos consultas más en cada enganche en frío, aunque el negocio no tenga el módulo.
+  **Tamaño del efecto, para no alarmar de más:** según el modelo del propio `docs/SYNC-LECTURAS.md`
+  (lecturas ≈ documentos × arranques en frío × dispositivos), dos colecciones **vacías** cuestan
+  ~1 lectura cada una por enganche — **decenas de lecturas al día frente a las 60.000 medidas**.
+  Va en la dirección contraria a ese plan, pero **no mueve la aguja**: la avería de cuota (120 %
+  del tope) es **preexistente e independiente** de este módulo.
 
 **Lo que esta auditoría NO puede decir:** que la app funcione. **No se ejecutó**: ni una ficha
 creada, ni un PDF descargado desde el teléfono, ni una fusión entre dos aparatos. Todo lo de arriba
