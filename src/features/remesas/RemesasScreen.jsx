@@ -170,6 +170,12 @@ export function RemesasScreen() {
   const settlements = useLiveQuery(() => settlementsRepo.list(), [], [])
   const [openId, setOpenId] = useState(null)
   const [creating, setCreating] = useState(false)
+  // Entrega recien creada con un mensajero elegido EN EL ALTA y cobro ANTICIPADO:
+  // queda pendiente de registrar el pago (lo unico que la deja en FONDOS DISPONIBLES,
+  // que es lo que `assign` exige). Guarda { id, courier } para encadenar el modal de
+  // pago de siempre y asignar al confirmarlo, sin volver a la entrega. En contra
+  // entrega no hace falta: no hay pago que registrar y el alta ya asigna.
+  const [payThenAssign, setPayThenAssign] = useState(null)
 
   // Al abrir la pantalla: repara la cabecera de las entregas en curso a partir de
   // la CONSTANCIA del mensajero (ver remittancesRepo.reconcileFromDeliveries). Una
@@ -229,6 +235,10 @@ export function RemesasScreen() {
       />
     )
   }
+
+  // Entrega del encadenado (alta anticipada con mensajero ya elegido), tomada de la
+  // lista viva: no hace falta releerla de la base.
+  const payTarget = payThenAssign ? allRemittances.find((x) => x.id === payThenAssign.id) : null
 
   return (
     <div className="screen">
@@ -293,7 +303,29 @@ export function RemesasScreen() {
         />
       )}
 
-      {creating && <RemittanceForm userId={user.id} onClose={() => setCreating(false)} />}
+      {creating && (
+        <RemittanceForm
+          userId={user.id}
+          couriers={couriers}
+          onPayThenAssign={setPayThenAssign}
+          onClose={() => setCreating(false)}
+        />
+      )}
+      {/* Encadenado del alta con cobro ANTICIPADO: el MISMO modal de pago de siempre
+          (cuenta, monto, quien pago, comprobante) y, al confirmarlo, la asignacion al
+          mensajero que el mando eligio al crearla. La entrega sale de la lista viva
+          (useLiveQuery), asi que no hace falta releerla. Si el mando cierra el modal
+          sin cobrar, la entrega queda CREADA y sin asignar —estado normal de hoy—:
+          nada se pierde y puede seguir desde la entrega. */}
+      {payTarget && (
+        <CollectModal
+          remittance={payTarget}
+          userId={user.id}
+          thenAssignCourier={payThenAssign.courier}
+          onClose={() => setPayThenAssign(null)}
+          onDone={() => setPayThenAssign(null)}
+        />
+      )}
     </div>
   )
 }
@@ -662,7 +694,13 @@ function DeliverModal({ remittance: r, userId, onClose, onDone }) {
 // (modulo 'cuentas'), el monto recibido (por defecto el de la entrega), quien pago y
 // un comprobante (foto). Al confirmar acredita la cuenta y la entrega sale de "por
 // cobrar". Sin el modulo 'cuentas' se marca cobrada sin cuenta (degradacion limpia).
-function CollectModal({ remittance: r, userId, onClose, onDone }) {
+//
+// `thenAssignCourier` es OPCIONAL y solo lo usa el alta que ya eligio mensajero: al
+// confirmar el pago se asigna acto seguido, dentro del mismo try (si la asignacion
+// falla, el error se pinta aqui y se puede reintentar: `collect` es idempotente
+// —`if (r.collectedAt) return`—, asi que el reintento no cobra dos veces). Sin el
+// prop, este modal se comporta EXACTAMENTE como hasta ahora para sus dos llamadores.
+function CollectModal({ remittance: r, userId, thenAssignCourier = null, onClose, onDone }) {
   const { hasModule } = useLicense()
   const hasAccounts = hasModule(LICENSE_MODULES.ACCOUNTS)
   const accounts = useLiveQuery(() => (hasAccounts ? accountsRepo.list() : Promise.resolve([])), [hasAccounts], [])
@@ -712,6 +750,11 @@ function CollectModal({ remittance: r, userId, onClose, onDone }) {
         note,
         actorId: userId
       })
+      // Alta que ya eligio mensajero: el pago la dejo en FONDOS DISPONIBLES, que es
+      // justo lo que `assign` exige, asi que se asigna sin volver a la entrega.
+      if (thenAssignCourier?.id) {
+        await remittancesRepo.assign(r.id, thenAssignCourier.id, { actorId: userId })
+      }
       onDone()
     } catch (e) {
       setError(e.message)
@@ -727,6 +770,13 @@ function CollectModal({ remittance: r, userId, onClose, onDone }) {
           {isPago ? 'Pago del remitente ' : 'Cobro del remitente '}
           <strong>{r.sender?.name || '—'}</strong>. Entra a la cuenta que elijas.
         </p>
+        {/* Alta que ya eligio mensajero: se avisa de que al confirmar se asigna sola. */}
+        {thenAssignCourier?.id && (
+          <p className="muted">
+            Al confirmar, la entrega se <strong>asigna a {thenAssignCourier.name}</strong>
+            {r.kind === DELIVERY_KIND.PRODUCT ? ' y la mercancía sale del área Entregas a su custodia.' : '.'}
+          </p>
+        )}
 
         {hasAccounts ? (
           accounts.length > 0 ? (
@@ -790,7 +840,12 @@ function CollectModal({ remittance: r, userId, onClose, onDone }) {
 
 // Formulario de alta / edicion (edicion solo permitida en estado CREATED, lo
 // valida el repo). Congela remitente/beneficiario/monto al crear.
-function RemittanceForm({ userId, existing = null, onClose }) {
+//
+// En el ALTA puede ademas ASIGNAR el mensajero de una vez (campo OPCIONAL): sin
+// elegirlo, el alta termina como siempre —entrega CREADA y nada mas—. `couriers` y
+// `onPayThenAssign` solo los pasa la pantalla de alta; en la EDICION (que abre el
+// detalle) no llegan y el campo ni se pinta.
+function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssign = null, onClose }) {
   const isEdit = !!existing
   const [amount, setAmount] = useState(existing ? String(existing.amount ?? '') : '')
   const [currency, setCurrency] = useState(existing?.currency || 'MN')
@@ -808,6 +863,13 @@ function RemittanceForm({ userId, existing = null, onClose }) {
   const [items, setItems] = useState(existing?.items ? existing.items.map((it) => ({ ...it })) : [])
   const [pickProduct, setPickProduct] = useState('')
   const [pickQty, setPickQty] = useState('')
+  // Mensajero elegido en el alta ('' = no asignar ahora = comportamiento de siempre).
+  const [courierId, setCourierId] = useState('')
+  // Id de la entrega YA creada en este formulario. Guarda contra el DUPLICADO: si el
+  // alta salio bien pero el paso siguiente (preparar/asignar) fallo, el mando ve el
+  // error con el formulario todavia abierto, y volver a tocar "Crear entrega" tiene que
+  // reintentar la asignacion, NO crear una segunda entrega.
+  const [createdId, setCreatedId] = useState(null)
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const isProduct = kind === DELIVERY_KIND.PRODUCT
   // Solo lo que HAY en el area "Entregas" —lo que el mando le dio salida desde el
@@ -888,9 +950,36 @@ function RemittanceForm({ userId, existing = null, onClose }) {
     try {
       if (isEdit) {
         await remittancesRepo.update(existing.id, payload, { actorId: userId })
-      } else {
-        await remittancesRepo.create({ ...payload, createdBy: userId })
+        onClose()
+        return
       }
+      // Alta. `createdId` evita crear una segunda entrega si ya se creo y lo que fallo
+      // fue el paso siguiente (el mando reintenta con el mismo boton).
+      let id = createdId
+      if (!id) {
+        id = await remittancesRepo.create({ ...payload, createdBy: userId })
+        setCreatedId(id)
+      }
+      // Sin mensajero elegido, el alta termina aqui: EXACTAMENTE como hasta ahora.
+      if (!courierId) {
+        onClose()
+        return
+      }
+      if (paymentMode === PAYMENT_MODE.ON_CREDIT) {
+        // Contra entrega: no hay pago que registrar, asi que se hacen los dos pasos que
+        // hoy se dan a mano desde la entrega ("Preparar para asignar" -> "Asignar").
+        await remittancesRepo.setStatus(id, REMITTANCE_STATUS.FUNDS_AVAILABLE, { actorId: userId })
+        await remittancesRepo.assign(id, courierId, { actorId: userId })
+        onClose()
+        return
+      }
+      // Anticipado: primero hay que registrar el pago (es lo que la deja en FONDOS
+      // DISPONIBLES y acredita la cuenta). Se delega en el modal de pago de siempre,
+      // que asigna al confirmarlo. El alta ya cumplio: se cierra.
+      // El nombre es solo para el aviso del modal; si no se encontrara (el usuario se
+      // dio de baja entre medias) se sigue asignando igual: lo que manda es el id.
+      const courier = couriers.find((c) => c.id === courierId) || { id: courierId, name: 'el mensajero' }
+      if (onPayThenAssign) onPayThenAssign({ id, courier })
       onClose()
     } catch (e) {
       setError(e.message)
@@ -1077,7 +1166,39 @@ function RemittanceForm({ userId, existing = null, onClose }) {
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Referencia interna" />
         </label>
 
+        {/* Asignacion en el propio alta (OPCIONAL). Ahorra tener que volver a la
+            entrega para "Preparar para asignar" y "Asignar mensajero". Dejandolo en
+            "No asignar ahora" —el valor por defecto— el alta hace lo de siempre. Solo
+            se ofrece al CREAR y si hay mensajeros activos. */}
+        {!isEdit && couriers.length > 0 && (
+          <>
+            <label className="field">
+              <span>Asignar a mensajero (opcional)</span>
+              <select value={courierId} onChange={(e) => setCourierId(e.target.value)}>
+                <option value="">— No asignar ahora —</option>
+                {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            {courierId && (
+              <p className="muted">
+                {paymentMode === PAYMENT_MODE.UPFRONT
+                  ? 'Al crearla se abre el registro del pago y, al confirmarlo, se asigna al mensajero.'
+                  : 'Se crea y se asigna al mensajero de una vez.'}
+                {isProduct ? ' La mercancía sale del área Entregas a su custodia.' : ''}
+              </p>
+            )}
+          </>
+        )}
+
         {error && <p className="error">{error}</p>}
+        {/* Si el alta salio bien y lo que fallo fue la asignacion, hay que decirlo: el
+            formulario sigue abierto y el mando podria creer que no se guardo nada. */}
+        {error && createdId && (
+          <p className="muted">
+            La entrega <strong>ya quedó creada</strong>; lo que falló fue asignarla. Al
+            reintentar no se crea otra, y también puedes cerrar y asignarla desde la entrega.
+          </p>
+        )}
         <div className="modal__actions">
           <button className="btn btn--ghost" onClick={onClose}>Cancelar</button>
           <button
@@ -1089,7 +1210,9 @@ function RemittanceForm({ userId, existing = null, onClose }) {
             }
             onClick={save}
           >
-            {busy ? 'Guardando…' : (isEdit ? 'Guardar cambios' : 'Crear entrega')}
+            {busy
+              ? 'Guardando…'
+              : (isEdit ? 'Guardar cambios' : (createdId ? 'Reintentar asignación' : 'Crear entrega'))}
           </button>
         </div>
       </div>
