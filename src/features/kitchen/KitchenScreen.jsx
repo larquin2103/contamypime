@@ -105,6 +105,11 @@ export function KitchenScreen() {
 
   const canNow = producing ? kitchenRepo.canMake(producing, productById) : 0
 
+  // Las tarjetas salen ORDENADAS ALFABETICAMENTE por el nombre de la receta: el repo
+  // las devuelve por clave primaria (UUID), que para el cocinero es un orden al azar.
+  // Mismo criterio que la lista de recetas del mando (localeCompare), sin tocar el repo.
+  const sortedRecipes = [...recipes].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+
   return (
     <div className="screen">
       <h2>Tablero de cocina</h2>
@@ -128,7 +133,7 @@ export function KitchenScreen() {
       ) : (
         <section className="card">
           <div className="kitchen-grid">
-            {recipes.map((r) => {
+            {sortedRecipes.map((r) => {
               const n = kitchenRepo.canMake(r, productById)
               const thumb = photos.get(r.outputProductId)
               return (
