@@ -4,12 +4,17 @@ Documento **único de traspaso** del módulo. Recoge todo lo que estaba disperso
 local de una máquina para que el trabajo pueda **continuarse desde otra PC y otra sesión** sin
 volver a leer la Gaceta ni a rehacer el diseño.
 
-> **Estado al 04-09-2026: LAS DOCE FASES (F0–F11) HECHAS. El módulo está completo y auditado, y
-> el §2 YA SE CONTRASTÓ CONTRA LA GACETA. NO ESTÁ FUSIONADO a `main`: espera la aprobación del
-> dueño. Informe de la auditoría, con lo que cumple, lo que se corrigió y lo que la Resolución no
-> dice: §9.15.**
+> **Estado al 11-09-2026: LAS DOCE FASES (F0–F11) HECHAS, H3 CERRADO y el módulo FUSIONADO A
+> `main`** (fast-forward de 28 commits el 11-09-2026; `origin/main` = **`fd24823`**). El §2 ya se
+> contrastó contra la Gaceta: el informe, con lo que cumple, lo que se corrigió y lo que la
+> Resolución no dice, en **§9.15**; el cierre de H3 en **§9.16**; y la auditoría de la fusión —qué
+> se comprobó de que no rompe lo que ya funciona— en **§9.17**.
+> **OJO: fusionar no es desplegar.** En producción sigue el build anterior hasta que se corra
+> `npm run deploy`, y **el respaldo de retroceso hay que tomarlo ANTES de ese despliegue** (§9.6:
+> el esquema es de ida). **Y nadie ha ejecutado la app con el módulo dentro.**
 > **Ya existen** `src/lib/fichaCosto.js` (motor puro) con `src/lib/fichaCosto.test.mjs`
-> (**243 aserciones**; el total del proyecto son **407** en **7** suites), la versión **Dexie v18** con la tabla `costSheets`,
+> (**243 aserciones**; el total del proyecto son **462** en **8** suites), las versiones **Dexie
+> v18 y v19** con las tablas `costSheets` y `costSheetLines`,
 > `src/repositories/costSheetsRepo.js`, las etiquetas en `src/db/constants.js`, el módulo de
 > licencia `fichas`, las pantallas `src/features/costsheets/CostSheetsScreen.jsx` (lista) y
 > `CostSheetScreen.jsx` (editor, **solo el bloque 1**), las rutas `/fichas`, `/ficha/nueva` y
@@ -21,9 +26,11 @@ volver a leer la Gaceta ni a rehacer el diseño.
 > `RefsBlock.jsx` y `SignBlock.jsx` (bloques 8 y 9: Fila 16, firmas y ciclo de vida) y de F9
 > `features/reports/fichaReports.js` con su suite propia (las tres hojas oficiales). De F10, la
 > pestaña **Fichas** en `/auditoria` y dos artículos en `/help` (gateados). **Ya no queda dato
-> ciego:** los eventos de `costSheet` se escribían desde F2 y ahora tienen pantalla. Las suites
-> son **7**, con **407 aserciones**.
-> Rama de desarrollo: `claude/awesome-dirac-484azm` (nada a `main` sin autorización).
+> ciego:** los eventos de `costSheet` se escribían desde F2 y ahora tienen pantalla. Y de H3,
+> `src/lib/fichaLines.js` con su suite (las líneas de los anexos como filas sueltas). Las suites
+> son **8**, con **462 aserciones**.
+> Rama de desarrollo: `claude/awesome-dirac-484azm`, **hoy idéntica a `main`** (nada a `main` sin
+> autorización del dueño; la del 11-09-2026 fue explícita).
 >
 > **Mantener este bloque al día en CADA fase.** Este fichero existe para continuar el trabajo
 > desde otra PC; si miente sobre su propio estado, la siguiente sesión rehace lo hecho.
@@ -740,9 +747,12 @@ se puede restaurar en un build v17**. Sumado a que la IndexedDB del aparato qued
 abre el build nuevo (y un build v17 ya no puede abrirla), el retroceso solo existe con un respaldo
 **tomado en v17**.
 
-**Regla operativa para el día de la fusión a `main`:** respaldo del dispositivo bueno **antes** de
+**Regla operativa, ahora que ya está fusionado:** respaldo del dispositivo bueno **antes** de
 desplegar, guardado fuera del teléfono. Un respaldo tomado después no sirve para volver atrás.
-Hoy no hay riesgo: `origin/main` sigue en `4e28ab0` (v17) y de ahí se despliega.
+**Desde el 11-09-2026 `origin/main` está en `fd24823` (v19) y de ahí se despliega**, así que el
+riesgo ya no es teórico: el siguiente `npm run deploy` sube el esquema en todos los teléfonos que
+abran la app. (Todo lo que dice v18 en este apartado vale igual para v19: el mecanismo es el mismo
+y ahora suben **dos** versiones de golpe.)
 
 ### 9.7 Estado exacto para continuar (01-09-2026, fin de sesión)
 
@@ -1798,16 +1808,61 @@ mismo `groupId`): no se tocó, no se pierde nada y es confusión, no dinero.
 
 ---
 
+### 9.17 Fusión a `main` y auditoría de impacto sobre producción (11-09-2026)
+
+**La fusión.** El dueño autorizó explícitamente subir el trabajo a `main`. Fast-forward de los
+**28 commits** de `claude/awesome-dirac-484azm`: `origin/main` pasó de `4e28ab0` a **`fd24823`** y
+las dos ramas quedaron idénticas (`git rev-list --left-right --count origin/main...HEAD` = `0 0`).
+Antes de fusionar, ejecutado: `npm run build` **exit 0** y las **8 suites** node en verde
+(**462/462** aserciones). No se creó Pull Request (regla 9).
+
+**La pregunta que responde esta auditoría** es la que hizo el dueño después: *¿puede esto romper
+algo de lo que hoy está en producción?* Se auditó **el diff contra `4e28ab0`**, no el módulo en
+abstracto.
+
+**Dónde puede estar el riesgo, y por qué es una superficie pequeña.** De los 34 ficheros del diff,
+**22 son nuevos** —no pueden afectar a nada que no los importe— y solo **12 son preexistentes**,
+con **17 líneas borradas en todo `src/`**. Esos 12 se leyeron enteros.
+
+| Qué se verificó | Cómo (ejecutado) | Resultado |
+|---|---|---|
+| Salida de los ~20 reportes existentes | Se extrajeron **de git** las dos versiones de `exportExcel`/`exportPdf`, se neutralizó solo la descarga al navegador y se generaron los ficheros en node con `xlsx` y `jspdf` | **Idénticos byte a byte** en 3 reportes × 2 formatos |
+| Que esa prueba mida algo | **Control negativo**: el mismo reporte **con** `header`/`footer` | La salida **sí** cambia (xlsx y pdf) |
+| Que la comparación de PDF sea válida | Dos corridas de la **misma** versión | Difieren por `/CreationDate`: se normalizó **solo** esa marca, y con eso el determinismo pasa |
+| Que nadie más pase `header`/`footer` | `grep` de los dos campos en todo `src/` | Solo `fichaReports.js` (3 sitios) |
+| Que `/help` no se caiga | `LicenseProvider.jsx:104` | `modules` es `[]` si no hay licencia: **nunca `undefined`**. Y `downloadHelpPdf` tiene un solo llamador, que sí lo pasa |
+| Colisión de los nombres de tabla con Dexie | Instanciar **Dexie 4.4.4** y declarar los stores | `db.costSheets` y `db.costSheetLines` son `Table` reales. Era el fallo **silencioso** que avisa la nota de v16 |
+| Que el CSS no pise nada | `grep` de `.ficha` en `4e28ab0` | 0 antes, 3 clases nuevas al final |
+| Escrituras en tablas de producción | `grep` de `db.<tabla>` en todo el módulo | Solo `costSheets`, `costSheetLines` y **`auditEvents`**, con `entity:'costSheet'`; su **único** lector filtra `entity==='product'` (`productsRepo.js:121`) |
+| Uso de repos ajenos | `grep` en `features/costsheets/` | Solo `productsRepo.listActive()` y `recipesRepo.listActive()`, **lectura y gateados** |
+| Convivencia de versiones (un teléfono actualizado y otro no) | Lectura de `SYNC_COLLECTIONS` en las dos versiones | El build viejo no conoce las colecciones nuevas: ni las consulta. Los `auditEvents` de ficha que le lleguen los ignora por el filtro de arriba |
+
+**Lo que SÍ cambia para todos, incluidos los negocios sin la licencia.** No es una ruptura, pero es
+el precio del import estático y hay que saberlo antes de desplegar:
+
+- **Peso**, medido construyendo `4e28ab0` en un **worktree aparte**: chunk principal **856.45 kB**
+  (gzip 248.33) → **941.56 kB** (gzip **272.49**). **+85.11 kB, +9.9 %**; el CSS, +0.44 kB. Como el
+  chunk lleva hash, **actualizar cuesta la descarga completa (~272 kB gzip por teléfono)**.
+- **Sync**: `SYNC_COLLECTIONS` pasa de 32 a **34**. Dos `getDocs` más por barrido (una consulta
+  vacía cuenta igual) y dos `onSnapshot` permanentes más por dispositivo, **haya o no licencia**.
+  Va en contra de lo que propone `docs/SYNC-LECTURAS.md`.
+
+**Lo que esta auditoría NO dice.** Que la app funcione. **No se ejecutó**: ni una ficha creada, ni
+un PDF descargado desde el teléfono, ni una fusión entre dos aparatos. Es código, build y node.
+Y sigue abierto el hallazgo de la **carrera al crear revisiones** (§9.15): se fusionó con él dentro.
+
 ## 10. Lo que NO se puede garantizar (regla 5: decirlo siempre)
 
 1. Todo se valida por **código + build + pruebas node**; no hay runtime en el dispositivo del
-   dueño. **Nada se declara "probado" sin que él lo pruebe.**
-2. **v18 es de ida:** no hay manejo de `VersionError`; en cuanto un teléfono abra el build nuevo
-   su IndexedDB queda en v18 y no puede volver a v17. **Hacer `/backup` de un dispositivo bueno
-   ANTES de actualizar** es el plan de retroceso real, y el **antes** es obligatorio: un respaldo
-   tomado ya en v18 **NO se puede restaurar** en un build v17, porque `backupService.js:86`
-   rechaza cualquier respaldo cuyo `meta.schema` supere al esquema de la app. Detalle verificado
-   en §9.6.
+   dueño. **Nada se declara "probado" sin que él lo pruebe.** Esto **no cambió** con la fusión a
+   `main` del 11-09-2026: estar en `main` no es haberlo ejecutado.
+2. **v18 y v19 son de ida, y suben las DOS de golpe:** no hay manejo de `VersionError`; en cuanto
+   un teléfono abra el build nuevo su IndexedDB queda en v19 y no puede volver a v17. **Hacer
+   `/backup` de un dispositivo bueno ANTES de actualizar** es el plan de retroceso real, y el
+   **antes** es obligatorio: un respaldo tomado ya en v19 **NO se puede restaurar** en un build
+   v17, porque `backupService.js:86` rechaza cualquier respaldo cuyo `meta.schema` supere al
+   esquema de la app. Detalle verificado en §9.6. **Desde el 11-09-2026 esto está en `main`**, así
+   que el próximo `npm run deploy` lo activa en todos los teléfonos.
 3. Los tipos de Seguridad Social y de Utilización de la Fuerza de Trabajo **no están en la
    Resolución**: van configurables, por defecto 0. **No inventar porcentajes.**
 4. El Anexo II norma a entidades estatales; para la MYPIME es referencia (Art. 6), por eso todo

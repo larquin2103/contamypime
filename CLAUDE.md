@@ -291,10 +291,11 @@ parámetro `modules` de `downloadHelpPdf` llega **vacío por defecto**, que es e
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
-- **`fichas`** — **F0 a F11 HECHAS y H3 CERRADO (07-09-2026). SIN FUSIONAR a `main`: espera la aprobación del dueño.** Ficha de costos y gastos de la **Res. 148/2023 MFP**:
+- **`fichas`** — **F0 a F11 HECHAS, H3 CERRADO y FUSIONADO A `main` el 11-09-2026** (`origin/main` = `fd24823`). Ficha de costos y gastos de la **Res. 148/2023 MFP**:
   reutiliza el catálogo y el stock para construir el documento oficial de 16 filas con sus dos
   anexos, y lo exporta. Solo **mando** (expone costos y ganancia). OFF por defecto. Hecho hasta
-  hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18** (`costSheets`),
+  hoy: motor puro `lib/fichaCosto.js` (probado con node), Dexie **v18 + v19** (`costSheets` y
+  `costSheetLines`),
   `costSheetsRepo`, el módulo de licencia, y de F4 la **lista `/fichas`** y el **bloque 1
   (Identificación)** del editor (`/ficha/nueva`, `/ficha/:id`) en `features/costsheets/`, con la
   tarjeta gateada del Home, de F5 el **bloque 2 (gasto material)** —anexo de insumos, portadores
@@ -328,9 +329,9 @@ parámetro `modules` de `downloadHelpPdf` llega **vacío por defecto**, que es e
   worker precachea todos los chunks, así que diferir no ahorra datos a nadie). **Regla de escala
   cerrada en F5:** la receta define el consumo de **una** unidad y la columna (5) del anexo es el
   del **nivel de producción completo**, así que al importar se **multiplica por el nivel** (sin
-  eso la ficha se subvalúa ×nivel, en silencio). **No queda nada del módulo por programar**: lo
-  que sigue abierto es la decisión del dueño de fusionar y **un** hallazgo (la carrera al crear
-  revisiones), abajo. Todo el
+  eso la ficha se subvalúa ×nivel, en silencio). **No queda nada del módulo por programar** y **ya está en `main`**: lo
+  que sigue abierto es **un** hallazgo (la carrera al crear revisiones) y, sobre todo, que
+  **nadie ha ejecutado la app** con el módulo. Todo el
   traspaso está en **`docs/FICHA-COSTO.md`** (leerlo antes de tocar nada del módulo).
 
 ## Entregas (módulo `remesas`)
@@ -512,7 +513,21 @@ solo mando), `RecipeForm` (editor) y `KitchenScreen` (tablero `/cocina`). Repos:
   idéntica. Quitar `cocina` no borra recetas ni elaborados (append-only); conviene **cambiar el rol**
   de un Cocinero antes de quitarlo (si no, queda sin turno ni tablero).
 
-## Estado del trabajo en curso (28-08-2026)
+## Estado del trabajo en curso (11-09-2026)
+
+**EL MÓDULO `fichas` YA ESTÁ FUSIONADO A `main`.** El dueño lo autorizó el **11-09-2026** y se
+hizo **fast-forward** de los **28 commits** de `claude/awesome-dirac-484azm`: `origin/main` pasó de
+`4e28ab0` a **`fd24823`**, y rama y `main` quedaron **idénticas**
+(`git rev-list --left-right --count origin/main...HEAD` = `0 0`). Subió F0–F11 del módulo **más**
+el cierre de H3, el plan `docs/SYNC-LECTURAS.md` (solo documentación) y el alta del plugin
+superpowers en `.claude/settings.json`. Auditoría de esa fusión, con sus mediciones, en
+**«Auditoría de la fusión a `main` (11-09-2026)»**, más abajo.
+
+**Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que
+alguien corra `npm run deploy`. **Antes de ese despliegue hay que tomar el respaldo de retroceso**
+(ver el aviso de v18/v19 más abajo: el esquema es de ida).
+
+### Fusión anterior — módulo `remesas` (28-08-2026)
 
 **FUSIONADO A `main`.** `origin/main` quedó entonces en **`864a440`**, idéntico byte a byte a
 `claude/awesome-dirac-484azm` (`git diff HEAD origin/main` vacío, divergencia `0/0`). El
@@ -610,7 +625,7 @@ cuentas* ahora separan **por moneda**. Con un negocio solo en MN la salida es **
 byte**; con USD/MLC cambia porque antes se sumaban todas las monedas en un número etiquetado "MN"
 (un cobro en USD engordaba el total como si fuera MN). Es corrección de un error real.
 
-## Módulo `fichas` (Ficha de costo, Res. 148/2023 MFP) — F0 a F11 + H3, SIN FUSIONAR
+## Módulo `fichas` (Ficha de costo, Res. 148/2023 MFP) — F0 a F11 + H3, EN `main` (11-09-2026)
 
 **Todo el traspaso vive en `docs/FICHA-COSTO.md`: LEERLO ANTES DE TOCAR NADA DEL MÓDULO.** Ahí
 está la interpretación normativa completa de las 16 filas, la errata de la Gaceta (Fila 12 =
@@ -630,9 +645,63 @@ aritmética del precio **cuadra con la norma**, incluida la errata de la Fila 12
 utilidad. El detalle, cita por cita, en `docs/FICHA-COSTO.md` §9.15, junto con **lo que NO cumplía
 y se corrigió** y **tres cosas que la Resolución no dice y el módulo interpreta**.
 
-**Lo que sigue sin poder garantizarse: NADIE HA EJECUTADO LA APP.** Y **v18 es de ida**, así que el
-respaldo de retroceso hay que tomarlo **antes** de desplegar (`backupService.js` rechaza restaurar
-un respaldo cuyo esquema supere al de la app).
+**Lo que sigue sin poder garantizarse: NADIE HA EJECUTADO LA APP.** Ni antes ni después de
+fusionar: la validación fue **código + build + pruebas node**, nunca runtime. Y **v18/v19 son de
+ida**, así que el respaldo de retroceso hay que tomarlo **antes de desplegar**
+(`backupService.js:86` rechaza restaurar un respaldo cuyo esquema supere al de la app, y el
+respaldo sella `meta.schema = db.verno` en `:49`).
+
+### Auditoría de la fusión a `main` (11-09-2026, verificada, no asumida)
+
+Hecha **después** del fast-forward, para responder a una pregunta concreta del dueño: *si esto se
+despliega, ¿puede romper algo de lo que hoy funciona?* **Ejecutado, no citado** (todo reproducible):
+
+- **Pruebas y build:** las **8 suites** node en verde, **462/462** aserciones
+  (21+16+9+32+243+54+18+69), y `npm run build` **exit 0**.
+- **Superficie real del cambio:** de 34 ficheros, **22 son nuevos** (no pueden romper nada que no
+  los importe) y solo **12 son preexistentes**, con **17 líneas borradas en todo `src/`**. Los 12
+  se leyeron enteros, uno a uno.
+- **Los exportadores de reportes — el punto de mayor riesgo — NO cambian su salida.** Se extrajeron
+  de git las dos versiones de `exportExcel`/`exportPdf` (la de `4e28ab0` y la de `fd24823`), se
+  neutralizó solo la descarga al navegador y se generaron los ficheros en node con `xlsx` y
+  `jspdf`: **idénticos byte a byte** en tres reportes (vertical con acentos/`null`/celda vacía,
+  landscape de 120 filas que pagina, y uno sin filas), en **xlsx y en pdf**. Dos cautelas que hacen
+  la prueba válida: el PDF lleva `/CreationDate`, así que **dos corridas de la misma versión ya
+  difieren** — se normalizó esa marca, y solo esa—, y se corrió un **control negativo** (con
+  `header`/`footer` la salida **sí** cambia), sin el cual la prueba no mediría nada.
+- **Nadie más produce `header`/`footer`:** los únicos tres sitios son `fichaReports.js`. Ningún
+  builder preexistente los pasa.
+- **`useLicense().modules` nunca es `undefined`** (`LicenseProvider.jsx:104` da `[]` si la licencia
+  no está desbloqueada), así que el nuevo filtro de `/help` no puede tumbar la pantalla de Ayuda. Y
+  `downloadHelpPdf` tiene **un solo llamador**, que sí le pasa `modules`.
+- **Los nombres de tabla nuevos no colisionan con Dexie**, comprobado instanciando **Dexie 4.4.4** y
+  declarando los stores: `db.costSheets` y `db.costSheetLines` son `Table` reales (`.name` correcto,
+  `bulkPut`/`where` presentes). Era el fallo silencioso que avisa la nota de v16.
+- **CSS:** `.ficha-*` no existía antes (0 coincidencias en `4e28ab0`); las 3 clases nuevas van al
+  final y no redefinen ninguna existente.
+- **`auditEvents` es la única tabla de producción que el módulo escribe**, con `entity:'costSheet'`.
+  Su **único** lector filtra `entity === 'product'` (`productsRepo.js:121`): no se cruzan. De los
+  repos ajenos solo usa `productsRepo.listActive()` y `recipesRepo.listActive()`, **en lectura y
+  gateados**.
+- **Convivencia de versiones** (un teléfono actualizado y otro no, que es lo normal mientras la PWA
+  se refresca): el build viejo no tiene las dos colecciones nuevas en `SYNC_COLLECTIONS`, así que ni
+  las consulta; y los `auditEvents` de ficha que sí le llegan los ignora por el filtro de arriba.
+
+**Lo que SÍ cambia para todos, incluidos los negocios sin la licencia** (no es una ruptura, pero es
+un coste que hay que saber antes de desplegar):
+
+- **Peso, medido construyendo `4e28ab0` en un worktree aparte:** el chunk principal pasa de
+  **856.45 kB** (gzip **248.33**) a **941.56 kB** (gzip **272.49**): **+85.11 kB, +9.9 %**. El CSS,
+  +0.44 kB. Se paga por el **import estático** de las pantallas en `router.jsx`. Y como el chunk
+  lleva hash, **la actualización cuesta la descarga completa (~272 kB gzip por teléfono)**, no el
+  delta.
+- **Sync:** `SYNC_COLLECTIONS` pasa de 32 a **34**. Son **dos `getDocs` más por barrido** (una
+  consulta vacía cuenta igual como lectura) y **dos `onSnapshot` permanentes más** por dispositivo,
+  aunque el negocio no tenga el módulo. Va en la dirección contraria a `docs/SYNC-LECTURAS.md`.
+
+**Lo que esta auditoría NO puede decir:** que la app funcione. **No se ejecutó**: ni una ficha
+creada, ni un PDF descargado desde el teléfono, ni una fusión entre dos aparatos. Todo lo de arriba
+es código, build y pruebas en node.
 
 ### Auditoría de la rama antes de `main` (05-09-2026, verificada, no asumida)
 
@@ -640,7 +709,8 @@ un respaldo cuyo esquema supere al de la app).
 **8 suites / 462 aserciones**, y el chunk **941.56 kB** (gzip **272.49**) con **34** colecciones
 de sync. Ver `docs/FICHA-COSTO.md` §9.16.*
 
-Ejecutado, no citado: `npm run build` **exit 0**; **408/408** aserciones en las 7 suites node; el
+Ejecutado, no citado: `npm run build` **exit 0**; **408/408** aserciones en las 7 suites node *(hoy
+son 8 suites y 462 aserciones: H3 añadió `fichaLines.test.mjs`)*; el
 build de `origin/main` en un worktree aparte para medir; y el Anexo II **releído del texto de la
 Gaceta**, no de `docs/FICHA-COSTO.md`.
 
@@ -653,16 +723,19 @@ Gaceta**, no de `docs/FICHA-COSTO.md`.
   **y** PDF), `/fichas` y `/ficha/*`. Los eventos van con `entity:'costSheet'` y la pestaña *Bajas*
   filtra `entity==='product'` (`productsRepo.js:121`): no se cuelan ahí.
 - **Cero escrituras a tablas ajenas** desde el módulo (`grep` de `db.products/sales/stockMovements/
-  priceChanges/config/accounts` = 0). Solo escribe `costSheets` y `auditEvents`.
+  priceChanges/config/accounts` = 0). Solo escribe `costSheets` y `auditEvents` *(y, desde H3,
+  `costSheetLines`)*.
 - **`exportPdf`/`exportExcel`:** sin `header`/`footer`, `startY` sigue valiendo 28 y el AOA sigue
   siendo exactamente `[head, ...rows]`. Los ~20 reportes existentes no cambian.
 - **`firestore.rules`** usa comodín `{document=**}` → cubre `costSheets`. **No hay que redesplegar
   reglas.**
 - **Peso:** el chunk principal pasa de **856.45 kB** (gzip 248.33) a **936.25 kB** (gzip 270.62):
   **+79.80 kB**, +9 %. Lo pagan **también** los negocios sin la licencia (import estático). Y como
-  el chunk lleva hash, **actualizar cuesta ~271 kB gzip por teléfono**, no 22.
+  el chunk lleva hash, **actualizar cuesta ~271 kB gzip por teléfono**, no 22. *(Cifra de esa
+  fecha; con H3 dentro son **941.56 kB** / gzip **272.49** — remedido el 11-09.)*
 - **Sync:** `SYNC_COLLECTIONS` pasa de 32 a **33**. Un `getDocs` más por barrido inicial (consulta
-  vacía = 1 lectura) y un `onSnapshot` permanente más. Ruido frente a la cuota Spark.
+  vacía = 1 lectura) y un `onSnapshot` permanente más. Ruido frente a la cuota Spark. *(Con H3 son
+  **34** colecciones: `costSheetLines` añade otro par.)*
 
 **Hallazgo 1 (los anexos por LWW): CERRADO el 07-09-2026.** El dueño confirmó que la ficha la
 llenan **el dueño Y el administrativo**, con lo que la justificación escrita ("la ficha la edita
@@ -677,7 +750,7 @@ por LWW de documento entero, como en toda la app; la diferencia es que ahora se 
 detalle —incluido un fallo real que apareció haciéndolo, la copia de "otra norma de tiempo" que
 heredaba el id— en `docs/FICHA-COSTO.md` **§9.16**.
 
-**Un hallazgo sigue ABIERTO (no bloqueante, decisión del dueño):**
+**Un hallazgo sigue ABIERTO** (no bloqueante; se fusionó con él dentro, con conocimiento del dueño)**:**
 
 1. **Carrera al crear revisiones.** `revise` calcula `nextVersion(prev)` en una transacción
    **local**: dos dispositivos que revisen la misma ficha aprobada crean **dos v2** con el mismo
@@ -856,9 +929,10 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   `remesas` ✅ (entregas de dinero o producto: cobro a tesorería, fondo del mensajero que sale de
   las cuentas del negocio, custodia de efectivo y de producto con saldo derivado, liquidación con
   semáforo, editar/eliminar, cinco reportes y pestaña de auditoría; rol acotado `COURIER`). Cada
-  uno gateado con `hasModule(...)`. **`fichas` está TERMINADO pero NO fusionado a `main`**
-  (F0–F11 + el cierre de H3): vive solo en `claude/awesome-dirac-484azm` y espera la aprobación
-  del dueño. Los que llevan ✅ arriba sí están en `main`.
+  uno gateado con `hasModule(...)`. Y **`fichas` ✅** (ficha de costos y gastos de la Res. 148/2023:
+  motor puro, editor de 9 bloques, aprobación y revisiones, tres hojas oficiales a PDF/Excel,
+  auditoría y ayuda gateadas; solo mando): F0–F11 + el cierre de H3, **fusionado a `main` el
+  11-09-2026**. **Ninguno se ha ejecutado en un dispositivo con el módulo `fichas` dentro.**
 
 ## Fase 4 — Sincronización (cómo funciona)
 
