@@ -3114,3 +3114,26 @@ input[type='file'] {
   padding: 10px 12px;
   margin-bottom: 8px;
 }
+
+/* ----- Entregas (modulo 'remesas'): formulario de alta ----- */
+/* Las lineas de lo que se va a entregar, DENTRO del formulario: sin recuadro ni
+   relleno lateral, para que el texto arranque en la misma vertical que las
+   etiquetas del formulario ("Producto", "Monto a cobrar") y no se lea indentado,
+   y mas juntas entre si. Va acotado a este contenedor a proposito: `.list-item`
+   la usan 12 pantallas y no se toca. */
+.remesa-items {
+  gap: 6px;
+}
+.remesa-items .list-item {
+  padding: 6px 0;
+  background: none;
+  border-radius: 0;
+}
+/* Fila de dos campos cuyas etiquetas NO miden lo mismo ("Monto a cobrar
+   (opcional)" envuelve a dos lineas y "Moneda" ocupa una): alinea los controles
+   por su base para que el input y el selector queden siempre a la misma altura,
+   con cualquier texto y en cualquier ancho de pantalla. Modificador nuevo: no
+   cambia `.form-row`, que usan 22 pantallas. */
+.form-row--bottom {
+  align-items: flex-end;
+}

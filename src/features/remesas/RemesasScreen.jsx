@@ -1154,7 +1154,7 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
               + Agregar producto
             </button>
             {items.length > 0 && (
-              <div className="list" style={{ marginTop: 8 }}>
+              <div className="list remesa-items" style={{ marginTop: 8 }}>
                 {items.map((it, i) => (
                   <div key={i} className="list-item" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ flex: 1 }}>
@@ -1180,7 +1180,9 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
         )}
 
         {!moneyLocked && (
-          <div className="form-row">
+          /* --bottom: la etiqueta del monto puede ocupar dos lineas y la de la
+             moneda una; sin esto el input y el selector quedan a distinta altura. */
+          <div className="form-row form-row--bottom">
             <label className="field">
               <span>{needsAmount ? 'Monto *' : 'Monto a cobrar (opcional)'}</span>
               <input
