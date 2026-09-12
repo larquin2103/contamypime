@@ -1112,3 +1112,52 @@ plan.
 el salón, ni el descuento viaja a la venta. **Un descuento puesto desde el repo no se cobraría**
 —la pantalla ni lo lee—, así que **el estado intermedio es inerte y seguro**. C2 lo conecta. Y **la
 app no se ha ejecutado**.
+
+### C2 — El descuento en la cuenta, el ticket y la venta (commit `aba1550`, 12-09-2026)
+
+**Qué se hizo:** `TableScreen` usa la función pura `orderTotals` y lee el % de la **cabecera** del
+pedido; fila de *Descuento* entre el consumo y el servicio con aplicar/quitar; **mando** directo y
+**vendedor** con `OwnerAuthModal`; línea de descuento en el **ticket térmico**; y `salesRepo.create`
+acepta los tres campos opcionales.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **966.00 → 969.21 kB** (gzip **280.31 → 280.99**): **+3.21 kB**.
+- **644/644** en las 11 suites node; **36/36** del descuento contra Dexie.
+- **17/17 de una comparación de `salesRepo.create`** entre la versión de `git HEAD` y la de ahora,
+  sobre la **misma base** y con el **mismo payload**. Es la función más delicada de la app (mueve
+  dinero, stock, cuentas y turno), así que se probó así y no leyéndola:
+  1. La venta nueva añade **exactamente tres** claves y **no quita ninguna**.
+  2. **Quitando esas tres, el registro es IDÉNTICO campo por campo** al de antes.
+  3. Sin descuento valen **0 / 0 / null** — lo mismo que valían cuando no existían.
+  4. Con `skipStock`, **ninguna de las dos** toca el libro mayor ni el stock.
+  5. Una venta **con** descuento **cierra la cuenta** (`subtotal − descuento + servicio = totalBase`)
+     y **a la caja entra el total descontado**, no el bruto.
+  6. La basura (`'hola'`, `undefined`, `''`) cae a 0/null: no se guarda `NaN` ni una cadena vacía.
+  7. Una venta de **mostrador** sigue rebajando stock y escribiendo su movimiento: ese camino no se
+     tocó.
+- El temporal extraído con `git show` se borró (`git status` limpio).
+
+**Traído de C3 a esta fase, y con motivo.** `salesRepo` iba en C3, pero si la pantalla ya cobra el
+total descontado y la venta **no** lleva los campos que lo explican, queda un **registro de dinero**
+donde `totalBase` no cuadra con consumo + servicio y **nada dice por qué**. Un registro de dinero que
+no se sostiene solo no se deja ni un commit. C3 se queda con el salón y el resto.
+
+**BUG PROPIO cazado al validar, corregido antes de compilar.** Asumí que `onAuthorized` de
+`OwnerAuthModal` entregaba el **id** del mando, y entrega el **objeto** del usuario
+(`OwnerAuthModal.jsx:35`). Tal cual, se habría guardado un objeto en `discountBy` y en el evento de
+auditoría. Salió de **leer el componente** en lugar de suponer su contrato.
+
+**Y un fallo de sintaxis que cazó el build:** puse un comentario JSX **entre atributos** de un
+elemento, que no es válido. El build lo rechazó (`Transform failed`); se movió arriba. Queda escrito
+porque es la prueba de que el build sí atrapa esta clase de error — al contrario que los imports
+huérfanos, que no.
+
+**Una observación sobre el código vecino, NO corregida:** el *"eximir servicio"* guarda
+`serviceWaivedBy: user.id`, o sea el **vendedor**, aunque quien autorizó fuese un mando. El descuento
+hace lo correcto (guarda a **quien autorizó**), así que ahora los dos campos vecinos significan cosas
+distintas. No se toca: está fuera del plan y cambiarlo alteraría un dato que ya se está escribiendo.
+
+**Lo que C2 NO hace:** el salón todavía **no avisa** de que una mesa tiene descuento (C3), y ningún
+reporte ni el panel del dueño lo reflejan (C4). Y **la pantalla no se ejecutó**: el botón, el modal,
+el PIN y la línea del ticket están revisados **leyendo el código**, no usándolos.
