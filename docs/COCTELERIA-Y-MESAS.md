@@ -603,3 +603,61 @@ bloque de trabajo):**
 (A3), no hay interruptores en Ajustes (A4) y **un negocio que solo tenga `cocteleria` todavía no
 tiene cómo llegar a `/recetas`** desde el Home (su tarjeta sigue colgando de `cocina`; se arregla
 en A3). Y, como siempre: **nadie ha ejecutado la app** — esto es código, build y pruebas node.
+
+### A2 — El motor elabora dentro del área (commit `822af61`, 11-09-2026)
+
+**Qué se hizo:** `src/lib/kitchenMath.js` (nuevo, puro, sin Dexie) con `canMake` por ubicación y
+`productionMovements`, que decide **qué** movimientos del libro mayor genera una elaboración;
+`kitchenRepo.canMake(recipe, productById, location = COCINA)` delegando en él; y
+`produce({ …, fromLocation = COCINA })` validando contra el **libro mayor de esa ubicación**,
+escribiendo los movimientos por descriptores y nombrando la ubicación real en el mensaje de
+faltante. `productions` guarda `kind` y `fromLocation` **solo cuando no son los clásicos**.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **948.65 → 949.23 kB** (gzip **274.82 → 275.13**): **+0.58 kB**.
+- **530/530 aserciones** en **9 suites** node (las 32 de `kitchenMath.test.mjs` son nuevas).
+- **El motor contra Dexie REAL** (`fake-indexeddb`), **39/39**. Esto es lo que prueba, punto por
+  punto: el flujo clásico escribe **exactamente los 4 movimientos de antes** (mismos tipos, signos
+  y ubicaciones), la coctelería escribe **3 y ninguno es traspaso**, la caché `stockByLocation`
+  **cuadra con el libro mayor** en los dos casos, el costo por promedio ponderado sale correcto
+  (5 en el clásico, 20 en el trago), `productions` **omite** `kind`/`fromLocation` en el clásico y
+  los trae en la coctelería, y **los cuatro rechazos abortan la transacción entera** sin dejar ni
+  un movimiento ni una producción ni mover una caché.
+
+**Sobre esa prueba del motor — hay que saber dos cosas:**
+
+1. **No se commitea, y por tanto NO entra en el bucle permanente de pruebas.** `fake-indexeddb` no
+   es dependencia del proyecto (no está en `package.json`); se instaló **fuera del repo**, en el
+   scratchpad de la sesión. Su estatus es el mismo que el de la prueba de migración v17→v19 de
+   `docs/FICHA-COSTO.md`: verificación de una vez, no red de seguridad permanente. **Para volver a
+   correrla hay que rehacer el andamio** (ver el punto 2). Si el dueño quiere que quede permanente,
+   la decisión es añadir `fake-indexeddb` como `devDependency` — eso sí toca `package.json`.
+2. **Hizo falta un andamio que revela algo del repo:** `src/db/db.js:2` importa `'./constants'`
+   **sin extensión**, y node ESM exige la extensión, así que **ningún fichero que importe `db.js`
+   se puede cargar en node** sin un *resolve hook* que añada el `.js`. Por eso el proyecto no tiene
+   ninguna suite que toque Dexie. Los módulos de `src/lib/` que sí se prueban usan la extensión
+   explícita (`'../db/constants.js'`, como `lib/remesas.js`), y `kitchenMath.js` la usa también.
+
+**Dos fallos reales encontrados en el camino, ambos ya corregidos:**
+
+1. **La primera versión de la prueba del motor fallaba, y el fallo era de la prueba.**
+   `db.stockMovements.toArray()` devuelve las filas **por clave primaria** (UUID aleatorio), **no
+   por orden de inserción**, así que comparar la secuencia tal cual daba diferencias falsas. Se
+   corrigió filtrando por `refId` (el id de la producción) y comparando **ordenado**. Queda escrito
+   porque es una trampa que volverá a aparecer en cualquier prueba futura sobre el libro mayor.
+2. **`MOVEMENT_TYPES` quedó como import huérfano** en `kitchenRepo` al pasar los movimientos a
+   descriptores. **No hay linter que lo cace** (`npm run build` no avisa): lo detectó un `grep`
+   explícito. Es exactamente el hallazgo 8 de la auditoría de `remesas`, vivo.
+
+**Cambio de estructura interna que conviene tener presente:** antes, cada insumo escribía su
+movimiento **y** actualizaba su caché en la misma iteración; ahora se escriben **todos los
+movimientos** y después **todas las cachés**. El estado final es idéntico (misma transacción, y en
+ambas versiones la caché se calcula sobre el mismo `p` leído dentro de la transacción), y la prueba
+contra Dexie lo confirma. Se dice porque es el tipo de reordenación que parece inocua y no siempre
+lo es.
+
+**Lo que A2 NO hace:** nadie puede llegar todavía al flujo nuevo desde la app — no hay tablero de
+coctelería (A3) ni interruptores (A4), así que `fromLocation` no lo pasa **ningún** llamador y el
+único camino vivo sigue siendo el clásico. Y **la app no se ha ejecutado**: lo de arriba es build,
+pruebas puras y el motor contra un IndexedDB **simulado**, que no es un navegador real.
