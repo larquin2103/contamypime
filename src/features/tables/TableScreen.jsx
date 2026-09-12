@@ -15,6 +15,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
+import { orderTotals } from '../../lib/orderTotals'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
 import { Trash2 } from 'lucide-react'
@@ -76,6 +77,13 @@ export function TableScreen() {
   const [paying, setPaying] = useState(false)
   const [waived, setWaived] = useState(false) // servicio eximido (requiere mando)
   const [askWaive, setAskWaive] = useState(false)
+  // Descuento de la mesa: el % se teclea aqui, pero se GUARDA en la cabecera del
+  // pedido (ordersRepo), no en la pantalla. `pendingDisc` sostiene la accion mientras
+  // un vendedor pide el PIN de un mando (null = nada pendiente).
+  const [askDiscount, setAskDiscount] = useState(false)
+  const [discInput, setDiscInput] = useState('')
+  const [discError, setDiscError] = useState('')
+  const [pendingDisc, setPendingDisc] = useState(null) // { action:'set'|'clear', pct }
   const [done, setDone] = useState(null) // resumen del cobro para el ticket
 
   // --- cobro ---
@@ -111,13 +119,22 @@ export function TableScreen() {
   }, [live])
   // Cuantas unidades de un producto lleva ya la cuenta (badge en el mosaico).
   const inOrder = (pid) => grouped.find((g) => g.productId === pid)?.qty || 0
-  const subtotal = useMemo(
-    () => round2(live.reduce((a, i) => a + Number(i.lineTotal || 0), 0)),
-    [live]
+  // Totales de la cuenta. La aritmetica vive en lib/orderTotals (pura y probada con
+  // node): consumo -> DESCUENTO -> servicio sobre lo que queda. Con el descuento en 0
+  // devuelve exactamente lo que devolvia la formula que estaba aqui escrita a mano
+  // (probado comparando las dos en la suite), asi que una mesa sin descuento se cobra
+  // igual que siempre. El porcentaje sale de la CABECERA del pedido, no de la pantalla:
+  // lo tiene que ver el salon y puede ponerlo un equipo y cobrarlo otro.
+  const discountPct = Number(order?.discountPct) || 0
+  const totals = useMemo(
+    () => orderTotals(live, { servicePct, waived, discountPct }),
+    [live, servicePct, waived, discountPct]
   )
-  const pct = waived ? 0 : Number(servicePct) || 0
-  const service = round2(subtotal * (pct / 100))
-  const total = round2(subtotal + service)
+  const subtotal = totals.subtotal
+  const discount = totals.discount
+  const pct = totals.servicePct
+  const service = totals.service
+  const total = totals.total
 
   if (!hasModule(LICENSE_MODULES.TABLES)) {
     return <div className="screen"><p className="muted">Este módulo no está incluido en tu licencia.</p></div>
@@ -231,6 +248,44 @@ export function TableScreen() {
         ? true
         : mixOk)
 
+  // --- Descuento de la mesa ----------------------------------------------------
+  // El MANDO lo aplica y lo quita directo (ya esta autenticado). El VENDEDOR necesita
+  // el PIN de un mando presente: mismo patron que "Eximir servicio". Quien autoriza
+  // queda en la cabecera y en Auditoria; poner y quitar dejan cada uno su evento.
+  const applyDiscount = async ({ action, pct }, byUserId) => {
+    setDiscError('')
+    setError('')
+    setBusy(true)
+    try {
+      if (action === 'clear') await ordersRepo.clearDiscount({ orderId: order.id, userId: byUserId })
+      else await ordersRepo.setDiscount({ orderId: order.id, pct, userId: byUserId })
+      setAskDiscount(false)
+      setPendingDisc(null)
+      setDiscInput('')
+      nudgePush()
+    } catch (e) {
+      // Si el fallo es del dato (porcentaje invalido) se muestra en el propio
+      // formulario; si la mesa ya se cobro, arriba, donde se ven los errores de la cuenta.
+      if (askDiscount) setDiscError(e.message)
+      else setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // Pide la accion: directa si es mando, o con PIN de mando si es el vendedor.
+  const requestDiscount = (req) => {
+    if (isManager) return applyDiscount(req, user.id)
+    setPendingDisc(req)
+  }
+  const askClearDiscount = () => requestDiscount({ action: 'clear' })
+  const submitDiscount = () => {
+    const pct = Number(discInput)
+    if (!(pct > 0)) return setDiscError('Indica un porcentaje mayor que 0')
+    if (pct > 100) return setDiscError('El descuento no puede pasar del 100%')
+    requestDiscount({ action: 'set', pct })
+  }
+
   const charge = async () => {
     setError('')
     if (!live.length) return setError('La cuenta está vacía')
@@ -284,6 +339,14 @@ export function TableScreen() {
         serviceChargePct: pct,
         serviceChargeAmount: service,
         serviceWaivedBy: waived ? user.id : null,
+        // Descuento de la mesa (0 = sin descuento = como siempre). Viaja a la venta
+        // aunque todavia no lo muestre ningun reporte: `totalBase` ya sale descontado,
+        // y un registro de dinero donde el total no cuadra con consumo + servicio
+        // TIENE que llevar el campo que lo explica. Quien lo autorizo se guarda para
+        // que la venta se sostenga sola ante una revision.
+        discountPct,
+        discountAmount: discount,
+        discountBy: discountPct > 0 ? (order.discountBy || null) : null,
         // Módulo 'cuentas': la venta de mesa acredita la tesorería como INGRESO,
         // igual que la venta de mostrador (mismo criterio de licencia). Sin el
         // módulo -> false (no crea movimientos de cuenta). Antes faltaba y por
@@ -336,7 +399,7 @@ export function TableScreen() {
         : payMethod === PAYMENT_METHODS.TRANSFER
           ? { paymentMethod: 'transfer', transferCurrency: payload.transferCurrency, transferAmount: payload.transferAmount }
           : { paymentMethod: 'mixed', payments: payload.payments, change: payload.change, changeCurrency: payload.changeCurrency }
-      setDone({ subtotal, service, pct, total, method: payMethod, pay })
+      setDone({ subtotal, discount, discountPct, service, pct, total, method: payMethod, pay })
       setPaying(false)
       if (nudgePush) nudgePush()
     } catch (e) {
@@ -353,6 +416,10 @@ export function TableScreen() {
   if (done || closed) {
     const d = done || {
       subtotal: Number(sale?.subtotal ?? 0),
+      // Descuento: sale de la VENTA al reimprimir una mesa ya cobrada. Ausente
+      // (ventas anteriores, o sin descuento) -> 0, y su linea no se pinta.
+      discount: Number(sale?.discountAmount ?? 0),
+      discountPct: Number(sale?.discountPct ?? 0),
       service: Number(sale?.serviceChargeAmount ?? 0),
       pct: Number(sale?.serviceChargePct ?? 0),
       total: Number(sale?.totalBase ?? 0)
@@ -413,6 +480,13 @@ export function TableScreen() {
           ))}
           <div className="thermal__rule" />
           <div className="thermal__row"><span>Subtotal</span><span>{formatMoney(d.subtotal, baseCurrency)}</span></div>
+          {/* Descuento: entre el consumo y el servicio, que es el orden en que se
+              calcula. Sin descuento la linea no existe y el ticket es el de siempre. */}
+          {d.discount > 0 && (
+            <div className="thermal__row">
+              <span>Descuento {d.discountPct}%</span><span>- {formatMoney(d.discount, baseCurrency)}</span>
+            </div>
+          )}
           {d.pct > 0 && (
             <div className="thermal__row"><span>Servicio {d.pct}%</span><span>{formatMoney(d.service, baseCurrency)}</span></div>
           )}
@@ -496,6 +570,32 @@ export function TableScreen() {
         ))}
 
         <div className="total-row"><span>Subtotal</span><strong>{formatMoney(subtotal, baseCurrency)}</strong></div>
+
+        {/* Descuento de la mesa. Lo pone el MANDO; el vendedor con el PIN de un mando
+            presente (mismo patron que "Eximir"). Va ANTES del servicio, porque el
+            servicio se cobra sobre lo que queda. La fila solo aparece si hay descuento
+            o si se puede poner uno, asi que una mesa normal se ve igual que siempre. */}
+        {discountPct > 0 ? (
+          <div className="total-row">
+            <span className="warn-text">Descuento {discountPct}%</span>
+            <span className="order-line__right">
+              <strong className="warn-text">− {formatMoney(discount, baseCurrency)}</strong>
+              {canPay && (
+                <button className="btn btn--ghost btn--sm" disabled={busy} onClick={askClearDiscount}>Quitar</button>
+              )}
+            </span>
+          </div>
+        ) : !closed ? (
+          <div className="total-row">
+            <span className="muted">Descuento</span>
+            <span className="order-line__right">
+              <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => { setDiscInput(''); setDiscError(''); setAskDiscount(true) }}>
+                Aplicar
+              </button>
+            </span>
+          </div>
+        ) : null}
+
         {Number(servicePct) > 0 && (
           <div className="total-row">
             <span>Servicio {pct}%{waived && <span className="muted"> · eximido</span>}</span>
@@ -802,6 +902,57 @@ export function TableScreen() {
         <OwnerAuthModal
           onCancel={() => setAskWaive(false)}
           onAuthorized={() => { setWaived(true); setAskWaive(false) }}
+        />
+      )}
+
+      {/* Aplicar descuento: se teclea el %. Si lo pide el vendedor, despues se abre
+          el modal de autorizacion (OwnerAuthModal) con el PIN de un mando. */}
+      {askDiscount && (
+        <div className="modal-backdrop" onClick={() => setAskDiscount(false)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Aplicar descuento" onClick={(e) => e.stopPropagation()}>
+            <h3>Descuento de la cuenta</h3>
+            <p className="muted">
+              Se descuenta del <strong>consumo</strong>. El cargo por servicio, si lo hay, se
+              cobra sobre lo que queda.
+            </p>
+            <label className="field">
+              <span>Porcentaje (%)</span>
+              <input
+                type="number" inputMode="decimal" autoFocus value={discInput}
+                onChange={(e) => { setDiscInput(e.target.value); setDiscError('') }}
+                placeholder="Ej: 10"
+              />
+            </label>
+            {Number(discInput) > 0 && (
+              <p className="muted">
+                <small>
+                  Sobre {formatMoney(subtotal, baseCurrency)} de consumo son{' '}
+                  <strong>{formatMoney(round2(subtotal * (Math.min(100, Number(discInput)) / 100)), baseCurrency)}</strong>.
+                </small>
+              </p>
+            )}
+            {!isManager && (
+              <p className="muted"><small>Hará falta el PIN del dueño o de un administrativo.</small></p>
+            )}
+            {discError && <p className="error">{discError}</p>}
+            <div className="modal__actions">
+              <button className="btn btn--ghost" onClick={() => setAskDiscount(false)}>Cancelar</button>
+              <button className="btn btn--primary" disabled={busy} onClick={submitDiscount}>
+                {busy ? 'Aplicando…' : 'Aplicar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Autorizacion del mando para poner o quitar el descuento (solo el vendedor
+          pasa por aqui; el mando ya esta autenticado). La operacion queda a nombre de
+          QUIEN AUTORIZO, no del vendedor. `onAuthorized` entrega el OBJETO del usuario
+          que autorizo, no su id. */}
+      {pendingDisc && (
+        <OwnerAuthModal
+          onCancel={() => setPendingDisc(null)}
+          onAuthorized={(mgr) => applyDiscount(pendingDisc, mgr?.id || user.id)}
         />
       )}
     </div>

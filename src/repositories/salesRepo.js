@@ -59,7 +59,16 @@ export const salesRepo = {
     serviceChargePct = 0,
     serviceChargeAmount = 0,
     // Quien autorizo eximir el cargo por servicio (mando), si se eximio.
-    serviceWaivedBy = null
+    serviceWaivedBy = null,
+    // Descuento aplicado a la cuenta de la mesa (modulo 'mesas'). Todos con default
+    // en 0/null = comportamiento clasico. El orden de la cuenta es
+    // subtotal - discountAmount + serviceChargeAmount = totalBase, y `totalBase` llega
+    // YA calculado desde la pantalla (este repo no lo re-deriva de las lineas), asi
+    // que el cobro, el vuelto, el mixto y el cuadre no cambian. Se guardan para que la
+    // venta EXPLIQUE por que su total no es consumo + servicio.
+    discountPct = 0,
+    discountAmount = 0,
+    discountBy = null
   }) {
     const id = newId()
     const ts = now()
@@ -106,6 +115,11 @@ export const salesRepo = {
         serviceChargePct: Number(serviceChargePct) || 0,
         serviceChargeAmount: round2(Number(serviceChargeAmount) || 0),
         serviceWaivedBy: serviceWaivedBy || null,
+        // Descuento de la mesa. Sin el modulo (o sin descuento) queda en 0/null, que es
+        // exactamente lo que valian estos campos cuando no existian: ausentes o cero.
+        discountPct: Number(discountPct) || 0,
+        discountAmount: round2(Number(discountAmount) || 0),
+        discountBy: discountBy || null,
         orderId: orderId || null,
         table: String(table || '').trim(),
         paymentMethod,
