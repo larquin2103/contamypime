@@ -849,3 +849,56 @@ de sync (`SYNC_COLLECTIONS` sigue en 34), así que **este despliegue no es "de i
 **Los bloques B y C del plan siguen sin empezar** y son independientes: B (permiso de elaborar con
 faltante + aviso de saldos negativos) y C (descuento por mesa + panel del dueño con valor real y
 gastos del día).
+
+---
+
+## 17. Bloque B — elaborar con faltante y aviso de negativos
+
+### B1 — El permiso de elaborar con faltante (commit `9869344`, 12-09-2026)
+
+**Qué se hizo:** `kitchenRepo.produce` acepta `allowShort` (default `false`), que convierte el
+candado de existencia en un **aviso**; el descubierto queda en `productions.shortages`; y el
+interruptor `allowShortProduction` vive en la tarjeta *Tableros de elaboración* de Ajustes.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **956.87 → 958.33 kB** (gzip **277.47 → 277.93**): **+1.46 kB**.
+- **530/530** en las 9 suites node.
+- **28/28 contra Dexie real** (`fake-indexeddb`), a la primera. Lo que quedó probado:
+  1. **Sin el permiso, nada cambia:** lanza el mensaje de siempre y **no deja** producción, ni
+     movimiento, ni cambio de stock. Con `allowShort:false` explícito, igual.
+  2. **Con el permiso**, el descubierto es exacto (necesita 10, hay 3, **faltan 7**), la caché y el
+     **libro mayor** quedan **los dos en −7** (coherentes), el consumo registrado es **completo**
+     (10, no 3) y el costo del elaborado valora **lo consumido**, no lo que había.
+  3. **Un segundo descubierto sobre −7 da 9, no 2:** el faltante se mide contra la existencia real,
+     no contra lo que pide la receta.
+  4. **La entrada netea el negativo, que es la razón de ser del permiso:** una entrada de 20 sobre
+     −9 deja el libro mayor en **11**, sin recorte a cero en ningún punto del camino.
+  5. Una producción **normal** no escribe el campo `shortages`.
+  6. **Ningún otro candado se relaja:** insumo dado de baja, receta dada de baja, cantidad 0 y falta
+     de área siguen lanzando **con el permiso encendido**.
+  7. El ajuste nace **apagado**, se puede encender, y **no está en `LOCAL_CONFIG_KEYS`**: viaja a
+     todos los dispositivos.
+
+**Tres decisiones de diseño que conviene tener escritas:**
+
+1. **Lo decide el llamador, no el motor.** `produce` recibe `allowShort`; la pantalla lee el ajuste.
+   Es el patrón de `sellerEntries` (la pantalla lee el permiso, el repo recibe el parámetro): el
+   default es el lado seguro y el motor sigue siendo **determinista y testeable** sin sembrar
+   `config`. No es un candado de seguridad —quien llame al repo puede pasar `true`—, igual que el
+   permiso de los tableros.
+2. **El interruptor va en la tarjeta de los tableros, no en *Permisos del vendedor*.** Afecta a los
+   **dos** tableros y a **todos** los que elaboran (cocinero, vendedor y mando), no solo al vendedor.
+3. **El consumo se registra COMPLETO, no recortado a lo que había.** Es lo que deja la existencia en
+   negativo y lo que permite que la entrada posterior la netee. Recortarlo habría "cuadrado" el
+   stock a costa de mentir sobre lo que se consumió.
+
+**Decisión deliberada, y hay que saberla: el interruptor queda INERTE hasta B2.** Ninguna pantalla
+pasa `allowShort` todavía (comprobado por `grep`: los únicos usos fuera del repo están en Ajustes).
+Es a propósito: si la pantalla ya lo pasara pero el aviso del tablero llegara en la fase siguiente,
+el dueño podría encender el permiso y **elaborar en descubierto sin ningún aviso**. Un interruptor
+que todavía no hace nada es inofensivo; un negativo sin avisar no lo es. **B2 conecta la pantalla y
+el aviso a la vez.**
+
+**Lo que B1 NO hace:** no avisa en el tablero (B2), no avisa al dueño (B3) y no está en la ayuda
+(B4). Y **la app no se ha ejecutado**: lo de arriba es build, pruebas puras y un IndexedDB simulado.
