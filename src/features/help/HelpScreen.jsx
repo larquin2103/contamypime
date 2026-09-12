@@ -3,17 +3,18 @@ import {
   ArrowLeftRight, BarChart3, BookOpen, Calculator, ChevronLeft, ChevronRight,
   ClipboardList, Coins, Download, FileSpreadsheet, Gauge, HelpCircle, Hourglass,
   KeyRound, Lightbulb, LockOpen, Package, Receipt, ShoppingCart, Smartphone,
-  Martini, Store, TriangleAlert, Truck, UserCog, Users,
+  Martini, PackageX, Store, TriangleAlert, Truck, UserCog, Users,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
-import { HELP_ARTICLES, HELP_SECTIONS } from './helpContent'
+import { HELP_SECTIONS, visibleArticles } from './helpContent'
 import { downloadHelpPdf } from './helpPdf'
 
 // Icono lucide de cada artículo (mismos iconos que el Home para los mismos conceptos).
 const ARTICLE_ICONS = {
   cocteleria: Martini,
+  descubierto: PackageX,
   'ficha-que-es': Receipt,
   'ficha-llenar': FileSpreadsheet,
   'que-es': Smartphone,
@@ -62,15 +63,11 @@ export function HelpScreen() {
     }
   }
 
-  // Artículos visibles según el rol Y según la licencia: un artículo con `module`
-  // solo se ve con ese módulo desbloqueado (explicar una función que el negocio no
-  // tiene comprada es una fuga como cualquier otra). Sin el campo, se ve siempre.
-  const visible = useMemo(
-    () => HELP_ARTICLES.filter(
-      (a) => (isManager ? true : a.audience === 'seller') && (!a.module || modules.includes(a.module))
-    ),
-    [isManager, modules]
-  )
+  // Artículos visibles según el rol Y según la licencia. El criterio vive en
+  // `helpContent` (`visibleArticles`) y NO aquí: es el mismo que aplica el PDF, y
+  // tenerlo copiado en los dos sitios era la forma más fácil de que un día uno
+  // colara lo que el otro oculta.
+  const visible = useMemo(() => visibleArticles({ isManager, modules }), [isManager, modules])
 
   const article = openId ? visible.find((a) => a.id === openId) : null
 

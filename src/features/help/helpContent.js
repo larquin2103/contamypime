@@ -1,4 +1,7 @@
-import { LICENSE_MODULES } from '../../lib/license'
+// Import CON extensión a propósito: así este fichero se puede cargar en node y su
+// filtro de visibilidad (el que impide una fuga de licencia por la ayuda) tiene una
+// suite de pruebas propia. Vite resuelve igual con extensión o sin ella.
+import { LICENSE_MODULES } from '../../lib/license.js'
 
 // Material de ayuda de MypiCuadre (Fase A). Contenido como DATOS editables para
 // poder retocar los textos sin tocar la interfaz. Cada artículo:
@@ -15,6 +18,10 @@ import { LICENSE_MODULES } from '../../lib/license'
 // de que existiera. Hace falta porque explicar en la ayuda una función que el
 // negocio no tiene comprada es una fuga de licencia como cualquier otra: filtran
 // `HelpScreen` y también `helpPdf`, que si no la colaría por el PDF.
+//
+// modules (OPCIONAL, lista): para un artículo que explica algo COMÚN a varios
+// módulos. Basta con tener UNO de ellos. Se puede combinar con `module` (entonces
+// se exigen los dos criterios). Sin ninguno de los dos campos, el artículo es base.
 //
 // El orden del array ES el orden en que se muestran.
 
@@ -271,6 +278,27 @@ export const HELP_ARTICLES = [
     ]
   },
   {
+    id: 'descubierto',
+    section: 'Gestión y avanzado',
+    audience: 'owner',
+    modules: [LICENSE_MODULES.KITCHEN, LICENSE_MODULES.COCKTAILS],
+    title: 'Existencias en negativo: por qué pasan y cómo se curan',
+    teaser: 'Elaborar con faltante deja un descubierto. Se cura donde ocurrió.',
+    body: [
+      { p: 'Pasa un caso real: la mercancía llegó y está en la cocina, pero nadie registró la entrada todavía. Sin permiso, quien elabora se queda trabado ("no hay suficiente Harina"). Para eso está el permiso Ajustes → Tableros de elaboración → "Elaborar aunque falte algún insumo".' },
+      { p: 'Con ese permiso encendido, el tablero avisa antes de confirmar —te dice qué insumo falta, cuánto hay y en cuánto quedará— y hay que marcar "Sí, elaborar de todos modos". El consumo se registra COMPLETO, así que esa existencia queda en NEGATIVO. Eso no es un error de la app: es la cuenta pendiente de registrar la entrada.' },
+      { p: 'Un negativo se cura de tres formas, y las tres dejan su rastro:' },
+      { steps: [
+        'Dando la ENTRADA de mercancía en la MISMA ubicación donde está el negativo. Es el camino normal: si faltaban 7 y entran 20, quedan 13.',
+        'Haciendo un TRASPASO hacia esa ubicación (Salida a áreas), si la mercancía ya estaba en el almacén.',
+        'Con el CONTEO FÍSICO de esa ubicación: al poner lo que hay de verdad, el ajuste iguala la existencia a lo contado.'
+      ] },
+      { warn: 'El error más fácil de cometer: una entrada al ALMACÉN CENTRAL no cura un negativo de un ÁREA ni de la cocina. La entrada suma donde entra. Si el descubierto es de la cocina o de la terraza, hay que entrar ahí o traspasar hasta ahí.' },
+      { p: 'Mientras haya un negativo, el tablero muestra "Puedes elaborar: 0" con la marca "Falta algún insumo", y el costo de lo que elabores se calcula con el costo del insumo que falta, no con cero.' },
+      { tip: 'Cada elaboración en descubierto te llega como aviso en la campana (categoría Elaboración), con qué insumo, en qué ubicación y quién la hizo. Si no quieres esos avisos, se apagan en Ajustes → Notificaciones; si prefieres que nadie pueda elaborar sin existencia, apaga el permiso y todo vuelve a bloquearse como antes.' }
+    ]
+  },
+  {
     id: 'ficha-que-es',
     section: 'Gestión y avanzado',
     audience: 'owner',
@@ -397,3 +425,25 @@ export const HELP_ARTICLES = [
     ]
   }
 ]
+
+// Filtro de visibilidad de un artículo: rol Y licencia. ES LA UNICA FUENTE, y por eso
+// vive aquí: hasta ahora este predicado estaba COPIADO literalmente en `HelpScreen` y
+// en `helpPdf`, que es la peor forma de mantener una regla que impide una fuga de
+// licencia (basta con actualizar una copia y olvidar la otra para colar por el PDF una
+// función que el negocio no compró).
+//
+//  - rol: el mando ve todo; el vendedor solo lo suyo.
+//  - `module`: exige ESE módulo. `modules`: basta con UNO de la lista.
+//  - `modules` llega VACIO por defecto a propósito: quien llame sin pasarlo OCULTA la
+//    ayuda de los módulos en vez de colarla. Es el lado seguro.
+export function isArticleVisible(a, { isManager = true, modules = [] } = {}) {
+  if (!a) return false
+  if (!isManager && a.audience !== 'seller') return false
+  if (a.module && !modules.includes(a.module)) return false
+  if (a.modules && !a.modules.some((m) => modules.includes(m))) return false
+  return true
+}
+
+export function visibleArticles({ isManager = true, modules = [] } = {}) {
+  return HELP_ARTICLES.filter((a) => isArticleVisible(a, { isManager, modules }))
+}

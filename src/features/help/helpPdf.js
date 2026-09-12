@@ -1,4 +1,4 @@
-import { HELP_ARTICLES, HELP_SECTIONS } from './helpContent'
+import { HELP_SECTIONS, visibleArticles } from './helpContent'
 
 // Fase E - Guía rápida en PDF. Genera un documento imprimible/compartible por
 // WhatsApp con los temas de ayuda. Usa jspdf por import dinámico (code-split),
@@ -44,12 +44,12 @@ export async function downloadHelpPdf({ isManager = true, modules = [] } = {}) {
   write('Guia rapida de uso', { size: 13, style: 'bold', color: 90, gap: 2 })
   write('Sistema de ventas y cuadre de caja. Funciona sin internet.', { size: 10, color: 120, gap: 8 })
 
-  // Mismo filtro que la pantalla: rol Y licencia. `modules` llega por defecto
+  // EL MISMO filtro que la pantalla, y ahora literalmente el mismo codigo
+  // (`visibleArticles` en helpContent): antes era una copia, y una copia de una regla
+  // que impide una fuga de licencia acaba divergiendo. `modules` llega por defecto
   // VACIO a proposito -si alguien llama sin pasarlo, se OCULTA la ayuda de los
   // modulos en vez de colarla-, que es el lado seguro.
-  const articles = HELP_ARTICLES.filter(
-    (a) => (isManager ? true : a.audience === 'seller') && (!a.module || modules.includes(a.module))
-  )
+  const articles = visibleArticles({ isManager, modules })
   const sections = HELP_SECTIONS.filter((label) => articles.some((a) => a.section === label))
 
   for (const section of sections) {
