@@ -709,3 +709,49 @@ deja sin tocar en vez de meter un cambio decorativo.
 - **Nadie ha ejecutado la app.** Todo lo de arriba es build, pruebas puras y el motor contra un
   IndexedDB **simulado**. En particular, **ni un solo trago se ha elaborado desde una pantalla
   real**: el camino pantalla → repo se ha verificado leyendo el código, no usándolo.
+
+### A4 — Los dos tableros se habilitan en Ajustes (commit `c498594`, 11-09-2026)
+
+**Qué se hizo:** tarjeta nueva ***Tableros de elaboración*** en Ajustes con los dos interruptores,
+cada uno tras **su** módulo; el permiso se aplica **en el Home y en la propia pantalla**; y la
+pantalla de coctelería deja de mirar solo su clave para mirar la del tablero que sirve.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **952.65 → 954.35 kB** (gzip **276.02 → 276.49**): **+1.70 kB**.
+- **530/530** en las 9 suites node.
+- **11/11 contra la base REAL** (`fake-indexeddb`), que es exactamente lo que el plan pedía
+  comprobar de esta fase: en una base **virgen** ninguna de las dos claves existe y aun así cocina
+  da **ACTIVADO** y coctelería **APAGADO**; un apagado explícito **no lo pisa el default**; la ida y
+  vuelta del interruptor funciona; **toda mutación avanza `updatedAt`** (sin eso la clave no subiría
+  por sync); y **ninguna de las dos está en `LOCAL_CONFIG_KEYS`**, o sea que el dueño las enciende
+  una vez y llegan a todos los dispositivos.
+
+**Decisiones de precisión que se tomaron aquí:**
+
+1. **El permiso se comprueba en dos sitios, no en uno.** La tarjeta del Home puede no estar, pero
+   **la ruta sigue existiendo**: `/cocina` y `/cocteleria` se pueden abrir a mano. Por eso la
+   pantalla también rechaza. (No es un candado de integridad: `produce` no mira el permiso, y no
+   debe, porque el mando y el cocinero elaboran sin él. Es visibilidad.)
+2. **El valor inicial de cada lectura sigue a su default**, y son distintos a propósito: en cocina
+   es `true`, así que el caso normal se pinta **sin pasar por una pantalla de carga**, igual que hoy;
+   en coctelería es `undefined` y **sí se espera**, porque ahí el default es que no se vea y un
+   parpadeo mostraría un tablero que no debería existir. La asimetría es deliberada.
+3. **El cocinero queda fuera de los dos interruptores.** La cocina es su trabajo; un ajuste del
+   vendedor no puede dejarlo sin tablero.
+
+**Un fallo propio de A3 que se vio al montar esto, ya corregido:** el hook del permiso de cocina en
+el Home llevaba `deps: []` y leía `hasModule(...)` dentro. Si la licencia resolvía **después** de
+montar el Home, el hook **nunca se re-evaluaba** y la tarjeta del vendedor quedaba oculta toda la
+sesión. Ahora depende de `canKitchen`, como el de coctelería desde el principio. Es el tipo de fallo
+que no aparece en el build ni en ninguna prueba pura: salió de releer el diff al lado del hook
+vecino.
+
+**Con A4, el bloque A está funcionalmente completo:** el dueño compra `cocteleria`, crea recetas de
+coctelería en *Recetas*, enciende el tablero para el vendedor en Ajustes, y el vendedor elabora
+tragos en el área de su turno consumiendo su stock. **Falta A5** (reporte con columna de tipo,
+pestaña de auditoría y artículo de ayuda, todo gateado) — sin ella el módulo **funciona pero no se
+ve en los reportes ni en la auditoría, y no está explicado en la ayuda**.
+
+**Y sigue en pie lo de siempre: nadie ha ejecutado la app.** Ni un interruptor tocado en una
+pantalla real.
