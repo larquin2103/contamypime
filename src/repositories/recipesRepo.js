@@ -3,6 +3,7 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { productsRepo } from './productsRepo'
 import { imagesRepo } from './imagesRepo'
+import { RECIPE_KINDS, recipeKind } from '../db/constants'
 
 // Recetas del modulo 'cocina'. Una receta define sus INSUMOS (y el consumo por
 // UNIDAD del elaborado) y crea/actualiza su propio PRODUCTO elaborado (el que se
@@ -35,14 +36,20 @@ function cleanItems(items) {
 }
 
 export const recipesRepo = {
-  async list() {
+  // `kind` (opcional): 'cocina' o 'cocteleria'. SIN el filtro devuelven TODAS, que
+  // es exactamente lo que hacian antes (los llamadores de hoy no cambian). Filtrar
+  // es decision de cada pantalla, explicita, para que no haya un default silencioso
+  // que altere una lista existente.
+  async list({ kind = null } = {}) {
     const all = await db.recipes.toArray()
-    return all.filter((r) => !r.deletedAt) // las eliminadas (borrado logico) no se listan
+    const live = all.filter((r) => !r.deletedAt) // las eliminadas (borrado logico) no se listan
+    return kind ? live.filter((r) => recipeKind(r) === kind) : live
   },
 
-  async listActive() {
+  async listActive({ kind = null } = {}) {
     const all = await db.recipes.toArray()
-    return all.filter((r) => r.active && !r.deletedAt)
+    const live = all.filter((r) => r.active && !r.deletedAt)
+    return kind ? live.filter((r) => recipeKind(r) === kind) : live
   },
 
   async get(id) {
@@ -61,8 +68,11 @@ export const recipesRepo = {
   // modulo 'imagenes' esta activo) la pasa el llamador ya comprimida y se guarda
   // aparte, como en ProductForm. `priceCurrency` solo se pasa cuando el llamador
   // eligio una divisa (modulo 'divisas'); sin el, el producto es MN = clasico.
-  async create({ name, unit, price, area = '', categoryId = null, priceCurrency = null, items = [], normas = '', photo = '', userId = null }) {
+  // `kind` (opcional, modulo 'cocteleria'): solo se ESCRIBE cuando vale 'cocteleria'.
+  // Una receta de cocina nueva se guarda sin el campo, byte a byte como siempre.
+  async create({ name, unit, price, area = '', categoryId = null, priceCurrency = null, items = [], normas = '', photo = '', userId = null, kind = RECIPE_KINDS.KITCHEN }) {
     const cleaned = cleanItems(items)
+    const isCocktail = kind === RECIPE_KINDS.COCKTAIL
     const id = newId()
     const ts = now()
     let outputProductId
@@ -86,6 +96,7 @@ export const recipesRepo = {
         items: cleaned,
         normas: String(normas || '').trim(),
         active: true,
+        ...(isCocktail ? { kind: RECIPE_KINDS.COCKTAIL } : {}),
         createdAt: ts,
         updatedAt: ts
       })
@@ -99,6 +110,9 @@ export const recipesRepo = {
   // insumos/normas -> a la receta (que ademas espeja nombre/unidad para el tablero).
   // La foto la maneja el llamador (imagesRepo), como ProductForm. Sin transaccion
   // unica, igual que la edicion de un producto (cada paso es independiente).
+  // El `kind` NO se edita a proposito (no esta en el patch): cambiarlo movería la
+  // ubicacion de la que consume la receta y dejaria su historial de producciones
+  // sin sentido. Si hace falta, se da de baja y se crea otra (append-only).
   async update(id, { name, unit, price, area, categoryId, priceCurrency, items, normas } = {}, { userId = null } = {}) {
     const r = await db.recipes.get(id)
     if (!r) throw new Error('La receta no existe')

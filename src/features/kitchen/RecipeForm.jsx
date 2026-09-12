@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { recipesRepo } from '../../repositories/recipesRepo'
 import { imagesRepo } from '../../repositories/imagesRepo'
-import { UNITS, UNIT_LABELS, NO_AREA_LABEL, FOREIGN_PRICE_CURRENCIES } from '../../db/constants'
+import { UNITS, UNIT_LABELS, NO_AREA_LABEL, FOREIGN_PRICE_CURRENCIES, RECIPE_KINDS, RECIPE_KIND_LABELS, recipeKind } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -10,17 +10,30 @@ import { fileToThumbnail } from '../../lib/image'
 import { matchesQuery } from '../../lib/search'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 
-// Alta / edicion de una receta del modulo 'cocina'. La define el DUEÑO. Imita a
-// ProductForm (mismo estilo, misma foto/moneda gateadas) y agrega el checklist de
-// INSUMOS con su consumo por unidad (patron del checklist de "Salida a areas").
+// Alta / edicion de una receta (modulos 'cocina' y 'cocteleria'). La define el DUEÑO.
+// Imita a ProductForm (mismo estilo, misma foto/moneda gateadas) y agrega el checklist
+// de INSUMOS con su consumo por unidad (patron del checklist de "Salida a areas").
 //
 // Al guardar, recipesRepo se encarga de crear/actualizar el PRODUCTO elaborado
 // (reusa el catalogo). El costo del elaborado no se teclea: se deriva al producir.
-export function RecipeForm({ recipe, outputProduct, products, categories, areas, recipeOutputIds, onClose, onSaved }) {
+//
+// `newKind` (solo en ALTA): tipo con el que se abrio el editor (la seccion desde la
+// que se pulso "+ Nueva"). En EDICION el tipo no se puede cambiar (ver recipesRepo).
+export function RecipeForm({ recipe, outputProduct, newKind = null, products, categories, areas, recipeOutputIds, onClose, onSaved }) {
   const { user } = useAuth()
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
   const editing = !!recipe
+  // Tipo de receta. En edicion sale de la receta y es INMUTABLE. En alta arranca en
+  // el de la seccion que la abrio; el selector solo hace falta cuando el negocio
+  // tiene LOS DOS modulos (si solo tiene uno, el tipo no es ambiguo).
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+  const canCocktails = hasModule(LICENSE_MODULES.COCKTAILS)
+  const [kind, setKind] = useState(
+    editing ? recipeKind(recipe) : (newKind || (canKitchen ? RECIPE_KINDS.KITCHEN : RECIPE_KINDS.COCKTAIL))
+  )
+  const isCocktail = kind === RECIPE_KINDS.COCKTAIL
+  const canPickKind = !editing && canKitchen && canCocktails
   // Moneda del precio (modulo 'divisas'): fijar el precio del elaborado en divisa.
   const canCurrency = hasModule(LICENSE_MODULES.MULTICURRENCY)
   // Foto del elaborado (modulo 'imagenes'): miniatura en la coleccion `images`,
@@ -157,6 +170,7 @@ export function RecipeForm({ recipe, outputProduct, products, categories, areas,
           priceCurrency: canCurrency && priceCurrency !== baseCurrency ? priceCurrency : null,
           items,
           normas,
+          kind,
           photo: canImages ? photo : '',
           userId: user.id
         })
@@ -172,7 +186,28 @@ export function RecipeForm({ recipe, outputProduct, products, categories, areas,
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={editing ? 'Editar receta' : 'Nueva receta'} onClick={(e) => e.stopPropagation()}>
-        <h3>{editing ? 'Editar receta' : 'Nueva receta'}</h3>
+        <h3>{editing ? 'Editar receta' : 'Nueva receta'} · {RECIPE_KIND_LABELS[kind]}</h3>
+
+        {/* Tipo de receta. Selector SOLO en alta y con los dos modulos activos; en
+            edicion es inmutable (cambiarlo movería la ubicacion de la que consume). */}
+        {canPickKind ? (
+          <label className="field">
+            <span>Tipo de receta</span>
+            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value={RECIPE_KINDS.KITCHEN}>{RECIPE_KIND_LABELS[RECIPE_KINDS.KITCHEN]} — se elabora en la cocina y se envía a un área</option>
+              <option value={RECIPE_KINDS.COCKTAIL}>{RECIPE_KIND_LABELS[RECIPE_KINDS.COCKTAIL]} — se elabora dentro del área y queda en ella</option>
+            </select>
+          </label>
+        ) : (
+          <p className="muted">
+            <small>
+              {isCocktail
+                ? 'Coctelería: consume el stock del área donde se elabora y el trago queda en esa misma área.'
+                : 'Cocina: consume el stock de la cocina y el elaborado se envía al área que elija el cocinero.'}
+              {editing && ' El tipo de una receta ya creada no se cambia.'}
+            </small>
+          </p>
+        )}
 
         {/* Foto del elaborado (modulo 'imagenes'). Sin el modulo no aparece nada. */}
         {canImages && (
@@ -197,7 +232,7 @@ export function RecipeForm({ recipe, outputProduct, products, categories, areas,
 
         <label className="field">
           <span>Nombre del elaborado *</span>
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Pizza de queso" />
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={isCocktail ? 'Ej: Mojito' : 'Ej: Pizza de queso'} />
         </label>
 
         <div className="form-row">

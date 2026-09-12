@@ -10,6 +10,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { cleanQty } from '../../lib/qty'
+import { RECIPE_KINDS } from '../../db/constants'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 
 // Tablero de cocina (modulo 'cocina'). Lo opera el COCINERO, el VENDEDOR y el mando.
@@ -21,7 +22,10 @@ export function KitchenScreen() {
   const { user, isCook, isManager, isSeller } = useAuth()
   const { hasModule } = useLicense()
 
-  const recipes = useLiveQuery(() => recipesRepo.listActive(), [], [])
+  // Solo recetas de COCINA: una receta de cocteleria se elabora dentro del area, no
+  // en `__cocina`, y ofrecerla aqui la elaboraria de la ubicacion equivocada. Sin el
+  // modulo 'cocteleria' no existe ninguna, asi que este tablero sale IDENTICO.
+  const recipes = useLiveQuery(() => recipesRepo.listActive({ kind: RECIPE_KINDS.KITCHEN }), [], [])
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const photos = useLiveQuery(() => imagesRepo.mapByType('product'), [], new Map())

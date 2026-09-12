@@ -14,18 +14,25 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { cleanQty } from '../../lib/qty'
-import { WAREHOUSE, COCINA, COCINA_LABEL } from '../../db/constants'
+import { WAREHOUSE, COCINA, COCINA_LABEL, RECIPE_KINDS, recipeKind } from '../../db/constants'
 import { RecipeForm } from './RecipeForm'
 
-// Pantalla del mando (modulo 'cocina'). Dos partes:
-//  1) Recetas: el DUEÑO define/edita recetas (cada una crea su producto elaborado).
-//  2) Abastecer cocina: el mando envia insumos del almacen central a la cocina
+// Pantalla del mando (modulos 'cocina' y/o 'cocteleria'). Partes:
+//  1) Recetas de COCINA: el DUEÑO define/edita recetas (cada una crea su producto
+//     elaborado). Se elaboran en `__cocina` y se envian a un area.
+//  2) Recetas de COCTELERIA (modulo 'cocteleria'): mismas recetas, pero se elaboran
+//     DENTRO del area y el trago queda en ella. Lista APARTE para no confundir un
+//     plato con un trago (peticion del dueño).
+//  3) Abastecer cocina: el mando envia insumos del almacen central a la cocina
 //     (__cocina), reusando el motor de traspaso existente (transfersRepo.move),
-//     sin tocar esa logica. El cocinero elabora desde el tablero (Bloque 3).
+//     sin tocar esa logica. Solo con 'cocina': un bar sin cocina central no tiene
+//     `__cocina` que abastecer (la cocteleria se abastece con la Salida a areas).
 export function RecipesScreen() {
   const { user, isOwner, isManager } = useAuth()
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+  const canCocktails = hasModule(LICENSE_MODULES.COCKTAILS)
 
   const recipes = useLiveQuery(() => recipesRepo.list(), [], [])
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
@@ -84,13 +91,15 @@ export function RecipesScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [products, query, recipeOutputIds])
 
-  // Compuerta del modulo: sin la licencia 'cocina', la pantalla no ofrece nada.
-  if (!hasModule(LICENSE_MODULES.KITCHEN)) {
+  // Compuerta de modulo: hace falta 'cocina' O 'cocteleria'. Sin ninguno de los dos,
+  // la pantalla no ofrece nada (cada seccion se gatea aparte mas abajo).
+  if (!canKitchen && !canCocktails) {
     return (
       <div className="screen">
-        <h2>Cocina</h2>
+        <h2>Recetas</h2>
         <section className="card">
-          <p>El módulo <strong>Cocina y recetas</strong> no está activo en esta licencia.</p>
+          <p>Ningún módulo de recetas (<strong>Cocina y recetas</strong> o <strong>Coctelería</strong>)
+            está activo en esta licencia.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>
@@ -100,7 +109,7 @@ export function RecipesScreen() {
   if (!isManager) {
     return (
       <div className="screen">
-        <h2>Cocina</h2>
+        <h2>Recetas</h2>
         <section className="card">
           <p>Solo el <strong>dueño o un administrativo</strong> gestiona las recetas y abastece la cocina.</p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
@@ -152,34 +161,57 @@ export function RecipesScreen() {
     recipesRepo.remove(r.id, { userId: user.id }).catch((e) => alert('No se pudo eliminar: ' + e.message))
   }
 
-  const sortedRecipes = [...recipes].sort((a, b) => {
-    if (!!a.active !== !!b.active) return a.active ? -1 : 1 // activas primero
+  // Activas primero y alfabetico dentro de cada grupo (criterio de siempre).
+  const sortRecipes = (list) => [...list].sort((a, b) => {
+    if (!!a.active !== !!b.active) return a.active ? -1 : 1
     return (a.name || '').localeCompare(b.name || '')
   })
 
+  // Una seccion por tipo, cada una tras SU modulo. Con solo 'cocina' se ve
+  // exactamente lo de siempre (la de cocteleria no se pinta).
+  const sections = [
+    canKitchen && {
+      kind: RECIPE_KINDS.KITCHEN,
+      title: 'Recetas de cocina',
+      hint: 'Se elaboran en la cocina y se envían a las áreas desde el tablero del cocinero.',
+      empty: 'Aún no hay recetas de cocina.'
+    },
+    canCocktails && {
+      kind: RECIPE_KINDS.COCKTAIL,
+      title: 'Recetas de coctelería',
+      hint: 'Se elaboran DENTRO del área (consumen su stock) y el trago queda en esa misma área.',
+      empty: 'Aún no hay recetas de coctelería.'
+    }
+  ].filter(Boolean).map((sec) => ({
+    ...sec,
+    list: sortRecipes(recipes.filter((r) => recipeKind(r) === sec.kind))
+  }))
+
   return (
     <div className="screen">
-      <h2>Cocina — recetas</h2>
+      <h2>Recetas</h2>
       <p className="muted">
-        Define las recetas (cada una crea su producto elaborado) y abastece la cocina con insumos
-        del almacén. El cocinero elabora y envía a las áreas desde su tablero.
+        Define las recetas (cada una crea su producto elaborado){canKitchen ? ' y abastece la cocina con insumos del almacén' : ''}.
+        Lo que se elabora y a dónde va depende del tipo de receta.
       </p>
 
-      {/* ---- Recetas ---- */}
-      <section className="card">
+      {/* ---- Recetas, una seccion por tipo ---- */}
+      {sections.map((sec) => (
+      <section className="card" key={sec.kind}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <h3>Recetas ({recipes.length})</h3>
+          <h3>{sec.title} ({sec.list.length})</h3>
           {isOwner && (
-            <button className="btn btn--primary btn--sm" onClick={() => setEditing('new')}>+ Nueva receta</button>
+            <button className="btn btn--primary btn--sm" onClick={() => setEditing({ kind: sec.kind })}>+ Nueva</button>
           )}
         </div>
-        {recipes.length === 0 ? (
+        <p className="muted">{sec.hint}</p>
+        {sec.list.length === 0 ? (
           <p className="muted">
-            {isOwner ? 'Aún no hay recetas. Crea la primera con “+ Nueva receta”.' : 'Aún no hay recetas.'}
+            {isOwner ? `${sec.empty} Crea la primera con “+ Nueva”.` : sec.empty}
           </p>
         ) : (
           <div className="entry-lines">
-            {sortedRecipes.map((r) => {
+            {sec.list.map((r) => {
               const prod = productById[r.outputProductId]
               const thumb = photos.get(r.outputProductId)
               return (
@@ -214,8 +246,10 @@ export function RecipesScreen() {
           </div>
         )}
       </section>
+      ))}
 
-      {/* ---- Abastecer cocina ---- */}
+      {/* ---- Abastecer cocina (solo con el modulo 'cocina': es `__cocina`) ---- */}
+      {canKitchen && (
       <section className="card">
         <h3>Abastecer {COCINA_LABEL.toLowerCase()}</h3>
         <p className="muted">
@@ -284,11 +318,13 @@ export function RecipesScreen() {
           ))
         )}
       </section>
+      )}
 
       {editing && (
         <RecipeForm
-          recipe={editing === 'new' ? null : editing}
-          outputProduct={editing === 'new' ? null : productById[editing.outputProductId]}
+          recipe={editing.id ? editing : null}
+          outputProduct={editing.id ? productById[editing.outputProductId] : null}
+          newKind={editing.id ? null : editing.kind}
           products={products}
           categories={categories}
           areas={areas}

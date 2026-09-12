@@ -213,6 +213,31 @@ export const ELABORATION_LABEL = 'Elaboración'
 export const COCINA = '__cocina'
 export const COCINA_LABEL = 'Cocina'
 
+// Tipo de una receta. La de COCINA (clasica) se elabora en `__cocina` y se envia a
+// un area; la de COCTELERIA (modulo 'cocteleria') se elabora DENTRO del area y el
+// trago queda en ella. Es un campo OPCIONAL de `recipes` sin indice ni migracion
+// (como `sales.area` o `products.priceCurrency`): una receta SIN el campo es de
+// cocina, que es como nacieron todas las existentes. Solo se escribe cuando vale
+// 'cocteleria', asi que una receta de cocina nueva se guarda igual que siempre.
+export const RECIPE_KINDS = {
+  KITCHEN: 'cocina',
+  COCKTAIL: 'cocteleria'
+}
+
+export const RECIPE_KIND_LABELS = {
+  cocina: 'Cocina',
+  cocteleria: 'Coctelería'
+}
+
+// Tipo efectivo de una receta (tolerante: ausente o desconocido -> cocina).
+export function recipeKind(r) {
+  return r?.kind === RECIPE_KINDS.COCKTAIL ? RECIPE_KINDS.COCKTAIL : RECIPE_KINDS.KITCHEN
+}
+
+export function isCocktailRecipe(r) {
+  return recipeKind(r) === RECIPE_KINDS.COCKTAIL
+}
+
 // Area de ENTREGAS (modulo 'remesas', F6): ubicacion centinela desde la que el
 // mensajero CARGA el producto a entregar. Se surte por el traspaso normal (almacen
 // -> Entregas) y aparece como destino solo con el modulo. El producto que el
