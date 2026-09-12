@@ -2536,6 +2536,9 @@ input[type='file'] {
   max-width: 100%;
 }
 .table-card__state { font-size: 0.78rem; color: var(--muted); }
+/* Marca de descuento activo en la baldosa de la mesa (modulo 'mesas'). Solo se pinta
+   cuando la cuenta lleva descuento; el color lo pone .warn-text. */
+.table-card__disc { font-size: 0.7rem; font-weight: 700; }
 /* Estados: libre (tenue) · ocupada (verde) · reservada (azul) · +1h (ambar) */
 .table-card--free { border-style: dashed; }
 .table-card--busy { border-color: var(--primary); background: var(--surface-hi); }

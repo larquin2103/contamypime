@@ -77,8 +77,12 @@ for (const a of HELP_ARTICLES) {
 }
 // Los articulos gateados de hoy, y que NINGUNO se cuela sin su licencia.
 const gated = HELP_ARTICLES.filter((a) => a.module || a.modules).map((a) => a.id)
-eq(gated, ['cocteleria', 'descubierto', 'ficha-que-es', 'ficha-llenar'],
+// Si esta lista falla, NO se "arregla" a ciegas: significa que alguien añadio o quito
+// una puerta de licencia en la ayuda, y hay que confirmar que es a proposito.
+eq(gated, ['cocteleria', 'descuento-mesa', 'descubierto', 'ficha-que-es', 'ficha-llenar'],
   'la lista de articulos con puerta de licencia es la esperada')
+eq(visibleArticles({ modules: ['mesas'] }).filter((a) => gated.includes(a.id)).map((a) => a.id),
+  ['descuento-mesa'], 'con solo mesas se ve el del descuento y ninguno mas')
 eq(visibleArticles({ modules: [] }).filter((a) => gated.includes(a.id)), [],
   'con licencia pelada NO se cuela NINGUNO de ellos')
 eq(visibleArticles({ modules: ['cocteleria'] }).filter((a) => gated.includes(a.id)).map((a) => a.id),

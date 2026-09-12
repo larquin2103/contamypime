@@ -3,7 +3,7 @@ import {
   ArrowLeftRight, BarChart3, BookOpen, Calculator, ChevronLeft, ChevronRight,
   ClipboardList, Coins, Download, FileSpreadsheet, Gauge, HelpCircle, Hourglass,
   KeyRound, Lightbulb, LockOpen, Package, Receipt, ShoppingCart, Smartphone,
-  Martini, PackageX, Store, TriangleAlert, Truck, UserCog, Users,
+  Martini, PackageX, Percent, Store, TriangleAlert, Truck, UserCog, Users,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
@@ -15,6 +15,7 @@ import { downloadHelpPdf } from './helpPdf'
 const ARTICLE_ICONS = {
   cocteleria: Martini,
   descubierto: PackageX,
+  'descuento-mesa': Percent,
   'ficha-que-es': Receipt,
   'ficha-llenar': FileSpreadsheet,
   'que-es': Smartphone,

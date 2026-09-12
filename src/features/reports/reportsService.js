@@ -1350,17 +1350,24 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
   // solo con el modulo Y si alguna mesa consumio algo en divisa. Sin el -> clasico.
   const hasForeign = divisas && sales.some((s) => (s.items || []).some((it) => it.priceCurrency))
 
+  // Columna "Descuento" solo si en el rango hay alguna cuenta con descuento (mismo
+  // criterio data-driven que las columnas USD). Sin descuentos, el reporte sale
+  // IDENTICO al de siempre: mismas columnas, mismas filas y mismo fichero.
+  const hasDiscount = sales.some((s) => Number(s.discountAmount || 0) > 0)
+
   const rows = []
   let totSub = 0
   let totServ = 0
   let totTotal = 0
+  let totDisc = 0
   let totConsumoUsd = 0
   for (const s of sales) {
     const units = (s.items || []).reduce((a, it) => a + Number(it.qty || 0), 0)
     const sub = round2(s.subtotal ?? s.totalBase ?? 0)
     const serv = round2(s.serviceChargeAmount ?? 0)
     const tot = round2(s.totalBase ?? 0)
-    totSub += sub; totServ += serv; totTotal += tot
+    const disc = round2(s.discountAmount ?? 0)
+    totSub += sub; totServ += serv; totTotal += tot; totDisc = round2(totDisc + disc)
     // Parte del consumo en divisa (suma de importes de lineas en divisa, con su tasa
     // congelada). Cuenta 100% en divisa -> consumo completo en USD; mixta -> la parte.
     const consumoUsd = (s.items || []).reduce((a, it) => { const u = foreignOf(it, it.lineTotal); return a + (u === '' ? 0 : u) }, 0)
@@ -1373,6 +1380,8 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
       names[s.sellerId] || 'vendedor',
       round2(units),
       sub,
+      // El descuento va DESPUES del consumo, que es el orden en que se calcula.
+      ...(hasDiscount ? [disc > 0 ? disc : ''] : []),
       s.serviceChargePct ? `${s.serviceChargePct}%` : '',
       serv,
       tot,
@@ -1381,12 +1390,14 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
     ])
   }
   const avg = sales.length ? round2(totTotal / sales.length) : 0
-  rows.push(['', '', '', 'TOTALES', '', round2(totSub), '', round2(totServ), round2(totTotal), '', ...(hasForeign ? [round2(totConsumoUsd)] : [])])
-  rows.push(['', '', '', `Cuentas: ${sales.length}`, '', '', 'Ticket promedio', avg, '', '', ...(hasForeign ? [''] : [])])
+  rows.push(['', '', '', 'TOTALES', '', round2(totSub), ...(hasDiscount ? [round2(totDisc)] : []), '', round2(totServ), round2(totTotal), '', ...(hasForeign ? [round2(totConsumoUsd)] : [])])
+  rows.push(['', '', '', `Cuentas: ${sales.length}`, '', '', ...(hasDiscount ? [''] : []), 'Ticket promedio', avg, '', '', ...(hasForeign ? [''] : [])])
   return {
     title: 'Ventas por mesa',
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Área', 'Mesa', 'Camarero', 'Unidades', 'Consumo', 'Serv.%', 'Servicio', 'Total', 'Método',
+    head: ['Fecha', 'Área', 'Mesa', 'Camarero', 'Unidades', 'Consumo',
+      ...(hasDiscount ? ['Descuento'] : []),
+      'Serv.%', 'Servicio', 'Total', 'Método',
       ...(hasForeign ? ['Consumo USD'] : [])],
     rows,
     filename: 'ventas-mesas',

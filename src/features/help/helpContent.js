@@ -278,6 +278,27 @@ export const HELP_ARTICLES = [
     ]
   },
   {
+    id: 'descuento-mesa',
+    section: 'Gestión y avanzado',
+    audience: 'owner',
+    module: LICENSE_MODULES.TABLES,
+    title: 'Descuento a la cuenta de una mesa',
+    teaser: 'Un % que rebaja el consumo, con su rastro de quién lo autorizó.',
+    body: [
+      { p: 'A veces hay que rebajar una cuenta: un cliente habitual, algo que salió mal, una cortesía. El descuento se pone sobre la cuenta ABIERTA y se aplica al cobrar.' },
+      { steps: [
+        'Entra a la mesa (Salón → la mesa) y en la fila "Descuento" toca "Aplicar".',
+        'Escribe el porcentaje. Verás en el momento cuánto son sobre el consumo.',
+        'Si lo pide el vendedor, hace falta el PIN del dueño o de un administrativo; si lo haces tú como dueño o administrativo, se aplica directo.',
+        'Para retirarlo, la misma fila → "Quitar".'
+      ] },
+      { p: 'El descuento se calcula sobre el CONSUMO, y el cargo por servicio (si el área lo tiene) se cobra después, sobre lo que queda. Es decir: si regalas parte del consumo, no se cobra servicio por esa parte.' },
+      { p: 'Mientras esté activo, el panel del Salón lo avisa arriba y la mesa lo marca, así que no se cobra un descuento sin que se vea. El ticket del cliente lleva su línea de descuento, y la venta guarda el porcentaje, el importe y QUIÉN lo autorizó: la cuenta se sostiene sola ante una revisión.' },
+      { warn: 'El descuento se aplica al cobrar, sobre el consumo que haya EN ESE MOMENTO. Si después se agregan más consumos, el mismo porcentaje se aplica al total nuevo; no se congela en el importe de cuando lo autorizaste.' },
+      { tip: 'En Reportes, "Ventas por mesa" gana una columna de Descuento cuando hay alguno en el rango. Y el panel del dueño descuenta ese dinero del ingreso y de la ganancia, para que no te enseñe más de lo que entró.' }
+    ]
+  },
+  {
     id: 'descubierto',
     section: 'Gestión y avanzado',
     audience: 'owner',

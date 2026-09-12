@@ -72,11 +72,15 @@ function delta(cur, prev) {
   return 0
 }
 
-function DeltaBadge({ value }) {
+// `invert`: para una magnitud donde SUBIR es MALO (los gastos). La flecha sigue
+// apuntando hacia donde se movio el numero, pero el color se invierte: un gasto que
+// sube no se pinta en verde. Sin la prop, identico a antes.
+function DeltaBadge({ value, invert = false }) {
   if (value === 0) return <span className="kpi__delta kpi__delta--flat">— vs anterior</span>
   const up = value > 0
+  const good = invert ? !up : up
   return (
-    <span className={`kpi__delta ${up ? 'kpi__delta--up' : 'kpi__delta--down'}`}>
+    <span className={`kpi__delta ${good ? 'kpi__delta--up' : 'kpi__delta--down'}`}>
       {up ? '▲' : '▼'} {Math.abs(value)}% vs anterior
     </span>
   )
@@ -152,6 +156,15 @@ export function DashboardScreen() {
           <span className="stat-card__label">Transacciones</span>
           <strong className="stat-card__value">{report?.salesCount ?? 0}</strong>
           <DeltaBadge value={delta(report?.salesCount ?? 0, prev?.salesCount ?? 0)} />
+        </div>
+        {/* Gastos: el COSTO de lo vendido en el periodo. Con "Hoy" son los gastos del
+            día. Ya lo calculaba `analyticsRepo.report` (campo `cost`) y esta pantalla
+            no lo mostraba: aquí no se calcula nada nuevo, solo se enseña. El delta va
+            INVERTIDO porque en un gasto subir no es una buena noticia. */}
+        <div className="stat-card">
+          <span className="stat-card__label">Gastos (costo de lo vendido)</span>
+          <strong className="stat-card__value">{m(report?.cost ?? 0)}</strong>
+          <DeltaBadge value={delta(report?.cost ?? 0, prev?.cost ?? 0)} invert />
         </div>
       </div>
 

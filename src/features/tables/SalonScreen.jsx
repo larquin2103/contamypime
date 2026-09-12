@@ -143,6 +143,11 @@ export function SalonScreen() {
   const busyOrders = active.filter((o) => o.status === ORDER_STATUS.OPEN)
   const totalAmount = busyOrders.reduce((a, o) => a + orderTotal(o.id), 0)
   const reservedCount = active.filter((o) => o.status === ORDER_STATUS.RESERVED).length
+  // Descuento vivo de una mesa (0 = ninguno). Lo lleva la CABECERA del pedido, asi que
+  // se ve aqui aunque lo haya puesto otro equipo. Sin descuentos, todo esto es 0 y no
+  // se pinta nada: el salon queda igual que siempre.
+  const discountOf = (o) => Number(o?.discountPct) || 0
+  const discounted = busyOrders.filter((o) => discountOf(o) > 0)
 
   return (
     <div className="screen">
@@ -174,6 +179,25 @@ export function SalonScreen() {
               <span className="salon-stat__lbl">consumo en curso</span>
             </div>
           </div>
+
+          {/* Aviso de mesas con descuento activo. Va arriba, fuera de las areas, para
+              que el mando lo vea de un golpe sin entrar a cada mesa. Sin descuentos no
+              existe. */}
+          {discounted.length > 0 && (
+            <div className="card card--warn">
+              <p className="warn-text">
+                <strong>{discounted.length === 1 ? '1 mesa con descuento' : `${discounted.length} mesas con descuento`}</strong>
+              </p>
+              <p className="muted">
+                <small>
+                  {discounted
+                    .map((o) => `${o.table} (${discountOf(o)}%${isManager && o.area ? ` · ${o.area}` : ''})`)
+                    .join(' · ')}
+                  . Se aplica al cobrar; se quita desde la cuenta de la mesa.
+                </small>
+              </p>
+            </div>
+          )}
 
           {/* Leyenda de estados */}
           <div className="salon-legend">
@@ -252,6 +276,13 @@ export function SalonScreen() {
                         <span className="table-card__meta">{count} ítem(s) · {since(order.openedAt)}</span>
                         <span className="table-card__who">{userName(order.openedBy)}</span>
                       </>
+                    )}
+                    {/* Descuento activo: se avisa en la propia mesa. El importe que se
+                        muestra arriba es el CONSUMO (sin descuento ni servicio), como
+                        siempre; esta marca dice que al cobrar saldra menos. Sin
+                        descuento no se pinta nada y la baldosa es la de siempre. */}
+                    {discountOf(order) > 0 && (
+                      <span className="table-card__disc warn-text">−{discountOf(order)}% desc.</span>
                     )}
                     {reserved && (
                       <>

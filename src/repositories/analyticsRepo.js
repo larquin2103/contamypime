@@ -1,5 +1,6 @@
 import { db } from '../db/db'
 import { round2 } from '../lib/currency'
+import { saleNetFactor } from '../lib/saleRevenue'
 import { localDay } from '../lib/dates'
 import { parseTxnId } from '../lib/sms'
 import { SHIFT_STATUS } from '../db/constants'
@@ -36,8 +37,16 @@ export const analyticsRepo = {
     let cost = 0
     const prod = {}
     for (const s of sales) {
+      // Descuento de la cuenta (modulo 'mesas'): se PRORRATEA entre las lineas de esa
+      // venta, para que el ingreso y la ganancia sean los REALES y no los brutos. Sin
+      // el, este panel diria que entro mas dinero del que entro. Se reparte en
+      // proporcion al importe de cada linea, que es el criterio contable estandar y el
+      // unico que mantiene la suma de las partes igual al total. El COSTO no se toca:
+      // la mercancia costo lo mismo aunque se regalara parte del precio.
+      // Sin descuento el factor es 1 y la aritmetica es EXACTAMENTE la de antes.
+      const netFactor = saleNetFactor(s)
       for (const it of s.items || []) {
-        const lineRev = Number(it.lineTotal ?? it.unitPrice * it.qty)
+        const lineRev = round2(Number(it.lineTotal ?? it.unitPrice * it.qty) * netFactor)
         const lineCost = Number((it.unitCost || 0) * it.qty)
         revenue += lineRev
         cost += lineCost
@@ -87,9 +96,12 @@ export const analyticsRepo = {
       const saleArea = String(s.area || '')
       const key = saleArea || '__none'
       const e = areaAgg[key] || (areaAgg[key] = { area: saleArea, revenue: 0, profit: 0, qty: 0 })
+      // Mismo prorrateo del descuento que arriba: el ingreso por area tambien tiene
+      // que ser el real. Sin descuento, factor 1 = la aritmetica de antes.
+      const netFactor = saleNetFactor(s)
       let saleRev = 0
       for (const it of s.items || []) {
-        const lineRev = Number(it.lineTotal ?? it.unitPrice * it.qty)
+        const lineRev = round2(Number(it.lineTotal ?? it.unitPrice * it.qty) * netFactor)
         const lineCost = Number((it.unitCost || 0) * it.qty)
         e.revenue += lineRev
         e.profit += lineRev - lineCost
