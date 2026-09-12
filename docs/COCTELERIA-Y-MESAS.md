@@ -943,3 +943,58 @@ pasa `allowShort` al motor y el mensaje de éxito es el de siempre.
 
 **Lo que B2 NO hace:** no avisa al dueño en el centro de notificaciones (B3) y no está en la ayuda
 (B4). Y **la app no se ha ejecutado**: ni una confirmación marcada en una pantalla real.
+
+### B3 — Aviso al dueño de las existencias en negativo (commit `bbee698`, 12-09-2026)
+
+**Qué se hizo:** tipo `negative_stock` en el centro de notificaciones (Fase 9), derivado de
+`productions.shortages`; categoría propia `elaboracion` con su interruptor, gateada por cualquiera
+de los dos módulos.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **960.37 → 961.58 kB** (gzip **278.54 → 278.97**): **+1.21 kB**.
+- **541/541** en las 9 suites node.
+- **26/26 del BARRIDO REAL** (`refreshFromSources`) contra Dexie, con un `localStorage` de mentira
+  porque el servicio lo usa para el cursor y en node no existe. Lo probado:
+  1. El aviso sale con su **texto exacto**, la fecha del **evento** (no la del barrido), su autor y
+     su metadata.
+  2. **Idempotencia:** barrer dos veces **no duplica**, no crea nada y **no revive** el estado de
+     *leído* de un aviso ya marcado.
+  3. Una elaboración **sin** descubierto no genera nada.
+  4. Con la categoría **apagada** no se materializa; al **reencenderla**, la ventana lo **recupera**
+     (no se pierde por haber estado apagada).
+  5. Sobre una existencia **ya negativa**, el saldo del mensaje es **−9** y no −2.
+  6. Con **varios** insumos, nombra el primero y cuenta el resto, con la ubicación correcta (el
+     **área** en coctelería, la cocina en cocina).
+- **NO-REGRESIÓN, en la misma corrida:** los avisos que ya existían —**diferencia de caja** y
+  **cambio de precio**— **siguen saliendo y con su mensaje intacto**. Era el riesgo real de esta
+  fase: el barrido lee sus fuentes en un `Promise.all` **destructurado** y este cambio le añade un
+  **séptimo** elemento; si se hubiera desalineado, otro aviso se habría roto **en silencio**.
+- **Sincronización intacta, comprobado:** `notifications` **no está** en `SYNC_COLLECTIONS` (es local
+  del dispositivo, como debe), `notificationPreferences` **no está** en `LOCAL_CONFIG_KEYS` (viaja a
+  todos los equipos) y `SYNC_COLLECTIONS` **sigue en 34**.
+
+**Tres decisiones de diseño:**
+
+1. **Se deriva del EVENTO, no del estado.** Barrer todos los productos buscando negativos no encaja
+   en este motor —que es incremental, con cursor y ventana— y además daría un aviso sin fecha ni
+   autor. `productions.shortages` es un evento con las dos cosas.
+2. **Categoría propia `elaboracion`, no dentro de `inventario`.** Así el dueño puede apagar los
+   avisos de descubierto sin perder los del conteo físico. Nace **encendida** como las demás, y como
+   `getPreferences` mezcla los defaults con lo guardado, **una preferencia ya guardada sin esta clave
+   la hereda encendida: no hay migración**. Sin el permiso de B1 no existe ni un aviso, así que un
+   negocio que no lo use no ve nada.
+3. **`CATEGORIES` acepta ahora `modules` (cualquiera de ellos)** además del `module` de siempre, para
+   una categoría que sirve a dos módulos. Las categorías existentes no se tocan.
+
+**Coste declarado:** **una consulta más por barrido**, por índice `createdAt` y acotada al piso, y
+solo en el dispositivo del dueño. Sin los módulos, `productions` está vacía → consulta vacía. Y solo
+las elaboraciones **con** descubierto pasan a candidatas, así que un negocio que elabora a diario sin
+faltantes no infla el barrido ni carga los mapas de nombres.
+
+**Nota sobre el banco de pruebas:** `report.test.mjs` (el de A5) **ya no corre**, y es esperado:
+importaba la copia del `reportsService` **anterior** extraída con `git show`, que se borró al cerrar
+A5. Para repetirlo hay que volver a extraerla. No es una regresión.
+
+**Lo que B3 NO hace:** falta **B4** (la ayuda: cómo se cura un descubierto). Y **la app no se ha
+ejecutado**: ni una campana abierta en un teléfono real.
