@@ -1065,3 +1065,50 @@ de dar la entrada en el almacén cuando el negativo está en un área.
 
 **El bloque C sigue sin empezar:** descuento por mesa + panel del dueño con el valor real y los
 gastos del día.
+
+---
+
+## 19. Bloque C — descuento por mesa y panel del dueño
+
+### C1 — El descuento en el repo y su aritmética (commit `1b0bcd4`, 12-09-2026)
+
+**Qué se hizo:** `lib/orderTotals.js` (puro) con el orden de la cuenta —consumo, **descuento**, y el
+servicio sobre **lo que queda**— y `cleanPct`; `ordersRepo.totals` delegando en él; y
+`setDiscount` / `clearDiscount` escribiendo la **cabecera** del pedido con `stampOrder` y **dos**
+eventos de auditoría.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **964.43 → 966.00 kB** (gzip **279.89 → 280.31**): **+1.57 kB**.
+- **644/644** en **11** suites node (**31** nuevas de `orderTotals`).
+- **36/36 contra Dexie real**, a la primera.
+- **El INVARIANTE, probado contra la fórmula anterior escrita a mano en la propia suite:** 10 casos
+  × 2 (sin el campo y con el campo en 0), **cero diferencias**. Es lo que garantiza que las mesas
+  que hoy se cobran sigan cobrándose igual.
+- El orden de la cuenta: `300 − 45 = 255`, servicio `25.5` sobre 255, total **280.5**. Y una
+  aserción explícita de que **no** es 950 en el caso de 1000 — que es lo que daría cobrar el
+  servicio sobre el consumo completo.
+- El 100 % de cortesía, eximir servicio y descuento a la vez, porcentajes absurdos acotados, el
+  redondeo a centavos **en cada paso**, `updatedAt` que **avanza** al poner y al quitar, los **dos**
+  eventos de auditoría, que quitar lo que no hay **no** deja un evento vacío, y los candados
+  (pedido inexistente, pedido ya cobrado, porcentaje no válido) **sin dejar rastro**.
+- **NO-REGRESIÓN de mesas en la misma corrida:** agregar, anular con su compensación de stock y
+  `listActive` siguen exactos.
+
+**HALLAZGO: `ordersRepo.totals` no tiene ni un llamador.** Era **código muerto** antes de este
+cambio —`TableScreen` calcula los totales **en línea**— y sigue muerto hasta que C2 lo use. Dos
+comprobaciones que hacen falta para C2, y que **se hicieron, no se supusieron**:
+
+1. La fórmula de la pantalla (`TableScreen.jsx:114-120`) es **idéntica** a la que tenía el repo, así
+   que en C2 la pantalla puede pasar a la función pura **sin cambiar un centavo** de lo que cobra.
+2. La única diferencia teórica era el acotado: el repo hacía `Math.max(0, …)` y la pantalla no. Pero
+   `servicePct` ya viene acotado a 0–100 desde `configRepo` (`:96`), así que `cleanPct` **no cambia
+   nada en la práctica**.
+
+Se deja `totals` en su sitio (delegando) en vez de borrarlo: borrar no es aditivo y no está en el
+plan.
+
+**Lo que C1 NO hace:** no hay nada visible todavía. Ni fila en la cuenta, ni botón, ni distintivo en
+el salón, ni el descuento viaja a la venta. **Un descuento puesto desde el repo no se cobraría**
+—la pantalla ni lo lee—, así que **el estado intermedio es inerte y seguro**. C2 lo conecta. Y **la
+app no se ha ejecutado**.
