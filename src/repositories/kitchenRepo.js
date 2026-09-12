@@ -60,7 +60,18 @@ export const kitchenRepo = {
   // defecto la COCINA = comportamiento clasico e invariante historico. La
   // cocteleria pasa el AREA, y entonces origen y destino coinciden: el trago queda
   // en la misma area y NO se emite ningun traspaso (ver lib/kitchenMath).
-  async produce({ recipeId, units, toArea, byUserId, fromLocation = COCINA }) {
+  //
+  // `allowShort` (opcional, permiso `allowShortProduction` del dueño): convierte el
+  // candado de existencia en un AVISO. Sin el -el default- se comporta EXACTAMENTE
+  // como siempre: falta un insumo, no se elabora. Con el, el descubierto se anota en
+  // `shortages` (y en el snapshot de la produccion) y la existencia de esa ubicacion
+  // queda en NEGATIVO hasta que una entrada o un traspaso la neteen. Es para cuando
+  // la mercancia esta fisicamente pero falta registrar su entrada. Lo decide el
+  // llamador (la pantalla lee el ajuste), como con `sellerEntries`: el default es el
+  // lado seguro y el motor sigue siendo determinista.
+  // NO relaja ningun otro candado: producto inexistente o dado de baja, y falta de
+  // tasa de una divisa, siguen lanzando (son faltas de DATO, no de mercancia).
+  async produce({ recipeId, units, toArea, byUserId, fromLocation = COCINA, allowShort = false }) {
     const u = Math.abs(Number(units) || 0)
     const area = String(toArea || '').trim()
     const from = String(fromLocation || '').trim() || COCINA
@@ -120,6 +131,7 @@ export const kitchenRepo = {
       // 1) Valida cada insumo contra el LIBRO MAYOR (candado) y acumula el valor
       //    consumido en MN (convirtiendo divisa a la tasa vigente).
       const ingredients = []
+      const shortages = [] // insumos elaborados EN DESCUBIERTO (solo con allowShort)
       let movedValueMN = 0
       for (const it of items) {
         const need = round2(Number(it.qty) * u)
@@ -128,7 +140,19 @@ export const kitchenRepo = {
         if (!p.active) throw new Error(`El insumo "${p.name}" está dado de baja en el catálogo`)
         const have = await stockAtLoc(it.productId, from)
         if (have < need) {
-          throw new Error(`No hay suficiente "${p.name}" en ${locationLabel(from)} (hay ${cleanQty(have)} ${p.unit}, se necesitan ${cleanQty(need)})`)
+          // Sin el permiso, el candado de siempre: no se elabora lo que no hay.
+          if (!allowShort) {
+            throw new Error(`No hay suficiente "${p.name}" en ${locationLabel(from)} (hay ${cleanQty(have)} ${p.unit}, se necesitan ${cleanQty(need)})`)
+          }
+          // Con el permiso, se ANOTA el descubierto y se sigue: el consumo se
+          // registra COMPLETO (el movimiento no se recorta), asi que la existencia
+          // de esa ubicacion queda en negativo y una entrada posterior lo netea.
+          // `have` ya puede venir negativo de un descubierto anterior: entonces el
+          // faltante es mayor que lo que pide la receta, y eso es lo correcto.
+          shortages.push({
+            productId: p.id, name: p.name, unit: p.unit,
+            need: cleanQty(need), have: cleanQty(have), short: cleanQty(need - have)
+          })
         }
         // Costo del insumo en MN (modulo 'divisas': a la tasa vigente; sin tasa, bloquea).
         let unitCostMN = Number(p.cost) || 0
@@ -210,11 +234,15 @@ export const kitchenRepo = {
         // guarda byte a byte como siempre, y quien lea puede asumir los defaults.
         ...(kind === RECIPE_KINDS.COCKTAIL ? { kind: RECIPE_KINDS.COCKTAIL } : {}),
         ...(from !== COCINA ? { fromLocation: from } : {}),
+        // Descubierto con el que se elaboro. Solo se escribe si lo hubo, asi que una
+        // produccion normal se guarda byte a byte como siempre. De aqui sale el aviso
+        // al dueño (es un EVENTO con fecha, no un estado que haya que barrer).
+        ...(shortages.length ? { shortages } : {}),
         byUserId,
         createdAt: ts
       })
 
-      result = { id, units: u, toArea: area, fromLocation: from, outputCostUnit: outputCostUnitMN }
+      result = { id, units: u, toArea: area, fromLocation: from, outputCostUnit: outputCostUnitMN, shortages }
     })
 
     return result

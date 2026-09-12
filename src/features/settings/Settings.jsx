@@ -225,8 +225,9 @@ function BoardsSection() {
   const canCocktails = hasModule(LICENSE_MODULES.COCKTAILS)
   const kitchenBoard = useLiveQuery(() => configRepo.get('sellerKitchenBoard', true), [], undefined)
   const cocktailBoard = useLiveQuery(() => configRepo.get('sellerCocktailBoard', false), [], undefined)
+  const allowShort = useLiveQuery(() => configRepo.get('allowShortProduction', false), [], undefined)
   if (!canKitchen && !canCocktails) return null
-  if (kitchenBoard === undefined || cocktailBoard === undefined) return null
+  if (kitchenBoard === undefined || cocktailBoard === undefined || allowShort === undefined) return null
 
   return (
     <section className="card">
@@ -272,6 +273,36 @@ function BoardsSection() {
             </small>
           </p>
         </>
+      )}
+
+      {/* Elaborar con faltante. Afecta a los DOS tableros y a TODOS los que elaboran
+          (cocinero, vendedor y mando): es el mismo motor. Apagado por defecto. */}
+      <div className="kv" style={{ marginTop: 10 }}>
+        <span className="muted">Elaborar aunque falte algún insumo</span>
+        <button
+          className={`btn btn--sm ${allowShort ? 'btn--primary' : 'btn--ghost'}`}
+          onClick={() => configRepo.set('allowShortProduction', !allowShort)}
+        >
+          {allowShort ? 'Activado ✓' : 'Desactivado'}
+        </button>
+      </div>
+      <p className="muted">
+        <small>
+          Para cuando la mercancía <strong>está físicamente</strong> pero falta registrar su entrada.
+          Con esto, quien elabora puede seguir adelante y la existencia de ese insumo queda en
+          <strong> negativo</strong> hasta que la entrada o el traspaso la cubran. Se avisa antes de
+          confirmar, queda constancia de con cuánto se elaboró en descubierto, y afecta a los dos
+          tableros. Desactivado (por defecto), falta un insumo y no se elabora, como siempre.
+        </small>
+      </p>
+      {allowShort && (
+        <p className="warn-text">
+          <small>
+            Ojo: un negativo solo se cura dando la <strong>entrada</strong> en esa misma ubicación,
+            haciendo un <strong>traspaso</strong> hacia ella, o con el <strong>conteo físico</strong>.
+            Una entrada al almacén central NO cura un negativo de un área.
+          </small>
+        </p>
       )}
     </section>
   )
