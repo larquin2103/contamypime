@@ -1265,3 +1265,139 @@ NO es "de ida"**. Un build anterior sigue abriendo la base, al contrario que v15
 
 **Ninguna de las 13 fases se fusionó a `main`.** Eso sigue siendo una decisión del dueño, y la regla
 5 del proyecto exige su auditoría profunda antes.
+
+---
+
+## 21. Auditoría profunda antes de fusionar a `main` (12-09-2026)
+
+Hecha a pedido del dueño, con una pregunta concreta: **"validar que sin coctelería todo se muestra
+como antes"**. Todo lo de abajo se **ejecutó**; nada se cita de memoria. Los módulos de `origin/main`
+(`328ec95`) se extrajeron con `git show` a ficheros temporales, se corrieron contra el árbol de
+trabajo sobre la **misma base sembrada**, y se borraron al terminar (`git status` limpio).
+
+### 21.1 Superficie del cambio
+
+- **33 ficheros** en `src/`: **7 nuevos** (no pueden romper nada que no los importe) y **26
+  modificados**. **2004 inserciones / 236 borrados.**
+- **`src/db/db.js`: CERO líneas de diff** contra `main`. `db.version(19)` en las dos. **No hay
+  migración**, y por tanto **el despliegue es reversible**: un build anterior abre la misma base. Es
+  la diferencia más importante respecto de v15–v19.
+- **`src/features/sync/collections.js`: CERO líneas de diff.** **34** colecciones en `main` y 34
+  ahora; `LOCAL_CONFIG_KEYS` intacto. Ni una consulta nueva de Firestore por este cambio.
+- **`firestore.rules`** usa comodín `{document=**}` y no hay colecciones nuevas: **no hay que
+  redesplegar reglas.**
+
+### 21.2 La prueba central: un negocio SIN coctelería ve lo mismo — **69/69**
+
+Se sembró una base de un negocio real **con `cocina`, `mesas` y áreas** (dos áreas, mesas, cargo por
+servicio, turnos abierto y cerrado con diferencia, ventas de mesa y de mostrador y una anulada,
+compra, traspaso, merma, receta activa y otra de baja, producción de cocina, conteo aprobado, cambio
+de precio) y **sin una sola receta ni producción de coctelería**. Sobre esa base:
+
+| Qué se comparó | Resultado |
+|---|---|
+| `recipesRepo.list`, `listActive`, `getByOutput` | **Idénticos** a `main` |
+| `kitchenRepo.canMake` (2 argumentos), `listAll`, `recent(8)` y `recent(8, {kind:'cocina'})` | **Idénticos** |
+| `ordersRepo.listActive`, `liveItems` | **Idénticos** |
+| `ordersRepo.totals` | **Añade dos claves en 0** (`discountPct`, `discount`); quitándolas, idéntico. **No tiene llamadores.** |
+| `analyticsRepo.report` — todo el historial, un día, y rango vacío | **Idéntico** en los tres |
+| `analyticsRepo.lowRotation` | **Idéntico** |
+| **15 builders de reportes** × 2 rangos (ventas, por vendedor, inventario, turnos, por área, entradas, traspasos, conteo, mesas, mermas, post-cierre, cierres forzados, conciliación y duplicados de transferencias, pago por turno) | **Los 30, idénticos** |
+| `buildKitchenProduction` con `kinds:['cocina']` y con el default | **Idéntico**; **sin columna "Tipo"** |
+| `buildTablesReport` | **Idéntico**; **sin columna "Descuento"** |
+| `salesRepo.create` (mismo payload) | **Añade exactamente tres claves**; quitándolas el registro es **idéntico**, y los **movimientos del libro mayor** que escribe son idénticos |
+| `refreshFromSources` (avisos derivados) | **Idénticos** — y un control confirma que `main` sí generaba avisos con esa base |
+| Ayuda visible para ese negocio | No pierde **ningún** artículo (ver 21.4) |
+| Estado de la base | Ninguna receta con `kind`, ninguna producción con campos nuevos, ninguna mesa con descuento, esquema en **v19** |
+
+### 21.3 Convivencia de versiones: el build VIEJO con datos NUEVOS — **27/27**
+
+Nunca se había medido, y es el riesgo real del despliegue. Se corrió el código de `main` sobre datos
+del formato nuevo (receta con `kind`, producción de coctelería, producción con `shortages`, mesa con
+`discountPct`, venta con `discountAmount`, existencia en **−7**, y las tres claves de `config`):
+
+1. **NADA REVIENTA.** Los once caminos probados (recetas, producciones, totales de mesa, panel,
+   cuatro reportes, barrido de avisos, `canMake`, `configRepo`) devuelven sin lanzar.
+2. **La receta de coctelería SÍ se lista** en el build viejo, pero su *"puedes elaborar"* da **0**
+   (mira la cocina, y el insumo está en el área) y si se intenta elaborar **rechaza** con *"No hay
+   suficiente"* **sin dejar ni un movimiento**. El riesgo es más estrecho de lo documentado: haría
+   falta que **el mismo insumo exista también en `__cocina`**.
+3. **EL HALLAZGO QUE IMPORTA, y es de dinero:** un build viejo que abra una mesa **con descuento lo
+   ignora y cobraría el total sin descontar** — en la prueba, **550 en vez de 440: 110 de más al
+   cliente**. No revienta, no avisa: cobra de más. **Es la razón operativa para no usar descuentos
+   hasta que todos los dispositivos estén actualizados.**
+4. El panel viejo cuenta el consumo **bruto** (250 en vez de 200) y su reporte de mesas muestra
+   consumo 250, servicio 20 y total 220 **sin explicar la resta**. No rompe nada; solo no lo entiende.
+5. El build viejo **no genera** el aviso de descubierto (no conoce el tipo), lee las claves nuevas de
+   `config` sin molestarse, y **muestra la existencia −7 tal cual** sin romperse.
+
+### 21.4 Lo que SÍ cambia para un negocio sin coctelería (nada de esto es una ruptura, pero hay que saberlo)
+
+1. **Cada venta nueva guarda tres campos más** (`discountPct: 0`, `discountAmount: 0`,
+   `discountBy: null`), también las de mostrador. Son ~40 bytes por venta que viajan por la sync.
+2. **La ayuda gana artículos según lo que el negocio tenga:** con `mesas`, *"Descuento a la cuenta de
+   una mesa"*; con `cocina`, *"Existencias en negativo"* —porque el permiso de faltante aplica
+   **también** al tablero de cocina (decisión B1)—. Un negocio con cocina + mesas **gana los dos**.
+   Los dos explican funciones que ese negocio **sí** tiene.
+3. **La tarjeta "Gastos (costo de lo vendido)" aparece para TODOS los negocios:** es base, no está
+   gateada por ningún módulo. Fue lo pedido expresamente, pero conviene decirlo: el dueño de
+   cualquier negocio verá una tarjeta nueva en su panel.
+4. **Cambian textos** en la pantalla de recetas (título y rótulos de las tarjetas) y aparece la
+   tarjeta *Tableros de elaboración* en Ajustes, con el tablero de cocina del vendedor ahora
+   **apagable** (default **encendido** = lo de hoy).
+5. **Una consulta más** por barrido de notificaciones, en el dispositivo del dueño (`productions` por
+   índice `createdAt`). Sin los módulos, consulta vacía.
+6. Con `cocina`, en *Ajustes → Notificaciones* aparece la categoría **Elaboración**.
+
+### 21.5 Sin fugas de licencia
+
+- Los **14** usos de `LICENSE_MODULES.COCKTAILS` en todo `src/`: **todos** tras `hasModule(...)`, o
+  son el campo `module`/`modules` de un artículo de ayuda —que filtran **la pantalla y el PDF con la
+  misma función** desde B4—.
+- Las **tres** claves de permiso se leen **siempre con su default** y el default es el lado seguro
+  (coctelería y faltante **apagados**; cocina **encendido**, que es la conducta de hoy).
+- El reporte de producción filtra por los tipos que la licencia permite, con default `['cocina']`: el
+  lado seguro **oculta, no cuela**.
+- **Ningún import huérfano** en los 26 ficheros modificados (comprobado símbolo por símbolo, con
+  `grep -a` en el fichero que lleva el byte NUL preexistente; el proyecto **no tiene linter**).
+
+### 21.6 Build, pruebas y peso
+
+- `npm run build` **exit 0**.
+- **682/682** aserciones en **12** suites node (de 8 suites / 462 en `main`).
+- **Seis bancos contra Dexie real** (`fake-indexeddb`), todos en verde: motor 43, permiso de faltante
+  28, avisos 26, descuento 36, **comparación contra `main` 69**, **convivencia 27**.
+- Peso: **946.63 → 972.65 kB** (gzip **274.11 → 282.19**) = **+26.02 kB, +2.75 %**. El módulo
+  `fichas` costó **+9.9 %**. El chunk lleva hash, así que **actualizar cuesta la descarga completa
+  (~282 kB gzip por teléfono)**, no el delta.
+
+### 21.7 Lo que esta auditoría NO puede decir
+
+1. **QUE LA APP FUNCIONE. No se ejecutó ni una vez.** Ni una receta creada, ni un trago elaborado, ni
+   una casilla marcada, ni un descuento aplicado, ni un ticket impreso, ni una campana abierta, ni
+   una sincronización entre dos teléfonos reales. `fake-indexeddb` **no es un navegador**: no prueba
+   render, táctil, impresora, PIN ni service worker.
+2. **Cómo se ve una existencia negativa en cada pantalla.** Se sabe que el inventario la muestra sin
+   romperse; **no se auditó** catálogo ni conteo físico pantalla por pantalla. Por eso el permiso
+   nace apagado.
+3. **El comportamiento de la interfaz.** Todo lo de pantallas (botones, modales, PIN, ticket,
+   avisos) está revisado **leyendo el código**.
+
+### 21.8 Veredicto
+
+**Desde el código, la fusión es defendible:** no hay cambio de esquema, no hay colecciones nuevas, el
+despliegue es reversible, y las salidas de todo lo que un negocio sin coctelería ve son **idénticas o
+aditivas con ceros**, medido contra `main` sobre la misma base. Lo que cambia está en 21.4 y ninguna
+línea de eso altera un cálculo existente.
+
+**Pero el despliegue tiene dos condiciones operativas que no son negociables:**
+
+1. **Nadie ha ejecutado la app.** Antes de que el cliente la use, hay que abrirla en un dispositivo
+   real y recorrer al menos: crear una receta de coctelería, elaborar un trago, aplicar y quitar un
+   descuento, cobrar la mesa e imprimir el ticket.
+2. **Hasta que TODOS los dispositivos tengan el build nuevo, no usar descuentos de mesa ni crear
+   recetas de coctelería.** Un teléfono con el build viejo **cobraría el descuento de más** (21.3.3)
+   y podría ofrecer una receta de coctelería en su tablero de cocina.
+
+**Fusionar sigue siendo decisión del dueño.** Nada de esto se ha llevado a `main`:
+`git rev-list --left-right --count origin/main...HEAD` = `0 26`.
