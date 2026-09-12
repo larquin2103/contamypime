@@ -44,10 +44,16 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
     [cocktail, user?.id],
     undefined
   )
-  const cocktailAllowed = useLiveQuery(
-    () => (cocktail ? configRepo.get('sellerCocktailBoard', false) : Promise.resolve(false)),
+  // Permiso del VENDEDOR para ESTE tablero (Ajustes → Tableros de elaboración). El de
+  // cocina nace ACTIVADO (hoy el vendedor ya lo ve) y el de cocteleria APAGADO. El
+  // valor inicial del hook sigue al default: en cocina es `true`, asi que el caso
+  // normal se pinta sin pasar por una pantalla de carga, igual que siempre; en
+  // cocteleria es `undefined` y SI se espera, porque ahi el default es que no se vea y
+  // un parpadeo mostraria un tablero que no deberia existir.
+  const boardAllowed = useLiveQuery(
+    () => configRepo.get(cocktail ? 'sellerCocktailBoard' : 'sellerKitchenBoard', !cocktail),
     [cocktail],
-    undefined
+    cocktail ? undefined : true
   )
 
   const productById = useMemo(() => {
@@ -99,17 +105,21 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
   }
   // Cocteleria: espera a saber el turno y el permiso antes de decidir (si no, se
   // pintaria un aviso que desaparece solo). El tablero de cocina no pasa por aqui.
-  if (cocktail && (myShift === undefined || cocktailAllowed === undefined)) {
+  if (cocktail && (myShift === undefined || boardAllowed === undefined)) {
     return <div className="screen"><p className="muted">Cargando…</p></div>
   }
-  // El permiso del vendedor lo concede el dueño en Ajustes (apagado por defecto).
-  // Al mando no le afecta.
-  if (cocktail && !isManager && !cocktailAllowed) {
+  // El permiso del VENDEDOR lo concede el dueño en Ajustes. Al mando no le afecta, y al
+  // cocinero tampoco (la cocina es su trabajo). Se comprueba AQUI y no solo en el Home:
+  // la tarjeta puede no estar, pero la ruta sigue existiendo.
+  if (isSeller && !isManager && !boardAllowed) {
     return (
       <div className="screen">
         <h2>{screenTitle}</h2>
         <section className="card">
-          <p>El dueño no ha habilitado el <strong>tablero de coctelería</strong> para el vendedor.</p>
+          <p>
+            El dueño no ha habilitado el <strong>tablero de {cocktail ? 'coctelería' : 'cocina'}</strong>
+            {' '}para el vendedor.
+          </p>
           <Link className="btn btn--primary btn--block" to="/">Volver al inicio</Link>
         </section>
       </div>

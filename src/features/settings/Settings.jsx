@@ -38,6 +38,7 @@ export function Settings() {
       <TablesSettings />
       <WholesaleSection />
       <ElaborationSection />
+      <BoardsSection />
       <AdminPermsSection />
       <SellerPermsSection />
       <SemaphoreSection />
@@ -201,6 +202,76 @@ function ElaborationSection() {
             placeholder="Elaboración"
           />
         </label>
+      )}
+    </section>
+  )
+}
+
+// Tableros de elaboración en la sesión del VENDEDOR (módulos 'cocina' y 'cocteleria').
+// Cada interruptor solo aparece con su módulo; sin ninguno de los dos, la tarjeta no
+// se pinta y Ajustes queda exactamente como siempre.
+//
+// Defaults, y el motivo (regla 2):
+//  - `sellerKitchenBoard` nace ACTIVADO. Hoy, con el módulo 'cocina', el vendedor YA
+//    ve el tablero de cocina; si naciera apagado, al desplegar perdería algo que
+//    tiene. Por eso la lectura es `get('sellerKitchenBoard', true)`: con la clave sin
+//    definir —toda base existente— el vendedor sigue viéndolo.
+//  - `sellerCocktailBoard` nace APAGADO: es función nueva, la enciende el dueño.
+// Al cocinero y al mando no les afecta ninguno de los dos (la cocina es el trabajo
+// del cocinero, y el mando supervisa).
+function BoardsSection() {
+  const { hasModule } = useLicense()
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+  const canCocktails = hasModule(LICENSE_MODULES.COCKTAILS)
+  const kitchenBoard = useLiveQuery(() => configRepo.get('sellerKitchenBoard', true), [], undefined)
+  const cocktailBoard = useLiveQuery(() => configRepo.get('sellerCocktailBoard', false), [], undefined)
+  if (!canKitchen && !canCocktails) return null
+  if (kitchenBoard === undefined || cocktailBoard === undefined) return null
+
+  return (
+    <section className="card">
+      <h3>Tableros de elaboración</h3>
+      <p className="muted">
+        Qué tableros ve el <strong>vendedor</strong> en su inicio. No afectan al cocinero (la cocina
+        es su trabajo) ni al dueño/administrativo, que los ven siempre.
+      </p>
+      {canKitchen && (
+        <>
+          <div className="kv">
+            <span className="muted">Tablero de cocina para el vendedor</span>
+            <button
+              className={`btn btn--sm ${kitchenBoard ? 'btn--primary' : 'btn--ghost'}`}
+              onClick={() => configRepo.set('sellerKitchenBoard', !kitchenBoard)}
+            >
+              {kitchenBoard ? 'Activado ✓' : 'Desactivado'}
+            </button>
+          </div>
+          <p className="muted">
+            <small>
+              Elabora recetas de cocina y las envía al área que elija. Desactívalo si solo quieres
+              que elabore el cocinero.
+            </small>
+          </p>
+        </>
+      )}
+      {canCocktails && (
+        <>
+          <div className="kv" style={{ marginTop: canKitchen ? 10 : 0 }}>
+            <span className="muted">Tablero de coctelería para el vendedor</span>
+            <button
+              className={`btn btn--sm ${cocktailBoard ? 'btn--primary' : 'btn--ghost'}`}
+              onClick={() => configRepo.set('sellerCocktailBoard', !cocktailBoard)}
+            >
+              {cocktailBoard ? 'Activado ✓' : 'Desactivado'}
+            </button>
+          </div>
+          <p className="muted">
+            <small>
+              Elabora tragos <strong>en el área de su turno</strong>, consumiendo el stock de esa
+              área: el trago queda ahí mismo, listo para venderse. Necesita turno abierto.
+            </small>
+          </p>
+        </>
       )}
     </section>
   )

@@ -229,23 +229,34 @@ export function Home() {
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
   // Permiso independiente: el dueño autoriza al vendedor a dar entradas.
   const sellerEntries = useLiveQuery(() => configRepo.get('sellerEntries', false), [], false)
-  // Permiso del vendedor para el tablero de coctelería (Ajustes, apagado por defecto).
-  // Solo se lee con el módulo: sin él no hay tarjeta que gatear.
+  // Tableros de elaboración en la sesión del vendedor (Ajustes). El de COCINA nace
+  // ACTIVADO (hoy el vendedor ya lo ve con el módulo: apagarlo por defecto le quitaría
+  // algo que tiene) y el de COCTELERÍA apagado. Cada uno se lee solo con su módulo:
+  // sin él no hay tarjeta que gatear. El valor inicial del hook es el MISMO default,
+  // así que el caso normal se pinta igual que siempre sin pantalla de carga.
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
   const canCocktails = hasModule(LICENSE_MODULES.COCKTAILS)
   const sellerCocktailBoard = useLiveQuery(
     () => (canCocktails ? configRepo.get('sellerCocktailBoard', false) : Promise.resolve(false)),
     [canCocktails],
     false
   )
+  const sellerKitchenBoard = useLiveQuery(
+    () => (canKitchen ? configRepo.get('sellerKitchenBoard', true) : Promise.resolve(false)),
+    [canKitchen],
+    true
+  )
   // Etiqueta de la sección de elaboración según los módulos que haya. Con solo
   // 'cocina' dice "Cocina", igual que siempre.
-  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
   const boardsLabel = (kitchenOn, cocktailsOn) =>
     (kitchenOn && cocktailsOn ? 'Cocina y coctelería' : (kitchenOn ? 'Cocina' : 'Coctelería'))
   // El mando ve un tablero por módulo. El vendedor, además, solo ve el de coctelería
   // con el permiso concedido: su etiqueta no debe prometer lo que no se pinta.
   const kitchenSectionLabel = boardsLabel(canKitchen, canCocktails)
-  const sellerBoardsLabel = boardsLabel(canKitchen, canCocktails && sellerCocktailBoard)
+  // Lo que el VENDEDOR ve de verdad: cada tablero exige su módulo Y su permiso.
+  const sellerKitchen = canKitchen && sellerKitchenBoard
+  const sellerCocktails = canCocktails && sellerCocktailBoard
+  const sellerBoardsLabel = boardsLabel(sellerKitchen, sellerCocktails)
   const initial = (user.name || '?').trim().charAt(0).toUpperCase()
   // Avatar del propio usuario (Fase 8 - B6). Es BASE (no lo gatea ningún módulo):
   // todos los roles pueden tener su foto. Si no hay, se muestra la inicial.
@@ -413,12 +424,12 @@ export function Home() {
               módulo, nada cambia (clásico). El de COCTELERÍA además exige el permiso
               del dueño (apagado por defecto), que se lee aquí para no ofrecer una
               tarjeta que la pantalla va a rechazar. */}
-          {isSeller && (hasModule(LICENSE_MODULES.KITCHEN) || (hasModule(LICENSE_MODULES.COCKTAILS) && sellerCocktailBoard)) && (
+          {isSeller && (sellerKitchen || sellerCocktails) && (
             <Section label={sellerBoardsLabel}>
-              {hasModule(LICENSE_MODULES.KITCHEN) && (
+              {sellerKitchen && (
                 <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
               )}
-              {hasModule(LICENSE_MODULES.COCKTAILS) && sellerCocktailBoard && (
+              {sellerCocktails && (
                 <ActionCard to="/cocteleria" icon={Martini} title="Tablero de coctelería" sub="Elaborar tragos en tu área" />
               )}
             </Section>
