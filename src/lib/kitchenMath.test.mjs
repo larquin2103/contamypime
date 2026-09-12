@@ -10,7 +10,7 @@
 //     el stock "cuadraria", pero el reporte de traspasos mostraria movimientos que
 //     nunca ocurrieron.
 //  3) Que `canMake` mire la ubicacion que se le pide y no siempre la cocina.
-import { canMake, productionMovements } from './kitchenMath.js'
+import { canMake, productionMovements, shortfall } from './kitchenMath.js'
 import { COCINA, MOVEMENT_TYPES } from '../db/constants.js'
 
 let pass = 0
@@ -135,6 +135,53 @@ const prod = (id, byLoc) => ({ id, name: id, unit: 'u', stockByLocation: byLoc }
   const movs = productionMovements({ from: AREA, to: AREA, units: 0.5, ingredients: [{ productId: 'a', qty: 0.1 }], outputProductId: 'y' })
   eq(movs[1].qty, 0.5, 'unidades fraccionarias se respetan tal cual')
   eq(movs.length, 2, 'fraccion en la misma ubicacion: 2 movimientos')
+}
+
+// --- 5) shortfall: el aviso de "vas a elaborar en descubierto" ----------------
+// Es lo que ve quien elabora ANTES de confirmar. Sale de la cache, igual que canMake;
+// el candado de verdad lo aplica el motor contra el libro mayor.
+{
+  const receta = { items: [{ productId: 'ron', qty: 0.05 }, { productId: 'menta', qty: 2 }] }
+  const byId = {
+    ron: { id: 'ron', name: 'Ron', unit: 'L', stockByLocation: { [AREA]: 0.1 } },
+    menta: { id: 'menta', name: 'Menta', unit: 'u', stockByLocation: { [AREA]: 30 } }
+  }
+  // 3 tragos: ron necesita 0.15 y hay 0.1 -> falta. Menta necesita 6 y hay 30 -> sobra.
+  eq(shortfall(receta, byId, AREA, 3), [
+    { productId: 'ron', name: 'Ron', unit: 'L', have: 0.1, need: 0.15, after: -0.05, short: 0.05 }
+  ], 'shortfall: solo lista el insumo que NO alcanza, con su faltante exacto')
+  eq(shortfall(receta, byId, AREA, 2), [], 'shortfall: si alcanza para todo, lista vacia')
+  eq(shortfall(receta, byId, AREA, 0), [], 'shortfall: cantidad 0 -> nada que avisar')
+  eq(shortfall(receta, byId, AREA, -1), [], 'shortfall: cantidad negativa -> nada que avisar')
+  eq(shortfall(null, byId, AREA, 3), [], 'shortfall: sin receta -> vacio')
+  eq(shortfall(receta, byId, COCINA, 1).length, 2, 'shortfall: mira la ubicacion pedida (en la cocina no hay nada)')
+}
+{
+  // Existencia YA en negativo (un descubierto anterior): el faltante se mide contra
+  // la existencia REAL, no contra lo que pide la receta.
+  const receta = { items: [{ productId: 'x', qty: 2 }] }
+  const byId = { x: { id: 'x', name: 'X', unit: 'u', stockByLocation: { [AREA]: -7 } } }
+  eq(shortfall(receta, byId, AREA, 1), [
+    { productId: 'x', name: 'X', unit: 'u', have: -7, need: 2, after: -9, short: 9 }
+  ], 'shortfall: sobre una existencia de -7, elaborar 1 deja -9 y faltan 9')
+}
+{
+  // Insumo que ya no esta en el catalogo: se avisa igual (no se silencia), con la
+  // existencia en 0, porque el motor tambien va a rechazar por el.
+  const receta = { items: [{ productId: 'fantasma', qty: 1 }] }
+  eq(shortfall(receta, {}, AREA, 1), [
+    { productId: 'fantasma', name: 'insumo', unit: '', have: 0, need: 1, after: -1, short: 1 }
+  ], 'shortfall: un insumo que falta del mapa se avisa, no se silencia')
+}
+{
+  // Residuo de punto flotante: 0.1 + 0.2 no puede colarse como un faltante falso.
+  const receta = { items: [{ productId: 'p', qty: 0.1 }] }
+  const byId = { p: { id: 'p', name: 'P', unit: 'kg', stockByLocation: { [AREA]: 0.3 } } }
+  eq(shortfall(receta, byId, AREA, 3), [], 'shortfall: 3 x 0.1 contra 0.3 NO inventa un faltante')
+  const byId2 = { p: { id: 'p', name: 'P', unit: 'kg', stockByLocation: { [AREA]: 0.29 } } }
+  eq(shortfall(receta, byId2, AREA, 3)[0].short, 0.01, 'shortfall: un faltante real de 0.01 se limpia a 0.01')
+  eq(shortfall({ items: [{ productId: 'p', qty: 0 }] }, byId, AREA, 3), [],
+    'shortfall: un consumo de 0 no genera aviso (coherente con canMake)')
 }
 
 console.log(`${pass} pass, ${fail} fail`)

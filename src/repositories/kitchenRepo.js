@@ -140,9 +140,16 @@ export const kitchenRepo = {
         if (!p.active) throw new Error(`El insumo "${p.name}" está dado de baja en el catálogo`)
         const have = await stockAtLoc(it.productId, from)
         if (have < need) {
-          // Sin el permiso, el candado de siempre: no se elabora lo que no hay.
+          // Sin el permiso, el candado de siempre: no se elabora lo que no hay. El
+          // error va MARCADO con `code = 'short'` para que la pantalla distinga un
+          // faltante de mercancia de cualquier otro fallo sin comparar textos: el
+          // tablero calcula su aviso con la CACHE, y si la cache va por detras del
+          // libro mayor (puede pasar tras una sync) este es el unico modo de saber
+          // que lo que falto fue existencia. El mensaje NO cambia.
           if (!allowShort) {
-            throw new Error(`No hay suficiente "${p.name}" en ${locationLabel(from)} (hay ${cleanQty(have)} ${p.unit}, se necesitan ${cleanQty(need)})`)
+            const err = new Error(`No hay suficiente "${p.name}" en ${locationLabel(from)} (hay ${cleanQty(have)} ${p.unit}, se necesitan ${cleanQty(need)})`)
+            err.code = 'short'
+            throw err
           }
           // Con el permiso, se ANOTA el descubierto y se sigue: el consumo se
           // registra COMPLETO (el movimiento no se recorta), asi que la existencia

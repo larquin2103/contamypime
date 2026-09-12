@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). Las 9 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**530 aserciones** en total, medidas el 11-09-2026). Ojo:
+que se corren **uno a uno con node** (**541 aserciones** en total, medidas el 12-09-2026). Ojo:
 siete viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/` y
 `fichaReports.test.mjs` en `src/features/reports/`, así que un glob `src/lib/*.test.mjs`
 **se salta dos**:

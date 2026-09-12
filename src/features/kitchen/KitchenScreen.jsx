@@ -11,6 +11,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { cleanQty } from '../../lib/qty'
+import { shortfall } from '../../lib/kitchenMath'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { COCINA, COCINA_LABEL, RECIPE_KINDS } from '../../db/constants'
 
@@ -55,6 +56,10 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
     [cocktail],
     cocktail ? undefined : true
   )
+  // Permiso de elaborar con FALTANTE (Ajustes). Apagado por defecto, y el valor
+  // inicial del hook es ese mismo default: sin el, el tablero se comporta y se pinta
+  // exactamente como antes de B2.
+  const allowShort = useLiveQuery(() => configRepo.get('allowShortProduction', false), [], false)
 
   const productById = useMemo(() => {
     const m = {}
@@ -68,6 +73,10 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
   const [toArea, setToArea] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Confirmacion explicita para elaborar en descubierto, y la marca que la pide cuando
+  // el faltante lo detecta el MOTOR y no la cache (ver `shortfall` en lib/kitchenMath).
+  const [confirmShort, setConfirmShort] = useState(false)
+  const [askedByEngine, setAskedByEngine] = useState(false)
   const [okMsg, setOkMsg] = useState('')
   useEscapeClose(() => setProducing(null))
 
@@ -139,6 +148,8 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
     setError('')
     setOkMsg('')
     setUnits('1')
+    setConfirmShort(false)
+    setAskedByEngine(false)
     // En cocina el destino se elige en la hoja (o se preselecciona si hay una sola
     // area), como siempre. En cocteleria el area ya esta fijada arriba.
     if (!cocktail) setToArea(areas.length === 1 ? areas[0] : '')
@@ -159,14 +170,28 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
         // Cocteleria: origen = destino (el area). Cocina: sin pasarlo -> la cocina,
         // que es el comportamiento clasico.
         ...(cocktail ? { fromLocation: target } : {}),
+        // El descubierto SOLO se autoriza con el permiso del dueño Y con la
+        // confirmacion marcada aqui. Sin las dos cosas se manda `false`, o sea el
+        // candado de siempre. Asi nadie elabora en descubierto sin haberlo visto.
+        ...(allowShort && confirmShort ? { allowShort: true } : {}),
         byUserId: user.id
       })
-      setOkMsg(cocktail
+      // El faltante REAL lo devuelve el motor (del libro mayor), no la cache: si lo
+      // hubo, se dice en el mismo aviso de exito para que quede a la vista.
+      const short = (res.shortages || [])
+        .map((s) => `${s.name}: ${cleanQty(-s.short)}`)
+        .join(', ')
+      const base = cocktail
         ? `✅ ${cleanQty(res.units)} de "${producing.name}" elaboradas en ${res.toArea}.`
-        : `✅ ${cleanQty(res.units)} de "${producing.name}" elaboradas y enviadas a ${res.toArea}.`)
+        : `✅ ${cleanQty(res.units)} de "${producing.name}" elaboradas y enviadas a ${res.toArea}.`
+      setOkMsg(short ? `${base} ⚠️ Quedó en descubierto → ${short}.` : base)
       setProducing(null)
     } catch (e) {
       setError(e.message)
+      // Faltante detectado por el MOTOR (la cache decia que alcanzaba). Con el permiso
+      // del dueño se ofrece la confirmacion en vez de dejar al usuario en un callejon:
+      // el aviso de arriba ya dice de que insumo y cuanto falta.
+      if (e.code === 'short' && allowShort) setAskedByEngine(true)
     } finally {
       setBusy(false)
     }
@@ -184,6 +209,11 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
   // area elegida todavia no hay nada que calcular.
   const canMakeIn = (r) => (cocktail && !sourceLoc ? 0 : kitchenRepo.canMake(r, productById, sourceLoc))
   const canNow = producing ? canMakeIn(producing) : 0
+  // Faltante de la cantidad que se esta tecleando, y si hay que pedir confirmacion.
+  // `askedByEngine` cubre el caso en que la cache decia que alcanzaba y el libro mayor
+  // dijo que no. Sin el permiso, `needsConfirm` es siempre false y nada de esto se pinta.
+  const preview = allowShort && producing ? shortfall(producing, productById, sourceLoc, units) : []
+  const needsConfirm = allowShort && (preview.length > 0 || askedByEngine)
 
   // Las tarjetas salen ORDENADAS ALFABETICAMENTE por el nombre de la receta: el repo
   // las devuelve por clave primaria (UUID), que para el cocinero es un orden al azar.
@@ -254,6 +284,12 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
                   <div className="kitchen-tile__can muted">
                     Puedes elaborar: <strong>{n}</strong>
                   </div>
+                  {/* Con el permiso del dueño, "0" ya no significa "no puedes": significa
+                      que faltan insumos y que se elaborará en descubierto. Sin el permiso
+                      esta marca no existe y la tarjeta es la de siempre. */}
+                  {allowShort && n === 0 && (
+                    <div className="kitchen-tile__can warn-text"><small>Falta algún insumo</small></div>
+                  )}
                   <button
                     className="btn btn--primary btn--block"
                     disabled={cocktail && (!sourceLoc || needsShift)}
@@ -293,8 +329,40 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
             </p>
             <label className="field">
               <span>Cantidad a elaborar</span>
-              <input type="number" inputMode="decimal" autoFocus value={units} onChange={(e) => setUnits(e.target.value)} />
+              <input
+                type="number" inputMode="decimal" autoFocus value={units}
+                onChange={(e) => { setUnits(e.target.value); setConfirmShort(false); setAskedByEngine(false) }}
+              />
             </label>
+
+            {/* Elaborar con FALTANTE (permiso del dueño). Sin el permiso este bloque no
+                existe y el modal es el de siempre: el motor rechaza y se ve su mensaje. */}
+            {needsConfirm && (
+              <div className="card card--warn">
+                <p className="warn-text"><strong>Vas a elaborar con faltante.</strong></p>
+                {preview.length > 0 ? (
+                  <div className="entry-lines">
+                    {preview.map((s) => (
+                      <div key={s.name} className="entry-line">
+                        <div className="entry-line__head">
+                          <div><strong>{s.name}</strong><span className="muted"> · hay {s.have} {s.unit}, se necesitan {s.need}</span></div>
+                          <span className="warn-text">quedará {s.after}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted"><small>El detalle del faltante está en el aviso de arriba.</small></p>
+                )}
+                <label className="check-row">
+                  <input type="checkbox" checked={confirmShort} onChange={(e) => setConfirmShort(e.target.checked)} />
+                  <div className="check-row__main">
+                    <strong>Sí, elaborar de todos modos</strong>
+                    <span className="muted">La existencia quedará en negativo hasta que registres la entrada.</span>
+                  </div>
+                </label>
+              </div>
+            )}
             {/* En cocteleria no hay area de destino: el trago se queda donde se elabora. */}
             {!cocktail && (
               <label className="field">
@@ -308,7 +376,7 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
             {error && <p className="error">{error}</p>}
             <div className="modal__actions">
               <button className="btn btn--ghost" onClick={() => setProducing(null)}>Cancelar</button>
-              <button className="btn btn--primary" disabled={busy} onClick={doProduce}>
+              <button className="btn btn--primary" disabled={busy || (needsConfirm && !confirmShort)} onClick={doProduce}>
                 {busy ? 'Elaborando…' : (cocktail ? 'Elaborar' : 'Elaborar y enviar')}
               </button>
             </div>

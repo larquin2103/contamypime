@@ -1,4 +1,6 @@
 import { COCINA, MOVEMENT_TYPES } from '../db/constants.js'
+import { cleanQty } from './qty.js'
+import { round2 } from './currency.js'
 
 // ---------------------------------------------------------------------------
 // Matematica PURA del motor de elaboracion (modulos 'cocina' y 'cocteleria').
@@ -28,6 +30,45 @@ export function canMake(recipe, productById, location = COCINA) {
     if (n <= 0) return 0
   }
   return Number.isFinite(n) ? n : 0
+}
+
+// Insumos que quedarian EN DESCUBIERTO al elaborar `units` unidades en `location`.
+// Devuelve una fila por insumo que no alcanza: cuanto hay, cuanto hace falta, en
+// cuanto quedaria la existencia (`after`, negativo) y cuanto falta (`short`).
+//
+// Es el AVISO que ve quien elabora, y se calcula con la CACHE (`stockByLocation`),
+// igual que `canMake`. NO es el candado: el candado lo aplica kitchenRepo contra el
+// LIBRO MAYOR dentro de la transaccion. Si la cache va por detras del libro (puede
+// pasar tras una sincronizacion), esta lista sale vacia y aun asi el motor rechaza
+// —con `code:'short'`—, que es justo lo que la pantalla usa para pedir la
+// confirmacion igualmente. Sin unidades validas o sin receta, no hay nada que avisar.
+export function shortfall(recipe, productById, location = COCINA, units = 0) {
+  const u = Number(units) || 0
+  if (!(u > 0) || !recipe) return []
+  const out = []
+  for (const it of recipe.items || []) {
+    const per = Number(it.qty) || 0
+    if (per <= 0) continue
+    // `need` se redondea EXACTAMENTE como lo hace kitchenRepo.produce (round2), para
+    // que el aviso y el candado no discrepen. Sin esto, 3 x 0.1 da 0.30000000000000004
+    // y contra una existencia de 0.3 el aviso inventaria un faltante de CERO
+    // ("hay 0.3, se necesitan 0.3, quedará 0") que el motor no ve. Lo cazo una prueba.
+    const need = round2(per * u)
+    const p = productById?.[it.productId]
+    const have = Number(p?.stockByLocation?.[location] || 0)
+    if (have < need) {
+      out.push({
+        productId: it.productId,
+        name: p?.name || 'insumo',
+        unit: p?.unit || '',
+        have: cleanQty(have),
+        need: cleanQty(need),
+        after: cleanQty(have - need),
+        short: cleanQty(need - have)
+      })
+    }
+  }
+  return out
 }
 
 // Movimientos del libro mayor que genera UNA elaboracion, en orden. Devuelve
