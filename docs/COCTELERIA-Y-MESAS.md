@@ -661,3 +661,51 @@ lo es.
 coctelería (A3) ni interruptores (A4), así que `fromLocation` no lo pasa **ningún** llamador y el
 único camino vivo sigue siendo el clásico. Y **la app no se ha ejecutado**: lo de arriba es build,
 pruebas puras y el motor contra un IndexedDB **simulado**, que no es un navegador real.
+
+### A3 — Tablero `/cocteleria` y accesos del Home (commit `183688f`, 11-09-2026)
+
+**Qué se hizo:** `KitchenScreen` sirve ahora **los dos tableros** con una prop `kind` (default =
+cocina = lo de siempre); ruta `/cocteleria`; tarjetas del Home para mando y vendedor; acceso a
+*Recetas* con **cualquiera** de los dos módulos; y `kitchenRepo.recent(limit, { kind })` para que
+cada tablero liste solo sus elaboraciones recientes.
+
+**Decisiones de interfaz que hubo que tomar aquí (no estaban en el plano, y cambian cómo se usa):**
+
+1. **En coctelería el área se elige ANTES, no al elaborar.** *"Puedes elaborar: N"* se calcula sobre
+   la ubicación de origen, así que sin saber el área no hay número que mostrar. Por eso el **mando**
+   tiene un selector de *"Área donde elaboras"* arriba del tablero, y el **vendedor** trae la de su
+   turno abierto (mostrada, no editable). La hoja de elaboración de coctelería **ya no pregunta
+   área**: el trago se queda donde se elabora. El tablero de cocina **conserva** su flujo (área en
+   la hoja, preseleccionada si hay una sola).
+2. **El vendedor sin turno abierto no puede elaborar coctelería**, y se le dice por qué (no hay área
+   de la que consumir). Es coherente con la regla de oro del proyecto.
+3. **Se anticipó la lectura del permiso `sellerCocktailBoard`** (default `false`), tanto en el Home
+   como en la pantalla. Su **interruptor** en Ajustes es A4; leerlo ya aquí evita el estado
+   incoherente de ofrecerle al vendedor una tarjeta que la pantalla iba a rechazar.
+4. **La etiqueta de la sección del Home dice lo que se pinta** — *Cocina*, *Coctelería* o *Cocina y
+   coctelería* —, y en la del vendedor cuenta el permiso: con el permiso apagado no promete
+   coctelería. Es un detalle, pero era mentira en la primera versión de este commit.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **949.23 → 952.65 kB** (gzip **275.13 → 276.02**): **+3.42 kB**.
+- **530/530** en las 9 suites node.
+- **43/43 contra Dexie real** (las 4 nuevas cubren lo que A3 tocó del repo: `recent` con filtro
+  devuelve solo las de su tipo, sin filtro devuelve las dos —como antes— y sigue ordenando de más
+  reciente a más vieja).
+
+**Del plan, una cosa no hizo falta: `Layout`.** Estaba en la lista de archivos, pero la nav inferior
+**no tiene entrada de tableros** (se llega por las tarjetas del Home) y la coctelería **no añade
+ningún rol** que haya que ocultar, al contrario que `cocina` (cocinero) o `remesas` (mensajero). Se
+deja sin tocar en vez de meter un cambio decorativo.
+
+**Lo que sigue abierto tras A3:**
+
+- **A4 debe poner los dos interruptores en Ajustes.** Hasta entonces `sellerCocktailBoard` no se
+  puede encender desde la app, así que **el vendedor no ve el tablero de coctelería** por más que
+  tenga el módulo: solo lo ve el mando. Es un estado coherente, pero incompleto a propósito.
+- **El tablero de cocina del vendedor sigue sin interruptor** (lo ve siempre con el módulo, como
+  hoy). Eso es exactamente la conducta actual y A4 la hará configurable con default ACTIVADO.
+- **Nadie ha ejecutado la app.** Todo lo de arriba es build, pruebas puras y el motor contra un
+  IndexedDB **simulado**. En particular, **ni un solo trago se ha elaborado desde una pantalla
+  real**: el camino pantalla → repo se ha verificado leyendo el código, no usándolo.
