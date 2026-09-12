@@ -1208,8 +1208,9 @@ lo que de verdad estaba en juego.
 
 ## 20. Estado al cerrar el bloque C y el plan completo (12-09-2026)
 
-**Los tres bloques del plan están COMPLETOS: A1–A5, B1–B4, C1–C4. Trece fases, veintiséis commits
-(cada fase con su código y su auditoría), y `main` intacta en `328ec95` desde el principio.**
+**Los tres bloques del plan están COMPLETOS: A1–A5, B1–B4, C1–C4. Trece fases en **25 commits**
+—el del plan, doce de código (C3 y C4 comparten uno) y doce de auditoría—, y `main` intacta en
+`328ec95` desde el principio: `git rev-list --left-right --count origin/main...HEAD` da `0 25`.**
 
 Lo que el dueño puede hacer hoy en la rama, de punta a punta:
 
