@@ -4,11 +4,19 @@ import { now } from '../lib/dates'
 import { round2, foreignToBase, baseToForeign, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { ratesRepo } from './ratesRepo'
-import { MOVEMENT_TYPES, COCINA } from '../db/constants'
+import { canMake, productionMovements } from '../lib/kitchenMath'
+import { COCINA, RECIPE_KINDS, recipeKind, locationLabel } from '../db/constants'
 
 // ---------------------------------------------------------------------------
-// Motor de cocina (modulo 'cocina'). El cocinero ELABORA una receta y la ENVIA a
-// un area de venta en una sola accion. Todo ocurre en UNA transaccion atomica.
+// Motor de elaboracion (modulos 'cocina' y 'cocteleria'). Se ELABORA una receta y,
+// si hace falta, se ENVIA a un area de venta en una sola accion. Todo ocurre en UNA
+// transaccion atomica. Dos flujos, el mismo motor:
+//  - COCINA (clasico): el cocinero elabora en `__cocina` y lo envia a un area.
+//  - COCTELERIA: el vendedor/mando elabora DENTRO del area, consumiendo el stock de
+//    esa area, y el trago queda ahi mismo (sin traspasos). La ubicacion de origen
+//    entra por `fromLocation`; el default es la cocina, o sea el comportamiento de
+//    siempre. QUE movimientos se escriben lo decide `lib/kitchenMath`, que es puro
+//    y esta probado con node.
 //
 // Reusa el MISMO patron de movimientos que conversionsRepo (consumir insumos ->
 // crear elaborado) y transfersRepo (cocina -> area), pero replicado DENTRO de su
@@ -25,40 +33,37 @@ import { MOVEMENT_TYPES, COCINA } from '../db/constants'
 // reportes base.
 // ---------------------------------------------------------------------------
 
-// Existencia de un producto en la cocina, DERIVADA del libro mayor (fuente de
-// verdad). Se llama dentro de la transaccion (candado).
-async function cocinaStock(productId) {
+// Existencia de un producto en UNA ubicacion, DERIVADA del libro mayor (fuente de
+// verdad). Se llama dentro de la transaccion (candado). `location` es la cocina en
+// el flujo clasico, o el AREA cuando la que elabora es la barra (cocteleria).
+async function stockAtLoc(productId, location) {
   const movs = await db.stockMovements
-    .where('[productId+location]').equals([productId, COCINA]).toArray()
+    .where('[productId+location]').equals([productId, location]).toArray()
   return cleanQty(movs.reduce((a, m) => a + Number(m.qty || 0), 0))
 }
 
 export const kitchenRepo = {
-  // Cuantas unidades del elaborado se pueden hacer con el stock ACTUAL en la
-  // cocina (solo lectura, para el tablero). N = min sobre insumos de
-  // floor(stockCocina(insumo) / consumoPorUnidad). Sin insumos, o con algun
-  // insumo en 0/faltante -> 0. `productById` es el mapa id->producto (con cache).
-  canMake(recipe, productById) {
-    const items = recipe?.items || []
-    if (!items.length) return 0
-    let n = Infinity
-    for (const it of items) {
-      const per = Number(it.qty) || 0
-      if (per <= 0) return 0
-      const p = productById?.[it.productId]
-      const have = Number(p?.stockByLocation?.[COCINA] || 0)
-      n = Math.min(n, Math.floor(have / per))
-      if (n <= 0) return 0
-    }
-    return Number.isFinite(n) ? n : 0
+  // Cuantas unidades del elaborado se pueden hacer con el stock ACTUAL de una
+  // ubicacion (solo lectura, para el tablero). La matematica vive en lib/kitchenMath
+  // (pura y probada con node); aqui solo se re-expone para no cambiar a los
+  // llamadores. `location` por defecto la COCINA = comportamiento clasico.
+  canMake(recipe, productById, location = COCINA) {
+    return canMake(recipe, productById, location)
   },
 
   // Elabora `units` unidades de la receta y las envia al area `toArea`. Devuelve
-  // { id, units, toArea, outputCostUnit }. Lanza (y aborta TODA la transaccion)
-  // si falta algun insumo en la cocina o falta la tasa de un insumo en divisa.
-  async produce({ recipeId, units, toArea, byUserId }) {
+  // { id, units, toArea, fromLocation, outputCostUnit }. Lanza (y aborta TODA la
+  // transaccion) si falta algun insumo en la ubicacion de origen o falta la tasa de
+  // un insumo en divisa.
+  //
+  // `fromLocation` (opcional): ubicacion de la que se CONSUMEN los insumos. Por
+  // defecto la COCINA = comportamiento clasico e invariante historico. La
+  // cocteleria pasa el AREA, y entonces origen y destino coinciden: el trago queda
+  // en la misma area y NO se emite ningun traspaso (ver lib/kitchenMath).
+  async produce({ recipeId, units, toArea, byUserId, fromLocation = COCINA }) {
     const u = Math.abs(Number(units) || 0)
     const area = String(toArea || '').trim()
+    const from = String(fromLocation || '').trim() || COCINA
     if (!(u > 0)) throw new Error('Indica cuántas unidades elaborar (mayor que 0)')
     if (!area) throw new Error('Elige el área de destino')
 
@@ -72,6 +77,21 @@ export const kitchenRepo = {
     if (!items.length) throw new Error('La receta no tiene insumos')
     if (items.some((it) => it.productId === recipe.outputProductId)) {
       throw new Error('La receta no puede incluir su propio elaborado como insumo')
+    }
+    // Candado de coherencia entre TIPO de receta y ubicacion, con la misma doctrina
+    // de "candado de ultima instancia" del resto del proyecto: aunque el llamador se
+    // equivoque, el motor no elabora un trago consumiendo del almacen de la cocina
+    // (ni un plato consumiendo de un area). La receta manda.
+    const kind = recipeKind(recipe)
+    if (kind === RECIPE_KINDS.COCKTAIL) {
+      if (from === COCINA) {
+        throw new Error('Una receta de coctelería se elabora en un área de venta, no en la cocina')
+      }
+      if (from !== area) {
+        throw new Error('Una receta de coctelería se elabora y queda en la MISMA área')
+      }
+    } else if (from !== COCINA) {
+      throw new Error('Una receta de cocina se elabora en la cocina')
     }
     const rates = await ratesRepo.currentRates()
     const rateOf = (cur) => Number(rates?.[cur]?.rate || 0)
@@ -106,9 +126,9 @@ export const kitchenRepo = {
         const p = await db.products.get(it.productId)
         if (!p) throw new Error('Un insumo de la receta ya no existe en el catálogo')
         if (!p.active) throw new Error(`El insumo "${p.name}" está dado de baja en el catálogo`)
-        const have = await cocinaStock(it.productId)
+        const have = await stockAtLoc(it.productId, from)
         if (have < need) {
-          throw new Error(`No hay suficiente "${p.name}" en la cocina (hay ${cleanQty(have)} ${p.unit}, se necesitan ${cleanQty(need)})`)
+          throw new Error(`No hay suficiente "${p.name}" en ${locationLabel(from)} (hay ${cleanQty(have)} ${p.unit}, se necesitan ${cleanQty(need)})`)
         }
         // Costo del insumo en MN (modulo 'divisas': a la tasa vigente; sin tasa, bloquea).
         let unitCostMN = Number(p.cost) || 0
@@ -134,17 +154,27 @@ export const kitchenRepo = {
       const newQty = round2(prevQty + u)
       const newCost = newQty > 0 ? round2((prevQty * prevCost + movedValueOwn) / newQty) : prevCost
 
-      // 3) Consume cada insumo: CONVERSION_OUT (-) en la cocina + su cache.
-      for (const ing of ingredients) {
+      // 3) Movimientos del libro mayor. QUE movimientos son lo decide lib/kitchenMath
+      //    (puro y probado con node): insumos consumidos en la ubicacion de origen,
+      //    el elaborado creado ahi, y SOLO si origen != destino los dos traspasos.
+      //    Con el default (cocina -> area) sale exactamente la misma secuencia de
+      //    siempre: CONVERSION_OUT por insumo, CONVERSION_IN, TRANSFER_OUT, TRANSFER_IN.
+      const costOfMov = (m) =>
+        (m.productId === out.id ? outputCostUnitMN : (ingredients.find((g) => g.productId === m.productId)?.unitCostMN ?? 0))
+      for (const mov of productionMovements({ from, to: area, units: u, ingredients, outputProductId: out.id })) {
         await db.stockMovements.add({
-          id: newId(), productId: ing.productId, qty: -ing.qty,
-          type: MOVEMENT_TYPES.CONVERSION_OUT, refType: 'production', refId: id,
-          unitCost: ing.unitCostMN, shiftId: null, userId: byUserId, note: '',
-          location: COCINA, createdAt: ts
+          id: newId(), productId: mov.productId, qty: mov.qty,
+          type: mov.type, refType: 'production', refId: id,
+          unitCost: costOfMov(mov), shiftId: null, userId: byUserId, note: '',
+          location: mov.location, createdAt: ts
         })
+      }
+
+      // 4) Cache de los insumos: bajan en la ubicacion de origen.
+      for (const ing of ingredients) {
         const p = ing.product
         const byLoc = { ...(p.stockByLocation || {}) }
-        byLoc[COCINA] = cleanQty(Number(byLoc[COCINA] || 0) - ing.qty)
+        byLoc[from] = cleanQty(Number(byLoc[from] || 0) - ing.qty)
         await db.products.update(p.id, {
           stock: cleanQty(Number(p.stock || 0) - ing.qty),
           stockByLocation: byLoc,
@@ -152,29 +182,10 @@ export const kitchenRepo = {
         })
       }
 
-      // 4) Crea el elaborado en la cocina: CONVERSION_IN (+u), y ENSEGUIDA lo envia
-      //    al area: TRANSFER_OUT (cocina) + TRANSFER_IN (area). Neto en la cocina =
-      //    0 (se crea y sale); el total sube +u y termina en el area.
-      await db.stockMovements.add({
-        id: newId(), productId: out.id, qty: u,
-        type: MOVEMENT_TYPES.CONVERSION_IN, refType: 'production', refId: id,
-        unitCost: outputCostUnitMN, shiftId: null, userId: byUserId, note: '',
-        location: COCINA, createdAt: ts
-      })
-      await db.stockMovements.add({
-        id: newId(), productId: out.id, qty: -u,
-        type: MOVEMENT_TYPES.TRANSFER_OUT, refType: 'production', refId: id,
-        unitCost: outputCostUnitMN, shiftId: null, userId: byUserId, note: '',
-        location: COCINA, createdAt: ts
-      })
-      await db.stockMovements.add({
-        id: newId(), productId: out.id, qty: u,
-        type: MOVEMENT_TYPES.TRANSFER_IN, refType: 'production', refId: id,
-        unitCost: outputCostUnitMN, shiftId: null, userId: byUserId, note: '',
-        location: area, createdAt: ts
-      })
-      // Cache del elaborado: cocina queda igual (neto 0), el area gana +u; costo por
-      // promedio ponderado. El total = prevQty + u (la creacion suma; el traspaso no).
+      // Cache del elaborado: el DESTINO gana +u y el total sube +u. Vale para los dos
+      // casos: con traspaso, el origen queda en neto 0 (se crea y sale); sin traspaso,
+      // origen y destino son la misma ubicacion y es el mismo +u. Costo por promedio
+      // ponderado.
       const outByLoc = { ...(out.stockByLocation || {}) }
       outByLoc[area] = cleanQty(Number(outByLoc[area] || 0) + u)
       await db.products.update(out.id, {
@@ -194,11 +205,16 @@ export const kitchenRepo = {
         toArea: area,
         ingredients: ingredients.map((g) => ({ productId: g.productId, name: g.name, unit: g.unit, qty: g.qty, unitCostMN: g.unitCostMN })),
         outputCostUnit: outputCostUnitMN,
+        // Tipo y origen: se escriben SOLO cuando no son los clasicos (cocina desde
+        // `__cocina`), igual que `recipes.kind`. Asi una produccion de cocina se
+        // guarda byte a byte como siempre, y quien lea puede asumir los defaults.
+        ...(kind === RECIPE_KINDS.COCKTAIL ? { kind: RECIPE_KINDS.COCKTAIL } : {}),
+        ...(from !== COCINA ? { fromLocation: from } : {}),
         byUserId,
         createdAt: ts
       })
 
-      result = { id, units: u, toArea: area, outputCostUnit: outputCostUnitMN }
+      result = { id, units: u, toArea: area, fromLocation: from, outputCostUnit: outputCostUnitMN }
     })
 
     return result

@@ -59,18 +59,24 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las 8 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**462 aserciones** en total). Ojo: seis viven en `src/lib/`
-pero `retryQueue.test.mjs` está en `src/features/sync/` y `fichaReports.test.mjs` en
-`src/features/reports/`, así que un glob `src/lib/*.test.mjs` **se salta dos**:
+**Pruebas:** NO hay script `npm test` (ni linter). Las 9 suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (**530 aserciones** en total, medidas el 11-09-2026). Ojo:
+siete viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/` y
+`fichaReports.test.mjs` en `src/features/reports/`, así que un glob `src/lib/*.test.mjs`
+**se salta dos**:
 
 ```bash
 for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/productCustodyMath.test.mjs src/lib/remesas.test.mjs \
          src/lib/fichaCosto.test.mjs src/lib/fichaLines.test.mjs \
+         src/lib/kitchenMath.test.mjs \
          src/features/sync/retryQueue.test.mjs \
          src/features/reports/fichaReports.test.mjs; do node "$t"; done
 ```
+
+Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
+fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
+midió entonces, no el estado de hoy.
 
 `firebase-tools` es una CLI **global por máquina** (no viene con `npm install`):
 `npm install -g firebase-tools` + `firebase login`. Reglas de Firestore:
