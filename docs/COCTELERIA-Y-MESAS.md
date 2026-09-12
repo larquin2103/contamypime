@@ -902,3 +902,44 @@ el aviso a la vez.**
 
 **Lo que B1 NO hace:** no avisa en el tablero (B2), no avisa al dueño (B3) y no está en la ayuda
 (B4). Y **la app no se ha ejecutado**: lo de arriba es build, pruebas puras y un IndexedDB simulado.
+
+### B2 — Aviso del descubierto y confirmación explícita (commit `3caec92`, 12-09-2026)
+
+**Qué se hizo:** el tablero lee el permiso y **solo** manda `allowShort:true` al motor cuando está
+encendido **y** la confirmación está marcada; el modal muestra qué insumo no alcanza y en cuánto
+quedará la existencia; la tarjeta marca *"Falta algún insumo"*; y el aviso de éxito reporta el
+descubierto **real** que devuelve el motor, no el estimado de la caché.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **958.33 → 960.37 kB** (gzip **277.93 → 278.54**): **+2.04 kB**.
+- **541/541** en las 9 suites node (**11 aserciones nuevas** de `shortfall`).
+- **28/28** del permiso y **43/43** del motor contra Dexie real: sin cambios tras tocar el error.
+
+**El caso que obligaba a pensar, y cómo se resolvió.** El aviso se calcula con la **caché**
+(`stockByLocation`) y el candado con el **libro mayor**, y tras una sincronización pueden discrepar.
+Si el aviso decía que alcanzaba y el motor rechaza, el usuario quedaría en un callejón: no vería la
+confirmación y no podría avanzar. Solución: el error del motor va **marcado con `code:'short'`**, y
+con el permiso encendido la pantalla ofrece la confirmación igualmente. Se eligió una marca y no
+comparar el texto del mensaje porque el texto es traducible y cambiante. **Se comprobó contra Dexie**
+que esa propiedad **sobrevive a la transacción** y que los demás errores **no la llevan** — no se dio
+por supuesto.
+
+**FALLO REAL cazado por la prueba nueva, ya corregido.** `3 × 0.1` da `0.30000000000000004` en coma
+flotante, así que contra una existencia de `0.3` el aviso **inventaba un faltante de cero** —"hay
+0.3, se necesitan 0.3, quedará 0"— y habría exigido confirmación para nada, que es la clase de
+detalle que hace que un usuario deje de creerse los avisos. **El motor no tiene ese fallo** porque
+redondea `need` con `round2`; `shortfall` ahora redondea **exactamente igual**, para que el aviso y
+el candado no puedan discrepar. Salió de una aserción escrita a propósito para el residuo de coma
+flotante, no de leer el código.
+
+**Decisión de estructura:** la aritmética del aviso se movió a `lib/kitchenMath` (`shortfall`), donde
+ya vive `canMake`. Dentro del componente **no era probable con node**, y es justo la lógica que no
+puede fallar.
+
+**Sin el permiso —el default— el tablero se comporta y se PINTA exactamente como antes de B2:**
+`needsConfirm` es siempre `false`, no se pinta el bloque del modal ni la marca de la tarjeta, no se
+pasa `allowShort` al motor y el mensaje de éxito es el de siempre.
+
+**Lo que B2 NO hace:** no avisa al dueño en el centro de notificaciones (B3) y no está en la ayuda
+(B4). Y **la app no se ha ejecutado**: ni una confirmación marcada en una pantalla real.
