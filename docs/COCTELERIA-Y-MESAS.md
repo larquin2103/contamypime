@@ -755,3 +755,97 @@ ve en los reportes ni en la auditoría, y no está explicado en la ayuda**.
 
 **Y sigue en pie lo de siempre: nadie ha ejecutado la app.** Ni un interruptor tocado en una
 pantalla real.
+
+### A5 — Reporte, auditoría y ayuda gateados · **cierre del bloque A** (commit `b957248`, 12-09-2026)
+
+**Qué se hizo:** el reporte de producción sirve a los dos módulos con `kinds` y columna *Tipo*
+data-driven; la pestaña de auditoría existe con cualquiera de los dos y filtra cada fila por el
+módulo de su tipo; y un artículo de ayuda con `module: 'cocteleria'`.
+
+**Auditoría profunda de esta fase (ejecutada, no citada):**
+
+- `npm run build` **exit 0**. Chunk **954.35 → 956.87 kB** (gzip **276.49 → 277.47**): **+2.52 kB**.
+- **530/530** en las 9 suites node.
+- **40/40** de una comparación propia entre **las dos versiones del builder** —la de `git HEAD` y la
+  del árbol de trabajo— corriendo sobre la **misma base** sembrada. Se extrajo la versión vieja con
+  `git show`, se ejecutó, y el fichero temporal **se borró** (`git status` limpio). Lo que quedó
+  probado:
+  1. **Con solo `cocina`, el objeto del reporte es IDÉNTICO al de antes de A5** —título, columnas,
+     filas, fila TOTALES y nombre de fichero— en **cuatro** escenarios: sin `kinds`, con
+     `kinds:['cocina']`, con rango de fechas y con **rango vacío** (el caso que suele descuadrar).
+  2. **Con la licencia degradada** (tuvo coctelería y se la quitaron) el trago que quedó en la base
+     **ya no se lista**, y un **control negativo** confirma que el builder **viejo sí lo listaría**:
+     la diferencia la hace el filtro nuevo, no el azar. Sin ese control la prueba no medía nada.
+  3. Un negocio con **solo `cocteleria`** no ve **ni una fila** de cocina.
+  4. **Todas** las filas —incluidas TOTALES y la de "Sin elaboraciones en el periodo"— cuadran con
+     el número de columnas en las **tres** configuraciones. Es el fallo clásico al insertar una
+     columna, y era un riesgo real en este cambio.
+  5. La ayuda: el artículo lleva su `module`, **no** se ve con `[]` ni con `['cocina']`, sí con
+     `['cocteleria']`, `downloadHelpPdf` sigue con `modules = []` por defecto (lado seguro) y
+     **aplica el mismo filtro que la pantalla**.
+- **Sin fugas, comprobado por barrido:** los **12** usos de `LICENSE_MODULES.COCKTAILS` en todo
+  `src/` pasan por `hasModule` (o son el campo `module:` del artículo, que los dos filtros honran).
+- **Sin imports huérfanos** en los ficheros tocados (comprobado símbolo por símbolo, porque el
+  proyecto **no tiene linter** y `npm run build` no avisa — es como se colaron los de A2).
+- **Consumidores de `productions`: solo tres** (`AuditScreen`, `KitchenScreen`, el reporte), los
+  tres revisados. Ninguno más lee esa tabla.
+
+**Cinco fallos en la primera pasada de la prueba, y conviene saber que NINGUNO era del código:**
+tres venían de comparar el builder viejo sobre una base que **ya tenía** un trago (el viejo no
+filtra: la identidad hay que medirla sobre la base que un negocio solo-cocina tendría de verdad),
+uno era aritmética mía mal hecha (0.15×200 + 6×5 son **60**, no 30) y otro un índice equivocado al
+leer la fila TOTALES tras insertar la columna. Se dejan escritos porque la lección es sobre cómo se
+diseña la comparación, no sobre el código.
+
+**Un detalle de cabecera que sí cambia, y es deliberado:** con coctelería activa, la columna del
+área pasa de "Área destino" a "Área". Con `cocina` sola **no cambia**. El motivo: *destino* sería
+mentira en la mitad de las filas, porque el trago no se envía a ninguna parte.
+
+**Asimetría encontrada, no corregida:** **el módulo `cocina` NO tiene ningún artículo de ayuda**
+(cero coincidencias de "cocina" en `helpContent.js` antes de este commit). Así que ahora la
+coctelería está explicada y la cocina no. Escribir el de cocina está **fuera del plan** y además
+añadiría un artículo visible para negocios que hoy no lo tienen; queda anotado como deuda para que
+el dueño decida.
+
+---
+
+## 16. Estado al cerrar el bloque A (12-09-2026)
+
+**El bloque A está COMPLETO: A1 a A5, cinco fases, cada una con su commit y su auditoría.** Lo que
+el dueño puede hacer hoy en la rama: comprar `cocteleria`, crear recetas de coctelería en *Recetas*,
+surtir el área con la *Salida a áreas* de siempre, encender el tablero para el vendedor en Ajustes,
+y el vendedor elabora tragos en el área de su turno consumiendo su stock. El trago se vende por el
+POS o se carga a una mesa como cualquier producto, sale en el reporte de producción con su tipo,
+queda en la auditoría y está explicado en la ayuda.
+
+**Medición acumulada del bloque A** (de `328ec95`, el arranque, a `b957248`): chunk
+**946.63 → 956.87 kB** (gzip **274.11 → 277.47**) = **+10.24 kB, +1.08 %**. Para comparar: el módulo
+`fichas` costó **+85 kB / +9.9 %**. **Cero** versiones nuevas de Dexie y **cero** colecciones nuevas
+de sync (`SYNC_COLLECTIONS` sigue en 34), así que **este despliegue no es "de ida"**.
+
+**Lo que sigue ABIERTO, y es lo que hay que saber antes de desplegar:**
+
+1. **NADIE HA EJECUTADO LA APP.** Ni una receta creada, ni un trago elaborado, ni un interruptor
+   tocado en una pantalla real. La validación fue **código + build + pruebas node + el motor y los
+   reportes contra un IndexedDB simulado**. `fake-indexeddb` **no es** un navegador.
+2. **Convivencia de versiones (A1), el riesgo más concreto.** Una receta de coctelería llega por
+   sync a un teléfono con el build viejo, que **no conoce `kind`** y la ofrecería en su tablero de
+   cocina. Lo normal es que falle con "No hay suficiente X en la cocina", pero si ese insumo
+   **también** está en la cocina, lo consumiría de la ubicación equivocada. **Regla operativa: no
+   crear recetas de coctelería hasta que TODOS los dispositivos hayan abierto el build nuevo.** No
+   se puede arreglar desde el build nuevo: depende del viejo.
+3. **Decisión pendiente del dueño (de A1):** el importador de recetas de la ficha de costo
+   (`InputsBlock.jsx:54`) lista **también** las recetas de coctelería en un negocio que tenga los dos
+   módulos, **sin etiqueta de tipo**. No hay fuga de licencia (está gateado por `cocina`) y costear
+   un trago es legítimo, pero salen mezcladas. **No se tocó**: `fichas` está fusionado a `main`, su
+   documento exige leerlo antes de modificarlo y no está en la lista de archivos de este plan.
+4. **Limitación heredada (A1):** una receta **no puede usar un elaborado como insumo** (un sirope
+   casero en un mojito). Es el comportamiento de siempre (`RecipeForm.jsx:96`); cambiarlo es otra
+   decisión.
+5. **Deuda de ayuda (A5):** el módulo `cocina` sigue sin artículo propio.
+6. **Textos visibles que cambian** para quien ya usa `cocina` (A1): el título de la pantalla de
+   recetas y los rótulos de sus tarjetas. Ninguna lógica cambia.
+
+**Los bloques B y C del plan siguen sin empezar** y son independientes: B (permiso de elaborar con
+faltante + aviso de saldos negativos) y C (descuento por mesa + panel del dueño con valor real y
+gastos del día).
