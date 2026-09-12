@@ -998,3 +998,70 @@ A5. Para repetirlo hay que volver a extraerla. No es una regresión.
 
 **Lo que B3 NO hace:** falta **B4** (la ayuda: cómo se cura un descubierto). Y **la app no se ha
 ejecutado**: ni una campana abierta en un teléfono real.
+
+### B4 — La ayuda del descubierto · **cierre del bloque B** (commit `c714bad`, 12-09-2026)
+
+**Qué se hizo:** artículo *"Existencias en negativo: por qué pasan y cómo se curan"*, gateado por
+**cualquiera** de los dos módulos; soporte de `modules` (any-of) en la ayuda; y el filtro de
+visibilidad **deja de estar duplicado**.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **961.58 → 964.43 kB** (gzip **278.97 → 279.89**): **+2.85 kB**.
+- **613/613** en **10** suites node (la nueva `helpContent.test.mjs` aporta **72**).
+- **26/26** del barrido de avisos, **28/28** del permiso y **43/43** del motor, contra Dexie real.
+- **Lo que más importaba — comparación EXHAUSTIVA del filtro viejo contra el nuevo:** se extrajo con
+  `git show` la versión anterior de `helpContent` y se comparó el predicado **copiado** de antes
+  contra `isArticleVisible`, sobre los **23 artículos que ya existían**, en las **1024 combinaciones
+  posibles de licencia** y con **los dos roles** = **47.104 comprobaciones, cero diferencias**. Nadie
+  ve algo distinto de lo que veía. El fichero temporal se borró (`git status` limpio).
+- El artículo nuevo: **no** se ve sin módulos ni con otros, **sí** con cualquiera de los dos suyos, y
+  el **vendedor no lo ve** porque el rol manda por encima del módulo.
+
+**Un arreglo que no estaba en el plan y por qué se hizo igual.** El predicado que decide qué artículo
+se ve estaba **copiado literalmente** en `HelpScreen` y en `helpPdf`. Es la única regla que impide
+explicar en la guía una función que el negocio no compró, y el propio comentario del código ya
+avisaba del riesgo ("filtran `HelpScreen` y también `helpPdf`, que si no la colaría por el PDF").
+Mantener esa regla en dos copias es la forma más fácil de que un día el PDF cuele lo que la pantalla
+oculta. Ahora es **una** función en `helpContent` y los dos la llaman. **Amplía la lista de archivos
+del §13** (entran `HelpScreen.jsx` y `helpPdf.js`), y la ampliación queda declarada aquí.
+
+**Y estrena suite permanente.** `helpContent.js` importa la licencia **con extensión** para poder
+cargarse en node, y `helpContent.test.mjs` fija el contrato del filtro: el default vacío como lado
+seguro, `module` exigente, `modules` any-of, los dos combinados, el rol por encima del módulo, y que
+**ninguno** de los cuatro artículos gateados se cuele con la licencia pelada. Antes esa regla la
+sostenía un comentario; ahora la sostienen 72 aserciones.
+
+---
+
+## 18. Estado al cerrar el bloque B (12-09-2026)
+
+**El bloque B está COMPLETO: B1 a B4.** Lo que el dueño puede hacer hoy en la rama: encender
+*"Elaborar aunque falte algún insumo"* en Ajustes; quien elabora ve **qué** falta y **en cuánto
+quedará** y tiene que **confirmarlo** marcando una casilla; la existencia queda en negativo con
+**constancia** de con cuánto se elaboró; al dueño le llega un **aviso** en la campana con el insumo,
+la ubicación y el autor; y la **ayuda** explica las tres formas de curarlo, incluido el error fácil
+de dar la entrada en el almacén cuando el negativo está en un área.
+
+**Medición del bloque B** (de `65af43e`, cierre de A, a `c714bad`): chunk **956.87 → 964.43 kB**
+(gzip **277.47 → 279.89**) = **+7.56 kB**. **Acumulado de A + B** desde el arranque de la rama
+(`328ec95`): **946.63 → 964.43 kB** (gzip **274.11 → 279.89**) = **+17.80 kB, +1.88 %**. Sigue en
+**cero** versiones nuevas de Dexie y **cero** colecciones de sync (34).
+
+**Lo que sigue ABIERTO tras el bloque B:**
+
+1. **NADIE HA EJECUTADO LA APP.** Ni un permiso encendido, ni una casilla marcada, ni una campana
+   abierta en un teléfono real. Todo es build, pruebas puras y Dexie sobre `fake-indexeddb`, que
+   **no es un navegador**.
+2. **Permitir negativos rompe un invariante de facto**, y esto es lo que hay que vigilar al probarlo:
+   hasta ahora **ningún** escritor dejaba una existencia en negativo. Con el permiso encendido, el
+   negativo aparecerá en **catálogo**, en **inventario por ubicación** y en el **conteo físico**, y
+   **no se ha auditado pantalla por pantalla cómo se ve ahí** (se muestra el número tal cual; el
+   conteo lo cura). Es el riesgo conocido del bloque y la razón de que el permiso nazca apagado.
+3. **El permiso no es un candado de seguridad.** Lo pasa la pantalla; quien llame al repo desde otro
+   sitio puede pasar `true`. Es visibilidad y disciplina, igual que los permisos de los tableros.
+4. Siguen abiertos los seis puntos del cierre del bloque A (§16), en particular la **convivencia de
+   versiones** y la **decisión pendiente** sobre el importador de recetas de la ficha de costo.
+
+**El bloque C sigue sin empezar:** descuento por mesa + panel del dueño con el valor real y los
+gastos del día.
