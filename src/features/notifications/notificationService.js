@@ -13,7 +13,7 @@ import {
   DEFAULT_NOTIFICATION_PREFERENCES
 } from '../../repositories/notificationsRepo'
 import { syncTs } from '../sync/collections'
-import { SHIFT_STATUS, COUNT_STATUS, SEMAPHORE, ROLE_LABELS, areaLabel, DELIVERY_RESULT } from '../../db/constants'
+import { SHIFT_STATUS, COUNT_STATUS, SEMAPHORE, ROLE_LABELS, areaLabel, locationLabel, COCINA, DELIVERY_RESULT } from '../../db/constants'
 
 // ---------------------------------------------------------------------------
 // Motor de notificaciones (Fase 9) — CAPA INDEPENDIENTE y de SÓLO LECTURA sobre
@@ -388,6 +388,42 @@ function buildSettlementDiff(settlement, ctx) {
   }
 }
 
+// 7) Se ELABORÓ CON FALTANTE (kitchenRepo.produce con el permiso del dueño) y una
+//    existencia quedó en NEGATIVO. Deriva del EVENTO (`productions.shortages`), no de
+//    un barrido del estado del stock: así encaja en este motor -que es incremental y
+//    con cursor- y el aviso queda fechado y con su autor, como los demás.
+//    Ej: "Pan: Harina quedó en -7 en Cocina".
+function buildNegativeStock(production, ctx) {
+  const shortages = production?.shortages || []
+  if (!shortages.length) return null
+  const loc = production.fromLocation || COCINA
+  // `have - need` = -short: en cuánto quedó la existencia tras elaborar.
+  const first = shortages[0]
+  const after = -Number(first.short || 0)
+  const more = shortages.length - 1
+  const extra = more > 0 ? ` (y ${more} insumo${more > 1 ? 's' : ''} más)` : ''
+  const who = ctx.userName[production.byUserId] || ''
+  return {
+    type: NOTIFICATION_TYPES.NEGATIVE_STOCK,
+    sourceId: production.id,
+    severity: NOTIFICATION_SEVERITY.WARNING,
+    title: 'Elaborado con faltante',
+    message: `${production.recipeName || 'Elaboración'}: ${first.name} quedó en ${after} ${first.unit || ''} en ${locationLabel(loc)}${extra}${who ? ` · ${who}` : ''}`.trim(),
+    createdAt: production.createdAt || now(),
+    createdBy: production.byUserId || null,
+    requiresAction: true,
+    audience: 'manager',
+    metadata: {
+      sourceCollection: 'productions',
+      sourceId: production.id,
+      location: loc,
+      recipeId: production.recipeId || null,
+      units: Number(production.units || 0),
+      shortages: shortages.map((s) => ({ productId: s.productId, name: s.name, short: Number(s.short || 0) }))
+    }
+  }
+}
+
 // --- Barrido derivado (offline-first, incremental) ---------------------------
 // Lee SOLO lo posterior al piso y materializa los avisos nuevos. Rendimiento:
 //  - priceChanges: rango por índice `createdAt` (= su syncTs) -> solo lo nuevo.
@@ -420,13 +456,16 @@ export async function refreshFromSources() {
   // Lecturas acotadas (NO tablas completas): priceChanges por índice createdAt;
   // shifts/counts por estado (índice). Se filtran por el piso con syncTs (que
   // refleja la transición real: closedAt / approvedAt).
-  const [priceRows, shiftRows, countRows, saleRows, deliveryRows, settlementRows] = await Promise.all([
+  const [priceRows, shiftRows, countRows, saleRows, deliveryRows, settlementRows, productionRows] = await Promise.all([
     db.priceChanges.where('createdAt').aboveOrEqual(floor).toArray(),
     db.shifts.where('status').equals(SHIFT_STATUS.CLOSED).toArray(),
     db.counts.where('status').equals(COUNT_STATUS.APPROVED).toArray(),
     db.sales.where('createdAt').aboveOrEqual(floor).toArray(),
     db.deliveries.where('createdAt').aboveOrEqual(floor).toArray(),
-    db.settlements.where('createdAt').aboveOrEqual(floor).toArray()
+    db.settlements.where('createdAt').aboveOrEqual(floor).toArray(),
+    // Elaboraciones (modulos 'cocina'/'cocteleria'): por indice `createdAt` y acotada
+    // al piso, como las demas. Sin esos modulos la tabla esta VACIA -> consulta vacia.
+    db.productions.where('createdAt').aboveOrEqual(floor).toArray()
   ])
 
   // Candidatos tras el piso. [registro, regla, ¿necesita ctx de nombres?].
@@ -448,6 +487,12 @@ export async function refreshFromSources() {
   }
   for (const r of settlementRows) {
     if (firstNonZero(r.difference)) candidates.push([r, buildSettlementDiff, true])
+  }
+  // Solo las elaboraciones que dejaron un DESCUBIERTO son candidatas: una produccion
+  // normal no escribe `shortages`, asi que el ciclo de un negocio que elabora todos
+  // los dias sin faltantes no infla `candidates` ni carga los mapas de nombres.
+  for (const r of productionRows) {
+    if (r.shortages?.length) candidates.push([r, buildNegativeStock, true])
   }
 
   // La marca de agua avanza al mayor syncTs visto (aunque no se materialice nada).

@@ -19,7 +19,15 @@ const CATEGORIES = [
   { key: 'inventario', label: 'Inventario', desc: 'Conteo físico aprobado con diferencia.', live: true },
   { key: 'ventas', label: 'Ventas', desc: 'Cambios de precio de productos.', live: true },
   { key: 'transferencias', label: 'Transferencias', desc: 'Cobros por transferencia con diferencia (de más o de menos).', live: true },
-  { key: 'remesas', label: 'Entregas', desc: 'Entregas fallidas y diferencias al liquidar a un mensajero.', live: true, module: LICENSE_MODULES.REMESAS }
+  { key: 'remesas', label: 'Entregas', desc: 'Entregas fallidas y diferencias al liquidar a un mensajero.', live: true, module: LICENSE_MODULES.REMESAS },
+  // `modules` (cualquiera de ellos) para las categorías que sirven a más de un módulo.
+  {
+    key: 'elaboracion',
+    label: 'Elaboración',
+    desc: 'Se elaboró con faltante y una existencia quedó en negativo (solo si activaste ese permiso).',
+    live: true,
+    modules: [LICENSE_MODULES.KITCHEN, LICENSE_MODULES.COCKTAILS]
+  }
 ]
 
 export function NotificationSettings() {
@@ -28,7 +36,9 @@ export function NotificationSettings() {
   const prefs = useLiveQuery(() => getPreferences(), [], undefined)
   // Solo las categorías base + las de módulos desbloqueados: sin licencia no se
   // ofrece el interruptor (ni se menciona un rol que ese negocio no tiene).
-  const categories = CATEGORIES.filter((c) => !c.module || hasModule(c.module))
+  const categories = CATEGORIES.filter(
+    (c) => (!c.module || hasModule(c.module)) && (!c.modules || c.modules.some((m) => hasModule(m)))
+  )
 
   if (!isOwner) {
     return (

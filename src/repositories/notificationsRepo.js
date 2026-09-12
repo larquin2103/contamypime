@@ -48,7 +48,12 @@ export const NOTIFICATION_TYPES = {
   // Módulo 'remesas': entrega fallida (el mensajero no pudo entregar) y diferencia
   // en la liquidación de un mensajero (faltante/sobrante frente al teórico).
   DELIVERY_FAILED: 'delivery_failed',
-  SETTLEMENT_DIFF: 'settlement_diff'
+  SETTLEMENT_DIFF: 'settlement_diff',
+  // Módulos 'cocina'/'cocteleria': se elaboró con FALTANTE (permiso
+  // `allowShortProduction`) y una existencia quedó en NEGATIVO. Deriva de
+  // `productions` (que ya sincroniza), no de un barrido del stock: es un EVENTO con
+  // su fecha y su autor. Sin el permiso no hay ninguno.
+  NEGATIVE_STOCK: 'negative_stock'
 }
 
 // Categorías que ve el dueño en Ajustes (los interruptores de NotificationSettings).
@@ -62,7 +67,10 @@ export const NOTIFICATION_CATEGORIES = {
   INVENTARIO: 'inventario',
   TRANSFERENCIAS: 'transferencias',
   VENTAS: 'ventas',
-  REMESAS: 'remesas'
+  REMESAS: 'remesas',
+  // Módulos 'cocina'/'cocteleria'. Categoría propia y no dentro de 'inventario' para
+  // que el dueño pueda apagar los avisos de descubierto sin perder los del conteo.
+  ELABORACION: 'elaboracion'
 }
 
 // Qué categoría gobierna cada tipo (para el gate de preferencias).
@@ -72,7 +80,8 @@ export const TYPE_CATEGORY = {
   [NOTIFICATION_TYPES.PRICE_CHANGE]: NOTIFICATION_CATEGORIES.VENTAS,
   [NOTIFICATION_TYPES.TRANSFER_MISMATCH]: NOTIFICATION_CATEGORIES.TRANSFERENCIAS,
   [NOTIFICATION_TYPES.DELIVERY_FAILED]: NOTIFICATION_CATEGORIES.REMESAS,
-  [NOTIFICATION_TYPES.SETTLEMENT_DIFF]: NOTIFICATION_CATEGORIES.REMESAS
+  [NOTIFICATION_TYPES.SETTLEMENT_DIFF]: NOTIFICATION_CATEGORIES.REMESAS,
+  [NOTIFICATION_TYPES.NEGATIVE_STOCK]: NOTIFICATION_CATEGORIES.ELABORACION
 }
 
 // Preferencias por defecto del dueño (clave 'notificationPreferences' en config,
@@ -85,6 +94,12 @@ export const DEFAULT_NOTIFICATION_PREFERENCES = {
   transferencias: true,
   ventas: true,
   remesas: true,
+  // Encendida por defecto como el resto. No genera NADA salvo que el dueño active el
+  // permiso de elaborar con faltante: sin él no existe ninguna producción con
+  // descubierto, así que un negocio que no lo use no ve un solo aviso de esta
+  // categoría. Y como `getPreferences` mezcla estos valores con los guardados, una
+  // preferencia ya guardada SIN esta clave la hereda encendida: no hay migración.
+  elaboracion: true,
   onlyImportant: false
 }
 
