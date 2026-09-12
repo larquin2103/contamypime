@@ -3,7 +3,8 @@ import { formatDateTime, localDay } from '../../lib/dates'
 import { round2, formatMoney, foreignToBase, baseToForeign, isForeignPriced } from '../../lib/currency'
 import {
   SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
-  areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION, COCINA
+  areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION, COCINA,
+  RECIPE_KINDS, RECIPE_KIND_LABELS, recipeKind
 } from '../../db/constants'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
@@ -1440,16 +1441,25 @@ export async function buildMermasReport({ from = null, to = null } = {}) {
   }
 }
 
-// Reporte de PRODUCCION de cocina (modulo 'cocina'). Cada fila es una elaboracion
-// (snapshot append-only en `productions`): fecha, receta, area destino, unidades,
+// Reporte de PRODUCCION (modulos 'cocina' y 'cocteleria'). Cada fila es una
+// elaboracion (snapshot append-only en `productions`): fecha, receta, area, unidades,
 // costo de insumos (total, MN) y costo unitario del elaborado (MN), con totales.
 // Solo lee. Se valora en MN (base interna); el precio de venta en divisa del
 // elaborado aparece en los reportes de ventas/area (este es de COSTO), igual que
 // buildMermasReport valora la afectacion en MN.
-export async function buildKitchenProduction({ from = null, to = null } = {}) {
+//
+// `kinds` (opcional): tipos de receta que ESTE negocio puede ver, segun su licencia.
+// Por defecto solo COCINA, que es el lado SEGURO (oculta, no cuela: el mismo criterio
+// que `downloadHelpPdf`, cuyo `modules` llega vacio a proposito). Con eso, un negocio
+// con solo 'cocina' obtiene un reporte IDENTICO al de siempre: mismo titulo, mismas
+// columnas y mismo nombre de fichero. La columna "Tipo" y el titulo compuesto solo
+// aparecen cuando el negocio tiene cocteleria — data-driven, como las columnas USD.
+export async function buildKitchenProduction({ from = null, to = null, kinds = [RECIPE_KINDS.KITCHEN] } = {}) {
+  const allowed = Array.isArray(kinds) && kinds.length ? kinds : [RECIPE_KINDS.KITCHEN]
+  const showKind = allowed.includes(RECIPE_KINDS.COCKTAIL)
   const names = await userMap()
   const prods = (await db.productions.toArray())
-    .filter((p) => inRange(p.createdAt, from, to))
+    .filter((p) => inRange(p.createdAt, from, to) && allowed.includes(recipeKind(p)))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   const rows = []
   let totUnits = 0
@@ -1465,6 +1475,7 @@ export async function buildKitchenProduction({ from = null, to = null } = {}) {
     rows.push([
       formatDateTime(p.createdAt),
       p.recipeName || '',
+      ...(showKind ? [RECIPE_KIND_LABELS[recipeKind(p)]] : []),
       areaLabel(p.toArea),
       units,
       insumoCost,
@@ -1472,17 +1483,33 @@ export async function buildKitchenProduction({ from = null, to = null } = {}) {
       names[p.byUserId] || ''
     ])
   }
+  const pad = showKind ? [''] : []
   if (rows.length === 0) {
-    rows.push(['Sin elaboraciones en el periodo', '', '', '', '', '', ''])
+    rows.push(['Sin elaboraciones en el periodo', '', ...pad, '', '', '', '', ''])
   } else {
-    rows.push(['', '', 'TOTALES', round2(totUnits), round2(totCost), '', ''])
+    rows.push(['', '', ...pad, 'TOTALES', round2(totUnits), round2(totCost), '', ''])
   }
+  // Titulo y fichero segun lo que el negocio tenga: con solo 'cocina', los de siempre.
+  const onlyCocktails = showKind && !allowed.includes(RECIPE_KINDS.KITCHEN)
+  const title = onlyCocktails
+    ? 'Producción de coctelería'
+    : (showKind ? 'Producción de cocina y coctelería' : 'Producción de cocina')
+  const filename = onlyCocktails
+    ? 'produccion-cocteleria'
+    : (showKind ? 'produccion-cocina-cocteleria' : 'produccion-cocina')
   return {
-    title: 'Producción de cocina',
+    title,
     subtitle: rangeLabel(from, to),
-    head: ['Fecha', 'Receta', 'Área destino', 'Unidades', 'Costo insumos', 'Costo unit. elaborado', 'Elaboró'],
+    head: [
+      'Fecha', 'Receta',
+      ...(showKind ? ['Tipo'] : []),
+      // Con cocteleria dentro, "destino" seria mentira en la mitad de las filas: el
+      // trago se elabora y se queda en su area, no se envia a ninguna parte.
+      showKind ? 'Área' : 'Área destino',
+      'Unidades', 'Costo insumos', 'Costo unit. elaborado', 'Elaboró'
+    ],
     rows,
-    filename: 'produccion-cocina',
+    filename,
     orientation: 'landscape'
   }
 }

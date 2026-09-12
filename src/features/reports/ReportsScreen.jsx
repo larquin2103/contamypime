@@ -7,6 +7,7 @@ import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { logError } from '../../lib/errorLog'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
+import { RECIPE_KINDS } from '../../db/constants'
 import {
   buildSalesReport,
   buildSellerSalesReport,
@@ -76,7 +77,15 @@ export function ReportsScreen() {
       }
       // Modulo 'divisas': las columnas USD de los reportes se gatean por el módulo.
       const divisas = hasModule(LICENSE_MODULES.MULTICURRENCY)
-      const report = await builder({ from, to, divisas })
+      // Módulos 'cocina'/'cocteleria': qué TIPOS de elaboración puede ver este
+      // negocio. Lo usa el reporte de producción; el resto de builders lo ignora
+      // (igual que `divisas`, que también se pasa a todos). Si el negocio no tiene
+      // ninguno de los dos, la tarjeta no existe y este reporte no se genera.
+      const kinds = [
+        hasModule(LICENSE_MODULES.KITCHEN) && RECIPE_KINDS.KITCHEN,
+        hasModule(LICENSE_MODULES.COCKTAILS) && RECIPE_KINDS.COCKTAIL
+      ].filter(Boolean)
+      const report = await builder({ from, to, divisas, kinds })
       if (fmt === 'pdf') await exportPdf(report)
       else await exportExcel(report)
     } catch (e) {
@@ -85,6 +94,12 @@ export function ReportsScreen() {
       setBusy('')
     }
   }
+
+  // Título de la tarjeta de producción según los módulos: con solo 'cocina' dice
+  // exactamente lo de siempre.
+  const productionCardTitle = hasModule(LICENSE_MODULES.KITCHEN)
+    ? (hasModule(LICENSE_MODULES.COCKTAILS) ? 'Producción de cocina y coctelería' : 'Producción de cocina')
+    : 'Producción de coctelería'
 
   const card = (key, title, desc, builder, useRange) => (
     <section className="card">
@@ -137,8 +152,12 @@ export function ReportsScreen() {
         card('accounts', 'Movimientos de cuentas', 'Créditos y débitos de la tesorería, con saldos', buildAccountsReport, true)}
       {hasModule(LICENSE_MODULES.TABLES) &&
         card('tables', 'Ventas por mesa', 'Cuentas cobradas por mesa: consumo, servicio, total y ticket promedio', buildTablesReport, true)}
-      {hasModule(LICENSE_MODULES.KITCHEN) &&
-        card('kitchen', 'Producción de cocina', 'Elaboraciones de cocina: receta, área, unidades y costo (insumos y unitario del elaborado)', buildKitchenProduction, true)}
+      {/* Producción: una sola tarjeta para los dos módulos. Con solo 'cocina' el título,
+          las columnas y el fichero son los de siempre; con coctelería el reporte gana la
+          columna "Tipo" (data-driven, como las columnas USD). El builder filtra por los
+          tipos que la licencia permite, así que no se cuela lo que no se compró. */}
+      {(hasModule(LICENSE_MODULES.KITCHEN) || hasModule(LICENSE_MODULES.COCKTAILS)) &&
+        card('kitchen', productionCardTitle, 'Elaboraciones: receta, área, unidades y costo (insumos y unitario del elaborado)', buildKitchenProduction, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&
         card('remesas', 'Entregas', 'Órdenes de entrega: remitente, beneficiario, monto, estado y mensajero asignado', buildRemittancesReport, true)}
       {hasModule(LICENSE_MODULES.REMESAS) &&

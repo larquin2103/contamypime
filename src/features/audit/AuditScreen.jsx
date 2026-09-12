@@ -20,7 +20,7 @@ import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { cleanQty } from '../../lib/qty'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
-import { SHIFT_STATUS, locationLabel, areaLabel, COCINA, DELIVERY_RESULT, FICHA_AUDIT_LABELS } from '../../db/constants'
+import { SHIFT_STATUS, locationLabel, areaLabel, COCINA, DELIVERY_RESULT, FICHA_AUDIT_LABELS, RECIPE_KINDS, recipeKind } from '../../db/constants'
 
 const MOVE_LABEL = {
   purchase_in: 'Entrada (almacén)',
@@ -49,11 +49,17 @@ function inRange(iso, from, to) {
   return true
 }
 
+// Icono de cada fila de la pestaña de elaboración (plato, trago o abastecimiento).
+const ROW_ICON = { elaborado: '🍽️ ', trago: '🍹 ', abasto: '📦 ' }
+
 export function AuditScreen() {
   const { isManager } = useAuth()
   const { baseCurrency } = useCurrency()
   const { hasModule } = useLicense()
   const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+  const canCocktails = hasModule(LICENSE_MODULES.COCKTAILS)
+  // La pestaña de elaboración sirve a los dos módulos: con cualquiera de ellos existe.
+  const canBoards = canKitchen || canCocktails
   const canRemesas = hasModule(LICENSE_MODULES.REMESAS)
   const canFichas = hasModule(LICENSE_MODULES.COSTSHEETS)
   const [tab, setTab] = useState('shifts')
@@ -68,8 +74,11 @@ export function AuditScreen() {
   const movements = useLiveQuery(() => stockRepo.listAll(), [], [])
   const prices = useLiveQuery(() => productsRepo.allPriceChanges(), [], [])
   const deletions = useLiveQuery(() => productsRepo.listDeletions(), [], [])
-  // Modulo 'cocina' (gateado): producciones (elaborados) y abastecimientos a la cocina.
-  const productions = useLiveQuery(() => (canKitchen ? kitchenRepo.listAll() : Promise.resolve([])), [canKitchen], [])
+  // Modulos 'cocina'/'cocteleria' (gateados EN LA CONSULTA): producciones (elaborados y
+  // tragos) y abastecimientos a la cocina. Las producciones se leen con cualquiera de
+  // los dos modulos y se FILTRAN por tipo mas abajo, para que no se cuele lo del modulo
+  // que el negocio no tiene. Los abastecimientos son de `__cocina`: solo con 'cocina'.
+  const productions = useLiveQuery(() => (canBoards ? kitchenRepo.listAll() : Promise.resolve([])), [canBoards], [])
   const kitchenTransfers = useLiveQuery(() => (canKitchen ? transfersRepo.listAll() : Promise.resolve([])), [canKitchen], [])
   // Modulo 'remesas' (gateado): entregas y liquidaciones para la auditoria.
   const rmDeliveries = useLiveQuery(() => (canRemesas ? deliveriesRepo.listAll() : Promise.resolve([])), [canRemesas], [])
@@ -90,13 +99,24 @@ export function AuditScreen() {
     return m
   }, [products])
 
-  // Actividad de cocina (modulo 'cocina') para la auditoria: elaboraciones (con su
-  // salida al area) + abastecimientos a la cocina, en una lista cronologica unica.
+  // Actividad de elaboracion (modulos 'cocina'/'cocteleria') para la auditoria:
+  // elaboraciones (la de cocina con su salida al area; la de cocteleria se queda EN el
+  // area) + abastecimientos a la cocina, en una lista cronologica unica. Cada fila de
+  // produccion se filtra por el modulo de SU tipo: sin fugas.
   const cocinaRows = useMemo(() => {
-    const elaborados = (productions || []).map((p) => ({
-      id: p.id, kind: 'elaborado', createdAt: p.createdAt, userId: p.byUserId,
-      title: p.recipeName || 'Elaborado', detail: `${cleanQty(p.units)} → ${areaLabel(p.toArea)}`
-    }))
+    const elaborados = (productions || [])
+      .filter((p) => (recipeKind(p) === RECIPE_KINDS.COCKTAIL ? canCocktails : canKitchen))
+      .map((p) => {
+        const isCocktail = recipeKind(p) === RECIPE_KINDS.COCKTAIL
+        return {
+          id: p.id, kind: isCocktail ? 'trago' : 'elaborado', createdAt: p.createdAt, userId: p.byUserId,
+          title: p.recipeName || (isCocktail ? 'Trago' : 'Elaborado'),
+          // En cocteleria no hay flecha a ninguna parte: se elabora y se queda ahi.
+          detail: isCocktail
+            ? `${cleanQty(p.units)} en ${areaLabel(p.toArea)}`
+            : `${cleanQty(p.units)} → ${areaLabel(p.toArea)}`
+        }
+      })
     const abastos = (kitchenTransfers || [])
       .filter((t) => t.toArea === COCINA)
       .map((t) => ({
@@ -104,7 +124,7 @@ export function AuditScreen() {
         title: 'Abastecimiento a cocina', detail: `${(t.items || []).length} producto(s)`
       }))
     return [...elaborados, ...abastos].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-  }, [productions, kitchenTransfers])
+  }, [productions, kitchenTransfers, canKitchen, canCocktails])
 
   // Actividad de remesas (modulo 'remesas') para la auditoria: entregas
   // (entregada/fallida) y liquidaciones, en una lista cronologica unica.
@@ -175,8 +195,10 @@ export function AuditScreen() {
         <button className={`tab ${tab === 'inv' ? 'is-active' : ''}`} onClick={() => setTab('inv')}>Inventario</button>
         <button className={`tab ${tab === 'prices' ? 'is-active' : ''}`} onClick={() => setTab('prices')}>Precios</button>
         <button className={`tab ${tab === 'del' ? 'is-active' : ''}`} onClick={() => setTab('del')}>Bajas</button>
-        {canKitchen && (
-          <button className={`tab ${tab === 'cocina' ? 'is-active' : ''}`} onClick={() => setTab('cocina')}>Cocina</button>
+        {canBoards && (
+          <button className={`tab ${tab === 'cocina' ? 'is-active' : ''}`} onClick={() => setTab('cocina')}>
+            {canKitchen ? 'Cocina' : 'Coctelería'}
+          </button>
         )}
         {canRemesas && (
           <button className={`tab ${tab === 'remesas' ? 'is-active' : ''}`} onClick={() => setTab('remesas')}>Entregas</button>
@@ -266,18 +288,20 @@ export function AuditScreen() {
         </div>
       )}
 
-      {tab === 'cocina' && canKitchen && (
+      {tab === 'cocina' && canBoards && (
         <div className="list">
           {cocinaF.map((row) => (
             <div key={row.id} className="audit-row">
               <div className="audit-row__head">
-                <strong>{row.kind === 'elaborado' ? '🍽️ ' : '📦 '}{row.title}</strong>
+                <strong>{ROW_ICON[row.kind] || '📦 '}{row.title}</strong>
                 <span className="muted">{formatDateTime(row.createdAt)}</span>
               </div>
               <span className="muted">{row.detail} · {userName[row.userId] || '—'}</span>
             </div>
           ))}
-          {cocinaF.length === 0 && <p className="muted">Sin actividad de cocina en el rango.</p>}
+          {cocinaF.length === 0 && (
+            <p className="muted">Sin actividad de {canKitchen ? 'cocina' : 'coctelería'} en el rango.</p>
+          )}
         </div>
       )}
 

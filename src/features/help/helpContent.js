@@ -251,6 +251,26 @@ export const HELP_ARTICLES = [
     ]
   },
   {
+    id: 'cocteleria',
+    section: 'Gestión y avanzado',
+    audience: 'owner',
+    module: LICENSE_MODULES.COCKTAILS,
+    title: 'Coctelería: tragos elaborados en el área',
+    teaser: 'El área hace su propio trago con su propio stock.',
+    body: [
+      { p: 'La coctelería es distinta de la cocina, y la diferencia está en DÓNDE ocurre. La cocina central elabora y ENVÍA el plato a un área. Un trago se elabora DENTRO del área (la terraza, el restaurante) consumiendo el stock de esa misma área, y se queda ahí, listo para venderse o para cargarlo a una mesa.' },
+      { steps: [
+        'Inicio → Recetas → sección "Recetas de coctelería" → "+ Nueva". Pon el nombre del trago, su precio y los insumos con lo que consume UNA unidad (ej: 0.05 L de ron, 2 hojas de menta).',
+        'Manda los insumos del almacén al área con "Salida a áreas", como con cualquier otro producto. La coctelería no se abastece aparte.',
+        'Si quieres que el vendedor elabore: Ajustes → "Tableros de elaboración" → activa "Tablero de coctelería para el vendedor".',
+        'En el tablero: se elige el área (el vendedor trae la de su turno), se toca la receta, se pone la cantidad y "Elaborar". Los insumos bajan de esa área y el trago aparece en ella.'
+      ] },
+      { p: '"Puedes elaborar: N" se calcula con lo que hay en ESA área ahora mismo, no en el almacén. Si un insumo está en el almacén y no en el área, el número sale en cero: hay que hacer la salida primero.' },
+      { warn: 'El vendedor necesita su TURNO ABIERTO para elaborar coctelería: el trago sale del área de su turno. Sin turno no hay área de la que consumir.' },
+      { tip: 'El trago es un producto normal del catálogo: se vende por el POS o se carga a una mesa como cualquier otro. Su costo no se teclea, se deriva de los insumos que consumió.' }
+    ]
+  },
+  {
     id: 'ficha-que-es',
     section: 'Gestión y avanzado',
     audience: 'owner',

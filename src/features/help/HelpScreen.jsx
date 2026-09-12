@@ -3,7 +3,7 @@ import {
   ArrowLeftRight, BarChart3, BookOpen, Calculator, ChevronLeft, ChevronRight,
   ClipboardList, Coins, Download, FileSpreadsheet, Gauge, HelpCircle, Hourglass,
   KeyRound, Lightbulb, LockOpen, Package, Receipt, ShoppingCart, Smartphone,
-  Store, TriangleAlert, Truck, UserCog, Users,
+  Martini, Store, TriangleAlert, Truck, UserCog, Users,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
@@ -13,6 +13,7 @@ import { downloadHelpPdf } from './helpPdf'
 
 // Icono lucide de cada artículo (mismos iconos que el Home para los mismos conceptos).
 const ARTICLE_ICONS = {
+  cocteleria: Martini,
   'ficha-que-es': Receipt,
   'ficha-llenar': FileSpreadsheet,
   'que-es': Smartphone,
