@@ -4,6 +4,7 @@ import { now, tsAfter } from '../lib/dates'
 import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { ratesRepo } from './ratesRepo'
+import { orderTotals, cleanPct } from '../lib/orderTotals'
 import { MOVEMENT_TYPES, ORDER_STATUS } from '../db/constants'
 
 // ---------------------------------------------------------------------------
@@ -335,21 +336,85 @@ export const ordersRepo = {
     }
   },
 
-  // Totales de la cuenta: consumo + cargo por servicio del area.
-  // `waived` = el mando eximio el cargo para esta mesa.
-  async totals(orderId, { servicePct = 0, waived = false } = {}) {
+  // Totales de la cuenta: consumo, DESCUENTO y cargo por servicio del area.
+  // `waived` = el mando eximio el cargo para esta mesa. `discountPct` = descuento
+  // vivo de la mesa (lo guarda la cabecera; con 0 la salida es IDENTICA a la de
+  // siempre, campo por campo). La aritmetica vive en lib/orderTotals, que es pura y
+  // esta probada con node; aqui solo se leen las lineas.
+  async totals(orderId, { servicePct = 0, waived = false, discountPct = 0 } = {}) {
     const items = await this.liveItems(orderId)
-    const subtotal = round2(items.reduce((a, i) => a + Number(i.lineTotal || 0), 0))
-    const pct = waived ? 0 : Math.max(0, Number(servicePct) || 0)
-    const service = round2(subtotal * (pct / 100))
-    return {
-      items,
-      count: items.length,
-      subtotal,
-      servicePct: pct,
-      service,
-      total: round2(subtotal + service)
-    }
+    return orderTotals(items, { servicePct, waived, discountPct })
+  },
+
+  // --- Descuento de la mesa (mando; el vendedor con PIN de un mando) ------------
+  // Vive en la CABECERA del pedido, no en estado de pantalla como el "eximir
+  // servicio", porque el panel del salon lo avisa y porque lo puede poner un equipo
+  // y cobrarlo otro. Se sella con `stampOrder` (tsAfter) como el resto de la
+  // cabecera: si el reloj de un telefono va atrasado, el cambio no nace "mas viejo"
+  // que la version que reemplaza y la fusion LWW no lo descarta.
+  //
+  // Append-only (regla 6): poner y quitar el descuento son DOS eventos de auditoria,
+  // no una edicion que borra la anterior. La cabecera guarda el estado vigente.
+  async setDiscount({ orderId, pct, userId, note = '' }) {
+    const p = cleanPct(pct)
+    if (!(p > 0)) throw new Error('Indica un porcentaje de descuento mayor que 0')
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('El pedido no existe')
+    if (order.status !== ORDER_STATUS.OPEN) throw new Error('El pedido ya no esta abierto')
+    const ts = now()
+    await db.transaction('rw', db.orders, db.auditEvents, async () => {
+      await db.orders.update(orderId, {
+        discountPct: p,
+        discountBy: userId,
+        discountAt: ts,
+        discountNote: String(note || '').trim(),
+        updatedAt: stampOrder(order)
+      })
+      await db.auditEvents.add({
+        id: newId(),
+        entity: 'order',
+        entityId: orderId,
+        action: 'order_discount',
+        name: `Mesa ${order.table}`,
+        area: order.area || '',
+        pct: p,
+        userId,
+        note: String(note || '').trim(),
+        createdAt: ts
+      })
+    })
+    return p
+  },
+
+  // Quita el descuento (el mando se lo puede pensar mejor). No borra el rastro: el
+  // porcentaje vuelve a 0 y queda su propio evento de auditoria, con quien y cuando.
+  async clearDiscount({ orderId, userId, note = '' }) {
+    const order = await db.orders.get(orderId)
+    if (!order) throw new Error('El pedido no existe')
+    if (order.status !== ORDER_STATUS.OPEN) throw new Error('El pedido ya no esta abierto')
+    if (!(Number(order.discountPct) > 0)) return // no habia descuento: nada que quitar ni que auditar
+    const ts = now()
+    const had = Number(order.discountPct) || 0
+    await db.transaction('rw', db.orders, db.auditEvents, async () => {
+      await db.orders.update(orderId, {
+        discountPct: 0,
+        discountRemovedBy: userId,
+        discountRemovedAt: ts,
+        updatedAt: stampOrder(order)
+      })
+      await db.auditEvents.add({
+        id: newId(),
+        entity: 'order',
+        entityId: orderId,
+        action: 'order_discount_removed',
+        name: `Mesa ${order.table}`,
+        area: order.area || '',
+        pct: had, // el que se quito
+        userId,
+        note: String(note || '').trim(),
+        createdAt: ts
+      })
+    })
   },
 
   // Marca el pedido como cobrado y lo enlaza con la venta ya creada. La venta

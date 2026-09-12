@@ -59,9 +59,9 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las 10 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**613 aserciones** en total, medidas el 12-09-2026). Ojo:
-siete viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/`,
+**Pruebas:** NO hay script `npm test` (ni linter). Las 11 suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (**644 aserciones** en total, medidas el 12-09-2026). Ojo:
+ocho viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/`,
 `fichaReports.test.mjs` en `src/features/reports/` y `helpContent.test.mjs` en
 `src/features/help/`, así que un glob `src/lib/*.test.mjs` **se salta tres**:
 
@@ -69,7 +69,7 @@ siete viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync
 for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/productCustodyMath.test.mjs src/lib/remesas.test.mjs \
          src/lib/fichaCosto.test.mjs src/lib/fichaLines.test.mjs \
-         src/lib/kitchenMath.test.mjs \
+         src/lib/kitchenMath.test.mjs src/lib/orderTotals.test.mjs \
          src/features/sync/retryQueue.test.mjs \
          src/features/reports/fichaReports.test.mjs \
          src/features/help/helpContent.test.mjs; do node "$t"; done
