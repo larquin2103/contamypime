@@ -42,6 +42,7 @@ import { KitchenScreen } from '../features/kitchen/KitchenScreen'
 import { RemesasScreen } from '../features/remesas/RemesasScreen'
 import { CostSheetsScreen } from '../features/costsheets/CostSheetsScreen'
 import { CostSheetScreen } from '../features/costsheets/CostSheetScreen'
+import { RECIPE_KINDS } from '../db/constants'
 
 // Decide que mostrar segun el estado:
 //  - sin licencia valida   -> Activacion (compuerta: ni se crea dueño ni se entra)
@@ -94,10 +95,13 @@ export function AppRouter() {
         <Route path="/accounts" element={<AccountsScreen />} />
         <Route path="/salon" element={<SalonScreen />} />
         <Route path="/mesa/:id" element={<TableScreen />} />
-        {/* Modulo 'cocina': recetas + abastecer y el tablero (cada pantalla gatea por
-            licencia y rol). /cocina lo opera el cocinero y tambien el mando. */}
+        {/* Modulos 'cocina' y 'cocteleria': recetas (pantalla comun, una seccion por
+            tipo) y los DOS tableros, que son la MISMA pantalla con su tipo. Cada una
+            gatea por licencia y rol: /cocina lo opera el cocinero, el vendedor y el
+            mando; /cocteleria el vendedor (con el permiso del dueño) y el mando. */}
         <Route path="/recetas" element={<RecipesScreen />} />
         <Route path="/cocina" element={<KitchenScreen />} />
+        <Route path="/cocteleria" element={<KitchenScreen kind={RECIPE_KINDS.COCKTAIL} />} />
         {/* Modulo 'remesas': la pantalla gatea por licencia y rol (mando). */}
         <Route path="/remesas" element={<RemesasScreen />} />
         {/* Modulo 'fichas': ficha de costos y gastos (Res. 148/2023). Cada pantalla

@@ -225,10 +225,16 @@ export const kitchenRepo = {
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   },
 
-  // Producciones recientes (para el tablero del cocinero). SIN costos (alcance del
-  // rol): fecha, receta, unidades y area. Las mas recientes primero.
-  async recent(limit = 8) {
+  // Producciones recientes (para el tablero). SIN costos (alcance del rol): fecha,
+  // receta, unidades y area. Las mas recientes primero.
+  //
+  // `kind` (opcional): filtra por tipo, para que el tablero de cocina no liste
+  // elaboraciones de cocteleria ni al contrario. Sin el filtro devuelve todas, igual
+  // que antes. `recipeKind` sirve tambien aqui: es un lector TOLERANTE del campo
+  // `kind` (ausente = cocina), y `productions` usa el mismo vocabulario que `recipes`.
+  async recent(limit = 8, { kind = null } = {}) {
     const rows = await this.listAll()
-    return rows.slice(0, limit)
+    const list = kind ? rows.filter((p) => recipeKind(p) === kind) : rows
+    return list.slice(0, limit)
   }
 }

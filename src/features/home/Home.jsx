@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
   LayoutDashboard, Package, PackagePlus, PackageMinus, ClipboardList, ArrowLeftRight,
-  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat, CookingPot, Banknote, Calculator
+  Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat, CookingPot, Martini, Banknote, Calculator
 } from 'lucide-react'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -229,6 +229,23 @@ export function Home() {
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
   // Permiso independiente: el dueño autoriza al vendedor a dar entradas.
   const sellerEntries = useLiveQuery(() => configRepo.get('sellerEntries', false), [], false)
+  // Permiso del vendedor para el tablero de coctelería (Ajustes, apagado por defecto).
+  // Solo se lee con el módulo: sin él no hay tarjeta que gatear.
+  const canCocktails = hasModule(LICENSE_MODULES.COCKTAILS)
+  const sellerCocktailBoard = useLiveQuery(
+    () => (canCocktails ? configRepo.get('sellerCocktailBoard', false) : Promise.resolve(false)),
+    [canCocktails],
+    false
+  )
+  // Etiqueta de la sección de elaboración según los módulos que haya. Con solo
+  // 'cocina' dice "Cocina", igual que siempre.
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+  const boardsLabel = (kitchenOn, cocktailsOn) =>
+    (kitchenOn && cocktailsOn ? 'Cocina y coctelería' : (kitchenOn ? 'Cocina' : 'Coctelería'))
+  // El mando ve un tablero por módulo. El vendedor, además, solo ve el de coctelería
+  // con el permiso concedido: su etiqueta no debe prometer lo que no se pinta.
+  const kitchenSectionLabel = boardsLabel(canKitchen, canCocktails)
+  const sellerBoardsLabel = boardsLabel(canKitchen, canCocktails && sellerCocktailBoard)
   const initial = (user.name || '?').trim().charAt(0).toUpperCase()
   // Avatar del propio usuario (Fase 8 - B6). Es BASE (no lo gatea ningún módulo):
   // todos los roles pueden tener su foto. Si no hay, se muestra la inicial.
@@ -330,10 +347,18 @@ export function Home() {
               <ActionCard to="/salon" icon={UtensilsCrossed} title="Mesas" sub="Ver todo el salón y cobrar" />
             </Section>
           )}
-          {hasModule(LICENSE_MODULES.KITCHEN) && (
-            <Section label="Cocina">
-              <ActionCard to="/recetas" icon={ChefHat} title="Recetas" sub="Definir recetas y abastecer la cocina" />
-              <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
+          {/* Cocina y/o coctelería. La pantalla de Recetas es común a los dos módulos
+              (una sección por tipo), así que basta con tener uno para entrar. Cada
+              tablero cuelga de SU módulo. */}
+          {(hasModule(LICENSE_MODULES.KITCHEN) || hasModule(LICENSE_MODULES.COCKTAILS)) && (
+            <Section label={kitchenSectionLabel}>
+              <ActionCard to="/recetas" icon={ChefHat} title="Recetas" sub={hasModule(LICENSE_MODULES.KITCHEN) ? 'Definir recetas y abastecer la cocina' : 'Definir recetas de coctelería'} />
+              {hasModule(LICENSE_MODULES.KITCHEN) && (
+                <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
+              )}
+              {hasModule(LICENSE_MODULES.COCKTAILS) && (
+                <ActionCard to="/cocteleria" icon={Martini} title="Tablero de coctelería" sub="Elaborar tragos en un área" />
+              )}
             </Section>
           )}
           <Section label="Operación">
@@ -383,12 +408,19 @@ export function Home() {
               <ActionCard to="/salon" icon={UtensilsCrossed} title="Mesas" sub="Atender y cobrar mesas" />
             </Section>
           )}
-          {/* Tablero de cocina en la sesión del vendedor (módulo 'cocina'). Misma
-              tarjeta y mismo tablero que el cocinero/mando; el elaborador (que
-              comparte esta rama) NO la ve. Sin el módulo, nada cambia (clásico). */}
-          {isSeller && hasModule(LICENSE_MODULES.KITCHEN) && (
-            <Section label="Cocina">
-              <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
+          {/* Tableros en la sesión del vendedor. Misma tarjeta y mismo tablero que el
+              cocinero/mando; el elaborador (que comparte esta rama) NO los ve. Sin el
+              módulo, nada cambia (clásico). El de COCTELERÍA además exige el permiso
+              del dueño (apagado por defecto), que se lee aquí para no ofrecer una
+              tarjeta que la pantalla va a rechazar. */}
+          {isSeller && (hasModule(LICENSE_MODULES.KITCHEN) || (hasModule(LICENSE_MODULES.COCKTAILS) && sellerCocktailBoard)) && (
+            <Section label={sellerBoardsLabel}>
+              {hasModule(LICENSE_MODULES.KITCHEN) && (
+                <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
+              )}
+              {hasModule(LICENSE_MODULES.COCKTAILS) && sellerCocktailBoard && (
+                <ActionCard to="/cocteleria" icon={Martini} title="Tablero de coctelería" sub="Elaborar tragos en tu área" />
+              )}
             </Section>
           )}
           {sellerEntries && (
