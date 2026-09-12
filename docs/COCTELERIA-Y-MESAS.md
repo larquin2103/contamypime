@@ -532,3 +532,74 @@ aritmética de stock, `firestore.rules`, y toda la lógica de cobro, cuadre y li
    negativo desaparece con su ajuste. No hay doble corrección.
 10. **Quitar `cocteleria` con cocteles en stock en un área:** el stock se queda y se vende
     normalmente (es un producto del catálogo); solo no se pueden elaborar más.
+
+---
+
+## 15. Bitácora de fases (auditoría al cerrar cada una)
+
+### A1 — Módulo de licencia y tipo de receta (commit `3a09190`, 11-09-2026)
+
+**Qué se hizo:** `LICENSE_MODULES.COCKTAILS` + etiqueta; `RECIPE_KINDS` /
+`RECIPE_KIND_LABELS` y los helpers `recipeKind` / `isCocktailRecipe`; `recipesRepo.list` y
+`listActive` con filtro `kind` **opcional** y `create` con `kind` (que **solo escribe el campo
+cuando vale `cocteleria`**); `RecipesScreen` con compuerta `cocina || cocteleria`, una sección de
+recetas **por tipo** y el panel *Abastecer cocina* gateado solo por `cocina`; `RecipeForm` con el
+tipo elegible en el alta e **inmutable en la edición**.
+
+**Verificado ejecutando, no citando:**
+
+- `npm run build` **exit 0**.
+- **498/498 aserciones** en las 8 suites node (21+16+9+68+243+54+18+69). *Ojo: `CLAUDE.md` dice
+  462 porque `remesas.test.mjs` pasó de 32 a 68 aserciones en los commits de Entregas; la cifra
+  del `CLAUDE.md` está vieja, no es que falten pruebas.*
+- **Peso medido con y sin los cambios** (`git stash` + build a cada lado, misma máquina): el chunk
+  principal pasa de **946.63 kB** (gzip **274.11**) a **948.65 kB** (gzip **274.82**) =
+  **+2.02 kB, +0.21 %**. *(El 941.56 kB que cita §9 de este documento era `fd24823`; la rama ya
+  llevaba los commits de Entregas encima.)*
+- **Cero cambios de esquema y de sync:** `git diff` no toca `src/db/db.js` ni
+  `src/features/sync/collections.js`.
+- **Sin fugas:** los únicos consumidores de `LICENSE_MODULES.COCKTAILS` son `RecipesScreen` y
+  `RecipeForm`, y la compuerta de pantalla se evalúa **antes** de pintar cualquier sección.
+
+**Dos desviaciones del plan, declaradas (y por eso este documento se actualiza en el mismo
+bloque de trabajo):**
+
+1. **Se tocó `src/db/constants.js`, que no estaba en la lista de archivos del §13.** El enum del
+   tipo de receta va ahí porque es donde el proyecto guarda sus enums (lo dice su propia
+   arquitectura en `CLAUDE.md`); meterlo en `recipesRepo` para no salir de la lista habría sido
+   peor. **La lista del §13 queda corregida: `src/db/constants.js` entra.**
+2. **El filtro por tipo del tablero `/cocina` se adelantó de A3 a A1** (una línea en
+   `KitchenScreen`). Sin él, cualquier commit entre A1 y A3 dejaría un estado **incoherente**: una
+   receta de coctelería aparecería en el tablero de cocina y se intentaría elaborar desde
+   `__cocina`, que no es su ubicación. A3 ya no tiene que hacerlo.
+
+**Consecuencias reales que el dueño debe conocer (ninguna es un fallo, pero no son cero):**
+
+1. **Cambia texto visible para un negocio que hoy usa `cocina`.** El DOM **no** es idéntico: el
+   título de la pantalla pasa de *"Cocina — recetas"* a *"Recetas"*, la tarjeta de *"Recetas (N)"*
+   a *"Recetas de cocina (N)"*, el botón de *"+ Nueva receta"* a *"+ Nueva"*, y cada sección gana
+   una línea de ayuda. Es consecuencia directa de la decisión 2 del §2 (listas separadas); ninguna
+   lógica cambia.
+2. **Convivencia de versiones — lo más importante de esta fase.** `recipes` sincroniza por LWW de
+   documento entero, así que una receta de coctelería **llega a un teléfono con el build viejo**, y
+   ese build **no conoce `kind`**: la ofrecería en su tablero de cocina. En el caso normal fallaría
+   con *"No hay suficiente X en la cocina"* (los insumos están en el área, no en `__cocina`), pero
+   si ese insumo **también** existe en la cocina, lo consumiría de la ubicación equivocada.
+   **Regla operativa: no crear recetas de coctelería hasta que TODOS los dispositivos hayan abierto
+   el build nuevo.** No es corregible desde el build nuevo; depende del viejo.
+3. **El importador de recetas de la ficha de costo (`InputsBlock.jsx:54`) listará también las
+   recetas de coctelería** en un negocio que tenga `cocina` **y** `cocteleria`. Está gateado en la
+   consulta por `cocina`, así que **no hay fuga de licencia**, y la aritmética de costear un trago
+   es igual de válida; lo que pasa es que salen **sin etiqueta de tipo**, mezcladas. No se tocó:
+   `fichas` está fusionado a `main` y su documento exige leerlo antes de modificarlo, y el plan no
+   lo incluye. **Decisión pendiente del dueño:** etiquetarlas o filtrarlas en A5.
+4. **Limitación heredada, no introducida:** el selector de insumos excluye **todos** los productos
+   elaborados, así que una receta de coctelería **no puede usar un elaborado de cocina como
+   insumo** (p. ej. un sirope casero en un mojito). Es el comportamiento de siempre
+   (`RecipeForm.jsx:96`) y `kitchenRepo.produce` solo prohíbe que una receta se incluya a sí misma.
+   Si el dueño quiere permitirlo, es una decisión aparte.
+
+**Lo que A1 NO hace (y por tanto no se puede probar todavía):** no hay tablero de coctelería
+(A3), no hay interruptores en Ajustes (A4) y **un negocio que solo tenga `cocteleria` todavía no
+tiene cómo llegar a `/recetas`** desde el Home (su tarjeta sigue colgando de `cocina`; se arregla
+en A3). Y, como siempre: **nadie ha ejecutado la app** — esto es código, build y pruebas node.
