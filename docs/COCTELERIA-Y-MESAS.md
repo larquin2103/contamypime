@@ -1161,3 +1161,106 @@ distintas. No se toca: está fuera del plan y cambiarlo alteraría un dato que y
 **Lo que C2 NO hace:** el salón todavía **no avisa** de que una mesa tiene descuento (C3), y ningún
 reporte ni el panel del dueño lo reflejan (C4). Y **la pantalla no se ejecutó**: el botón, el modal,
 el PIN y la línea del ticket están revisados **leyendo el código**, no usándolos.
+
+### C3 y C4 — Salón, panel y ayuda · **cierre del bloque C** (commit `9b7c824`, 12-09-2026)
+
+**C3 — Salón.** Aviso arriba, fuera de las áreas, con cuántas mesas tienen descuento activo y
+cuáles (mesa, % y área si es mando), más una marca en la propia baldosa. El importe de la baldosa
+sigue siendo el **consumo** —como siempre—; la marca avisa de que al cobrar saldrá menos. Una clase
+CSS nueva al final del fichero, sin redefinir ninguna existente.
+
+**C4 — Panel, reporte y ayuda.** `lib/saleRevenue.js` (puro) prorratea el descuento entre las líneas
+en proporción a su importe; `analyticsRepo` lo aplica en el total **y** en el agregado por área; el
+reporte *Ventas por mesa* gana columna **Descuento** (data-driven); el panel suma la tarjeta
+**Gastos (costo de lo vendido)** con su delta **invertido**; y la ayuda, su artículo gateado por
+`mesas`.
+
+**Auditoría profunda (ejecutada, no citada):**
+
+- `npm run build` **exit 0**. Chunk **969.21 → 972.65 kB** (gzip **280.99 → 282.19**): **+3.44 kB**.
+- **682/682** en **12** suites node (**35** nuevas de `saleRevenue`).
+- **36/36** del descuento y **29/29** de una comparación del **panel** y del **reporte** entre la
+  versión de `git HEAD` y la del árbol, sobre la **misma base**. Lo probado:
+  1. **SIN descuentos, el informe ENTERO del panel es IDÉNTICO** al de antes en tres escenarios
+     (todo, con rango, rango vacío), y el reporte de mesas también: **10 columnas** y ninguna de
+     *Descuento*. **Nadie ve un número distinto por instalar esto.**
+  2. **CON descuento:** el ingreso real es **1900 y no 2000** —con un **control** de la versión
+     vieja, que sumaría 2000—; el **costo no se toca** y es **exactamente** el que calculaba la
+     versión vieja; la ganancia baja; el margen se recalcula; y las sumas **por producto, por
+     categoría y por área cuadran con el total**. El donut y la tendencia siguen saliendo de
+     `totalBase`, que ya venía descontado.
+  3. **El reporte:** la columna aparece en su sitio (índice 6), **11 columnas**, **todas** las filas
+     —incluidas las **dos** de totales— cuadran con la cabecera, el total de descuentos es correcto,
+     el consumo sigue siendo el **bruto** y las cuentas sin descuento dejan la celda **vacía**.
+- Los tres ficheros temporales extraídos con `git show` se borraron (`git status` limpio).
+
+**La suite de la ayuda FALLÓ al añadir el artículo, y eso es la prueba de que sirve.** Fija la lista
+de artículos con puerta de licencia, así que detectó el quinto. Se actualizó a mano, con una nota en
+el propio test: si vuelve a fallar, **no se arregla a ciegas** — significa que alguien añadió o quitó
+una puerta y hay que confirmar que es a propósito.
+
+**Cinco fallos en la primera pasada de la prueba del panel, y los cinco eran aritmética mía:** el
+costo por venta es **210** (3 × 40 + 90), no 190; y el donut suma **1990**, no 1940. Se recalculó a
+mano antes de tocar una línea. **Las aserciones de identidad pasaron todas a la primera**, que era
+lo que de verdad estaba en juego.
+
+---
+
+## 20. Estado al cerrar el bloque C y el plan completo (12-09-2026)
+
+**Los tres bloques del plan están COMPLETOS: A1–A5, B1–B4, C1–C4. Trece fases, veintiséis commits
+(cada fase con su código y su auditoría), y `main` intacta en `328ec95` desde el principio.**
+
+Lo que el dueño puede hacer hoy en la rama, de punta a punta:
+
+- **Coctelería:** comprar el módulo, crear recetas de coctelería, surtir el área con la *Salida a
+  áreas* de siempre, encender el tablero para el vendedor y elaborar tragos **en el área de su
+  turno** consumiendo su stock. El trago se vende por el POS o se carga a una mesa como cualquier
+  producto, sale en el reporte con su tipo, queda en la auditoría y está explicado en la ayuda.
+- **Elaborar con faltante:** encender el permiso, ver **qué** falta y **en cuánto quedará**,
+  confirmarlo marcando una casilla, y recibir el **aviso** en la campana con el insumo, la ubicación
+  y el autor. La ayuda explica las tres formas de curar el negativo.
+- **Descuento por mesa:** aplicarlo y quitarlo (mando directo, vendedor con PIN de mando), verlo
+  avisado en el salón y marcado en la mesa, con su línea en el **ticket**, sus **dos** eventos en
+  Auditoría, su columna en el **reporte**, y el **panel** mostrando el ingreso y la ganancia
+  **reales** más los **gastos del día**.
+
+**Medición final** (de `328ec95`, arranque, a `9b7c824`): chunk **946.63 → 972.65 kB**
+(gzip **274.11 → 282.19**) = **+26.02 kB, +2.75 %**. Para situarlo: el módulo `fichas` costó
+**+85 kB / +9.9 %**. Pruebas: de **8 suites / 462 aserciones** (cifra vieja del `CLAUDE.md`) a
+**12 suites / 682 aserciones**, todas en verde.
+
+**CERO versiones nuevas de Dexie y CERO colecciones nuevas de sincronización** (`SYNC_COLLECTIONS`
+sigue en **34**). Consecuencia práctica, y es la más importante de todo el plan: **este despliegue
+NO es "de ida"**. Un build anterior sigue abriendo la base, al contrario que v15–v19.
+
+**LO QUE NO SE PUEDE GARANTIZAR, y es lo primero que hay que leer antes de desplegar:**
+
+1. **NADIE HA EJECUTADO LA APP. Ni una vez.** No se creó una receta, no se elaboró un trago, no se
+   marcó una casilla, no se abrió una campana, no se aplicó un descuento ni se imprimió un ticket.
+   La validación fue **código + `npm run build` + 682 aserciones puras + seis bancos contra Dexie
+   sobre `fake-indexeddb`**. Eso **no es un navegador**: no prueba el render, ni el táctil, ni la
+   impresora, ni el PIN, ni la sincronización entre dos teléfonos de verdad.
+2. **Convivencia de versiones (A1).** Una receta de coctelería llega por sync a un teléfono con el
+   build viejo, que **no conoce `kind`** y la ofrecería en su tablero de cocina; si ese insumo
+   también está en `__cocina`, lo consumiría de la ubicación equivocada. **No crear recetas de
+   coctelería hasta que TODOS los dispositivos hayan abierto el build nuevo.**
+3. **Permitir negativos rompe un invariante de facto (B).** Hasta ahora ningún escritor dejaba una
+   existencia en negativo. Con el permiso encendido aparecerá en **catálogo**, en **inventario por
+   ubicación** y en el **conteo físico**, y **no se auditó pantalla por pantalla** cómo se ve ahí.
+   Por eso el permiso nace apagado.
+4. **El panel cambiará de números en cuanto haya un descuento** (C4). Es la corrección pedida, no un
+   efecto colateral, pero conviene saberlo la primera vez que se vea: "Ventas netas" bajará respecto
+   de lo que habría mostrado antes.
+5. **Los permisos no son candados de seguridad.** Los pasa la pantalla; quien llame a un repo desde
+   otro sitio puede pasar `true`. Son visibilidad y disciplina.
+6. **Decisiones pendientes del dueño**, ninguna bloqueante: el importador de recetas de la **ficha de
+   costo** lista también las de coctelería sin etiqueta (§16.3); el módulo `cocina` **sigue sin
+   artículo de ayuda** propio (§A5); una receta **no puede usar un elaborado como insumo** (§16.4); y
+   el *"eximir servicio"* atribuye la exención al **vendedor** mientras el descuento la atribuye a
+   **quien autorizó** (§C2).
+7. **Y lo de siempre: los relojes de los teléfonos siguen desfasados ~21 s.** El software garantiza
+   el **orden** (`tsAfter`), no la hora.
+
+**Ninguna de las 13 fases se fusionó a `main`.** Eso sigue siendo una decisión del dueño, y la regla
+5 del proyecto exige su auditoría profunda antes.
