@@ -1,6 +1,7 @@
 import { db } from '../db/db'
 import { now } from '../lib/dates'
 import { DEFAULT_SEMAPHORE_CONFIG, DEFAULT_DENOMINATIONS } from '../db/constants'
+import { normalizeUnits, cleanUnits, activeUnits, hasActive } from '../lib/unitsConfig'
 
 // Acceso a la configuracion (almacen key-value).
 export const configRepo = {
@@ -97,6 +98,34 @@ export const configRepo = {
     const map = await this.getServiceCharges()
     await this.set('serviceCharge', { ...map, [key]: n })
     return n
+  },
+
+  // --- U1: unidades de medida configurables (solo el dueño las gestiona) -------
+  // Clave AUSENTE = las 8 de fabrica, asi que un negocio que no las toque se
+  // comporta exactamente como hoy: ni migracion ni cambio visible. La lista viaja
+  // por la sincronizacion como cualquier otra clave de `config`.
+  async getUnits() {
+    const list = await this.get('units', null)
+    return normalizeUnits(list) // repara lo que llegue roto (ver lib/units)
+  },
+
+  // Las que se ofrecen en un desplegable: activas y en orden alfabetico.
+  async getActiveUnits() {
+    return activeUnits(await this.get('units', null))
+  },
+
+  // Guarda la lista. RECHAZA dejar el negocio sin ninguna unidad activa: sin eso el
+  // alta de producto se quedaria sin una sola opcion.
+  //
+  // Usa `cleanUnits` y NO `normalizeUnits` a proposito: la segunda REPARA el
+  // invariante, asi que comprobar sobre ella haria que este rechazo no saltara jamas
+  // -se caza en las pruebas- y el dueño veria una unidad reactivarse sola, sin
+  // mensaje. El que escribe mira lo que le dieron; el que lee repara.
+  async setUnits(list) {
+    const clean = cleanUnits(list)
+    if (!hasActive(clean)) throw new Error('Debe quedar al menos una unidad activa')
+    await this.set('units', clean)
+    return clean
   },
 
   async setAreas(list) {
