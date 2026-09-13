@@ -12,6 +12,8 @@ import { formatMoney } from '../../lib/currency'
 import { newId } from '../../lib/ids'
 import { now } from '../../lib/dates'
 import { diffSheet, isEmptyDelta } from '../../lib/fichaLines'
+import { configRepo } from '../../repositories/configRepo'
+import { unitsForSelect, unitLabel } from '../../lib/unitsConfig'
 import {
   FICHA_ACTIVITIES,
   FICHA_METHODS,
@@ -32,8 +34,6 @@ import { UtilityBlock } from './UtilityBlock'
 import { RefsBlock } from './RefsBlock'
 import { SignBlock } from './SignBlock'
 import {
-  UNITS,
-  UNIT_LABELS,
   FICHA_ACTIVITY_LABELS,
   FICHA_METHOD_LABELS,
   FICHA_STATUS_LABELS,
@@ -148,6 +148,14 @@ export function CostSheetScreen() {
     () => (canFichas ? productsRepo.listActive() : Promise.resolve([])),
     [canFichas],
     []
+  )
+  // Unidades de medida configurables por el dueño (U3). Gateada en la CONSULTA como
+  // todo lo demas de esta pantalla. Mientras vale `undefined`, los ayudantes de
+  // `lib/unitsConfig` devuelven las 8 de fabrica: el desplegable no se pinta vacio.
+  const unitList = useLiveQuery(
+    () => (canFichas ? configRepo.getUnits() : Promise.resolve(undefined)),
+    [canFichas],
+    undefined
   )
   // Todas las versiones del grupo (v1, v2, v3...), para el historial del bloque 9.
   // Gateado en la consulta, como todo lo demas.
@@ -532,7 +540,7 @@ export function CostSheetScreen() {
                 <button key={p.id} className="product-row" onClick={() => takeProduct(p)}>
                   <div className="product-row__main">
                     <strong>{p.name}</strong>
-                    <span className="muted">{p.code ? `${p.code} · ` : ''}{UNIT_LABELS[p.unit] || p.unit}</span>
+                    <span className="muted">{p.code ? `${p.code} · ` : ''}{unitLabel(unitList, p.unit)}</span>
                   </div>
                 </button>
               ))}
@@ -575,7 +583,11 @@ export function CostSheetScreen() {
               <label className="field">
                 <span>Unidad de medida</span>
                 <select value={form.unit} disabled={!editable} onChange={(e) => set('unit', e.target.value)}>
-                  {UNITS.map((u) => <option key={u} value={u}>{UNIT_LABELS[u] || u}</option>)}
+                  {/* Las activas MAS la que la ficha ya tiene, aunque este desactivada:
+                      una ficha aprobada no puede perder su unidad al reabrirla. */}
+                  {unitsForSelect(unitList, form.unit).map((u) => (
+                    <option key={u.code} value={u.code}>{u.label}</option>
+                  ))}
                 </select>
               </label>
             </div>

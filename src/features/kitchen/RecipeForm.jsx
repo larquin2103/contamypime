@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { recipesRepo } from '../../repositories/recipesRepo'
 import { imagesRepo } from '../../repositories/imagesRepo'
-import { UNITS, UNIT_LABELS, NO_AREA_LABEL, FOREIGN_PRICE_CURRENCIES, RECIPE_KINDS, RECIPE_KIND_LABELS, recipeKind } from '../../db/constants'
+import { UNITS, NO_AREA_LABEL, FOREIGN_PRICE_CURRENCIES, RECIPE_KINDS, RECIPE_KIND_LABELS, recipeKind } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -9,6 +10,8 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { fileToThumbnail } from '../../lib/image'
 import { matchesQuery } from '../../lib/search'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { configRepo } from '../../repositories/configRepo'
+import { unitsForSelect, activeUnits, unitLabel } from '../../lib/unitsConfig'
 
 // Alta / edicion de una receta (modulos 'cocina' y 'cocteleria'). La define el DUEÑO.
 // Imita a ProductForm (mismo estilo, misma foto/moneda gateadas) y agrega el checklist
@@ -47,6 +50,16 @@ export function RecipeForm({ recipe, outputProduct, newKind = null, products, ca
   const [price, setPrice] = useState(outputProduct?.price ?? '')
   const [priceCurrency, setPriceCurrency] = useState(outputProduct?.priceCurrency || baseCurrency)
   const [normas, setNormas] = useState(recipe?.normas ?? '')
+  // Unidades configurables por el dueño (U3). Mientras carga vale `undefined` y los
+  // ayudantes dan las 8 de fabrica: el desplegable no se pinta vacio en ningun momento.
+  const unitList = useLiveQuery(() => configRepo.getUnits(), [], undefined)
+  // Al CREAR, si la unidad por defecto quedo desactivada se cae a la primera ACTIVA.
+  // Al EDITAR no se toca: la receta conserva la suya aunque este desactivada.
+  useEffect(() => {
+    if (!unitList || editing) return
+    const act = activeUnits(unitList)
+    if (act.length && !act.some((u) => u.code === unit)) setUnit(act[0].code)
+  }, [unitList])
   // Insumos seleccionados: { [productId]: cantidadPorUnidad (texto) }.
   const [selected, setSelected] = useState(() => {
     const m = {}
@@ -239,7 +252,11 @@ export function RecipeForm({ recipe, outputProduct, newKind = null, products, ca
           <label className="field">
             <span>Unidad</span>
             <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-              {UNITS.map((u) => <option key={u} value={u}>{UNIT_LABELS[u]} ({u})</option>)}
+              {/* Las activas MAS la que la receta ya tiene, aunque este desactivada:
+                  un <select> sin la <option> de su valor se pinta EN BLANCO. */}
+              {unitsForSelect(unitList, unit).map((u) => (
+                <option key={u.code} value={u.code}>{u.label} ({u.code})</option>
+              ))}
             </select>
           </label>
           <label className="field">
@@ -334,7 +351,7 @@ export function RecipeForm({ recipe, outputProduct, newKind = null, products, ca
                     <input type="checkbox" checked={checked} onChange={() => toggle(p)} />
                     <div className="check-row__main">
                       <strong>{p.name}</strong>
-                      <span className="muted">{p.code ? `${p.code} · ` : ''}{UNIT_LABELS[p.unit] || p.unit}</span>
+                      <span className="muted">{p.code ? `${p.code} · ` : ''}{unitLabel(unitList, p.unit)}</span>
                     </div>
                   </label>
                 )

@@ -11,7 +11,8 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery, normalize } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { canConvertUnits, convertQty } from '../../lib/units'
-import { WAREHOUSE, COCINA, COCINA_LABEL, UNITS, UNIT_LABELS } from '../../db/constants'
+import { unitsForSelect, activeUnits } from '../../lib/unitsConfig'
+import { WAREHOUSE, COCINA, COCINA_LABEL, UNITS } from '../../db/constants'
 
 // Modulo mayorista: conversion de un producto del almacen central en otro con su
 // propio codigo (ej. un saco de azucar de 500 lb -> varias jabas fraccionadas).
@@ -90,6 +91,16 @@ export function ConversionScreen() {
   const [destMode, setDestMode] = useState('existing')
   const [newName, setNewName] = useState('')
   const [newUnit, setNewUnit] = useState(UNITS[0])
+  // Unidades configurables por el dueño (U3). Aqui SIEMPRE se da de alta un producto
+  // NUEVO, asi que la que se ofrece por defecto -y a la que se vuelve tras registrar-
+  // es la primera ACTIVA, no `u` a secas: el dueño pudo apagarla.
+  const unitList = useLiveQuery(() => configRepo.getUnits(), [], undefined)
+  const defaultUnit = activeUnits(unitList)[0]?.code || UNITS[0]
+  useEffect(() => {
+    if (!unitList) return
+    const act = activeUnits(unitList)
+    if (act.length && !act.some((u) => u.code === newUnit)) setNewUnit(act[0].code)
+  }, [unitList])
   const [newPrice, setNewPrice] = useState('')
   const [newCode, setNewCode] = useState('')
   // Panel de envio (opcional) del producto resultante tras convertir.
@@ -246,7 +257,7 @@ export function ConversionScreen() {
       // Limpia el formulario de conversion para el proximo registro.
       setFromProduct(null); setToProduct(null)
       setFromQty(''); setToQty(''); setToQtyAuto(false); setNote('')
-      setNewName(''); setNewUnit(UNITS[0]); setNewPrice(''); setNewCode('')
+      setNewName(''); setNewUnit(defaultUnit); setNewPrice(''); setNewCode('')
       setDestMode('existing')
     } catch (e) {
       setError(e.message)
@@ -377,7 +388,9 @@ export function ConversionScreen() {
             <label className="field">
               <span>Unidad de medida</span>
               <select value={newUnit} onChange={(e) => setNewUnit(e.target.value)}>
-                {UNITS.map((u) => <option key={u} value={u}>{UNIT_LABELS[u] || u}</option>)}
+                {unitsForSelect(unitList, newUnit).map((u) => (
+                  <option key={u.code} value={u.code}>{u.label}</option>
+                ))}
               </select>
             </label>
             <label className="field">

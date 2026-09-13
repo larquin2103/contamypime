@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { productsRepo } from '../../repositories/productsRepo'
 import { imagesRepo } from '../../repositories/imagesRepo'
 import { configRepo } from '../../repositories/configRepo'
-import { UNITS, UNIT_LABELS, NO_AREA_LABEL, WAREHOUSE, locationLabel, FOREIGN_PRICE_CURRENCIES } from '../../db/constants'
+import { UNITS, NO_AREA_LABEL, WAREHOUSE, locationLabel, FOREIGN_PRICE_CURRENCIES } from '../../db/constants'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
@@ -11,6 +11,7 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { fileToThumbnail } from '../../lib/image'
 import { cleanQty } from '../../lib/qty'
 import { normalizeTiers } from '../../lib/priceTiers'
+import { unitsForSelect, activeUnits, unitLabel } from '../../lib/unitsConfig'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 
 // Alta / edicion de producto. Solo dueño (la creacion desde entrada de
@@ -22,6 +23,10 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
   // Eliminar del catalogo: SOLO el dueño, con confirmacion. Es borrado logico.
   const [confirmDel, setConfirmDel] = useState(false)
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
+  // Unidades configurables por el dueño (U3). Vale `undefined` mientras carga, y los
+  // ayudantes de `lib/unitsConfig` devuelven entonces las 8 de fabrica: el desplegable
+  // NUNCA se pinta vacio, ni en el primer instante.
+  const unitList = useLiveQuery(() => configRepo.getUnits(), [], undefined)
   const [code, setCode] = useState(product?.code ?? '')
   const [name, setName] = useState(product?.name ?? '')
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
@@ -34,6 +39,15 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
   const [priceCurrency, setPriceCurrency] = useState(product?.priceCurrency || baseCurrency)
   const [minStock, setMinStock] = useState(product?.minStock ?? '')
   const [openingStock, setOpeningStock] = useState('')
+  // Al CREAR un producto, la unidad por defecto es la primera de fabrica (`u`). Si el
+  // dueño la desactivo -precisamente para no pincharla por error- se cae a la primera
+  // ACTIVA en cuanto carga la lista. Al EDITAR no se toca nunca: el producto conserva
+  // su unidad aunque este desactivada (por eso la condicion mira `editing`).
+  useEffect(() => {
+    if (!unitList || editing) return
+    const act = activeUnits(unitList)
+    if (act.length && !act.some((u) => u.code === unit)) setUnit(act[0].code)
+  }, [unitList])
   // Escalas mayoristas (Bloque B): filas { minQty, price } editables. Solo se
   // muestran/guardan si la licencia trae el modulo 'mayorista'.
   const { hasModule } = useLicense()
@@ -202,9 +216,12 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
           <label className="field">
             <span>Unidad</span>
             <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-              {UNITS.map((u) => (
-                <option key={u} value={u}>
-                  {UNIT_LABELS[u]} ({u})
+              {/* Las activas MAS la que este producto ya tiene, aunque el dueño la
+                  haya desactivado: un <select> sin la <option> de su valor se pinta
+                  EN BLANCO y se guardaria otra cosa sin querer. */}
+              {unitsForSelect(unitList, unit).map((u) => (
+                <option key={u.code} value={u.code}>
+                  {u.label} ({u.code})
                 </option>
               ))}
             </select>
@@ -299,7 +316,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
 
         {canTiers && (
           <div className="field">
-            <span>Escalas mayoristas (precio por {UNIT_LABELS[unit] || unit} según cantidad)</span>
+            <span>Escalas mayoristas (precio por {unitLabel(unitList, unit)} según cantidad)</span>
             {tiers.length === 0 && (
               <p className="muted">Sin escalas: siempre rige el precio de venta normal.</p>
             )}
