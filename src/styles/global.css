@@ -2834,10 +2834,15 @@ input[type='file'] {
   grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
   gap: 8px;
 }
-/* Con fotos, los mosaicos son horizontales (miniatura + texto): se necesitan
-   columnas más anchas para que el nombre no se parta a mitad de palabra. */
+/* Con fotos, el mosaico es VERTICAL (foto arriba, texto debajo), así que el nombre
+   dispone de todo el ancho de la tarjeta y la columna puede ser estrecha.
+   El número NO es arbitrario: en un teléfono de 360 px el ancho útil de esta
+   rejilla es 360 − 32 (.app-main) − 32 (.card) − 2 (borde) = 294 px, y dos
+   columnas exigen 2×min + 8 de hueco ≤ 294, o sea min ≤ 143. Con los 164 de antes
+   solo cabía UNA por fila y la carta desperdiciaba media pantalla. Con 140 caben
+   dos en cualquier teléfono, y tres a partir de ~440 px. */
 .menu-grid--img {
-  grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
 }
 .menu-tile {
   position: relative;
@@ -2865,31 +2870,35 @@ input[type='file'] {
   min-width: 0;
   width: 100%;
 }
-/* Carta con foto (Fase 8 - B5): mosaico COMPACTO horizontal — miniatura pequeña
-   a la izquierda + texto a la derecha, así ocupa poco y caben muchos productos.
+/* Carta con foto (Fase 8 - B5): mosaico VERTICAL — la foto ocupa el ancho de la
+   tarjeta y el texto va debajo. Antes era horizontal (miniatura a la izquierda), y
+   eso obligaba a columnas de 164 px para que el nombre no se partiera: en un
+   teléfono solo cabía UN producto por fila. En vertical el nombre dispone de todo
+   el ancho, así que la columna puede ser estrecha y caben DOS por fila.
    Sin foto, el mosaico no lleva la clase --img y queda idéntico a hoy. */
 .menu-tile--img {
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   padding: 8px;
 }
-.menu-tile--img .menu-tile__body { width: auto; flex: 1; }
+.menu-tile--img .menu-tile__body { width: 100%; flex: none; }
 /* Corta por palabras (no por letras) y solo parte una palabra si de verdad no
-   cabe: así "Aceite vegetal 1L" se ve entero en 1-2 líneas, no "Aceit e". */
+   cabe: así "Aceite vegetal 1L" se ve entero en 1-2 líneas, no "Aceit e". El badge
+   flota sobre la foto, así que aquí el nombre ya no necesita hueco a la derecha. */
 .menu-tile--img .menu-tile__name {
-  padding-right: 18px; /* hueco para el badge */
+  padding-right: 0;
   overflow-wrap: break-word;
   word-break: normal;
 }
 .menu-tile__img {
   position: relative;
   flex: none;
-  width: 48px;
-  height: 48px;
+  width: 100%;
+  height: 68px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #ffffff; /* la miniatura cuadrada blanca encaja (look e-commerce) */
+  background: #ffffff; /* la foto sobre blanco encaja (look e-commerce) */
   overflow: hidden;
 }
 .menu-tile__img img {

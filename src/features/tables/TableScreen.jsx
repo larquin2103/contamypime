@@ -160,12 +160,18 @@ export function TableScreen() {
 
   // Catalogo del AREA de la mesa, con su existencia real por ubicacion.
   const stockOf = (p) => Number(p.stockByLocation?.[order.area] ?? 0)
+  // La carta sale ORDENADA ALFABETICAMENTE: el repo devuelve los productos por clave
+  // primaria (UUID), que para el camarero es un orden al azar y le obliga a buscar con
+  // la vista. Mismo criterio (localeCompare) que el catalogo del almacen, el tablero de
+  // cocina y la lista de recetas. `.filter` ya devuelve un array nuevo, asi que ordenar
+  // aqui NO muta el que entrega la consulta viva.
   const filtered = products
     .filter((p) => {
       if (stockOf(p) <= 0) return false
       if (cat && p.categoryId !== cat) return false
       return !q.trim() || matchesQuery(p, q)
     })
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
   // Solo las categorias que tienen algo disponible en el area.
   const usedCats = categories.filter((c) =>
     products.some((p) => p.categoryId === c.id && stockOf(p) > 0))
