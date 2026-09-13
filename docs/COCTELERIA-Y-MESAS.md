@@ -1401,3 +1401,79 @@ línea de eso altera un cálculo existente.
 
 **Fusionar sigue siendo decisión del dueño.** Nada de esto se ha llevado a `main`:
 `git rev-list --left-right --count origin/main...HEAD` = `0 26`.
+
+### C5 — El descuento deja de perderse: la verdad vive en los eventos (commit `025186e`, 13-09-2026)
+
+**Fase NUEVA, no estaba en el plan.** Nace del hallazgo de la auditoría crítica (§21.3 y el
+adversarial de sync): el descuento vivía **solo** en la cabecera del pedido, que se fusiona por LWW
+de **documento entero**. Y como **`addItem` (línea 254) y `voidItem` (línea 304) reescriben esa
+cabecera**, bastaba con que un camarero agregara una cerveza desde un teléfono que **aún no había
+recibido** el descuento para que su subida lo **borrara de la nube**: la mesa se cobraba completa.
+El riesgo no era exótico —la ventana es el intervalo de sync (20 s) más lo que el equipo estuviera
+sin conexión— y **se reprodujo con el motor de bajada real**.
+
+**La solución es la doctrina del propio proyecto, no un invento:** la cabecera pasa a ser una
+**caché** y la **verdad** vive en los eventos de `auditEvents` —que C1 ya escribía—, que son
+**append-only con id propio** y por tanto se fusionan **fila por fila**: un evento no se puede
+perder. Es exactamente la relación entre `products.stock` (caché) y el libro mayor (verdad), y el
+mismo patrón de `remittancesRepo.reconcileFromDeliveries`, que repara una cabecera de entrega
+perdida **por este mismo LWW**.
+
+**Qué se hizo:**
+
+- `lib/orderTotals.discountFromEvents` (**pura**): manda el **último evento por fecha**; poner → ese
+  %, quitar → 0. **En empate exacto gana QUITAR** — decisión escrita a propósito: los relojes van
+  desfasados ~21 s, y un descuento aplicado sin querer **cuesta dinero**, mientras uno que no se
+  aplicó se repone en dos toques.
+- `ordersRepo`: `discountEvents` (por el índice `entityId`, consulta barata), `discountVigente` y
+  `reconcileDiscount`, que repara la caché **solo si discrepa** y **sin tocar `updatedAt`** —es un
+  valor derivado que todos los dispositivos calculan igual, así que re-subirlo solo provocaría eco
+  (misma regla que `recomputeStock`)—. **Sin eventos no toca nada**: una mesa anterior a C5 conserva
+  su caché.
+- `TableScreen`: repara al abrir la mesa y, **sobre todo, antes de cobrar** toma el descuento de los
+  **eventos**. Si no coincide con lo pintado, **no cobra**: avisa de que otro equipo lo cambió y deja
+  ver el importe correcto. **Cobrar en silencio un total distinto del que el cliente está viendo
+  sería peor que no cobrar.**
+- `SalonScreen`: repara las mesas **ocupadas** al abrir el panel (una vez, **fuera** de la consulta
+  viva, para no encadenar escrituras con relecturas).
+- **Reporte nuevo *"Descuentos autorizados no aplicados"*** — la red de seguridad. Cruza el descuento
+  vigente **en el momento del cobro** contra lo que la venta guardó. Si alguna vez una mesa se cobra
+  sin su descuento, **el dueño se entera** en vez de que pase inadvertido. Solo lee, y deriva con la
+  **misma función** que la pantalla, así que no puede discrepar de su criterio.
+
+**Coste de esquema y de sync: CERO.** `auditEvents` ya existía, ya sincroniza y **`entityId` ya
+estaba indexado**. El despliegue sigue siendo **reversible**.
+
+**Verificado ejecutando:**
+
+- `npm run build` **exit 0**. Chunk **972.65 → 975.53 kB** (gzip **282.19 → 282.92**).
+- **696/696** en 12 suites (**14** aserciones nuevas de `discountFromEvents`, incluidas **las
+  permutaciones** —la sync no garantiza el orden de llegada— y las **dos** del empate).
+- **28/28 contra Dexie reproduciendo el escenario que rompía**, con el motor de bajada **real**:
+  1. El LWW **pisa** el descuento en la cabecera.
+  2. **Sin reparar, la cuenta subiría de 880 a 1100**: 220 perdidos.
+  3. Los **eventos sobreviven** → el vigente es 20 % → `reconcileDiscount` **repara** la caché →
+     la cuenta **vuelve a 880**.
+  4. La reparación **no avanza la marca de sync** (nada de eco), es **idempotente** (la segunda
+     llamada no escribe), una mesa **sin eventos** conserva su caché, y una mesa inexistente
+     devuelve 0 sin reventar.
+  5. **Quitar** el descuento también se deriva, y una caché con un descuento ya retirado se corrige
+     a 0.
+  6. El reporte **delata** la mesa cobrada completa —con el %, quién autorizó y los 100 no
+     aplicados— y **no señala** la que sí se cobró con descuento.
+- **69/69: la comparación contra `main` SIGUE en verde** tras volver a tocar `reportsService` y
+  `ordersRepo`. Un negocio sin coctelería ve exactamente lo mismo.
+
+**Lo que C5 NO arregla, y hay que saberlo:**
+
+1. **El resto de la cabecera sigue fusionándose por LWW de documento entero** (`status`, `shiftId`,
+   `saleId`…). C5 protege **el descuento**, que es el campo con dinero. Los demás se comportan como
+   siempre.
+2. **El empate de relojes.** Si dos equipos ponen y quitan el descuento **dentro de los ~21 s** de
+   desfase, el orden puede salir invertido y ganaría "quitar". Es infinitamente preferible a perder
+   el descuento, pero no es cero.
+3. **La reparación necesita que el evento haya llegado.** Si el teléfono que cobra **nunca** recibió
+   el evento (offline desde antes de que se autorizara), derivará 0 y cobrará completo — y el
+   **reporte lo delatará después**. No hay forma de saber lo que no ha llegado; para eso está la red
+   de seguridad.
+4. **Nadie ha ejecutado la app.** Como todo lo demás: build, pruebas puras y Dexie simulado.
