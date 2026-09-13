@@ -19,6 +19,7 @@ import {
   buildAccountsReport,
   buildCountReport,
   buildTablesReport,
+  buildDiscountReconReport,
   buildMermasReport,
   buildKitchenProduction,
   buildPostCloseSalesReport,
@@ -152,6 +153,11 @@ export function ReportsScreen() {
         card('accounts', 'Movimientos de cuentas', 'Créditos y débitos de la tesorería, con saldos', buildAccountsReport, true)}
       {hasModule(LICENSE_MODULES.TABLES) &&
         card('tables', 'Ventas por mesa', 'Cuentas cobradas por mesa: consumo, servicio, total y ticket promedio', buildTablesReport, true)}
+      {/* Red de seguridad del descuento (C5): mesas que se cobraron completas aunque un
+          mando había autorizado un descuento. Sale de los eventos append-only, que no
+          se pierden, así que delata el caso en que la fusión pisó la cabecera. */}
+      {hasModule(LICENSE_MODULES.TABLES) &&
+        card('discrecon', 'Descuentos autorizados no aplicados', 'Mesas cobradas completas aunque un mando había autorizado un descuento: quién lo autorizó, cuándo, y el importe que no se descontó', buildDiscountReconReport, true)}
       {/* Producción: una sola tarjeta para los dos módulos. Con solo 'cocina' el título,
           las columnas y el fichero son los de siempre; con coctelería el reporte gana la
           columna "Tipo" (data-driven, como las columnas USD). El builder filtra por los

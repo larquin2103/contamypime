@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../db/db'
@@ -10,6 +10,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
+import { logError } from '../../lib/errorLog'
 import { ORDER_STATUS } from '../../db/constants'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 
@@ -56,6 +57,18 @@ export function SalonScreen() {
   const users = useLiveQuery(() => usersRepo.list(), [], [])
   const baseCurrency = useLiveQuery(() => configRepo.getBaseCurrency(), [], 'MN')
   const myShift = useLiveQuery(() => (user ? shiftsRepo.getActiveFor(user.id) : null), [user?.id], undefined)
+
+  // C5 - Repara la cache del descuento de las mesas OCUPADAS a partir de sus eventos
+  // append-only (la cabecera se fusiona por LWW y puede venir pisada). Se hace UNA
+  // vez al abrir el salon -no dentro de una consulta viva, para no encadenar
+  // escrituras con relecturas- y solo de las ocupadas, que son las que se cobran.
+  // Best-effort e idempotente: si falla, el panel sigue mostrando la cache.
+  const openIds = active.filter((o) => o.status === ORDER_STATUS.OPEN).map((o) => o.id).join(',')
+  useEffect(() => {
+    if (!openIds) return
+    Promise.all(openIds.split(',').map((oid) => ordersRepo.reconcileDiscount(oid)))
+      .catch((e) => logError('mesas', e))
+  }, [openIds])
 
   if (!hasModule(LICENSE_MODULES.TABLES)) {
     return (

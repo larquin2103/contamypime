@@ -6,7 +6,7 @@
 // asi que el invariante "con discountPct = 0 la salida es identica a la de antes"
 // es lo que impide tocar dinero de verdad. Va primero, y comparado contra la
 // formula ANTERIOR escrita a mano.
-import { orderTotals, cleanPct } from './orderTotals.js'
+import { orderTotals, cleanPct, discountFromEvents } from './orderTotals.js'
 
 let pass = 0
 let fail = 0
@@ -134,6 +134,63 @@ const L = (lineTotal) => ({ lineTotal })
   eq(orderTotals(undefined, {}).count, 0, '6) sin lista de lineas no revienta')
   eq(orderTotals([{ lineTotal: null }, { lineTotal: undefined }, {}], {}).subtotal, 0,
     '6) lineas sin importe cuentan como 0')
+}
+
+// --- 7) C5: el descuento VIGENTE derivado de los eventos --------------------
+// QUE CAZA ESTO: que una mesa se cobre con el descuento equivocado. La cabecera se
+// fusiona por LWW de documento entero y puede venir pisada; los eventos son
+// append-only y no se pierden, asi que ELLOS mandan. Si esta derivacion falla, el
+// arreglo de C5 no arregla nada.
+const EV = (action, pct, createdAt, userId = 'u1') => ({ entity: 'order', action, pct, createdAt, userId })
+{
+  eq(discountFromEvents([]), null, '7) sin eventos -> null (no hay evidencia: no se toca la cache)')
+  eq(discountFromEvents(null), null, '7) sin lista -> null')
+  eq(discountFromEvents([{ entity: 'order', action: 'otra_cosa', createdAt: 'z' }]), null,
+    '7) eventos ajenos al descuento no cuentan')
+}
+{
+  const d = discountFromEvents([EV('order_discount', 15, '2026-09-12T10:00:00.000Z', 'mando')])
+  eq([d.pct, d.by], [15, 'mando'], '7) un solo evento de poner -> su % y quien lo autorizo')
+}
+{
+  // Poner, quitar, volver a poner: manda el ULTIMO por fecha.
+  const evs = [
+    EV('order_discount', 10, '2026-09-12T10:00:00.000Z'),
+    EV('order_discount_removed', 10, '2026-09-12T10:05:00.000Z'),
+    EV('order_discount', 25, '2026-09-12T10:09:00.000Z')
+  ]
+  eq(discountFromEvents(evs).pct, 25, '7) manda el ultimo evento (25 %)')
+  // Y el orden en que llegan NO importa: una fusion los entrega desordenados.
+  eq(discountFromEvents([evs[2], evs[0], evs[1]]).pct, 25, '7) desordenados da lo mismo (la sync no garantiza orden)')
+  eq(discountFromEvents([evs[1], evs[2], evs[0]]).pct, 25, '7) en cualquier permutacion')
+}
+{
+  // El ultimo es un "quitar" -> 0, aunque antes hubiera un % alto.
+  const d = discountFromEvents([
+    EV('order_discount', 50, '2026-09-12T10:00:00.000Z'),
+    EV('order_discount_removed', 50, '2026-09-12T11:00:00.000Z')
+  ])
+  eq(d.pct, 0, '7) si el ultimo es quitar -> 0')
+}
+{
+  // EMPATE al milisegundo (dos telefonos con relojes desfasados): gana QUITAR.
+  // Decision escrita: un descuento aplicado sin querer cuesta dinero.
+  const t = '2026-09-12T12:00:00.000Z'
+  eq(discountFromEvents([EV('order_discount', 30, t), EV('order_discount_removed', 30, t)]).pct, 0,
+    '7) EMPATE exacto: gana QUITAR (poner primero en la lista)')
+  eq(discountFromEvents([EV('order_discount_removed', 30, t), EV('order_discount', 30, t)]).pct, 0,
+    '7) EMPATE exacto: gana QUITAR (quitar primero en la lista)')
+}
+{
+  // Porcentaje corrupto en el evento: se acota igual que en la pantalla.
+  eq(discountFromEvents([EV('order_discount', 'x', 'z')]).pct, 0, '7) % no numerico -> 0')
+  eq(discountFromEvents([EV('order_discount', 150, 'z')]).pct, 100, '7) % mayor que 100 -> 100')
+  eq(discountFromEvents([EV('order_discount', -5, 'z')]).pct, 0, '7) % negativo -> 0')
+}
+{
+  // Sin fecha: no revienta y sigue eligiendo uno (el criterio es estable).
+  const d = discountFromEvents([EV('order_discount', 20, undefined), EV('order_discount', 30, '2026-01-01T00:00:00.000Z')])
+  ok(d && [20, 30].includes(d.pct), '7) un evento sin fecha no revienta la derivacion')
 }
 
 console.log(`${pass} pass, ${fail} fail`)

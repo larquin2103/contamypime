@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../db/db'
@@ -16,6 +16,7 @@ import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
 import { orderTotals } from '../../lib/orderTotals'
+import { logError } from '../../lib/errorLog'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
 import { Trash2 } from 'lucide-react'
@@ -84,6 +85,7 @@ export function TableScreen() {
   const [discInput, setDiscInput] = useState('')
   const [discError, setDiscError] = useState('')
   const [pendingDisc, setPendingDisc] = useState(null) // { action:'set'|'clear', pct }
+
   const [done, setDone] = useState(null) // resumen del cobro para el ticket
 
   // --- cobro ---
@@ -100,6 +102,17 @@ export function TableScreen() {
   const [partCurrency, setPartCurrency] = useState(baseCurrency)
   const [partAmount, setPartAmount] = useState('')
   const [partRef, setPartRef] = useState('')
+
+  // C5 - Al abrir la mesa, REPARA la cache del descuento desde sus eventos
+  // append-only. Hace falta porque la cabecera se fusiona por LWW de documento
+  // entero: un equipo que agregue un consumo sin haber recibido el descuento lo
+  // borra de la nube. Los eventos no se pueden perder, asi que son la verdad.
+  // Best-effort: si falla, la pantalla sigue con la cache y el fallo queda en el
+  // registro local de errores. Es idempotente (no escribe si ya cuadra).
+  useEffect(() => {
+    if (!id) return
+    ordersRepo.reconcileDiscount(id).catch((e) => logError('mesas', e))
+  }, [id])
 
   const live = useMemo(() => items.filter((i) => !i.voided), [items])
   // Se muestran AGRUPADAS por producto: el camarero ve "3 x Hamburguesa" con
@@ -289,6 +302,24 @@ export function TableScreen() {
   const charge = async () => {
     setError('')
     if (!live.length) return setError('La cuenta está vacía')
+    // C5 - EL PUNTO CRITICO: antes de mover dinero, el descuento se toma de los
+    // EVENTOS (append-only, no se pierden) y no de la cabecera (cache que el LWW
+    // puede haber pisado). Si no coincide con lo que hay pintado, NO se cobra: se
+    // avisa y se deja que el usuario vea el importe correcto. Cobrar en silencio un
+    // total distinto del que el cliente esta viendo seria peor que no cobrar.
+    let pctReal = discountPct
+    try {
+      pctReal = await ordersRepo.reconcileDiscount(order.id)
+    } catch (e) {
+      logError('mesas', e) // best-effort: si no se puede derivar, se sigue con la cache
+    }
+    if (Number(pctReal) !== Number(discountPct)) {
+      return setError(
+        Number(pctReal) > 0
+          ? `El descuento de esta mesa es ${pctReal}% (lo cambió otro equipo). Revisa el total y vuelve a cobrar.`
+          : 'Esta mesa ya no tiene descuento (lo quitó otro equipo). Revisa el total y vuelve a cobrar.'
+      )
+    }
     setBusy(true)
     try {
       // Las lineas de la mesa se agregan de UNA en UNA (append-only), asi que un

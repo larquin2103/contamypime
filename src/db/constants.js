@@ -213,6 +213,17 @@ export const ELABORATION_LABEL = 'Elaboración'
 export const COCINA = '__cocina'
 export const COCINA_LABEL = 'Cocina'
 
+// Acciones de auditoria de una MESA (modulo 'mesas'). Se escriben en `auditEvents`
+// con `entity:'order'` y `entityId` = id del pedido. Son APPEND-ONLY con id propio,
+// asi que la sincronizacion las fusiona fila por fila y NO se pueden perder: de
+// ellas se DERIVA el descuento vigente (ver `discountFromEvents` en
+// lib/orderTotals). El campo `orders.discountPct` es solo una CACHE, igual que
+// `products.stock` lo es del libro mayor.
+export const ORDER_AUDIT_ACTIONS = {
+  DISCOUNT: 'order_discount',
+  DISCOUNT_REMOVED: 'order_discount_removed'
+}
+
 // Tipo de una receta. La de COCINA (clasica) se elabora en `__cocina` y se envia a
 // un area; la de COCTELERIA (modulo 'cocteleria') se elabora DENTRO del area y el
 // trago queda en ella. Es un campo OPCIONAL de `recipes` sin indice ni migracion

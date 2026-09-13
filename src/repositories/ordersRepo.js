@@ -4,8 +4,8 @@ import { now, tsAfter } from '../lib/dates'
 import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { ratesRepo } from './ratesRepo'
-import { orderTotals, cleanPct } from '../lib/orderTotals'
-import { MOVEMENT_TYPES, ORDER_STATUS } from '../db/constants'
+import { orderTotals, cleanPct, discountFromEvents } from '../lib/orderTotals'
+import { MOVEMENT_TYPES, ORDER_STATUS, ORDER_AUDIT_ACTIONS } from '../db/constants'
 
 // ---------------------------------------------------------------------------
 // Modulo 'mesas': cuentas abiertas por mesa dentro de un area (cafeteria).
@@ -374,7 +374,7 @@ export const ordersRepo = {
         id: newId(),
         entity: 'order',
         entityId: orderId,
-        action: 'order_discount',
+        action: ORDER_AUDIT_ACTIONS.DISCOUNT,
         name: `Mesa ${order.table}`,
         area: order.area || '',
         pct: p,
@@ -384,6 +384,44 @@ export const ordersRepo = {
       })
     })
     return p
+  },
+
+  // --- C5: el descuento VIGENTE se deriva de los eventos ----------------------
+  // Eventos de descuento de una mesa, del mas viejo al mas nuevo. Van por el indice
+  // `entityId` de `auditEvents`, asi que es una consulta barata.
+  async discountEvents(orderId) {
+    const rows = await db.auditEvents.where('entityId').equals(orderId).toArray()
+    return rows
+      .filter((e) => e.entity === 'order')
+      .sort((a, b) => (String(a.createdAt) < String(b.createdAt) ? -1 : 1))
+  },
+
+  // Descuento vigente de una mesa segun los EVENTOS (la verdad), no segun la
+  // cabecera (la cache). Devuelve el % o null si no hay ningun evento.
+  async discountVigente(orderId) {
+    const d = discountFromEvents(await this.discountEvents(orderId))
+    return d ? d.pct : null
+  },
+
+  // REPARA la cache de la cabecera a partir de los eventos. Mismo patron -y mismas
+  // reglas- que `remittancesRepo.reconcileFromDeliveries`:
+  //  - Es un valor DERIVADO: todos los dispositivos lo calculan igual de los mismos
+  //    eventos, asi que NO se toca `updatedAt`. Re-subirlo solo provocaria eco, como
+  //    pasaria con `recomputeStock` si tocara la marca del producto.
+  //  - Si NO hay eventos no se toca nada (podria ser una mesa anterior a C5).
+  //  - Solo escribe si la cache DISCREPA, para no generar trabajo inutil.
+  //  - Idempotente: llamarla dos veces no cambia nada la segunda.
+  // Devuelve el % vigente (o el de la cabecera si no habia eventos), para que quien
+  // cobra pueda usar la VERDAD y no lo que tuviera pintado.
+  async reconcileDiscount(orderId) {
+    const order = await db.orders.get(orderId)
+    if (!order) return 0
+    const vigente = await this.discountVigente(orderId)
+    if (vigente == null) return cleanPct(order.discountPct) // sin evidencia: la cache manda
+    if (cleanPct(order.discountPct) !== vigente) {
+      await db.orders.update(orderId, { discountPct: vigente }) // SIN updatedAt: es derivado
+    }
+    return vigente
   },
 
   // Quita el descuento (el mando se lo puede pensar mejor). No borra el rastro: el
@@ -406,7 +444,7 @@ export const ordersRepo = {
         id: newId(),
         entity: 'order',
         entityId: orderId,
-        action: 'order_discount_removed',
+        action: ORDER_AUDIT_ACTIONS.DISCOUNT_REMOVED,
         name: `Mesa ${order.table}`,
         area: order.area || '',
         pct: had, // el que se quito

@@ -1,6 +1,7 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
 import { round2, formatMoney, foreignToBase, baseToForeign, isForeignPriced } from '../../lib/currency'
+import { discountFromEvents } from '../../lib/orderTotals'
 import {
   SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
   areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION, COCINA,
@@ -1401,6 +1402,62 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
       ...(hasForeign ? ['Consumo USD'] : [])],
     rows,
     filename: 'ventas-mesas',
+    orientation: 'landscape'
+  }
+}
+
+// C5 - DESCUENTOS AUTORIZADOS QUE NO SE COBRARON (modulo 'mesas'). Red de seguridad
+// del descuento: los eventos de autorizacion son APPEND-ONLY y no se pueden perder,
+// pero la cabecera de la mesa se fusiona por LWW de documento entero y SI puede venir
+// pisada. Si eso pasa justo al cobrar, la mesa se cobraria completa y nadie se
+// enteraria. Este reporte lo saca a la luz: cruza el descuento VIGENTE segun los
+// eventos (en el momento del cobro) contra lo que la venta guardo.
+//
+// Solo LEE. Deriva el vigente con la MISMA funcion que la app (`discountFromEvents`),
+// asi que no puede discrepar del criterio de la pantalla. Sin ventas de mesa con
+// descuento autorizado, el reporte sale vacio y con su aviso, como cualquier otro.
+export async function buildDiscountReconReport({ from = null, to = null } = {}) {
+  const names = await userMap()
+  const sales = (await db.sales.toArray())
+    .filter((s) => !s.voided && s.orderId && inRange(s.createdAt, from, to))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const rows = []
+  let totPerdido = 0
+  for (const s of sales) {
+    // Eventos de ESA mesa anteriores o iguales al cobro: es el estado que debio
+    // aplicarse. Los posteriores (si el mando lo quito despues) no cuentan.
+    const events = (await db.auditEvents.where('entityId').equals(s.orderId).toArray())
+      .filter((e) => e.entity === 'order' && String(e.createdAt) <= String(s.createdAt))
+    const vigente = discountFromEvents(events)
+    if (!vigente || !(vigente.pct > 0)) continue // no habia descuento autorizado
+    const cobrado = round2(Number(s.discountAmount || 0))
+    const sub = round2(Number(s.subtotal ?? s.totalBase ?? 0))
+    const debio = round2(sub * (vigente.pct / 100))
+    if (cobrado > 0) continue // se aplico: nada que reportar
+    totPerdido = round2(totPerdido + debio)
+    rows.push([
+      formatDateTime(s.createdAt),
+      areaLabel(s.area),
+      s.table || '',
+      `${vigente.pct}%`,
+      names[vigente.by] || '',
+      formatDateTime(vigente.at),
+      sub,
+      debio,
+      names[s.sellerId] || 'vendedor'
+    ])
+  }
+  if (rows.length === 0) {
+    rows.push(['Sin descuentos autorizados que no se hayan cobrado', '', '', '', '', '', '', '', ''])
+  } else {
+    rows.push(['', '', '', '', '', 'TOTAL no aplicado', '', round2(totPerdido), ''])
+  }
+  return {
+    title: 'Descuentos autorizados no aplicados',
+    subtitle: rangeLabel(from, to),
+    head: ['Fecha del cobro', 'Área', 'Mesa', 'Descuento', 'Autorizó', 'Autorizado el', 'Consumo', 'Importe no aplicado', 'Cobró'],
+    rows,
+    filename: 'descuentos-no-aplicados',
     orientation: 'landscape'
   }
 }
