@@ -11,6 +11,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { FOREIGN_CURRENCIES, CASH_CURRENCIES, DEFAULT_SEMAPHORE_CONFIG } from '../../db/constants'
 import { formatMoney, baseToForeign } from '../../lib/currency'
 import { genRecoveryCode } from '../../lib/pin'
+import { cleanCode } from '../../lib/unitsConfig'
 import { formatDateTime } from '../../lib/dates'
 import { getStorageInfo } from '../../lib/storage'
 import { licenseModules, LICENSE_MODULES, LICENSE_MODULE_LABELS } from '../../lib/license'
@@ -35,6 +36,7 @@ export function Settings() {
       <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
       <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
       <AreasSection />
+      <UnitsSection />
       <TablesSettings />
       <WholesaleSection />
       <ElaborationSection />
@@ -111,6 +113,153 @@ function AreasSection() {
       </button>
       <p className="muted">
         Quitar un área no borra sus productos ni sus ventas; solo deja de ofrecerse para nuevos turnos.
+      </p>
+    </section>
+  )
+}
+
+// Unidades de medida configurables (U2, peticion del dueño del 13-09-2026). El dueño
+// DESACTIVA las que no usa -para no pincharlas por error, como los galones- y añade las
+// suyas de gastronomia (trago de 45 ml, copas de vino de 120/150/180, dash, crema de 30
+// ml), sin que el proveedor toque el programa. Es funcion BASE, no de modulo, y solo el
+// dueño la ve (la pantalla entera ya exige `isOwner`).
+//
+// Vive en la clave `config.units`, que YA sincroniza: se configura una vez y llega a
+// todos los telefonos. CLAVE AUSENTE = las 8 de fabrica, asi que un negocio que no entre
+// aqui se comporta EXACTAMENTE como hoy.
+//
+// DOS REGLAS QUE NO SE NEGOCIAN:
+//  - El CODIGO nunca se edita. Se congela como copia en diez tablas (ventas, compras,
+//    mermas, conteos, producciones, conversiones, traspasos, lineas de mesa, movimientos
+//    de terceros y lineas de ficha); cambiarlo dejaria el historico con el viejo. La
+//    ETIQUETA si se puede cambiar cuando se quiera: es lo unico que se lee.
+//  - Se DESACTIVA, nunca se borra (regla 6): un producto que ya usa esa unidad tiene que
+//    poder seguir editandose. Lo unico que se puede QUITAR es una unidad que se acaba de
+//    añadir y todavia NO se ha guardado.
+//
+// Se edita sobre un BORRADOR local y se guarda de golpe (patron del centro de
+// elaboracion), para no escribir en `config` con cada tecla. Mientras hay borrador la
+// tarjeta no se refresca desde la base: si otro dispositivo cambia la lista a la vez,
+// gana quien guarde el ultimo, igual que con las areas y que con toda clave de `config`.
+function UnitsSection() {
+  const saved = useLiveQuery(() => configRepo.getUnits(), [], undefined)
+  const [draft, setDraft] = useState(null)
+  const [newCode, setNewCode] = useState('')
+  const [newLabel, setNewLabel] = useState('')
+  const [msg, setMsg] = useState(null) // { ok, text }
+  if (saved === undefined) return null
+
+  const list = draft ?? saved
+  const savedCodes = new Set(saved.map((u) => u.code))
+  const dirty = JSON.stringify(list) !== JSON.stringify(saved)
+  const actives = list.filter((u) => u.active).length
+
+  const edit = (i, patch) => {
+    setMsg(null)
+    setDraft(list.map((u, k) => (k === i ? { ...u, ...patch } : u)))
+  }
+
+  // Apagar la ultima activa dejaria el alta de producto sin una sola opcion: se avisa
+  // aqui y ademas lo rechaza `configRepo.setUnits` (el candado de verdad).
+  const toggle = (i) => {
+    const u = list[i]
+    if (u.active && actives <= 1) {
+      setMsg({ ok: false, text: 'Debe quedar al menos una unidad activa.' })
+      return
+    }
+    edit(i, { active: !u.active })
+  }
+
+  const add = () => {
+    const code = cleanCode(newCode)
+    if (!code) { setMsg({ ok: false, text: 'Escribe el código de la unidad (ej: trago).' }); return }
+    if (list.some((u) => u.code === code)) {
+      setMsg({ ok: false, text: `El código "${code}" ya está en la lista.` })
+      return
+    }
+    setDraft([...list, { code, label: newLabel.trim() || code, active: true }])
+    setNewCode('')
+    setNewLabel('')
+    setMsg(null)
+  }
+
+  // Solo para lo que aun NO esta guardado: un codigo ya guardado pudo congelarse en una
+  // venta, asi que ese se desactiva, no se quita.
+  const drop = (i) => {
+    setMsg(null)
+    setDraft(list.filter((_, k) => k !== i))
+  }
+
+  const save = async () => {
+    try {
+      await configRepo.setUnits(list)
+      setDraft(null) // se vuelve a leer de la base, ya normalizada
+      setMsg({ ok: true, text: 'Unidades guardadas ✓' })
+    } catch (e) {
+      setMsg({ ok: false, text: e?.message || 'No se pudo guardar' })
+    }
+  }
+
+  const discard = () => { setDraft(null); setMsg(null) }
+
+  return (
+    <section className="card">
+      <h3>Unidades de medida</h3>
+      <p className="muted">
+        Elige qué unidades se ofrecen al crear productos, recetas y fichas.{' '}
+        <strong>Desactiva</strong> las que tu negocio no usa para no pincharlas por error, y{' '}
+        <strong>agrega</strong> las tuyas (ej: trago de 45 ml, copa de vino, dash).
+      </p>
+      {list.map((u, i) => (
+        <div key={u.code} className="kv">
+          <label className="field" style={{ flex: 1, marginRight: 10 }}>
+            <span className="muted">Código: <strong>{u.code}</strong></span>
+            <input
+              value={u.label}
+              onChange={(e) => edit(i, { label: e.target.value })}
+              placeholder={u.code}
+            />
+          </label>
+          <span style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+            <button
+              className={`btn btn--sm ${u.active ? 'btn--primary' : 'btn--ghost'}`}
+              onClick={() => toggle(i)}
+            >
+              {u.active ? 'Activa ✓' : 'Desactivada'}
+            </button>
+            {!savedCodes.has(u.code) && (
+              <button className="btn btn--ghost btn--sm" onClick={() => drop(i)}>Quitar</button>
+            )}
+          </span>
+        </div>
+      ))}
+
+      <label className="field">
+        <span>Código de la nueva unidad</span>
+        <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="Ej: trago" />
+      </label>
+      <label className="field">
+        <span>Nombre que se muestra</span>
+        <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Ej: Trago (45 ml)" />
+      </label>
+      <button className="btn btn--ghost btn--block" onClick={add}>Agregar unidad</button>
+
+      {msg && <p className={msg.ok ? 'ok-text' : 'error'}>{msg.text}</p>}
+      {dirty && (
+        <>
+          <button className="btn btn--primary btn--block" onClick={save}>Guardar unidades</button>
+          <button className="btn btn--ghost btn--block" onClick={discard}>Descartar cambios</button>
+        </>
+      )}
+      <p className="muted">
+        El <strong>código</strong> no se puede cambiar: queda grabado en las ventas, entradas y
+        conteos ya hechos. El <strong>nombre</strong> sí, cuando quieras. Desactivar una unidad no
+        borra nada: los productos que ya la usan la conservan y se siguen pudiendo editar; solo deja
+        de ofrecerse para lo nuevo.
+      </p>
+      <p className="muted">
+        Ojo: poner «trago» como unidad <strong>no</strong> convierte la botella en tragos. Para eso
+        está el fraccionamiento (ventas mayoristas) o la receta de coctelería.
       </p>
     </section>
   )
