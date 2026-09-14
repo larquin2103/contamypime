@@ -338,6 +338,10 @@ parámetro `modules` de `downloadHelpPdf` llega **vacío por defecto**, que es e
   cliente paga en USD o MN (MN = USD × tasa vigente). OFF por defecto. Ver "Divisas" abajo.
 - **`cocina`** — recetas + tablero de cocina: el dueño define recetas (insumos y consumo por unidad)
   y el **Cocinero** (rol `COOK`) elabora y envía a las áreas. OFF por defecto. Ver "Cocina" abajo.
+- **`cocteleria`** — recetas de coctelería + tablero `/cocteleria`: el trago se elabora **DENTRO
+  del área**, consumiendo SU stock, y **se queda en ella** (sin traspasos). **Independiente de
+  `cocina`**: un bar sin cocina central puede comprar solo este. **NO crea ningún rol nuevo**. OFF
+  por defecto. Ver "Coctelería" abajo.
 - **`remesas`** — entregas a domicilio (dinero o producto) con su rol acotado `COURIER`
   (Mensajero): orden → cobro → asignación → entrega → liquidación. OFF por defecto. Ver
   "Entregas" abajo.
@@ -475,6 +479,39 @@ por área, % de cargo por servicio, encabezado/pie del ticket). Repo: `ordersRep
   con `window.print()` y `@media print`.
 - **Cierre de turno bloqueado** si el área tiene mesas abiertas/reservadas: hay que cobrarlas o
   liberarlas antes (las vacías se liberan de golpe). Reporte **"Ventas por mesa"** en Reportes.
+- **DESCUENTO de la cuenta (14-09-2026).** Un % que rebaja el consumo de una mesa abierta.
+  **El orden manda y lo cerró el dueño:** `descuento = subtotal × %`, `servicio = (subtotal −
+  descuento) × %servicio`, `total = subtotal − descuento + servicio` — si se regala parte del
+  consumo, **no se cobra servicio por esa parte**. La aritmética vive en `lib/orderTotals.js`
+  (pura, probada con node); con `discountPct = 0` devuelve **exactamente** lo que devolvía la
+  fórmula anterior, comprobado campo por campo (1440 casos).
+  - **Autorización:** el mando lo aplica y lo retira directo; el **vendedor** con el **PIN de un
+    mando** (`OwnerAuthModal`, el patrón exacto de *"Eximir servicio"*). La operación queda a
+    nombre de **quien autoriza**. Poner y quitar dejan **cada uno su evento** en `auditEvents`.
+  - **LA VERDAD VIVE EN LOS EVENTOS, no en la cabecera.** `orders.discountPct` es solo una
+    **caché** —como `products.stock` frente al libro mayor—: la cabecera se fusiona por LWW de
+    documento entero, y bastaba con que un camarero agregara una cerveza desde un teléfono que aún
+    no había recibido el descuento para que su subida lo **borrara** y la mesa se cobrara completa
+    (medido, no supuesto). Los eventos son append-only con id propio y no se pueden perder, así
+    que el % vigente se **deriva** de ellos (`discountFromEvents`; empate al milisegundo → gana
+    QUITAR, porque los relojes van desfasados y un descuento aplicado sin querer cuesta dinero).
+    `ordersRepo.reconcileDiscount` **repara** la caché al abrir el salón y la mesa, y **NO toca
+    `updatedAt`** (es derivado, igual que `recomputeStock` y `reconcileFromDeliveries`).
+  - **Candado al cobrar:** antes de mover dinero se re-deriva el % de los eventos; si no coincide
+    con lo que hay pintado, **no se cobra** y se avisa. Cobrar en silencio un total distinto del
+    que el cliente está viendo sería peor que no cobrar.
+  - La venta congela `discountPct`/`discountAmount`/`discountBy` (0/null sin descuento = idéntico
+    al clásico), el **ticket** lleva su línea entre consumo y servicio, el **salón** avisa arriba
+    y en la baldosa, y el reporte *Ventas por mesa* gana la columna **Descuento** solo si hay
+    alguno en el rango (data-driven, como las columnas USD).
+  - **Red de seguridad:** reporte *"Descuentos autorizados no aplicados"* — mesas cobradas
+    completas pese a haber un descuento autorizado en los eventos. Delata el caso en que la fusión
+    pisó la cabecera.
+  - **El panel del dueño muestra el valor REAL:** el descuento se **prorratea** entre las líneas
+    de la venta (`lib/saleRevenue.js`), en proporción a su importe, para que total, por producto,
+    por categoría y por área queden coherentes entre sí. **El costo no se toca** (la mercancía
+    costó lo mismo aunque se regalara el precio). Sin descuento el factor es 1 y la aritmética es
+    **idéntica** a la de antes (200.000 comparaciones, 0 diferencias).
 
 ## Divisas (módulo `divisas`)
 
@@ -563,7 +600,66 @@ solo mando), `RecipeForm` (editor) y `KitchenScreen` (tablero `/cocina`). Repos:
   idéntica. Quitar `cocina` no borra recetas ni elaborados (append-only); conviene **cambiar el rol**
   de un Cocinero antes de quitarlo (si no, queda sin turno ni tablero).
 
-## Estado del trabajo en curso (11-09-2026)
+## Coctelería (módulo `cocteleria`)
+
+El trago se elabora **DENTRO del área** (la terraza, el bar), consumiendo **su** stock, y **queda
+ahí mismo** listo para venderse. Gateado por la licencia `cocteleria`; sin ella la app queda
+**idéntica a la clásica**. **Independiente de `cocina`** (un bar sin cocina central compra solo
+este) y **NO crea ningún rol nuevo**. Plan y actas de ejecución en
+**`docs/COCTELERIA-Y-MESAS.md`** (leerlo antes de tocar el módulo). **CERO esquema Dexie y CERO
+colecciones de sync nuevas.**
+
+- **Un solo motor para los dos tableros.** `kitchenRepo.produce` gana `fromLocation` (**default =
+  `__cocina`**, o sea el comportamiento clásico) y `KitchenScreen` recibe un `kind`: la MISMA
+  pantalla sirve `/cocina` y `/cocteleria`. **Qué** movimientos se escriben lo decide
+  `lib/kitchenMath.js` (puro, probado con node): cuando **origen = destino** NO se emiten
+  traspasos —serían neto cero y ensuciarían el submayor con traspasos que nunca ocurrieron—; con
+  el default sale **exactamente** la misma secuencia de siempre (`CONVERSION_OUT` por insumo,
+  `CONVERSION_IN`, `TRANSFER_OUT`, `TRANSFER_IN`), comprobado contra `main`.
+- **Candado de coherencia en el motor** (última instancia, aunque el llamador se equivoque): una
+  receta de coctelería no se puede elaborar desde la cocina ni con origen ≠ destino, y una de
+  cocina solo desde `__cocina`. La receta manda.
+- **Tipo de receta:** campo `recipes.kind` **opcional, sin índice ni migración** (como
+  `sales.area`); **ausente = cocina**, que es como nacieron todas las existentes, y solo se
+  escribe cuando vale `'cocteleria'`. **No se edita** (`recipesRepo.update` no lo toca): cambiarlo
+  movería la ubicación de la que consume y dejaría su historial sin sentido.
+- **Quién lo opera:** el **mando** (elige el área) y el **vendedor** con el permiso del dueño, que
+  trabaja en el área de **su turno abierto** (sin turno no hay área de la que consumir). El
+  **cocinero NO** (no es lo suyo). Los insumos llegan al área por el **traspaso normal**
+  (`TransferScreen`, sin cambios): la coctelería **no se abastece aparte**.
+- **Ajustes → *Tableros de elaboración*:** `sellerKitchenBoard` nace **ACTIVADO** (hoy el vendedor
+  ya ve el tablero de cocina; apagarlo por defecto le quitaría algo que tiene — regla 2) y
+  `sellerCocktailBoard` **APAGADO** (función nueva). Un solo interruptor **global**, no por área:
+  el filtro real lo pone el stock (un área sin insumos muestra *"Puedes elaborar: 0"*).
+- **Elaborar con FALTANTE (`allowShortProduction`, apagado por defecto, para los DOS tableros).**
+  Para cuando la mercancía **está físicamente** pero falta registrar su entrada. Sin el permiso,
+  el candado de siempre: falta un insumo y no se elabora. Con él, el descubierto se **confirma
+  explícitamente**, se anota en `productions.shortages` y la existencia queda en **negativo**
+  hasta que una entrada, un traspaso o el conteo la neteen. El error de faltante va marcado con
+  `code:'short'` para que la pantalla lo distinga sin comparar textos (la caché puede ir por
+  detrás del libro mayor tras una sync). **No relaja ningún otro candado**: producto inexistente o
+  dado de baja, y falta de tasa de una divisa, siguen lanzando (son faltas de DATO, no de
+  mercancía). Aviso al dueño en el **centro de notificaciones** (categoría `elaboracion`, deriva
+  del EVENTO con su fecha y su autor, no de un barrido del stock).
+- **Reportes y auditoría:** la tarjeta de producción es **una sola** para los dos módulos y el
+  builder filtra por los tipos que la licencia permite (**default `[cocina]`** = el lado seguro:
+  oculta, no cuela). Con solo `cocina`, título, columnas y nombre de fichero son **los de
+  siempre**; con coctelería gana la columna **Tipo** y el "Área destino" pasa a **Área** (con
+  coctelería dentro, "destino" sería mentira en la mitad de las filas). Auditoría: la pestaña
+  sirve a los dos módulos y **cada fila se filtra por el módulo de SU tipo** (sin fugas).
+- **Degradación:** quitar `cocteleria` no borra nada — las recetas quedan y los tragos siguen en
+  el catálogo con su stock y su historial de ventas; solo deja de ofrecerse el tablero, la
+  tarjeta, el selector de tipo, el interruptor, el artículo de ayuda y el filtro del reporte. Las
+  producciones de coctelería **dejan de listarse** (a diferencia de las filas de `remesas` en
+  cuentas, que sí se conservan a la vista: allí había dinero de tesorería y ocultarlo descuadraba
+  la suma; aquí el inventario ya está en el libro mayor y no se descuadra nada). **No queda ningún
+  rol huérfano.**
+
+## Estado del trabajo en curso (14-09-2026)
+
+**Lo último fusionado es `cocteleria` + descuento de mesa + unidades de medida** (14-09-2026); su
+acta, con las mediciones y los riesgos de convivencia, está en **«Fusión del 14-09-2026»**, justo
+debajo. Lo que sigue es el registro de las fusiones anteriores, que se deja tal cual.
 
 **EL MÓDULO `fichas` YA ESTÁ FUSIONADO A `main`.** El dueño lo autorizó el **11-09-2026** y se
 hizo **fast-forward** de los **28 commits** de `claude/awesome-dirac-484azm`: `origin/main` pasó de
@@ -576,6 +672,59 @@ superpowers en `.claude/settings.json`. Auditoría de esa fusión, con sus medic
 **Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que
 alguien corra `npm run deploy`. **Antes de ese despliegue hay que tomar el respaldo de retroceso**
 (ver el aviso de v18/v19 más abajo: el esquema es de ida).
+
+### Fusión del 14-09-2026 — `cocteleria`, descuento de mesa y unidades de medida
+
+**FUSIONADO A `main` el 14-09-2026**, con autorización explícita del dueño. Fast-forward de los
+**37 commits** de `claude/awesome-dirac-484azm` desde `328ec95`. Subieron los tres bloques de
+`docs/COCTELERIA-Y-MESAS.md` (módulo `cocteleria`, elaborar con faltante, descuento de mesa +
+panel del dueño), las **unidades de medida configurables** (`docs/UNIDADES-DE-MEDIDA.md`) y la
+carta de mesas a dos columnas. **Comprobar el commit real con `git rev-parse origin/main` tras un
+`git fetch`: no dar por bueno ningún hash escrito aquí.**
+
+**Auditoría previa (ejecutada, no citada):**
+- `npm run build` **exit 0**; **13 suites / 766 aserciones** en verde.
+- **`src/db/db.js` SIN cambios → NO hay migración Dexie** (sigue en **v19**) y **`src/features/sync/`
+  SIN cambios → `SYNC_COLLECTIONS` sigue en 34**. A diferencia de las dos fusiones anteriores,
+  **este despliegue no sube esquema**, así que el retroceso a un build del mismo esquema es viable
+  (el respaldo previo sigue siendo barato y conviene igual).
+- **Equivalencia con `main` medida, no razonada**, en los cinco caminos refactorizados:
+  `orderTotals` sin descuento (1440 casos), `productionMovements` cocina→área (24), `canMake`
+  (150), `parseUnitCode` con la clave `units` ausente vs. el `parseUnit` viejo (456 entradas) y el
+  `round2(línea × 1)` del panel del dueño (200.000 comparaciones). **0 diferencias**, con
+  **control negativo** que sí las detecta (1530 y 24) — sin él la prueba no mediría nada.
+- **0 identificadores no definidos** en los 35 ficheros JS/JSX tocados (esbuild + acorn, con su
+  control negativo). Es la puerta que el build NO cubre, porque **no hay linter**.
+- Índices verificados **antes** de usarlos: `auditEvents.entityId` y `productions.createdAt`
+  existen. Los **tres** lectores de `auditEvents` filtran por `entity` (`product`/`costSheet`/
+  `order`): no se cruzan.
+- **Peso:** el chunk principal pasa de **946.63 kB** (gzip 274.11) a **983.55 kB** (gzip 285.61):
+  **+36.92 kB, +3.9 %**. Lo pagan **también** los negocios sin las licencias nuevas (import
+  estático), y como el chunk lleva hash **actualizar cuesta ~286 kB gzip por teléfono**.
+
+**Lo que NO se pudo garantizar: NADIE HA EJECUTADO LA APP.** Ni un descuento aplicado, ni un trago
+elaborado, ni una unidad creada, ni una fusión entre dos aparatos. Código, build y pruebas en node.
+
+**Riesgos de CONVIVENCIA de versiones** (un teléfono actualizado y otro no, que es lo normal
+mientras la PWA se refresca). Verificados leyendo el código de `main`, no supuestos:
+1. **El de dinero:** el `TableScreen` viejo **no lee `discount`** (0 coincidencias). Un descuento
+   autorizado desde un teléfono nuevo y **cobrado desde uno viejo se cobra completo**. El reporte
+   *"Descuentos autorizados no aplicados"* lo delata después.
+2. El `kitchenRepo` viejo **no conoce `kind`** (0 coincidencias): con `cocteleria` vendida,
+   listaría las recetas de trago en su tablero de cocina. **Emitir esa licencia DESPUÉS de que
+   todos los teléfonos hayan actualizado.**
+3. El `ProductForm` viejo pinta el `<select>` **en blanco** ante una unidad nueva del dueño.
+
+**Hallazgo menor abierto (no bloqueante):** `InputsBlock` (fichas) llama `recipesRepo.listActive()`
+sin filtrar tipo; si se **quita** `cocteleria` a un negocio que ya la tenía, sus recetas de trago
+seguirían apareciendo en el selector de insumos de la ficha. Encaja con la doctrina de degradación
+(no se borra nada) y no toca dinero.
+
+**Cambios visibles que verán TODOS, incluidos los negocios sin las licencias nuevas:** el panel del
+dueño gana la tarjeta **«Gastos (costo de lo vendido)»** (es **base**, no gateada; no calcula nada
+nuevo: muestra el `cost` que `analyticsRepo.report` ya devolvía); el mensaje de faltante de cocina
+pasa de *"en la cocina"* a *"en Cocina"*; y **todas** las ventas nuevas escriben
+`discountPct: 0, discountAmount: 0, discountBy: null`, también las de mostrador.
 
 ### Fusión anterior — módulo `remesas` (28-08-2026)
 
@@ -989,6 +1138,10 @@ turno abandonado; si se cierra sin contar billetes se marca con bandera.
   mesa y reportes con el monto/columnas en USD, todo gateado) y `cocina` ✅ (recetas + tablero: el
   Cocinero elabora y envía a las áreas; motor atómico contra el libro mayor, reporte de producción,
   cocina contable en el conteo físico y pestaña de cocina en auditoría; rol acotado `COOK`) y
+  **`cocteleria` ✅** (el trago se elabora DENTRO del área con su propio stock y queda en ella, sin
+  traspasos; mismo motor que `cocina` con `fromLocation`, permiso de elaborar con faltante con
+  aviso al dueño, reporte y auditoría compartidos y gateados por tipo; sin rol nuevo y sin esquema
+  Dexie nuevo) y
   `remesas` ✅ (entregas de dinero o producto: cobro a tesorería, fondo del mensajero que sale de
   las cuentas del negocio, custodia de efectivo y de producto con saldo derivado, liquidación con
   semáforo, editar/eliminar, cinco reportes y pestaña de auditoría; rol acotado `COURIER`). Cada
