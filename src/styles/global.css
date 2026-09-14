@@ -3182,14 +3182,67 @@ input[type='file'] {
    El campo de nombre NO autentica: filtra en memoria la lista que ya se carga, y
    la lista arranca vacia. La autenticacion sigue siendo por id (login(u.id, pin)),
    igual que siempre. Clases exclusivas de esta pantalla. */
-.auth-brand {
+/* Cabecera centrada: marca discreta, y el TITULO dice lo que es la pantalla. Un
+   login se tiene que leer como un login desde el primer golpe de vista. */
+.login-brand {
   margin: 0 0 2px;
+  text-align: center;
 }
-/* La marca deja de ser el h1 de 2em: el titulo real es la tarea, no el nombre de
-   la app (el usuario ya sabe que abrio). */
-.auth-title {
-  font-size: 1.35rem;
-  margin: 0 0 14px;
+.login-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  text-align: center;
+  margin: 0 0 4px;
+}
+.login-sub {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0 0 20px;
+}
+/* Cabecera compacta con el teclado del PIN a la vista: el alto que se ahorra aqui
+   es el que mantiene el boton "Entrar" DENTRO de la pantalla en un telefono. */
+.login-title--compact {
+  font-size: 1.2rem;
+  margin-bottom: 14px;
+}
+/* Campos del formulario. No se reusa `.field` porque su `span` es tenue (0.85rem
+   en `--muted`) y aqui la etiqueta tiene que MANDAR: es lo que le dice al usuario
+   que lo primero es su nombre. */
+.login-field {
+  display: block;
+  margin-bottom: 16px;
+}
+.login-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.login-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: -6px 0 0;
+}
+/* Usuario ya elegido: se ve a nombre de quien se entra, con salida para cambiarlo. */
+.login-picked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 10px 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--surface-2);
+  background: var(--surface-2);
+}
+.login-picked__name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Con muchos usuarios la lista filtrada scrollea dentro de la tarjeta en vez de
    desbordarla y quedar recortada por arriba y por abajo. */

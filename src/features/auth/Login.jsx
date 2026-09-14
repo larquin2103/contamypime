@@ -61,27 +61,55 @@ export function Login() {
     setShowAll(false)
   }
 
-  if (!selected) {
-    const loading = users === undefined
-    // Orden alfabetico ESTABLE: el repo devuelve por clave primaria (UUID), que es
-    // un orden al azar y ademas distinto en cada telefono tras sincronizar, asi que
-    // la memoria muscular del vendedor ("el mio es el tercero") no se sostenia.
-    const all = [...(users || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
-    // El filtro es tolerante (sin acentos y por coincidencia parcial) porque es una
-    // BUSQUEDA, no una comprobacion: quien acierta el nombre a medias igual se
-    // encuentra, y el acierto final sigue siendo un toque sobre su id.
-    const q = normalize(query)
-    const matches = showAll ? all : (q ? all.filter((u) => normalize(u.name).includes(q)) : [])
-    const sinCoincidencias = !!q && !showAll && matches.length === 0
-
+  if (recovering) {
     return (
       <div className="screen screen--centered">
         <div className="card auth-card">
-          <p className="brand brand--sm auth-brand">MypiCuadre</p>
-          <h1 className="auth-title">¿Quién eres?</h1>
+          <RecoverPin user={selected} onCancel={() => setRecovering(false)} onDone={tryLogin} />
+        </div>
+      </div>
+    )
+  }
 
-          <label className="field">
-            <span>Tu nombre</span>
+  const loading = users === undefined
+  // Orden alfabetico ESTABLE: el repo devuelve por clave primaria (UUID), que es
+  // un orden al azar y ademas distinto en cada telefono tras sincronizar, asi que
+  // la memoria muscular del vendedor ("el mio es el tercero") no se sostenia.
+  const all = [...(users || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+  // El filtro es tolerante (sin acentos y por coincidencia parcial) porque es una
+  // BUSQUEDA, no una comprobacion: quien acierta el nombre a medias igual se
+  // encuentra, y el acierto final sigue siendo un toque sobre su id.
+  const q = normalize(query)
+  const matches = showAll ? all : (q ? all.filter((u) => normalize(u.name).includes(q)) : [])
+  const sinCoincidencias = !!q && !showAll && matches.length === 0
+
+  // UNA sola tarjeta con los dos campos del formulario (Usuario y PIN), como
+  // cualquier pantalla de acceso: asi se lee de un golpe que esto es el login y que
+  // lo primero es el nombre. El PIN se revela al elegir usuario (no se puede pedir
+  // antes: el bloqueo por intentos y la recuperacion dependen de QUIEN es).
+  return (
+    <div className="screen screen--centered">
+      <div className="card auth-card">
+        <p className="brand brand--sm login-brand">MypiCuadre</p>
+        {/* Con el teclado del PIN abierto la cabecera se compacta: si no, el boton
+            "Entrar" se va DEBAJO del borde en un telefono de 640 px y hay que
+            buscarlo con scroll (medido en captura). El subtitulo ya cumplio su
+            trabajo -decir que lo primero es el nombre- cuando aun no hay usuario. */}
+        <h1 className={`login-title ${selected ? 'login-title--compact' : ''}`}>Iniciar sesión</h1>
+        {!selected && <p className="login-sub">Escribe tu nombre y entra con tu PIN</p>}
+
+        {/* --- 1. Usuario ------------------------------------------------------ */}
+        <div className="login-field">
+          <span className="login-label">Usuario</span>
+          {selected ? (
+            // Ya elegido: se ve a nombre de quien se va a entrar, y se puede cambiar.
+            <div className="login-picked">
+              <span className="login-picked__name">{selected.name}</span>
+              <button type="button" className="btn btn--ghost btn--sm" onClick={backToList}>
+                Cambiar
+              </button>
+            </div>
+          ) : (
             <input
               autoFocus
               value={query}
@@ -91,9 +119,12 @@ export function Login() {
               spellCheck={false}
               disabled={loading || all.length === 0}
             />
-          </label>
+          )}
+        </div>
 
-          {loading ? (
+        {/* Coincidencias. La lista arranca VACIA: abrir la app no enseña a nadie. */}
+        {!selected && (
+          loading ? (
             <p className="muted">Cargando…</p>
           ) : all.length === 0 ? (
             <p className="muted">No hay usuarios activos.</p>
@@ -116,43 +147,32 @@ export function Login() {
               </button>
             </>
           ) : (
-            <p className="muted">Escribe tu nombre para continuar.</p>
-          )}
-        </div>
-      </div>
-    )
-  }
+            <p className="login-hint">Empieza a escribir para encontrarte.</p>
+          )
+        )}
 
-  if (recovering) {
-    return (
-      <div className="screen screen--centered">
-        <div className="card auth-card">
-          <RecoverPin user={selected} onCancel={() => setRecovering(false)} onDone={tryLogin} />
-        </div>
-      </div>
-    )
-  }
+        {/* --- 2. PIN ---------------------------------------------------------- */}
+        {selected && (
+          <>
+            <div className="login-field">
+              <span className="login-label">PIN</span>
+              <PinInput value={pin} onChange={setPin} />
+            </div>
+            <button
+              className="btn btn--primary btn--block"
+              disabled={pin.length < 4 || busy}
+              onClick={() => tryLogin(pin)}
+            >
+              {busy ? 'Entrando...' : 'Entrar'}
+            </button>
+          </>
+        )}
 
-  return (
-    <div className="screen screen--centered">
-      <div className="card auth-card">
-        <button className="link-back" onClick={backToList}>
-          ← Cambiar usuario
-        </button>
-        <h2>Hola, {selected.name}</h2>
-        <p className="field-label">Introduce tu PIN</p>
-        <PinInput value={pin} onChange={setPin} />
-        <button
-          className="btn btn--primary btn--block"
-          disabled={pin.length < 4 || busy}
-          onClick={() => tryLogin(pin)}
-        >
-          {busy ? 'Entrando...' : 'Entrar'}
-        </button>
         {/* role="alert": sin el, "PIN incorrecto" y la espera por intentos fallidos
             son mudos para un lector de pantalla y el usuario no sabe por que no entra. */}
         {error && <p className="error" role="alert">{error}</p>}
-        {selected.role === ROLES.OWNER && (
+
+        {selected && selected.role === ROLES.OWNER && (
           <button className="link-recover" onClick={() => { setRecovering(true); setError('') }}>
             ¿Olvidaste tu PIN?
           </button>
