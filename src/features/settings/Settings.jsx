@@ -237,6 +237,13 @@ function UnitsSection() {
       <label className="field">
         <span>Código de la nueva unidad</span>
         <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="Ej: trago" />
+        {/* Aviso con motivo real: muchas pantallas (caja, ficha, existencias) imprimen
+            el CODIGO y no el nombre largo, porque no cabe. Un codigo tipo "copa150" se
+            lee bien ahi; uno tipo "cv1" no. */}
+        <small className="muted">
+          Corto y legible: es lo que se ve junto a las cantidades en varias pantallas
+          (ej: «5 trago»). Sin espacios y en minúsculas.
+        </small>
       </label>
       <label className="field">
         <span>Nombre que se muestra</span>

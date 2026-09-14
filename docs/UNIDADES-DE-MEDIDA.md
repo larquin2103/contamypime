@@ -4,7 +4,8 @@ Valoración hecha **antes de tocar código** (reglas 4 y 5 del proyecto), a peti
 **13-09-2026**. Documento de referencia de la función: qué se pide, qué hay hoy **verificado en el
 código**, la vía recomendada, los riesgos a auditar y las fases para ejecutarlo.
 
-> Estado: **VALORADO, sin código todavía.** Faltan las respuestas a §8 antes de empezar.
+> Estado: **U1 a U4 HECHAS el 13-09-2026** (el dueño respondió el §8). Acta de ejecución y
+> auditoría en el **§11**, al final. **Nada de esto se ha ejecutado en un dispositivo.**
 > Rama de desarrollo: `claude/awesome-dirac-484azm`. **Nada a `main`** sin autorización.
 
 ---
@@ -173,3 +174,84 @@ Lo mismo que en todo lo demás: la validación será **código + build + pruebas
 ejecutado la app** salvo que el dueño la pruebe en un dispositivo real. Y como toda la función vive
 en `config`, **viaja por la sincronización**: si dos dispositivos editan la lista de unidades a la
 vez, gana el último (LWW de la clave entera), igual que con las áreas.
+---
+
+## 11. Acta de ejecución (13-09-2026) — U1 a U4 HECHAS
+
+El dueño respondió las seis preguntas del §8 y se ejecutaron las cuatro fases el mismo día,
+un commit por fase en `claude/awesome-dirac-484azm`. **Nada a `main`.**
+
+**Sus respuestas, que son las que manda el código:** solo **desactivar** (nunca borrar) ·
+la importación acepta el **código exacto**, sin alias para las nuevas · **siempre** queda al
+menos una activa · la **etiqueta** de las de fábrica sí se puede cambiar, el **código** no ·
+las gestiona **solo el dueño** · en el desplegable salen en **orden alfabético** por etiqueta.
+
+| Fase | Commit | Qué entró |
+|---|---|---|
+| **U1** | `b329e86` | `src/lib/unitsConfig.js` (puro) + `configRepo.getUnits/getActiveUnits/setUnits`. Fase **inerte**: ninguna pantalla lo leía. |
+| **U2** | `375f948` | Tarjeta **«Unidades de medida»** en Ajustes (solo dueño): activar/desactivar, añadir, editar etiqueta, borrador con *Guardar* / *Descartar*. |
+| **U3** | `18039fe` | Los **cuatro** desplegables (producto, receta, fraccionamiento, ficha) leen la lista, con la unidad del registro incluida aunque esté desactivada. |
+| **U4** | `3dd1ac6` | La **importación** valida contra la lista real, mensaje de error derivado, hoja *Unidades* en la plantilla y artículo de ayuda. |
+
+### 11.1 Los dos riesgos del §6 que se cerraron, y cómo
+
+- **Riesgo 6.1 (el `<select>` en blanco):** `unitsForSelect(lista, actual)` mete **siempre**
+  la unidad que el registro ya tiene —incluso una que no esté en la lista, con su código
+  crudo—. Los cuatro desplegables la usan. El fallo gemelo de las **áreas**
+  (`ProductForm`, un producto cuya área se quitó pinta el selector vacío) **sigue ahí**: no
+  era parte de este encargo y no se tocó.
+- **Riesgo 6.2 (el mensaje que miente):** `unitCodesText(lista)` lo deriva de las activas.
+  Antes decía `u/lb/kg/caja/oz/g/ml/l` escrito a mano.
+
+Y el otro lado, que no estaba en el plan y hacía falta: **al crear**, si la unidad por
+defecto (`u`) está desactivada, se cae a la primera **activa** (producto, receta y
+fraccionamiento). El dueño la apagó para no pincharla por error; no tiene sentido que sea
+la que llega por defecto a un producto nuevo. **Al editar no se toca nunca.**
+
+### 11.2 Lo que la importación ahora rechaza (y es la mitad del encargo)
+
+Una unidad **desactivada** no entra por el Excel, **ni escrita con su alias de fábrica**
+(`onzas` no pasa si la onza está apagada). Sin eso, desactivar el galón no servía de nada:
+bastaba un fichero para volver a meterlo. Los alias de las **ocho de fábrica** viajaron
+letra por letra a `UNIT_ALIASES`, así que un fichero que hoy importa bien (`kilos`,
+`litros`, `cc`) sigue importando igual.
+
+### 11.3 Verificación — ejecutada, no citada
+
+- **`npm run build` exit 0** en las cuatro fases.
+- **13 suites node, 766 aserciones, 0 fallos**, medidas el 13-09-2026 (la suite nueva
+  `unitsConfig.test.mjs` aporta **68**). *Nota de honestidad: el registro anterior de
+  `CLAUDE.md` decía 12 suites / 696; 696 + 68 = 764, no 766, así que esa cifra ya venía con
+  dos aserciones de desfase. La de hoy es la medida.*
+- **Peso, medido construyendo el commit base `34012ef` en un worktree aparte:** el chunk
+  principal pasa de **975.58 kB** (gzip **282.95**) a **983.55 kB** (gzip **285.61**):
+  **+7.97 kB, +0.82 %** (gzip +2.66 kB). El **CSS no cambia** (78.05 kB): la tarjeta reutiliza
+  `.card`, `.kv` y `.field`, sin una clase nueva. Lo pagan **todos** los negocios, porque es
+  función **base** y no de módulo — es lo que pidió el dueño.
+- **Sin esquema Dexie y sin colecciones de sync nuevas**, verificado: la clave vive en
+  `config`, que ya existe y ya sincroniza, y `units` **no** está en `LOCAL_CONFIG_KEYS`. El
+  despliegue sigue siendo tan reversible como antes de esta función (el aviso de v18/v19
+  sigue en pie, pero **esto no lo empeora**).
+- **Nadie escribe la unidad por fuera de la lista**, verificado con `grep`: los diez sitios
+  que la guardan la **copian** del producto (`unit: p.unit`) como *snapshot*. Los únicos que
+  la **originan** son los cuatro desplegables y la importación, y los cuatro creadores de
+  producto que hay (catálogo, entrada de mercancía, fraccionamiento y receta) pasan por
+  `ProductForm` o por los dos que ya se tocaron.
+
+### 11.4 Lo que NO se puede garantizar, y lo que queda abierto
+
+- **NADIE HA EJECUTADO LA APP.** Ni una unidad creada, ni un Excel importado, ni la tarjeta
+  abierta en un teléfono. Todo lo de arriba es **código, build y pruebas node**.
+- **La lista se fusiona por LWW como una sola clave** (igual que las áreas). Si el dueño
+  añade «trago» en un teléfono y en el otro desactiva la onza **en el mismo rato**, gana el
+  último que guarde y el otro cambio se pierde. No corrompe nada (la lista no es histórico),
+  pero hay que saberlo. La tarjeta avisa de los cambios sin guardar, no de esto.
+- **Dos ficheros del módulo `fichas` siguen pintando la etiqueta de fábrica**
+  (`InputsBlock.jsx:209,269` y `fichaReports.js:44`): una unidad nueva se lee ahí con su
+  **código**, no con su nombre largo. Es el comportamiento tolerante de siempre y no rompe
+  nada; se deja anotado.
+- **Muchas pantallas imprimen el CÓDIGO a propósito** (caja, existencias, nivel de
+  producción de la ficha: «5 trago»), porque el nombre largo no cabe. De ahí el aviso que se
+  añadió en la tarjeta: el código debe ser **corto y legible**.
+- **El fallo gemelo de las áreas** (riesgo 6.1 en `ProductForm`) sigue abierto. Es una línea,
+  pero es **otra** función y se deja a decisión del dueño.

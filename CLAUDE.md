@@ -59,9 +59,10 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las 12 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**696 aserciones** en total, medidas el 13-09-2026). Ojo:
-nueve viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/`,
+**Pruebas:** NO hay script `npm test` (ni linter). Las 13 suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (**766 aserciones** en total, medidas el 13-09-2026, con las
+68 de `unitsConfig.test.mjs` dentro). Ojo:
+diez viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/`,
 `fichaReports.test.mjs` en `src/features/reports/` y `helpContent.test.mjs` en
 `src/features/help/`, así que un glob `src/lib/*.test.mjs` **se salta tres**:
 
@@ -70,7 +71,7 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/productCustodyMath.test.mjs src/lib/remesas.test.mjs \
          src/lib/fichaCosto.test.mjs src/lib/fichaLines.test.mjs \
          src/lib/kitchenMath.test.mjs src/lib/orderTotals.test.mjs \
-         src/lib/saleRevenue.test.mjs \
+         src/lib/saleRevenue.test.mjs src/lib/unitsConfig.test.mjs \
          src/features/sync/retryQueue.test.mjs \
          src/features/reports/fichaReports.test.mjs \
          src/features/help/helpContent.test.mjs; do node "$t"; done
@@ -243,6 +244,47 @@ defecto, sincronizados):
   lleva esa ubicación y el stock por ubicación se deriva del libro mayor (la sync lo recalcula
   igual en cada dispositivo). El reporte de entradas muestra la **ubicación**. Sin el permiso,
   `EntryScreen` lo bloquea.
+
+## Unidades de medida configurables (base, 13-09-2026)
+
+La lista de unidades la maneja **el dueño** desde Ajustes → *Unidades de medida*: **desactiva**
+las que su negocio no usa (pidió no ver los galones «para no pincharlos por error») y **añade**
+las suyas de gastronomía (trago de 45 ml, copas de vino de 120/150/180, dash, crema de 30 ml).
+Es función **BASE**, no de módulo. Plan y acta de ejecución en **`docs/UNIDADES-DE-MEDIDA.md`**.
+
+- **Clave `config.units`** con `{ code, label, active }`; **clave ausente = las 8 de
+  `constants.js`**, así que un negocio que no entre ahí se comporta **idéntico al clásico**.
+  **CERO esquema Dexie y CERO colecciones de sync**: `config` ya existe, ya sincroniza y `units`
+  no está en `LOCAL_CONFIG_KEYS`. Se fusiona por **LWW de la clave entera**, como las áreas.
+- **Lógica pura en `src/lib/unitsConfig.js`** (suite propia con node). **No confundir con
+  `src/lib/units.js`**, que ya existía y convierte **cantidades** entre unidades de la misma
+  familia física (1 L → 1000 ml): son responsabilidades distintas y no se tocan.
+- **Se DESACTIVA, nunca se borra** (regla 6): un producto que ya usa esa unidad tiene que poder
+  seguir editándose. Solo se puede *quitar* una que se acaba de añadir y aún no se guardó.
+- **El CÓDIGO nunca se edita; la ETIQUETA sí** (incluida la de las de fábrica). El código se
+  congela como copia en **diez** tablas (ventas, compras, mermas, conteos, producciones,
+  conversiones, traspasos, líneas de mesa, movimientos de terceros y líneas de ficha), y
+  **muchas pantallas imprimen el código** («5 trago»), no el nombre largo: por eso la tarjeta
+  pide que sea corto y legible.
+- **Siempre queda al menos una activa.** `setUnits` lo **rechaza** (con `cleanUnits`, que NO
+  repara) y la lectura lo **repara** (`normalizeUnits`): la lista rota puede **llegar** por la
+  sync de otro teléfono o de un respaldo viejo, y sin eso el alta de producto se quedaría sin
+  una sola opción.
+- **Los cuatro desplegables** leen la lista: `ProductForm`, `RecipeForm` (`cocina`/`cocteleria`),
+  `ConversionScreen` (`mayorista`) y `CostSheetScreen` (`fichas`). **Incluyen SIEMPRE la unidad
+  que el registro ya tiene, aunque esté desactivada** (`unitsForSelect`): un `<select>` sin la
+  `<option>` de su valor se pinta **en blanco** y se guardaría otra cosa sin querer. *Ese fallo
+  sigue existiendo con las **áreas** en `ProductForm`; no se tocó.* Y **al crear**, si la unidad
+  por defecto está desactivada se cae a la **primera activa**; al editar no se toca nunca.
+- **La importación valida contra la lista real** (`parseUnitCode`, solo activas): una unidad
+  desactivada **no entra por el Excel ni con su alias de fábrica** («onzas» no pasa si la onza
+  está apagada) — sin eso, desactivar el galón no serviría de nada. Los **alias de las ocho de
+  fábrica** («kilos», «litros», «cc») se conservan **letra por letra** en `UNIT_ALIASES`, así que
+  un fichero que hoy importa bien sigue igual; las **nuevas** van por **código exacto**. El
+  mensaje de error se **deriva** de la lista (antes iba escrito a mano y quedaría mintiendo), y
+  la plantilla trae una hoja **«Unidades»** con los códigos del negocio.
+- **Nadie ha ejecutado esto en un dispositivo:** build + 13 suites node. Peso: **+7.97 kB**
+  (+0.82 %; gzip +2.66), CSS sin cambios.
 
 ## Módulos de licencia (funciones que se venden por separado)
 
