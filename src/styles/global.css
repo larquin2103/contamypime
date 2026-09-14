@@ -3376,12 +3376,13 @@ input[type='file'] {
 .acc__item.is-open .acc__panel-inner > * > *:nth-child(4) { animation-delay: 90ms; }
 .acc__item.is-open .acc__panel-inner > * > *:nth-child(5) { animation-delay: 110ms; }
 .acc__item.is-open .acc__panel-inner > * > *:nth-child(n + 6) { animation-delay: 130ms; }
-/* Lista de fichas anchas dentro de una categoria (Reportes). Las tarjetas ya
-   traen su propio `margin-bottom` de `.card`, asi que aqui solo se apilan. */
-.report-list {
+/* Fichas anchas APILADAS dentro de una categoria (Reportes, Ajustes). Las
+   tarjetas ya traen su propio `margin-bottom` de `.card`, asi que aqui solo se
+   apilan. Es el otro layout del acordeon, frente a la rejilla `home-grid`. */
+.acc-stack {
   display: block;
 }
-.report-list > .card:last-child {
+.acc-stack > .card:last-child {
   margin-bottom: 0;
 }
 @keyframes acc-card-in {

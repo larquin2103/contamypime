@@ -206,7 +206,7 @@ export function ReportsScreen() {
           todos los reportes y no puede costar un toque mas. */}
       <Accordion storageKey="reports">
         {visibles.map((c) => (
-          <Section key={c.id} id={c.id} label={c.label} layout="report-list">
+          <Section key={c.id} id={c.id} label={c.label} layout="acc-stack">
             {c.items.map((i) => card(i.key, i.title, i.desc, i.builder, i.range))}
           </Section>
         ))}

@@ -15,6 +15,7 @@ import { cleanCode } from '../../lib/unitsConfig'
 import { formatDateTime } from '../../lib/dates'
 import { getStorageInfo } from '../../lib/storage'
 import { licenseModules, LICENSE_MODULES, LICENSE_MODULE_LABELS } from '../../lib/license'
+import { Accordion, AccordionSection as Section } from '../../components/Accordion'
 import { TablesSettings } from '../tables/TablesSettings'
 
 export function Settings() {
@@ -30,27 +31,51 @@ export function Settings() {
     )
   }
 
+  // Las 18 secciones iban una tras otra: unas seis pantallas de telefono para
+  // llegar a la ultima. Ahora se agrupan en cinco categorias plegables (mismo
+  // acordeon y mismo motion que Inicio y Reportes), ordenadas por FRECUENCIA DE
+  // USO y no alfabeticamente: en Ajustes no se busca por nombre, se va a una
+  // tarea concreta y casi siempre a la misma (la tasa del dolar se toca a
+  // diario; la licencia, dos veces al año).
+  //
+  // Cada seccion sigue siendo LA MISMA y con sus mismas compuertas: lo unico que
+  // cambia es dentro de que caja se pinta. Aqui los gates viven DENTRO de cada
+  // componente (devuelven null sin su modulo), asi que el acordeon no puede saber
+  // cuales se van a pintar; por eso cada grupo lleva al menos DOS secciones que
+  // se ven siempre, y ninguno puede quedar como una categoria vacia.
   return (
     <div className="screen">
       <h2>Ajustes</h2>
-      <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
-      <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
-      <AreasSection />
-      <UnitsSection />
-      <TablesSettings />
-      <WholesaleSection />
-      <ElaborationSection />
-      <BoardsSection />
-      <AdminPermsSection />
-      <SellerPermsSection />
-      <SemaphoreSection />
-      <DenominationsSection />
-      <WhatsappSection />
-      <BackupLinkSection />
-      <ErrorLogLinkSection />
-      <NotificationsLinkSection />
-      <SecuritySection userId={user.id} />
-      <LicenseSection />
+      <Accordion storageKey="settings">
+        <Section id="monedas" label="Monedas y tasas" layout="acc-stack">
+          <RatesSection userId={user.id} baseCurrency={baseCurrency} rates={rates} />
+          <ConverterPreview baseCurrency={baseCurrency} rates={rates} />
+        </Section>
+        <Section id="turno" label="Turno y cuadre" layout="acc-stack">
+          <SemaphoreSection />
+          <DenominationsSection />
+          <WhatsappSection />
+        </Section>
+        <Section id="negocio" label="Tu negocio" layout="acc-stack">
+          <AreasSection />
+          <UnitsSection />
+          <TablesSettings />
+          <ElaborationSection />
+        </Section>
+        <Section id="permisos" label="Permisos del personal" layout="acc-stack">
+          <AdminPermsSection />
+          <SellerPermsSection />
+          <WholesaleSection />
+          <BoardsSection />
+        </Section>
+        <Section id="sistema" label="Sistema y seguridad" layout="acc-stack">
+          <BackupLinkSection />
+          <ErrorLogLinkSection />
+          <NotificationsLinkSection />
+          <SecuritySection userId={user.id} />
+          <LicenseSection />
+        </Section>
+      </Accordion>
     </div>
   )
 }
