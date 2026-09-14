@@ -7,6 +7,14 @@
   --surface-2: #214574;
   --primary: #2bbd6e;
   --primary-600: #23a85e;
+  /* Verde PROPIO del boton primario, mas oscuro que el de marca. El texto blanco
+     encima necesita 4.5:1 (WCAG AA) y sobre el verde de marca daba 2.44:1, o sea
+     que el texto del boton principal de la app no era legible segun la norma.
+     Va en variables aparte a proposito: `--primary` y `--primary-600` NO se tocan,
+     asi que el logotipo, los acentos, los puntos del PIN y los bordes conservan
+     exactamente el verde de siempre. Medido: 6.06:1 -> 4.53:1 de extremo a extremo. */
+  --btn-primary-1: #16713f;
+  --btn-primary-2: #1f874f;
   --accent-light: #74e7aa;
   --on-accent: #06281c;
   --text: #f3f7fc;
@@ -37,6 +45,9 @@
   --surface-2: #e7edf5;
   --primary: #1e9e57;
   --primary-600: #17864a;
+  /* Mismo criterio que en el tema oscuro: 8.06:1 -> 4.56:1 (antes 4.62 -> 3.45). */
+  --btn-primary-1: #125c33;
+  --btn-primary-2: #1a874a;
   --accent-light: #17864a;
   --on-accent: #ffffff;
   --text: #12263f;
@@ -383,14 +394,14 @@ textarea {
   opacity: 0.5;
 }
 .btn--primary {
-  background: linear-gradient(135deg, var(--primary-600), var(--primary));
-  border-color: var(--primary);
+  background: linear-gradient(135deg, var(--btn-primary-1), var(--btn-primary-2));
+  border-color: var(--btn-primary-2);
   color: #ffffff;
   font-weight: 700;
   box-shadow: 0 8px 20px -10px rgba(35, 168, 94, 0.6);
 }
 .btn--primary:active {
-  background: var(--primary-600);
+  background: var(--btn-primary-1);
   transform: scale(0.99);
 }
 .btn--ghost {
@@ -424,11 +435,16 @@ textarea {
   gap: 14px;
   margin-bottom: 18px;
 }
+/* El punto VACIO era practicamente invisible: su borde iba en `--surface-2`, que
+   sobre la tarjeta da 1.35:1 en oscuro y 1.18:1 en claro (un elemento no textual
+   necesita 3:1). Y es el UNICO indicador de cuantos digitos se llevan tecleados,
+   asi que a la luz del mostrador se tecleaba a ciegas. Con `--muted`: 5.36:1 y
+   5.14:1. El punto lleno no cambia. */
 .pinpad__dot {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  border: 2px solid var(--surface-2);
+  border: 2px solid var(--muted);
 }
 .pinpad__dot.is-filled {
   background: var(--primary-600);
@@ -3374,4 +3390,21 @@ input[type='file'] {
   .acc__item.is-open .home-grid > * {
     animation: none;
   }
+}
+
+/* Texto solo para lectores de pantalla: invisible en pantalla pero presente en el
+   arbol de accesibilidad. Hace falta porque hay estados que se comunican SOLO con
+   forma o color (los puntos del PIN), y sin un texto que los acompañe un lector
+   no puede decir cuantos digitos se llevan. Receta estandar: no usa
+   `display:none` ni `visibility:hidden`, que lo sacarian tambien del lector. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
