@@ -58,8 +58,44 @@ export function Catalog() {
   const canWarehouseView = !isElaborator && !cookMode && areaMode && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
   // Ubicación que se está mirando: la cocina (cocinero), o el área/almacén (vendedor).
   const viewLoc = cookMode ? COCINA : (canWarehouseView && showWarehouse ? WAREHOUSE : sellArea)
-  // Existencia a mostrar: en modo área, la de la ubicación vista; si no, el total.
-  const stockShown = (p) => (areaMode ? Number(p.stockByLocation?.[viewLoc] || 0) : Number(p.stock || 0))
+
+  // --- Vista por ubicación para el MANDO ---------------------------------------
+  // El dueño veía el total de cada producto y, para saber qué hay en un área,
+  // tenía que abrir el producto uno a uno o generar un reporte. Ahora elige la
+  // ubicación aquí mismo. Es el MISMO mecanismo que ya usaban el vendedor (su
+  // área) y el cocinero (la cocina); lo único que faltaba era el selector.
+  //
+  // '' = "Todas las ubicaciones" = el TOTAL, que es el comportamiento de siempre
+  // y el valor por defecto: sin tocar el selector, esta pantalla es la de hoy.
+  const [mgrLoc, setMgrLoc] = useState('')
+  // Las ubicaciones se DERIVAN de las existencias reales, no de una lista escrita
+  // a mano: así solo se ofrece lo que de verdad tiene algo, y un negocio sin
+  // cocina o sin entregas no ve esas opciones (sin fuga de licencia, mismo
+  // criterio data-driven que las columnas USD de los reportes).
+  const mgrLocations = useMemo(() => {
+    if (!isManager) return []
+    const set = new Set()
+    for (const p of products) {
+      if (!p.active) continue
+      for (const [loc, qty] of Object.entries(p.stockByLocation || {})) {
+        if (loc && Number(qty) > 0) set.add(loc)
+      }
+    }
+    // El almacén central primero (es de donde sale todo); el resto alfabético.
+    return [...set].sort((a, b) =>
+      a === WAREHOUSE ? -1 : b === WAREHOUSE ? 1 : locationLabel(a).localeCompare(locationLabel(b), 'es')
+    )
+  }, [products, isManager])
+  // El mando está mirando una ubicación concreta (y no "Todas").
+  const mgrViewing = isManager && !!mgrLoc && mgrLocations.includes(mgrLoc)
+
+  // Combinacion de los dos modos. Con el selector en "Todas" estas dos constantes
+  // valen EXACTAMENTE lo que valian `areaMode` y `viewLoc` antes, asi que ni el
+  // vendedor ni el cocinero ni el elaborador notan nada.
+  const locMode = areaMode || mgrViewing
+  const shownLoc = mgrViewing ? mgrLoc : viewLoc
+  // Existencia a mostrar: en modo ubicación, la de la ubicación vista; si no, el total.
+  const stockShown = (p) => (locMode ? Number(p.stockByLocation?.[shownLoc] || 0) : Number(p.stock || 0))
 
   const categoryName = useMemo(() => {
     const map = {}
@@ -69,13 +105,15 @@ export function Catalog() {
 
   const filtered = useMemo(() => {
     let active = products.filter((p) => p.active)
-    // En modo área, solo productos con existencia en la ubicación vista (área o almacén).
-    if (areaMode && viewLoc) active = active.filter((p) => Number(p.stockByLocation?.[viewLoc] || 0) > 0)
+    // En modo ubicación, solo productos con existencia en la que se está mirando.
+    // Vale igual para el área del vendedor, la cocina del cocinero y la ubicación
+    // que elija el mando: la pregunta es siempre "qué hay AQUÍ".
+    if (locMode && shownLoc) active = active.filter((p) => Number(p.stockByLocation?.[shownLoc] || 0) > 0)
     const result = active.filter((p) => matchesQuery(p, query))
     result.sort((a, b) => a.name.localeCompare(b.name))
     return result
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products, query, areaMode, viewLoc])
+  }, [products, query, locMode, shownLoc])
 
   const shown = filtered.slice(0, MAX_RENDER)
 
@@ -141,6 +179,21 @@ export function Catalog() {
         <p className="muted">Vista del <strong>almacén central</strong> (solo lectura).</p>
       )}
 
+      {/* Selector de ubicación del mando. Solo aparece si hay existencias repartidas
+          en alguna ubicación; con el catálogo todo en el almacén no hay nada que
+          elegir y la pantalla queda como siempre. */}
+      {isManager && mgrLocations.length > 0 && (
+        <label className="field catalog-loc">
+          <span>Ver existencias en</span>
+          <select value={mgrLoc} onChange={(e) => setMgrLoc(e.target.value)}>
+            <option value="">Todas las ubicaciones (total)</option>
+            {mgrLocations.map((loc) => (
+              <option key={loc} value={loc}>{locationLabel(loc)}</option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <input
         className="search-input"
         type="search"
@@ -151,6 +204,7 @@ export function Catalog() {
 
       <p className="muted result-count">
         {filtered.length} producto{filtered.length === 1 ? '' : 's'}
+        {mgrViewing && ` en ${locationLabel(shownLoc)}`}
         {filtered.length > MAX_RENDER && ` — mostrando ${MAX_RENDER}, refina la búsqueda`}
       </p>
 
