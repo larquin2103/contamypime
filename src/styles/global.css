@@ -3192,12 +3192,6 @@ input[type='file'] {
   font-size: 1.5rem;
   font-weight: 800;
   text-align: center;
-  margin: 0 0 4px;
-}
-.login-sub {
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.9rem;
   margin: 0 0 20px;
 }
 /* Cabecera compacta con el teclado del PIN a la vista: el alto que se ahorra aqui

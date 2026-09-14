@@ -96,7 +96,6 @@ export function Login() {
             buscarlo con scroll (medido en captura). El subtitulo ya cumplio su
             trabajo -decir que lo primero es el nombre- cuando aun no hay usuario. */}
         <h1 className={`login-title ${selected ? 'login-title--compact' : ''}`}>Iniciar sesión</h1>
-        {!selected && <p className="login-sub">Escribe tu nombre y entra con tu PIN</p>}
 
         {/* --- 1. Usuario ------------------------------------------------------ */}
         <div className="login-field">
@@ -147,7 +146,7 @@ export function Login() {
               </button>
             </>
           ) : (
-            <p className="login-hint">Empieza a escribir para encontrarte.</p>
+            <p className="login-hint">Escribe tu nombre y entra con tu PIN</p>
           )
         )}
 
