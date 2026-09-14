@@ -1,6 +1,7 @@
 import { normalize } from '../../lib/search'
-import { UNITS, FOREIGN_PRICE_CURRENCIES } from '../../db/constants'
+import { FOREIGN_PRICE_CURRENCIES } from '../../db/constants'
 import { parseTiersText } from '../../lib/priceTiers'
+import { parseUnitCode, unitCodesText, activeUnits } from '../../lib/unitsConfig'
 import { productsRepo } from '../../repositories/productsRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { configRepo } from '../../repositories/configRepo'
@@ -49,10 +50,16 @@ async function loadXLSX() {
 export async function buildTemplateBlob({ withTiers = false, withCurrency = false } = {}) {
   const XLSX = await loadXLSX()
   const head = templateHeaders(withTiers, withCurrency)
+  // U4: las unidades ACTIVAS del negocio, para que quien llene la plantilla sepa que
+  // puede escribir en la columna Unidad (incluidas las que el dueño se invento).
+  const units = activeUnits(await configRepo.getUnits())
   // El orden de los valores del ejemplo sigue al de templateHeaders: primero
   // Moneda (si aplica) y luego Escalas. El 2do producto va en USD como muestra.
   const example = TEMPLATE_EXAMPLE.map((r, i) => {
     const row = [...r]
+    // Si el dueño desactivo la unidad del ejemplo ('u' / 'kg'), se pone una ACTIVA: la
+    // plantilla no debe nacer con una fila que su propio importador rechazaria.
+    if (units.length && !units.some((u) => u.code === row[4])) row[4] = units[0].code
     if (withCurrency) row.push(i === 1 ? 'USD' : 'MN')
     if (withTiers) row.push(i === 1 ? '20:4.5; 50:4' : '')
     return row
@@ -60,6 +67,15 @@ export async function buildTemplateBlob({ withTiers = false, withCurrency = fals
   const ws = XLSX.utils.aoa_to_sheet([head, ...example])
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Productos')
+  // Segunda hoja, informativa. La que se LEE al importar es siempre la primera
+  // (wb.Sheets[wb.SheetNames[0]] en parseAndValidate), asi que añadir esta no cambia
+  // la lectura de nada.
+  const wsUnits = XLSX.utils.aoa_to_sheet([
+    ['En la columna Unidad escribe uno de estos codigos:'],
+    ['Codigo', 'Nombre'],
+    ...units.map((u) => [u.code, u.label])
+  ])
+  XLSX.utils.book_append_sheet(wb, wsUnits, 'Unidades')
   const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
   return new Blob([out], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -81,20 +97,13 @@ function parseNum(v) {
   return isNaN(n) ? null : n
 }
 
-function parseUnit(v) {
-  const s = normalize(v)
-  if (['u', 'un', 'und', 'unidad', 'unidades', 'u.'].includes(s)) return 'u'
-  if (['kg', 'kgs', 'kilo', 'kilos', 'kilogramo', 'kilogramos'].includes(s)) return 'kg'
-  if (['caja', 'cajas', 'cj'].includes(s)) return 'caja'
-  if (['oz', 'onza', 'onzas'].includes(s)) return 'oz'
-  if (['g', 'gr', 'gramo', 'gramos'].includes(s)) return 'g'
-  if (['ml', 'mililitro', 'mililitros', 'cc'].includes(s)) return 'ml'
-  if (['l', 'lt', 'litro', 'litros'].includes(s)) return 'l'
-  return UNITS.includes(s) ? s : ''
-}
+// U4: la unidad se valida contra la lista CONFIGURABLE del dueño (solo las activas) y
+// no contra UNITS de constants.js. Los alias de las ocho de fabrica viajaron intactos a
+// `lib/unitsConfig` (UNIT_ALIASES), asi que un fichero que hoy importa bien sigue
+// importando igual. La logica es pura y esta probada con node.
 
 // Extrae los campos canonicos de una fila cruda (objeto keyed por encabezado).
-function extractRow(obj) {
+function extractRow(obj, units) {
   const get = (names) => {
     for (const k of Object.keys(obj)) {
       if (names.includes(normHeader(k))) return obj[k]
@@ -106,7 +115,7 @@ function extractRow(obj) {
     code: String(get(['codigo', 'code', 'sku'])).trim(),
     category: String(get(['categoria', 'category', 'rubro'])).trim(),
     area: String(get(['area', 'zona', 'seccion', 'departamento'])).trim(),
-    unit: parseUnit(get(['unidad', 'unit', 'um', 'u/m', 'medida'])),
+    unit: parseUnitCode(units, get(['unidad', 'unit', 'um', 'u/m', 'medida'])),
     price: parseNum(get(['precio venta', 'precio', 'precio de venta', 'pvp', 'venta'])),
     cost: parseNum(get(['costo', 'coste', 'cost'])) ?? 0,
     stock: parseNum(get(['existencia inicial', 'existencia', 'stock', 'cantidad', 'inventario'])) ?? 0,
@@ -124,6 +133,10 @@ export async function parseAndValidate(buffer, { existingProducts, withCurrency 
   const ws = wb.Sheets[wb.SheetNames[0]]
   if (!ws) return { rows: [], summary: { total: 0, ok: 0, dup: 0, error: 0 } }
   const json = XLSX.utils.sheet_to_json(ws, { defval: '' })
+  // Unidades configurables (U4): se leen UNA vez por importacion y se pasan a cada
+  // fila. Sin la clave son las 8 de fabrica, asi que el resultado es el de siempre.
+  const units = await configRepo.getUnits()
+  const unitsText = unitCodesText(units)
 
   const existCodes = new Set(existingProducts.filter((p) => p.code).map((p) => normalize(p.code)))
   const existNames = new Set(existingProducts.map((p) => normalize(p.name)))
@@ -131,10 +144,12 @@ export async function parseAndValidate(buffer, { existingProducts, withCurrency 
   const seenNames = new Set()
 
   const rows = json.map((obj, i) => {
-    const draft = extractRow(obj)
+    const draft = extractRow(obj, units)
     const errors = []
     if (!draft.name) errors.push('Falta el nombre')
-    if (!draft.unit) errors.push('Unidad invalida (u/lb/kg/caja/oz/g/ml/l)')
+    // El mensaje se DERIVA de las unidades activas del negocio: escrito a mano
+    // quedaria mintiendo en cuanto el dueño apague una o añada la suya.
+    if (!draft.unit) errors.push(`Unidad invalida (${unitsText})`)
     if (draft.price == null) errors.push('Precio de venta invalido')
     // Escalas mayoristas opcionales: "20:100; 50:60" (cantidad:precio).
     const tiersParsed = parseTiersText(draft.tiersText)

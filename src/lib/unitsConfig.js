@@ -1,4 +1,5 @@
 import { UNITS, UNIT_LABELS } from '../db/constants.js'
+import { normalize } from './search.js'
 
 // ---------------------------------------------------------------------------
 // U1 - Unidades de medida CONFIGURABLES por el dueño (petición del 13-09-2026).
@@ -122,6 +123,56 @@ export function unitsForSelect(list, current) {
     actives.push(known || { code, label: code, active: false })
   }
   return sortUnits(actives)
+}
+
+// --- U4: la IMPORTACION del catalogo ---------------------------------------------
+//
+// Alias de las OCHO de fabrica, tal como estaban en `importService.parseUnit`. Se
+// conservan letra por letra para que un fichero que hoy importa bien -uno que dice
+// 'kilos', 'litros' o 'cc'- siga importando igual. Las unidades NUEVAS del dueño NO
+// llevan alias (decision suya): se escriben con su codigo exacto, y la plantilla se lo
+// dice. Es lo simple y predecible; inventarle alias a 'copa150' seria adivinar.
+export const UNIT_ALIASES = {
+  u: ['u', 'un', 'und', 'unidad', 'unidades', 'u.'],
+  kg: ['kg', 'kgs', 'kilo', 'kilos', 'kilogramo', 'kilogramos'],
+  caja: ['caja', 'cajas', 'cj'],
+  oz: ['oz', 'onza', 'onzas'],
+  g: ['g', 'gr', 'gramo', 'gramos'],
+  ml: ['ml', 'mililitro', 'mililitros', 'cc'],
+  l: ['l', 'lt', 'litro', 'litros']
+}
+
+// Resuelve lo que trae la celda "Unidad" del Excel a un codigo VALIDO, o '' si no lo
+// es (el importador ya trata '' como fila con error, igual que antes).
+//
+// Solo acepta unidades ACTIVAS, y eso es justo la mitad del encargo: si el dueño apago
+// el galon para no pincharlo por error, una hoja de calculo tampoco debe poder colarlo.
+// Un negocio que no haya tocado la lista tiene las 8 activas -> se comporta EXACTAMENTE
+// como antes de esta fase.
+//
+// Dos caminos, en este orden:
+//  1. Los alias de fabrica (con `normalize`, que quita acentos y mayusculas), como hoy.
+//  2. El CODIGO exacto ya limpio (`cleanCode`), que es lo que sirve para las nuevas.
+//     Se usa `cleanCode` y no `normalize` a proposito: es la MISMA funcion con la que se
+//     guardo el codigo en Ajustes, asi que "Copa 150" en la celda encuentra 'copa150', y
+//     un codigo con ñ o acento no se desfigura por el camino (normalize los borraria y
+//     ya no coincidiria con el codigo guardado).
+export function parseUnitCode(list, raw) {
+  const actives = new Set(activeUnits(list).map((u) => u.code))
+  const s = normalize(raw)
+  for (const [code, aliases] of Object.entries(UNIT_ALIASES)) {
+    if (aliases.includes(s)) return actives.has(code) ? code : ''
+  }
+  const code = cleanCode(raw)
+  return actives.has(code) ? code : ''
+}
+
+// Los codigos validos, para el MENSAJE DE ERROR y para la plantilla. Antes la lista iba
+// escrita a mano en el mensaje ('u/lb/kg/caja/oz/g/ml/l'): con unidades configurables eso
+// quedaria MINTIENDO -ni nombraria el trago del dueño ni sabria que el galon esta
+// apagado-, asi que se deriva de la lista real.
+export function unitCodesText(list) {
+  return activeUnits(list).map((u) => u.code).join('/')
 }
 
 // Etiqueta de un codigo, tolerante: lo que no se conoce se muestra tal cual, que es

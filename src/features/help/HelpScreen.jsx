@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   ArrowLeftRight, BarChart3, BookOpen, Calculator, ChevronLeft, ChevronRight,
   ClipboardList, Coins, Download, FileSpreadsheet, Gauge, HelpCircle, Hourglass,
-  KeyRound, Lightbulb, LockOpen, Package, Receipt, ShoppingCart, Smartphone,
+  KeyRound, Lightbulb, LockOpen, Package, Receipt, Ruler, ShoppingCart, Smartphone,
   Martini, PackageX, Percent, Store, TriangleAlert, Truck, UserCog, Users,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -28,6 +28,7 @@ const ARTICLE_ICONS = {
   'cerrar-cuadre': Calculator,
   semaforo: Gauge,
   areas: Store,
+  unidades: Ruler,
   'almacen-salida': Truck,
   'conteo-fisico': ClipboardList,
   'reportes-panel': BarChart3,

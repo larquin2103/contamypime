@@ -194,6 +194,25 @@ export const HELP_ARTICLES = [
     ]
   },
   {
+    id: 'unidades',
+    section: 'Gestión y avanzado',
+    audience: 'owner',
+    title: 'Unidades de medida',
+    teaser: 'Quita las que no usas y agrega las tuyas (trago, copa, dash).',
+    body: [
+      { p: 'La lista de unidades la manejas tú. Puedes desactivar las que tu negocio no usa —para no pincharlas por error— y agregar las que te hagan falta, por ejemplo «Trago (45 ml)», «Copa de vino tinto (150 ml)» o «Dash».' },
+      { steps: [
+        'Ve a Ajustes → Unidades de medida.',
+        'Toca «Activa» en las que no quieras usar: quedan desactivadas.',
+        'Para una nueva, escribe el código corto (ej: trago) y el nombre que quieres ver (ej: Trago (45 ml)).',
+        'Toca Agregar unidad y luego Guardar unidades.'
+      ] },
+      { p: 'Desde ese momento esas son las unidades que aparecen al crear productos, recetas, fichas de costo y al fraccionar, y también las que acepta la importación de inventario (la plantilla trae una hoja «Unidades» con los códigos de tu negocio).' },
+      { tip: 'Desactivar no borra nada: los productos que ya usaban esa unidad la conservan y se siguen pudiendo editar. El nombre lo puedes cambiar cuando quieras; el código corto no, porque queda grabado en las ventas y entradas ya hechas.' },
+      { warn: 'Poner «trago» como unidad NO convierte la botella en tragos: el sistema no hace esa cuenta. Para vender tragos de una botella usa el fraccionamiento (ventas mayoristas), y para cócteles la receta, que descuenta 0.045 L de ron por trago.' }
+    ]
+  },
+  {
     id: 'almacen-salida',
     section: 'Gestión y avanzado',
     audience: 'owner',

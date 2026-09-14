@@ -3,20 +3,24 @@
 //  misma familia fisica y ya existia: es otra responsabilidad y no se toca.)
 // Sin framework: ejecutar con  `node src/lib/unitsConfig.test.mjs`.
 //
-// QUE EXISTE ESTA SUITE PARA CAZAR, y son tres cosas que cuestan caro:
+// QUE EXISTE ESTA SUITE PARA CAZAR, y son cuatro cosas que cuestan caro:
 //  1. Que un negocio que NO toque las unidades vea algo distinto a hoy. La clave
 //     nace ausente y tiene que devolver EXACTAMENTE las 8 de `constants.js`.
 //  2. Que el negocio se quede SIN NINGUNA unidad activa: el alta de producto se
 //     quedaria sin una sola opcion. `config` se fusiona por LWW, asi que la lista
 //     rota puede LLEGAR de otro telefono; hay que repararla al leer, no solo al
 //     escribir.
-//  3. Que al editar un producto cuya unidad se desactivo, el desplegable la pierda.
+//  3. Que la IMPORTACION se salte la lista del dueño: su unidad nueva tiene que
+//     entrar, y la que apago NO -tampoco escrita con un alias de fabrica-, o
+//     desactivar el galon no serviria de nada en cuanto alguien importe un Excel.
+//  4. Que al editar un producto cuya unidad se desactivo, el desplegable la pierda.
 //     Un <select> sin la <option> de su valor se pinta EN BLANCO y el dueño puede
 //     guardar creyendo que dejo otra cosa. Ese fallo YA existe hoy con las AREAS
 //     (ProductForm): aqui no se repite.
 import {
   defaultUnits, cleanCode, cleanLabel, cleanUnits, normalizeUnits,
-  hasActive, sortUnits, activeUnits, unitsForSelect, unitLabel
+  hasActive, sortUnits, activeUnits, unitsForSelect, unitLabel,
+  parseUnitCode, unitCodesText
 } from './unitsConfig.js'
 import { UNITS, UNIT_LABELS } from '../db/constants.js'
 
@@ -153,6 +157,49 @@ const ok = (cond, label) => eq(!!cond, true, label)
   eq(unitLabel(suyas, 'galon'), 'galon', '6) una unidad que nunca existio se muestra cruda, no vacia')
   eq(unitLabel(suyas, ''), '', '6) sin codigo, cadena vacia')
   eq(unitLabel(null, 'kg'), 'Kilogramo', '6) sin lista configurada, la etiqueta de fabrica')
+}
+
+
+// --- 7) U4: la IMPORTACION del catalogo --------------------------------------
+// Lo que hay que garantizar aqui son dos cosas opuestas: que un fichero que HOY
+// importa bien siga importando igual (los alias de fabrica), y que la lista del
+// dueño mande de verdad (su unidad nueva entra; la que apago, NO, ni escrita con
+// alias). Si esto se rompiera, el dueño desactivaria el galon y una hoja de
+// calculo se lo colaria igual.
+{
+  // Negocio que NO ha tocado nada: clave ausente.
+  eq(parseUnitCode(null, 'kilos'), 'kg', '7) alias de fabrica: "kilos" sigue siendo kg')
+  eq(parseUnitCode(null, 'Litros'), 'l', '7) alias con mayuscula')
+  eq(parseUnitCode(null, 'cc'), 'ml', '7) "cc" sigue siendo ml')
+  eq(parseUnitCode(null, 'unidades'), 'u', '7) "unidades" sigue siendo u')
+  eq(parseUnitCode(null, 'lb'), 'lb', '7) la libra no tiene alias y entra por codigo exacto')
+  eq(parseUnitCode(null, 'galon'), '', '7) lo que no existe se rechaza, como antes')
+  eq(parseUnitCode(null, ''), '', '7) celda vacia se rechaza')
+  eq(unitCodesText(null), UNITS.slice().sort((a, b) =>
+    (UNIT_LABELS[a] || a).localeCompare(UNIT_LABELS[b] || b)).join('/'),
+    '7) el mensaje de error nombra las 8 de fabrica (en el orden del desplegable)')
+
+  // Negocio con la lista configurada: onza apagada + unidades suyas.
+  const suyas = [
+    ...defaultUnits().map((u) => (u.code === 'oz' ? { ...u, active: false } : u)),
+    { code: 'trago', label: 'Trago (45 ml)', active: true },
+    { code: 'copa150', label: 'Copa de vino tinto (150 ml)', active: true }
+  ]
+  eq(parseUnitCode(suyas, 'trago'), 'trago', '7) la unidad NUEVA del dueño se importa por su codigo')
+  eq(parseUnitCode(suyas, ' TRAGO '), 'trago', '7) y tolera espacios y mayusculas')
+  eq(parseUnitCode(suyas, 'copa150'), 'copa150', '7) igual la copa de vino')
+  eq(parseUnitCode(suyas, 'Copa 150'), 'copa150', '7) "Copa 150" encuentra copa150: mismo cleanCode que en Ajustes')
+  eq(parseUnitCode(suyas, 'oz'), '', '7) la unidad DESACTIVADA se rechaza aunque exista')
+  eq(parseUnitCode(suyas, 'onzas'), '', '7) y tampoco se cuela por su alias de fabrica')
+  eq(parseUnitCode(suyas, 'kg'), 'kg', '7) las que siguen activas no se tocan')
+  ok(unitCodesText(suyas).includes('trago'), '7) el mensaje de error nombra el trago del dueño')
+  ok(!unitCodesText(suyas).includes('oz'), '7) y NO nombra la onza apagada (antes iba escrita a mano)')
+
+  // Un negocio que apago casi todo: la reparacion del invariante tambien vale aqui.
+  const casiTodo = defaultUnits().map((u) => ({ ...u, active: u.code === 'lb' }))
+  eq(parseUnitCode(casiTodo, 'kilos'), '', '7) con solo la libra activa, el kilo se rechaza')
+  eq(parseUnitCode(casiTodo, 'lb'), 'lb', '7) y la libra entra')
+  eq(unitCodesText(casiTodo), 'lb', '7) el mensaje solo ofrece lo que de verdad se acepta')
 }
 
 console.log(`${pass} pass, ${fail} fail`)

@@ -1,9 +1,12 @@
 import { useRef, useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { productsRepo } from '../../repositories/productsRepo'
+import { configRepo } from '../../repositories/configRepo'
+import { unitCodesText } from '../../lib/unitsConfig'
 import {
   buildTemplateBlob,
   parseAndValidate,
@@ -28,6 +31,8 @@ export function ImportScreen() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(null) // nro creados
+  // Unidades que ACEPTA esta importacion: las que el dueño dejo activas en Ajustes.
+  const unitList = useLiveQuery(() => configRepo.getUnits(), [], undefined)
 
   if (!isManager) {
     return (
@@ -108,6 +113,12 @@ export function ImportScreen() {
         <h3>1. Descarga la plantilla</h3>
         <p className="muted">
           Columnas: {templateHeaders(withTiers, withCurrency).join(', ')}. Llenala con tu inventario (Excel, lista, cuaderno).
+        </p>
+        {/* Se listan en vez de escribirlas a mano: el dueño pudo apagar alguna o
+            añadir las suyas. La plantilla las trae tambien en su hoja "Unidades". */}
+        <p className="muted">
+          En la columna <strong>Unidad</strong> escribe uno de estos codigos:{' '}
+          {unitCodesText(unitList)}.
         </p>
         <button className="btn btn--block" onClick={downloadTemplate}>
           ⬇ Descargar plantilla Excel
