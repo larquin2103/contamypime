@@ -13,6 +13,9 @@
      Va en variables aparte a proposito: `--primary` y `--primary-600` NO se tocan,
      asi que el logotipo, los acentos, los puntos del PIN y los bordes conservan
      exactamente el verde de siempre. Medido: 6.06:1 -> 4.53:1 de extremo a extremo. */
+  /* Rojo para TEXTO pequeño sobre las superficies de tarjeta. El `--danger` de
+     cada tema se conserva tal cual para lo que ya lo usaba. */
+  --danger-strong: #fc7b7b;
   --btn-primary-1: #16713f;
   --btn-primary-2: #1f874f;
   --accent-light: #74e7aa;
@@ -46,6 +49,9 @@
   --primary: #1e9e57;
   --primary-600: #17864a;
   /* Mismo criterio que en el tema oscuro: 8.06:1 -> 4.56:1 (antes 4.62 -> 3.45). */
+  /* En claro, `--danger` (#d64545) se queda en 4.14:1 sobre la cabecera abierta:
+     este pasa con margen (5.16 / 5.46 / 4.63 segun el fondo). */
+  --danger-strong: #c62f2f;
   --btn-primary-1: #125c33;
   --btn-primary-2: #1a874a;
   --accent-light: #17864a;
@@ -3425,4 +3431,22 @@ input[type='file'] {
    el otro control de la misma pregunta: "que estoy mirando". */
 .catalog-loc {
   margin-bottom: 10px;
+}
+
+/* Aviso en la cabecera de una categoria plegada (Entregas por fecha: el dia que
+   tiene algo por cobrar o sin cerrar). Se ve CON LA SECCION CERRADA, que es el
+   punto: saber donde hay trabajo sin abrir nada.
+   El color va en el badge y en la etiqueta, NO en un borde grueso de color: un
+   `border-left` tintado es el recurso facil y aqui ensuciaria una lista en la que
+   varios dias pueden estar marcados a la vez. */
+.acc__badge {
+  flex: none;
+  margin-left: auto;
+  margin-right: 8px;
+}
+/* La etiqueta del dia marcado va en `--danger-strong` y no en `--danger`: a 12 px
+   en negrita necesita 4.5:1, y en tema claro `--danger` se queda en 4.14:1 sobre
+   el fondo de la cabecera abierta. Medido, no estimado. */
+.acc__item.has-badge .acc__label {
+  color: var(--danger-strong);
 }

@@ -14,11 +14,12 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2 } from '../../lib/currency'
-import { formatDateTime } from '../../lib/dates'
+import { formatDateTime, localDay, todayLocal } from '../../lib/dates'
 import { fileToThumbnail } from '../../lib/image'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { Accordion, AccordionSection as Section } from '../../components/Accordion'
 import {
   remittanceGroup, isPendingCollection, rateCurrencyFor, remittanceEquivalent,
   convertAmount, itemsTotal
@@ -112,6 +113,22 @@ function EquivalentNote({ remittance }) {
   const eq = remittanceEquivalent(remittance, baseCurrency)
   if (!eq) return null
   return <p className="muted">≈ {formatMoney(eq.amount, eq.currency)}</p>
+}
+
+// Etiqueta legible de un dia ('YYYY-MM-DD' de `localDay`). "Hoy" y "Ayer" se
+// nombran asi porque es como los llama quien trabaja; el resto va en fecha corta.
+// Se construye a mano desde la clave y NO se pasa por `new Date(dia)`: esa cadena
+// se interpreta como UTC y en Cuba (UTC-4/-5) devolveria el dia ANTERIOR.
+function dayLabel(day) {
+  if (!day) return 'Sin fecha'
+  if (day === todayLocal()) return 'Hoy'
+  const [y, m, d] = day.split('-').map(Number)
+  const ayer = new Date()
+  ayer.setDate(ayer.getDate() - 1)
+  if (day === localDay(ayer)) return 'Ayer'
+  return new Date(y, m - 1, d).toLocaleDateString('es-CU', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  })
 }
 
 // Badge del GRUPO legible (Por cobrar / En proceso / Completado): lo ve el dueno en
@@ -243,6 +260,38 @@ export function RemesasScreen() {
   // "Por cobrar": entregas contra entrega ya entregadas y aun sin cobrar. Solo el mando.
   const pendingCount = isManager ? allRemittances.filter(isPendingCollection).length : 0
 
+  // --- Agrupacion por DIA DE CREACION ------------------------------------------
+  // La lista crecia sin fin y todas las entregas se veian iguales. Se agrupan por
+  // el dia local en que se crearon (`localDay`, el mismo criterio que usan los
+  // rangos de los reportes: el dia del negocio, no UTC) y cada dia avisa si le
+  // queda trabajo.
+  //
+  // Es PRESENTACION: no se filtra ni se reordena nada. `remittancesRepo.list()` ya
+  // devuelve de la mas nueva a la mas vieja, y un Map conserva ese orden de
+  // insercion, asi que los dias salen del mas reciente al mas antiguo sin volver a
+  // ordenar.
+  //
+  // "Pendiente" se decide con `remittanceGroup`, la MISMA funcion que ya pinta la
+  // etiqueta de cada fila: por cobrar (entregada y sin cobrar al remitente) o en
+  // proceso (creada, pagada, asignada, en ruta). Lo completado y lo cerrado no
+  // cuenta. No se inventa aqui ninguna definicion nueva de "pendiente".
+  const days = useMemo(() => {
+    const map = new Map()
+    for (const r of remittances) {
+      const day = localDay(r.createdAt)
+      if (!map.has(day)) map.set(day, [])
+      map.get(day).push(r)
+    }
+    return [...map.entries()].map(([day, items]) => ({
+      day,
+      items,
+      pending: items.filter((r) => {
+        const k = remittanceGroup(r).key
+        return k === 'por_cobrar' || k === 'en_proceso'
+      }).length
+    }))
+  }, [remittances])
+
   const open = openId ? remittances.find((r) => r.id === openId) : null
   if (open) {
     return (
@@ -293,25 +342,40 @@ export function RemesasScreen() {
         </button>
       )}
 
-      <div className="list">
-        {remittances.length === 0 ? (
+      {remittances.length === 0 ? (
+        <div className="list">
           <p className="muted">
             {isManager ? 'Aún no hay entregas. Crea la primera con “Nueva entrega”.' : 'No tienes entregas asignadas.'}
           </p>
-        ) : (
-          remittances.map((r) => (
-            <button key={r.id} className="list-item help-item" onClick={() => setOpenId(r.id)}>
-              <span className="help-item__text">
-                <strong>{r.beneficiary?.name || 'Beneficiario'}</strong>
-                <span className="muted">
-                  De {r.sender?.name || '—'} · <GroupBadge remittance={r} />
-                </span>
-              </span>
-              <strong>{formatMoney(Number(r.amount) || 0, r.currency)}</strong>
-            </button>
-          ))
-        )}
-      </div>
+        </div>
+      ) : (
+        // El dia mas reciente arranca ABIERTO: es donde esta el trabajo de hoy. Sin
+        // `storageKey` a proposito — recordar un dia concreto no sirve, porque
+        // mañana ese dia ya no es el de arriba.
+        <Accordion defaultOpenId={days[0]?.day}>
+          {days.map((g) => (
+            <Section
+              key={g.day}
+              id={g.day}
+              label={dayLabel(g.day)}
+              badge={g.pending || null}
+              layout="list"
+            >
+              {g.items.map((r) => (
+                <button key={r.id} className="list-item help-item" onClick={() => setOpenId(r.id)}>
+                  <span className="help-item__text">
+                    <strong>{r.beneficiary?.name || 'Beneficiario'}</strong>
+                    <span className="muted">
+                      De {r.sender?.name || '—'} · <GroupBadge remittance={r} />
+                    </span>
+                  </span>
+                  <strong>{formatMoney(Number(r.amount) || 0, r.currency)}</strong>
+                </button>
+              ))}
+            </Section>
+          ))}
+        </Accordion>
+      )}
 
       {isManager && <PendingCollectionsSection remittances={allRemittances} userId={user.id} />}
 

@@ -38,11 +38,15 @@ function writeOpen(key, id) {
   }
 }
 
-export function Accordion({ storageKey = null, children }) {
+// `defaultOpenId`: seccion que aparece ABIERTA la primera vez. Solo se usa cuando
+// no hay nada recordado, asi que no pisa la eleccion del usuario. Pensado para
+// listas agrupadas por fecha, donde lo util es lo mas reciente y no tiene sentido
+// recordar un dia que mañana ya no existe.
+export function Accordion({ storageKey = null, defaultOpenId = null, children }) {
   // `toArray` descarta null/false/undefined, que es justo lo que devuelven las
   // secciones gateadas por licencia o por rol: aqui solo llegan las que existen.
   const items = Children.toArray(children).filter(isValidElement)
-  const [openId, setOpenId] = useState(() => readOpen(storageKey))
+  const [openId, setOpenId] = useState(() => readOpen(storageKey) ?? defaultOpenId)
 
   // Una sola seccion (o ninguna): sin plegar, exactamente como antes.
   if (items.length <= 1) return items
@@ -84,6 +88,10 @@ export function Accordion({ storageKey = null, children }) {
 // Se parametriza porque no todo lo que se pliega son baldosas cuadradas: los
 // reportes son fichas anchas con su descripcion y sus dos botones, y en dos
 // columnas de ~170 px no se podrian leer.
+// `badge`/`badgeTone`: aviso en la CABECERA, para que se vea con la seccion
+// cerrada. Nacio para las entregas agrupadas por fecha (marcar el dia que tiene
+// algo por cobrar o sin cerrar), pero no sabe de entregas: recibe lo que se le
+// quiera mostrar. Sin `badge` la cabecera es exactamente la de siempre.
 export function AccordionSection({
   id,
   label,
@@ -91,6 +99,8 @@ export function AccordionSection({
   open = false,
   onToggle = null,
   layout = 'home-grid',
+  badge = null,
+  badgeTone = 'bad',
   children
 }) {
   if (!collapsible) {
@@ -104,7 +114,7 @@ export function AccordionSection({
 
   const panelId = `acc-panel-${id}`
   return (
-    <section className={`acc__item ${open ? 'is-open' : ''}`}>
+    <section className={`acc__item ${open ? 'is-open' : ''} ${badge ? 'has-badge' : ''}`}>
       <h3 className="acc__heading">
         <button
           type="button"
@@ -114,6 +124,7 @@ export function AccordionSection({
           onClick={onToggle}
         >
           <span className="acc__label">{label}</span>
+          {badge ? <span className={`badge badge--${badgeTone} acc__badge`}>{badge}</span> : null}
           <ChevronDown size={18} className="acc__chev" aria-hidden="true" />
         </button>
       </h3>
