@@ -3259,3 +3259,119 @@ input[type='file'] {
   padding-top: 12px;
   padding-bottom: 12px;
 }
+
+/* ----- Acordeon reutilizable (components/Accordion.jsx) ----------------------
+   Nacio para el menu de Inicio: con todos los modulos comprados son siete
+   categorias y dos docenas de tarjetas, y la pantalla no acababa nunca. Solo hay
+   UNA seccion abierta a la vez, asi que el menu ya no crece al comprar modulos.
+   Es generico: sirve para cualquier lista larga que convenga agrupar. */
+.acc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.acc__heading {
+  margin: 0;
+}
+/* La fila que se toca. Alto comodo para el pulgar (>=48px) y ancho completo:
+   en un movil se acierta sin mirar. */
+.acc__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.acc__label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-3);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acc__item.is-open .acc__head {
+  background: var(--surface-hi);
+  border-color: var(--primary-600);
+}
+.acc__item.is-open .acc__label {
+  color: var(--text);
+}
+.acc__chev {
+  flex: none;
+  color: var(--text-3);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.acc__item.is-open .acc__chev {
+  transform: rotate(180deg);
+  color: var(--primary-600);
+}
+/* La altura se anima con `grid-template-rows: 0fr -> 1fr`, no con `max-height`:
+   el max-height obliga a inventar un tope y da un tiron al final cuando el
+   contenido mide menos (aqui una categoria tiene 1 tarjeta y otra 7).
+   `visibility` se retrasa hasta el final del cierre para que lo plegado no
+   quede navegable con el teclado ni lo lea un lector de pantalla. */
+.acc__panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 200ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0s linear 200ms;
+}
+.acc__panel-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+/* Abre algo mas despacio que cierra, y con salida exponencial: el despliegue se
+   lee, el plegado se quita de en medio. */
+.acc__item.is-open .acc__panel {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
+}
+.acc__panel .home-grid {
+  padding: 10px 2px 2px;
+}
+/* Entrada escalonada MUY corta de las tarjetas: da la sensacion de que la
+   categoria se abre, no de que aparece un bloque de golpe. Solo al abrir. */
+.acc__item.is-open .home-grid > * {
+  animation: acc-card-in 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.acc__item.is-open .home-grid > *:nth-child(2) { animation-delay: 30ms; }
+.acc__item.is-open .home-grid > *:nth-child(3) { animation-delay: 60ms; }
+.acc__item.is-open .home-grid > *:nth-child(4) { animation-delay: 90ms; }
+.acc__item.is-open .home-grid > *:nth-child(5) { animation-delay: 110ms; }
+.acc__item.is-open .home-grid > *:nth-child(n + 6) { animation-delay: 130ms; }
+@keyframes acc-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+/* Quien pide menos movimiento no recibe ninguno: el acordeon sigue funcionando
+   igual, solo que abre y cierra sin transicion. */
+@media (prefers-reduced-motion: reduce) {
+  .acc__chev,
+  .acc__panel,
+  .acc__item.is-open .acc__panel {
+    transition: none;
+  }
+  .acc__item.is-open .home-grid > * {
+    animation: none;
+  }
+}

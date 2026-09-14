@@ -5,6 +5,7 @@ import {
   LayoutDashboard, Package, PackagePlus, PackageMinus, ClipboardList, ArrowLeftRight,
   Wallet, FileText, ShieldCheck, RefreshCw, Users, Settings, ChevronRight, Send, HelpCircle, Save, Handshake, Split, Factory, BookOpen, UtensilsCrossed, ChefHat, CookingPot, Martini, Banknote, Calculator
 } from 'lucide-react'
+import { Accordion, AccordionSection as Section } from '../../components/Accordion'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
@@ -110,15 +111,6 @@ function ActionCard({ to, icon: Icon, title, sub, badge = 0 }) {
       <strong className="action-card__title">{title}</strong>
       <span className="action-card__sub">{sub}</span>
     </Link>
-  )
-}
-
-function Section({ label, children }) {
-  return (
-    <section className="home-section">
-      <h3 className="home-section__label">{label}</h3>
-      <div className="home-grid">{children}</div>
-    </section>
   )
 }
 
@@ -327,19 +319,29 @@ export function Home() {
 
       {!isManager && !isCook && <RatesCard />}
 
+      {/* Las categorias van dentro de un ACORDEON: solo una abierta a la vez, para
+          que el menu no crezca cada vez que se compra un modulo (el mando llega a
+          siete categorias). Con UNA sola categoria el acordeon no pliega nada y la
+          pinta como siempre, asi que el cocinero y el mensajero no notan el cambio.
+          `id` es la clave estable con la que se recuerda cual quedo abierta: el
+          titulo no sirve, porque el de cocina cambia segun los modulos comprados. */}
       {isCook ? (
-        <Section label="Cocina">
-          <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
-          <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar el tablero" />
-        </Section>
+        <Accordion storageKey="home">
+          <Section id="cocina" label="Cocina">
+            <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
+            <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar el tablero" />
+          </Section>
+        </Accordion>
       ) : isCourier ? (
-        <Section label="Entregas">
-          <ActionCard to="/remesas" icon={Banknote} title="Mis entregas" sub="Recibir, entregar y devolver" />
-          <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo trabajar tus entregas" />
-        </Section>
+        <Accordion storageKey="home">
+          <Section id="entregas" label="Entregas">
+            <ActionCard to="/remesas" icon={Banknote} title="Mis entregas" sub="Recibir, entregar y devolver" />
+            <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo trabajar tus entregas" />
+          </Section>
+        </Accordion>
       ) : isManager ? (
-        <>
-          <Section label="Inventario">
+        <Accordion storageKey="home">
+          <Section id="inventario" label="Inventario">
             <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Al almacén central" />
             {areas.length > 0 && (
               <ActionCard to="/transfer" icon={Send} title="Salida a áreas" sub="Marca productos y envía por área" />
@@ -354,7 +356,7 @@ export function Home() {
             <ActionCard to="/mermas" icon={PackageMinus} title="Mermas" sub="Rebajar por deterioro" />
           </Section>
           {hasModule(LICENSE_MODULES.TABLES) && (
-            <Section label="Salón">
+            <Section id="salon" label="Salón">
               <ActionCard to="/salon" icon={UtensilsCrossed} title="Mesas" sub="Ver todo el salón y cobrar" />
             </Section>
           )}
@@ -362,7 +364,7 @@ export function Home() {
               (una sección por tipo), así que basta con tener uno para entrar. Cada
               tablero cuelga de SU módulo. */}
           {(hasModule(LICENSE_MODULES.KITCHEN) || hasModule(LICENSE_MODULES.COCKTAILS)) && (
-            <Section label={kitchenSectionLabel}>
+            <Section id="cocina" label={kitchenSectionLabel}>
               <ActionCard to="/recetas" icon={ChefHat} title="Recetas" sub={hasModule(LICENSE_MODULES.KITCHEN) ? 'Definir recetas y abastecer la cocina' : 'Definir recetas de coctelería'} />
               {hasModule(LICENSE_MODULES.KITCHEN) && (
                 <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
@@ -372,11 +374,11 @@ export function Home() {
               )}
             </Section>
           )}
-          <Section label="Operación">
+          <Section id="operacion" label="Operación">
             <ActionCard to="/handoff" icon={ArrowLeftRight} title="Traspaso de turno" sub="Entregar la caja" />
             <ActionCard to="/finances" icon={Wallet} title="Deudas y caja" sub="Cobros y pagos" />
           </Section>
-          <Section label="Gestión">
+          <Section id="gestion" label="Gestión">
             <ActionCard to="/reports" icon={FileText} title="Reportes" sub="PDF y Excel" />
             {isOwner && (
               <ActionCard to="/submayor" icon={BookOpen} title="Submayor por producto" sub="Kardex: entradas, salidas y existencia" />
@@ -394,28 +396,28 @@ export function Home() {
             <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo usar la app" />
           </Section>
           {hasModule(LICENSE_MODULES.REMESAS) && (
-            <Section label="Entregas">
+            <Section id="entregas" label="Entregas">
               <ActionCard to="/remesas" icon={Banknote} title="Entregas" sub="Órdenes, pagos y validación" badge={pendingCollection} />
             </Section>
           )}
           {isOwner && (
-            <Section label="Sistema">
+            <Section id="sistema" label="Sistema">
               <ActionCard to="/cloud" icon={RefreshCw} title="Sincronización" sub="Datos en la nube" />
               <ActionCard to="/backup" icon={Save} title="Respaldo" sub="Copia de seguridad" />
               <ActionCard to="/users" icon={Users} title="Usuarios" sub="Permisos y roles" />
               <ActionCard to="/settings" icon={Settings} title="Ajustes" sub="Preferencias" />
             </Section>
           )}
-        </>
+        </Accordion>
       ) : (
-        <>
+        <Accordion storageKey="home">
           {isElaborator && hasModule(LICENSE_MODULES.ELABORATION) && elab.enabled && (
-            <Section label="Elaboración">
+            <Section id="elaboracion" label="Elaboración">
               <ActionCard to="/elaboracion" icon={Factory} title="Elaboración" sub="Transformar y enviar a puntos" />
             </Section>
           )}
           {hasModule(LICENSE_MODULES.TABLES) && (
-            <Section label="Salón">
+            <Section id="salon" label="Salón">
               <ActionCard to="/salon" icon={UtensilsCrossed} title="Mesas" sub="Atender y cobrar mesas" />
             </Section>
           )}
@@ -425,7 +427,7 @@ export function Home() {
               del dueño (apagado por defecto), que se lee aquí para no ofrecer una
               tarjeta que la pantalla va a rechazar. */}
           {isSeller && (sellerKitchen || sellerCocktails) && (
-            <Section label={sellerBoardsLabel}>
+            <Section id="tableros" label={sellerBoardsLabel}>
               {sellerKitchen && (
                 <ActionCard to="/cocina" icon={CookingPot} title="Tablero de cocina" sub="Elaborar y enviar a las áreas" />
               )}
@@ -435,16 +437,16 @@ export function Home() {
             </Section>
           )}
           {sellerEntries && (
-            <Section label="Inventario">
+            <Section id="inventario" label="Inventario">
               <ActionCard to="/entry" icon={PackagePlus} title="Entrada de mercancía" sub="Al almacén central" />
             </Section>
           )}
-          <Section label="Operación">
+          <Section id="operacion" label="Operación">
             <ActionCard to="/handoff" icon={ArrowLeftRight} title="Traspaso de turno" sub="Entregar la caja" />
             <ActionCard to="/count" icon={ClipboardList} title="Conteo físico" sub="Ajustar existencias" />
             <ActionCard to="/help" icon={HelpCircle} title="Ayuda" sub="Cómo vender y cerrar" />
           </Section>
-        </>
+        </Accordion>
       )}
     </div>
   )
