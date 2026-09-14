@@ -3,13 +3,24 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
-import { ROLE_LABELS, ROLES } from '../../db/constants'
+import { ROLES } from '../../db/constants'
+import { normalize } from '../../lib/search'
 import { lockRemaining, recordFail, clearFails, formatWait } from '../../lib/lockout'
 
 export function Login() {
   const { login } = useAuth()
-  const users = useLiveQuery(() => usersRepo.listActive(), [], [])
+  // SIN valor inicial a proposito: `undefined` = cargando, `[]` = de verdad no hay
+  // ninguno. Con el `[]` de antes se pintaba "No hay usuarios activos" durante cada
+  // arranque en frio, que en una app cuyo dato vive solo en el telefono es el susto
+  // de "se borro todo".
+  const users = useLiveQuery(() => usersRepo.listActive(), [])
   const [selected, setSelected] = useState(null)
+  // Identificacion por nombre: el campo NO autentica, solo FILTRA en memoria la
+  // lista que ya se carga. La lista arranca vacia, asi que abrir la app no enseña
+  // a nadie. Al tocar una coincidencia se sigue llamando a login(u.id, pin)
+  // exactamente igual que siempre: la autenticacion sigue siendo por id.
+  const [query, setQuery] = useState('')
+  const [showAll, setShowAll] = useState(false)
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -44,23 +55,69 @@ export function Login() {
     setPin('')
     setError('')
     setRecovering(false)
+    // Se vuelve al estado en que no se ve a nadie: si no, "Cambiar usuario"
+    // dejaria la lista anterior a la vista.
+    setQuery('')
+    setShowAll(false)
   }
 
   if (!selected) {
+    const loading = users === undefined
+    // Orden alfabetico ESTABLE: el repo devuelve por clave primaria (UUID), que es
+    // un orden al azar y ademas distinto en cada telefono tras sincronizar, asi que
+    // la memoria muscular del vendedor ("el mio es el tercero") no se sostenia.
+    const all = [...(users || [])].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'))
+    // El filtro es tolerante (sin acentos y por coincidencia parcial) porque es una
+    // BUSQUEDA, no una comprobacion: quien acierta el nombre a medias igual se
+    // encuentra, y el acierto final sigue siendo un toque sobre su id.
+    const q = normalize(query)
+    const matches = showAll ? all : (q ? all.filter((u) => normalize(u.name).includes(q)) : [])
+    const sinCoincidencias = !!q && !showAll && matches.length === 0
+
     return (
       <div className="screen screen--centered">
         <div className="card auth-card">
-          <h1 className="brand">MypiCuadre</h1>
-          <p className="muted">Selecciona tu usuario</p>
-          <div className="user-list">
-            {users.map((u) => (
-              <button key={u.id} className="user-chip" onClick={() => setSelected(u)}>
-                <span className="user-chip__name">{u.name}</span>
-                <span className="user-chip__role">{ROLE_LABELS[u.role]}</span>
+          <p className="brand brand--sm auth-brand">MypiCuadre</p>
+          <h1 className="auth-title">¿Quién eres?</h1>
+
+          <label className="field">
+            <span>Tu nombre</span>
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setShowAll(false) }}
+              placeholder="Escribe tu nombre"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={loading || all.length === 0}
+            />
+          </label>
+
+          {loading ? (
+            <p className="muted">Cargando…</p>
+          ) : all.length === 0 ? (
+            <p className="muted">No hay usuarios activos.</p>
+          ) : matches.length > 0 ? (
+            <div className="user-list user-list--filtered">
+              {matches.map((u) => (
+                <button key={u.id} type="button" className="user-chip" onClick={() => setSelected(u)}>
+                  <span className="user-chip__name">{u.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : sinCoincidencias ? (
+            <>
+              <p className="muted">Ningún usuario coincide con «{query.trim()}».</p>
+              {/* Salida de emergencia, y aparece SOLO cuando la busqueda ya fallo:
+                  no enseña a nadie de entrada, pero nadie se queda fuera por no
+                  recordar como se escribe su nombre. */}
+              <button type="button" className="link-recover" onClick={() => setShowAll(true)}>
+                Ver todos los usuarios
               </button>
-            ))}
-            {users.length === 0 && <p className="muted">No hay usuarios activos.</p>}
-          </div>
+            </>
+          ) : (
+            <p className="muted">Escribe tu nombre para continuar.</p>
+          )}
         </div>
       </div>
     )
@@ -92,7 +149,9 @@ export function Login() {
         >
           {busy ? 'Entrando...' : 'Entrar'}
         </button>
-        {error && <p className="error">{error}</p>}
+        {/* role="alert": sin el, "PIN incorrecto" y la espera por intentos fallidos
+            son mudos para un lector de pantalla y el usuario no sabe por que no entra. */}
+        {error && <p className="error" role="alert">{error}</p>}
         {selected.role === ROLES.OWNER && (
           <button className="link-recover" onClick={() => { setRecovering(true); setError('') }}>
             ¿Olvidaste tu PIN?
@@ -161,7 +220,7 @@ function RecoverPin({ user, onCancel, onDone }) {
           </button>
         </>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </>
   )
 }
