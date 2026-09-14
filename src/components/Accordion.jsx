@@ -79,19 +79,25 @@ export function Accordion({ storageKey = null, children }) {
 // altura necesita el contenido en el arbol. Para que lo cerrado no quede
 // navegable con el teclado ni lo lea un lector de pantalla, el CSS aplica
 // `visibility:hidden` al terminar de cerrarse (y `aria-hidden` lo acompaña).
+// `layout` es la clase del contenedor del contenido. Por defecto `home-grid` (la
+// rejilla de dos columnas del menu de Inicio), asi que quien ya lo usaba no cambia.
+// Se parametriza porque no todo lo que se pliega son baldosas cuadradas: los
+// reportes son fichas anchas con su descripcion y sus dos botones, y en dos
+// columnas de ~170 px no se podrian leer.
 export function AccordionSection({
   id,
   label,
   collapsible = false,
   open = false,
   onToggle = null,
+  layout = 'home-grid',
   children
 }) {
   if (!collapsible) {
     return (
       <section className="home-section">
         <h3 className="home-section__label">{label}</h3>
-        <div className="home-grid">{children}</div>
+        <div className={layout}>{children}</div>
       </section>
     )
   }
@@ -113,7 +119,7 @@ export function AccordionSection({
       </h3>
       <div id={panelId} className="acc__panel" role="region" aria-hidden={!open}>
         <div className="acc__panel-inner">
-          <div className="home-grid">{children}</div>
+          <div className={layout}>{children}</div>
         </div>
       </div>
     </section>
