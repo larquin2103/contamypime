@@ -518,9 +518,14 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* El cargo es lo UNICO que distingue dos usuarios que se llaman igual, asi que
+   tiene que poder leerse: con `--muted` daba 3.96:1 en oscuro y 4.36:1 en claro,
+   por debajo del 4.5:1 que exige un texto normal de 12.8 px (medido, no estimado).
+   La jerarquia frente al nombre la da el PESO -el nombre va en 600- y el tamaño,
+   no un gris que no se ve. */
 .user-chip__role {
   font-size: 0.8rem;
-  color: var(--muted);
+  color: var(--text);
 }
 
 /* ----- Lists ----- */

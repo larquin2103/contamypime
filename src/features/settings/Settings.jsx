@@ -41,8 +41,13 @@ export function Settings() {
   // Cada seccion sigue siendo LA MISMA y con sus mismas compuertas: lo unico que
   // cambia es dentro de que caja se pinta. Aqui los gates viven DENTRO de cada
   // componente (devuelven null sin su modulo), asi que el acordeon no puede saber
-  // cuales se van a pintar; por eso cada grupo lleva al menos DOS secciones que
-  // se ven siempre, y ninguno puede quedar como una categoria vacia.
+  // cuales se van a pintar; por eso cada grupo lleva AL MENOS UNA seccion BASE (sin
+  // modulo) y ninguno puede quedar como una categoria vacia. Comprobado una a una:
+  // Monedas (Rates, Converter), Turno (Semaforo, Denominaciones, WhatsApp), Negocio
+  // (Areas, Unidades) y Sistema (Respaldo, Errores, Avisos, Seguridad, Licencia) son
+  // base; Permisos depende de UNA sola -SellerPermsSection-, porque Administrativo,
+  // Mayorista y Tableros SI estan gateadas. Si algun dia esa se gatea, este grupo se
+  // queda vacio: es la unica que no se puede mover de aqui sin mirar.
   return (
     <div className="screen">
       <h2>Ajustes</h2>

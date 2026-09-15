@@ -132,12 +132,18 @@ export function AccordionSection({
   // Auditoria se identifican por el nombre del vendedor ("Dueño", "Maria Perez"), asi
   // que se sanea aqui, en el componente, y no en cada llamador. Los ids que ya se
   // usaban -fechas y claves de una palabra- no tienen espacios: salen igual.
-  const panelId = `acc-panel-${String(id).replace(/\s+/g, '-')}`
+  const clave = String(id).replace(/\s+/g, '-')
+  const panelId = `acc-panel-${clave}`
+  // Un `role="region"` SIN nombre accesible no sirve de nada: el lector de
+  // pantalla anuncia "region" a secas y quien navega por regiones no sabe en cual
+  // esta. Se le da como nombre su propia cabecera.
+  const headId = `acc-head-${clave}`
   return (
     <section className={`acc__item ${open ? 'is-open' : ''} ${badge ? `has-badge has-badge--${badgeTone}` : ''}`}>
       <h3 className="acc__heading">
         <button
           type="button"
+          id={headId}
           className="acc__head"
           aria-expanded={open}
           aria-controls={panelId}
@@ -148,7 +154,7 @@ export function AccordionSection({
           <ChevronDown size={18} className="acc__chev" aria-hidden="true" />
         </button>
       </h3>
-      <div id={panelId} className="acc__panel" role="region" aria-hidden={!open}>
+      <div id={panelId} className="acc__panel" role="region" aria-labelledby={headId} aria-hidden={!open}>
         <div className="acc__panel-inner">
           <div className={layout}>{children}</div>
         </div>

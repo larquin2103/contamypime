@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { PinInput } from '../../components/PinInput'
-import { ROLES } from '../../db/constants'
+import { ROLES, ROLE_LABELS } from '../../db/constants'
 import { normalize } from '../../lib/search'
 import { lockRemaining, recordFail, clearFails, formatWait } from '../../lib/lockout'
 
@@ -82,6 +82,27 @@ export function Login() {
   const q = normalize(query)
   const matches = showAll ? all : (q ? all.filter((u) => normalize(u.name).includes(q)) : [])
   const sinCoincidencias = !!q && !showAll && matches.length === 0
+  // Nombres REPETIDOS entre los usuarios activos. El nombre no es unico ni esta
+  // indexado (`users: 'id, role, active'`), y una fusion de sync puede dejar dos
+  // "Vendedor": dos fichas identicas, y quien toca la equivocada teclea su PIN
+  // contra OTRA cuenta -fallo que cuenta para el bloqueo de esa otra cuenta, no
+  // para la suya-. A esos y SOLO a esos se les pinta el cargo al lado, que es lo
+  // que los distingue. Sin repetidos -el caso normal- la ficha no cambia.
+  //
+  // SIN `useMemo` a proposito: por encima hay un `return` temprano (la pantalla de
+  // recuperacion), y un hook por debajo de un return condicional rompe el orden de
+  // hooks de React. No se pierde nada: `all` ya se reconstruye en cada render.
+  const repetidos = (() => {
+    const vistos = new Set()
+    const dobles = new Set()
+    for (const u of all) {
+      const k = normalize(u.name)
+      if (vistos.has(k)) dobles.add(k)
+      else vistos.add(k)
+    }
+    return dobles
+  })()
+
 
   // UNA sola tarjeta con los dos campos del formulario (Usuario y PIN), como
   // cualquier pantalla de acceso: asi se lee de un golpe que esto es el login y que
@@ -132,6 +153,9 @@ export function Login() {
               {matches.map((u) => (
                 <button key={u.id} type="button" className="user-chip" onClick={() => setSelected(u)}>
                   <span className="user-chip__name">{u.name}</span>
+                  {repetidos.has(normalize(u.name)) && (
+                    <span className="user-chip__role">{ROLE_LABELS[u.role]}</span>
+                  )}
                 </button>
               ))}
             </div>
