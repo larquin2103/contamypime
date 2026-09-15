@@ -3446,7 +3446,12 @@ input[type='file'] {
 }
 /* La etiqueta del dia marcado va en `--danger-strong` y no en `--danger`: a 12 px
    en negrita necesita 4.5:1, y en tema claro `--danger` se queda en 4.14:1 sobre
-   el fondo de la cabecera abierta. Medido, no estimado. */
-.acc__item.has-badge .acc__label {
+   el fondo de la cabecera abierta. Medido, no estimado.
+   Cuelga del TONO (`--bad`) y no de la mera presencia del badge: el contador de
+   registros de un dia de Auditoria lleva badge y NO es un aviso, asi que no se
+   pinta en rojo. `bad` es el tono por defecto, de modo que lo que ya usaba badge
+   -el dia con trabajo pendiente de Entregas y el descubierto de los tableros-
+   sigue exactamente igual. */
+.acc__item.has-badge--bad .acc__label {
   color: var(--danger-strong);
 }

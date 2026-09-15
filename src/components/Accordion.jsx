@@ -93,6 +93,11 @@ export function Accordion({ storageKey = null, defaultOpenId = null, children })
 // algo por cobrar o sin cerrar), pero no sabe de entregas: recibe lo que se le
 // quiera mostrar. Se pinta en los DOS modos (plegable y suelta). Sin `badge` la
 // cabecera es exactamente la de siempre.
+//
+// El TONO viaja en la clase (`has-badge--bad`, `has-badge--muted`...) porque el
+// rojo de la etiqueta cuelga de el: un aviso de trabajo pendiente se pinta en rojo,
+// pero un contador de registros de un historial NO es un aviso y no debe gritar.
+// `bad` sigue siendo el default, asi que quien ya usaba `badge` no cambia.
 export function AccordionSection({
   id,
   label,
@@ -121,9 +126,15 @@ export function AccordionSection({
     )
   }
 
-  const panelId = `acc-panel-${id}`
+  // El `id` de la seccion viaja al DOM (`id` del panel y `aria-controls` del boton), y
+  // ahi NO puede llevar espacios: un `aria-controls` con un espacio se lee como DOS
+  // referencias y el lector de pantalla no encuentra ninguna. Los grupos de Turnos en
+  // Auditoria se identifican por el nombre del vendedor ("Dueño", "Maria Perez"), asi
+  // que se sanea aqui, en el componente, y no en cada llamador. Los ids que ya se
+  // usaban -fechas y claves de una palabra- no tienen espacios: salen igual.
+  const panelId = `acc-panel-${String(id).replace(/\s+/g, '-')}`
   return (
-    <section className={`acc__item ${open ? 'is-open' : ''} ${badge ? 'has-badge' : ''}`}>
+    <section className={`acc__item ${open ? 'is-open' : ''} ${badge ? `has-badge has-badge--${badgeTone}` : ''}`}>
       <h3 className="acc__heading">
         <button
           type="button"

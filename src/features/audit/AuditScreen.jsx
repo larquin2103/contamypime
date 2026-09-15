@@ -17,7 +17,8 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney } from '../../lib/currency'
-import { formatDateTime } from '../../lib/dates'
+import { formatDateTime, localDay, dayLabel } from '../../lib/dates'
+import { Accordion, AccordionSection as Section } from '../../components/Accordion'
 import { cleanQty } from '../../lib/qty'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { SHIFT_STATUS, locationLabel, areaLabel, COCINA, DELIVERY_RESULT, FICHA_AUDIT_LABELS, RECIPE_KINDS, recipeKind } from '../../db/constants'
@@ -47,6 +48,51 @@ function inRange(iso, from, to) {
   if (from && d < from) return false
   if (to && d > to) return false
   return true
+}
+
+// Agrupacion por DIA de una lista de Auditoria. Las siete pestañas planas (ventas,
+// inventario, precios, bajas, elaboracion, entregas y fichas) son LA MISMA forma -una
+// lista de registros con su fecha-, asi que se resuelve UNA vez y no siete.
+//
+// Es PRESENTACION y nada mas: recibe las filas YA filtradas y YA recortadas por la
+// pantalla. Aqui no se filtra, no se reordena, no se recorta y no se lee nada. Las
+// siete consultas devuelven de la mas nueva a la mas vieja (comprobado repo a repo) y
+// un Map conserva ese orden de insercion, asi que los dias salen del mas reciente al
+// mas antiguo sin volver a ordenar, y cada fila se pinta con el MISMO JSX de antes.
+//
+// El dia es el del NEGOCIO (`localDay`), no el UTC: un registro de las 8:51 p.m.
+// pertenece al dia en que ocurrio. OJO -y es preexistente-: el filtro Desde/Hasta de
+// arriba (`inRange`) SI compara el dia UTC, asi que en Cuba un registro de la noche
+// cae fuera de un rango que termine ese mismo dia. Ese desajuste ya existia sin
+// agrupacion; NO se toca aqui, que es logica.
+//
+// El contador de la cabecera va en GRIS (`muted`): en un historial inmutable no hay
+// nada "pendiente", asi que la cabecera informa, no avisa. El rojo se reserva para lo
+// que reclama trabajo (el dia con entregas por cobrar, el descubierto del tablero).
+function DayGroups({ rows, empty, children }) {
+  const days = useMemo(() => {
+    const map = new Map()
+    for (const r of rows) {
+      const day = localDay(r.createdAt)
+      if (!map.has(day)) map.set(day, [])
+      map.get(day).push(r)
+    }
+    return [...map.entries()].map(([day, items]) => ({ day, items }))
+  }, [rows])
+
+  if (rows.length === 0) return <div className="list"><p className="muted">{empty}</p></div>
+
+  // El dia mas reciente arranca ABIERTO. SIN `storageKey`: recordar un dia concreto no
+  // sirve, porque mañana ese dia ya no es el de arriba.
+  return (
+    <Accordion defaultOpenId={days[0]?.day}>
+      {days.map((g) => (
+        <Section key={g.day} id={g.day} label={dayLabel(g.day)} badge={g.items.length} badgeTone="muted" layout="list">
+          {g.items.map(children)}
+        </Section>
+      ))}
+    </Accordion>
+  )
 }
 
 // Icono de cada fila de la pestaña de elaboración (plato, trago o abastecimiento).
@@ -209,8 +255,8 @@ export function AuditScreen() {
       </div>
 
       {tab === 'del' && (
-        <div className="list">
-          {deletionsF.map((d) => (
+        <DayGroups rows={deletionsF} empty="Sin bajas de productos en el rango.">
+          {(d) => (
             <div key={d.id} className="audit-row">
               <div className="audit-row__head">
                 <strong>{d.name}{d.code ? ` · ${d.code}` : ''}</strong>
@@ -220,9 +266,8 @@ export function AuditScreen() {
                 Eliminado del catálogo · {userName[d.userId] || 'dueño'}{d.note ? ` · ${d.note}` : ''}
               </span>
             </div>
-          ))}
-          {deletionsF.length === 0 && <p className="muted">Sin bajas de productos en el rango.</p>}
-        </div>
+          )}
+        </DayGroups>
       )}
 
       {tab === 'shifts' && (
@@ -236,8 +281,8 @@ export function AuditScreen() {
       )}
 
       {tab === 'sales' && (
-        <div className="list">
-          {salesF.map((s) => (
+        <DayGroups rows={salesF} empty="Sin ventas en el rango.">
+          {(s) => (
             <div key={s.id} className="audit-row">
               <div className="audit-row__head">
                 <strong>{m(s.totalBase)} · {s.paymentMethod === 'mixed' ? 'Mixto' : s.paymentMethod === 'transfer' ? 'Transferencia' : 'Efectivo'}</strong>
@@ -248,14 +293,13 @@ export function AuditScreen() {
                 {s.paymentMethod === 'transfer' && s.transferReference ? ` · ref ${s.transferReference}` : ''}
               </span>
             </div>
-          ))}
-          {salesF.length === 0 && <p className="muted">Sin ventas en el rango.</p>}
-        </div>
+          )}
+        </DayGroups>
       )}
 
       {tab === 'inv' && (
-        <div className="list">
-          {movesF.map((x) => (
+        <DayGroups rows={movesF} empty="Sin movimientos en el rango.">
+          {(x) => (
             <div key={x.id} className="audit-row">
               <div className="audit-row__head">
                 <strong>{MOVE_LABEL[x.type] || x.type} · {prodName[x.productId] || 'producto'}</strong>
@@ -265,14 +309,13 @@ export function AuditScreen() {
                 {formatDateTime(x.createdAt)} · {locationLabel(x.location)} · {userName[x.userId] || '—'}{x.note ? ` · ${x.note}` : ''}
               </span>
             </div>
-          ))}
-          {movesF.length === 0 && <p className="muted">Sin movimientos en el rango.</p>}
-        </div>
+          )}
+        </DayGroups>
       )}
 
       {tab === 'prices' && (
-        <div className="list">
-          {pricesF.map((p) => (
+        <DayGroups rows={pricesF} empty="Sin cambios de precio en el rango.">
+          {(p) => (
             <div key={p.id} className="audit-row">
               <div className="audit-row__head">
                 <strong>{prodName[p.productId] || 'producto'}</strong>
@@ -283,14 +326,13 @@ export function AuditScreen() {
                 {' '}· {userName[p.userId] || '—'}{p.note ? ` · ${p.note}` : ''}
               </span>
             </div>
-          ))}
-          {pricesF.length === 0 && <p className="muted">Sin cambios de precio en el rango.</p>}
-        </div>
+          )}
+        </DayGroups>
       )}
 
       {tab === 'cocina' && canBoards && (
-        <div className="list">
-          {cocinaF.map((row) => (
+        <DayGroups rows={cocinaF} empty={`Sin actividad de ${canKitchen ? 'cocina' : 'coctelería'} en el rango.`}>
+          {(row) => (
             <div key={row.id} className="audit-row">
               <div className="audit-row__head">
                 <strong>{ROW_ICON[row.kind] || '📦 '}{row.title}</strong>
@@ -298,16 +340,13 @@ export function AuditScreen() {
               </div>
               <span className="muted">{row.detail} · {userName[row.userId] || '—'}</span>
             </div>
-          ))}
-          {cocinaF.length === 0 && (
-            <p className="muted">Sin actividad de {canKitchen ? 'cocina' : 'coctelería'} en el rango.</p>
           )}
-        </div>
+        </DayGroups>
       )}
 
       {tab === 'remesas' && canRemesas && (
-        <div className="list">
-          {remesaF.map((row) => (
+        <DayGroups rows={remesaF} empty="Sin actividad de entregas en el rango.">
+          {(row) => (
             <div key={row.id} className="audit-row">
               <div className="audit-row__head">
                 <strong>{row.title}</strong>
@@ -315,17 +354,16 @@ export function AuditScreen() {
               </div>
               <span className="muted">{row.detail} · {userName[row.userId] || '—'}</span>
             </div>
-          ))}
-          {remesaF.length === 0 && <p className="muted">Sin actividad de entregas en el rango.</p>}
-        </div>
+          )}
+        </DayGroups>
       )}
 
       {/* Modulo 'fichas': quien creo, aprobo, reviso o elimino cada ficha de
           costo, y cuando. Una ficha aprobada es el documento con el que se
           sostuvo un precio, asi que su rastro importa tanto como el precio. */}
       {tab === 'fichas' && canFichas && (
-        <div className="list">
-          {fichaF.map((row) => (
+        <DayGroups rows={fichaF} empty="Sin actividad de fichas de costo en el rango.">
+          {(row) => (
             <div key={row.id} className="audit-row">
               <div className="audit-row__head">
                 <strong>{row.title}</strong>
@@ -333,9 +371,8 @@ export function AuditScreen() {
               </div>
               <span className="muted">{row.detail} · {userName[row.userId] || '—'}</span>
             </div>
-          ))}
-          {fichaF.length === 0 && <p className="muted">Sin actividad de fichas de costo en el rango.</p>}
-        </div>
+          )}
+        </DayGroups>
       )}
     </div>
   )
@@ -428,15 +465,28 @@ function ShiftsAudit({ shifts, sales, cashMoves, userName, baseCurrency }) {
         </label>
       </div>
 
-      {groups.map((g) => {
-        const totalG = g.items.reduce((a, s) => a + (salesByShift[s.id]?.total || 0), 0)
-        return (
-          <section key={g.label} className="audit-group">
-            <div className="audit-row__head">
-              <strong>{groupBy === 'date' ? `📅 ${g.label}` : `👤 ${g.label}`}</strong>
-              <span className="muted">{g.items.length} turno(s) · vendido {m(totalG)}</span>
-            </div>
-            <div className="list">
+      {/* Los grupos son los MISMOS de siempre -los arma el useMemo de arriba, que no se
+          toca-; lo unico que cambia es que se pliegan uno a uno en vez de salir
+          todos abiertos a la vez. La cabecera conserva su etiqueta y su resumen, que es
+          justo lo que hay que ver con el grupo cerrado. `key={groupBy}` remonta el
+          acordeon al cambiar de Vendedor a Fecha: sin el, las claves viejas ya no
+          existirian y quedaria todo cerrado. */}
+      <Accordion key={groupBy} defaultOpenId={groups[0]?.label}>
+        {groups.map((g) => {
+          const totalG = g.items.reduce((a, s) => a + (salesByShift[s.id]?.total || 0), 0)
+          return (
+            // El resumen se acorta ("11 turnos" en vez de "11 turno(s) · vendido"):
+            // medido a 360 px, el texto largo empujaba tanto que un nombre como "Maria
+            // de los Angeles" se recortaba a "MAR...". En Auditoria saber DE QUIEN es el
+            // grupo pesa mas que el importe, y el importe se sigue viendo entero.
+            <Section
+              key={g.label}
+              id={g.label}
+              label={groupBy === 'date' ? `📅 ${g.label}` : `👤 ${g.label}`}
+              badge={`${g.items.length} turno${g.items.length === 1 ? '' : 's'} · ${m(totalG)}`}
+              badgeTone="muted"
+              layout="list"
+            >
               {g.items.map((s) => {
                 const sl = salesByShift[s.id] || { count: 0, total: 0 }
                 const isOpen = open === s.id
@@ -492,10 +542,10 @@ function ShiftsAudit({ shifts, sales, cashMoves, userName, baseCurrency }) {
                   </div>
                 )
               })}
-            </div>
-          </section>
-        )
-      })}
+            </Section>
+          )
+        })}
+      </Accordion>
       {groups.length === 0 && <p className="muted">Sin turnos cerrados en el rango.</p>}
     </>
   )
