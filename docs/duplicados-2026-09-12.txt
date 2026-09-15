@@ -1,0 +1,341 @@
+========================================================================================================
+GRUPOS DELICADOS (14) - dos o mas fichas CON historial: traspasar existencia antes de dar de baja
+========================================================================================================
+  ARROZ   [Alimentos]
+      CONSERVAR   Arroz                        cod=AR1   exist=    8  movs= 25  ventas= 18  creado=2026-08-15  id=f3704859
+      dar de baja Arroz                        cod=AR1   exist=    0  movs=  8  ventas=  7  creado=2026-08-15  id=1f4dde01
+  AZUCAR   [Alimentos]
+      CONSERVAR   Azúcar                       cod=AZ1   exist=    1  movs= 20  ventas= 17  creado=2026-08-15  id=b48f1859
+      dar de baja Azucar                       cod=-     exist=    0  movs=  8  ventas=  7  creado=2026-09-10  id=efc6cd47
+      dar de baja Azúcar                       cod=-     exist=    8  movs=  3  ventas=  2  creado=2026-09-11  id=aaae0ad0
+  BOMBON DE COCO   [Confituras]
+      CONSERVAR   Bombón de Coco               cod=C005  exist=  202  movs= 11  ventas=  7  creado=2026-08-15  id=704118c8
+      dar de baja Bombón de Coco               cod=C005  exist=  156  movs=  4  ventas=  2  creado=2026-08-15  id=65c14cde
+  CHICHARO   [Alimentos]
+      CONSERVAR   Chícharo                     cod=CH1   exist=    5  movs= 10  ventas=  5  creado=2026-08-15  id=7983ea46
+      dar de baja Chícharo                     cod=CH1   exist=    2  movs=  5  ventas=  4  creado=2026-08-15  id=65bfc417
+  CHUPA CHUPA   [Confituras]
+      CONSERVAR   Chupa Chupa                  cod=C003  exist=  248  movs= 18  ventas= 14  creado=2026-08-15  id=a4c9d6fd
+      dar de baja Chupa Chupa                  cod=C003  exist=  191  movs=  3  ventas=  1  creado=2026-08-15  id=875a285a
+  GARBANZO   [Alimentos]
+      CONSERVAR   Garbanzo                     cod=GA1   exist=    7  movs=  5  ventas=  1  creado=2026-08-15  id=d850d439
+      dar de baja Garbanzo                     cod=GA1   exist=    2  movs=  2  ventas=  1  creado=2026-08-15  id=05d4d136
+  HARINA   [Alimentos]
+      CONSERVAR   Harina                       cod=HA1   exist=    1  movs=  9  ventas=  5  creado=2026-08-15  id=fb1f1865
+      dar de baja Harina                       cod=HA1   exist=    3  movs=  6  ventas=  5  creado=2026-08-15  id=9d874a8a
+      dar de baja Harina                       cod=-     exist=   10  movs=  1  ventas=  0  creado=2026-09-11  id=d9e3c77c
+  INTIMA   [Aseo]
+      CONSERVAR   Intima                       cod=IN1   exist=    4  movs=  6  ventas=  4  creado=2026-08-15  id=19ef9882
+      dar de baja Intima                       cod=IN1   exist=    0  movs=  5  ventas=  2  creado=2026-08-15  id=c79da11e
+  JABA NAYLON   [sin categoria]
+      CONSERVAR   Jaba naylon                  cod=-     exist=   30  movs=  2  ventas=  1  creado=2026-09-11  id=ebddf343
+      dar de baja Jaba   Naylon                cod=-     exist=   50  movs=  1  ventas=  0  creado=2026-09-11  id=ff32d1d9
+  LOMO NATURAL   [Cárnicos]
+      CONSERVAR   Lomo Natural                 cod=CA01  exist=    0  movs= 26  ventas= 20  creado=2026-08-15  id=05e85435
+      dar de baja Lomo Natural                 cod=CA01  exist=    4  movs=  1  ventas=  0  creado=2026-08-15  id=3128c800
+  POLLO   [Cárnicos]
+      CONSERVAR   Pollo                        cod=CA03  exist=    0  movs=  4  ventas=  2  creado=2026-08-15  id=9645eb91
+      dar de baja Pollo                        cod=-     exist=    4  movs=  1  ventas=  0  creado=2026-09-11  id=8fc2ffff
+  REFRESCO DE POLVITO GOLDEN   [sin categoria]
+      CONSERVAR   Refresco de polvito Golden   cod=-     exist=    1  movs=  2  ventas=  1  creado=2026-09-10  id=07ea5ff8
+      dar de baja Refresco de polvito Golden   cod=-     exist=    3  movs=  1  ventas=  0  creado=2026-09-10  id=c0d0c553
+  SALTINAS   [Confituras]
+      CONSERVAR   Saltinas                     cod=G020  exist=   53  movs=  8  ventas=  3  creado=2026-08-15  id=d8247409
+      dar de baja Saltinas                     cod=G020  exist=   26  movs=  2  ventas=  1  creado=2026-08-15  id=666d46a9
+  SERVILLETAS   [Aseo]
+      CONSERVAR   Servilletas                  cod=SE1   exist=    2  movs=  3  ventas=  0  creado=2026-08-15  id=cd1f741e
+      dar de baja Servilletas                  cod=SE1   exist=    4  movs=  2  ventas=  0  creado=2026-08-15  id=42ffe1ed
+
+========================================================================================================
+GRUPOS SEGUROS (96) - solo una ficha (o ninguna) tiene historial
+========================================================================================================
+  ACEITE
+      CONSERVAR   Aceite                       cod=AC1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a6d07be0
+      dar de baja Aceite                       cod=AC1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e8029b17
+  BARKAKE VAINILLA
+      CONSERVAR   Barkake Vainilla             cod=P002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=3c9da578
+      dar de baja Barkake Vainilla             cod=P002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e725dd0b
+  CARAMELO ALOKADOS
+      CONSERVAR   Caramelo Alokados            cod=C002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=5f15eba0
+      dar de baja Caramelo Alokados            cod=C002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=9fa365a1
+  CARAMELO LECHE
+      CONSERVAR   Caramelo Leche               cod=C001  exist=   41  movs= 19  ventas= 17  creado=2026-08-15  id=b6e8484c
+      dar de baja Caramelo Leche               cod=C001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=6c4d42cb
+  CEBOLLA
+      CONSERVAR   Cebolla                      cod=SA4   exist=    1  movs=  4  ventas=  1  creado=2026-08-15  id=1e3a8276
+      dar de baja Cebolla                      cod=SA4   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1a987eb1
+  CEPILLO DIENTES
+      CONSERVAR   Cepillo Dientes              cod=DI1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=0dbbf1b7
+      dar de baja Cepillo Dientes              cod=DI1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=9a7c7be5
+  CERVEZA BUCANERO
+      CONSERVAR   Cerveza Bucanero             cod=CE03  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=190e7806
+      dar de baja Cerveza Bucanero             cod=CE03  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=b8906a06
+  CERVEZA FRIA
+      CONSERVAR   Cerveza Fría                 cod=CE02  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=098a113f
+      dar de baja Cerveza Fría                 cod=CE02  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=54a74541
+  CERVEZA SAGRES
+      CONSERVAR   Cerveza Sagres               cod=CE04  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=36e4b25e
+      dar de baja Cerveza Sagres               cod=CE04  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=778cd814
+  CHULETA
+      CONSERVAR   Chuleta                      cod=CA05  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=38ece514
+      dar de baja Chuleta                      cod=CA05  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=5af27fa9
+  COLONIA AQUA
+      CONSERVAR   Colonia Aqua                 cod=PE1   exist=    1  movs=  8  ventas=  4  creado=2026-08-15  id=248696f3
+      dar de baja Colonia Aqua                 cod=PE1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=fc4b9f26
+  CONSUME DE POLLO
+      CONSERVAR   Consumé de pollo             cod=-     exist=   13  movs=  6  ventas=  2  creado=2026-09-04  id=72e9cb6b
+      dar de baja Consumé de pollo             cod=S009  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=4af46549
+  CONSUME DE RES
+      CONSERVAR   Consumé  de res              cod=SA8   exist=   10  movs=  6  ventas=  2  creado=2026-08-15  id=0c3c5d06
+      dar de baja Consumé  de res              cod=SA8   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1f3ff385
+  COPITA
+      CONSERVAR   Copita                       cod=CH01  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=0054670a
+      dar de baja Copita                       cod=CH01  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=3582b8d6
+  CUADRITO DE POLLO
+      CONSERVAR   Cuadrito de Pollo            cod=SA7   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=9b1b2ecb
+      dar de baja Cuadrito de Pollo            cod=SA7   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=be943952
+  DESODORANTE
+      CONSERVAR   Desodorante                  cod=DE1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=0973602e
+      dar de baja Desodorante                  cod=DE1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=297cca67
+  DETERGENTE HOGAR
+      CONSERVAR   Detergente Hogar             cod=DT1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=24044cce
+      dar de baja Detergente Hogar             cod=DT1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=8dd91754
+  DETERGENTE MARWA
+      CONSERVAR   Detergente Marwa             cod=DT2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=0a5ca894
+      dar de baja Detergente Marwa             cod=DT2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1e8ccac5
+  FRAZADA DE PISO
+      CONSERVAR   Frazada de piso              cod=-     exist=    0  movs=  6  ventas=  2  creado=2026-09-03  id=8c3c0d63
+      dar de baja Frazada de piso              cod=CO1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1bdb8754
+  FRIJOL
+      CONSERVAR   Frijol                       cod=FR1   exist=    5  movs= 16  ventas= 12  creado=2026-08-15  id=a340defc
+      dar de baja Frijol                       cod=FR1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=4d332ff6
+  GALLETA NEZKA
+      CONSERVAR   Galleta Nezka                cod=G021  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=123e6118
+      dar de baja Galleta Nezka                cod=G021  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a926d358
+  GALLETAS BISKIATO
+      CONSERVAR   Galletas biskiato            cod=G0041 exist=   34  movs= 15  ventas= 11  creado=2026-09-03  id=69828961
+      dar de baja Galletas biskiato            cod=G023  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=349853d4
+  GALLETAS BIZCOITO
+      CONSERVAR   Galletas Bizcoito            cod=G005  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=04682c77
+      dar de baja Galletas Bizcoito            cod=G005  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=99257b92
+  GALLETAS BROWNIES
+      CONSERVAR   Galletas Brownies            cod=G002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1a3f862d
+      dar de baja Galletas Brownies            cod=G002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1da7e766
+  GALLETAS BUTTER
+      CONSERVAR   Galletas butter              cod=G0034 exist=   36  movs= 10  ventas=  6  creado=2026-09-03  id=72431038
+      dar de baja Galletas Butter              cod=G009  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=3fd211f8
+  GALLETAS CHOCOPACK
+      CONSERVAR   Galletas Chocopack           cod=G003  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=0a04d6f8
+      dar de baja Galletas Chocopack           cod=G003  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=6396d22e
+  GALLETAS GOLOZETAS
+      CONSERVAR   Galletas golozetas           cod=G022  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=2f50bc4e
+      dar de baja Galletas golozetas           cod=G022  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a30dadc8
+  GALLETAS MANI
+      CONSERVAR   Galletas Maní                cod=G012  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=06c0a53f
+      dar de baja Galletas Maní                cod=G012  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=df6b3c11
+  GALLETAS MILK
+      CONSERVAR   Galletas milk                cod=G034  exist=    6  movs= 37  ventas= 30  creado=2026-09-03  id=856cb6ea
+      dar de baja Galletas Milk                cod=G008  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=6870dc1d
+  GALLETAS MONMO
+      CONSERVAR   Galletas Monmo               cod=G007  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1d861112
+      dar de baja Galletas Monmo               cod=G007  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=de05c613
+  GALLETAS MUU
+      CONSERVAR   Galletas muu                 cod=G036  exist=    7  movs=  7  ventas=  4  creado=2026-09-03  id=15acb284
+      dar de baja Galletas Muu                 cod=G024  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=ec6e3272
+  GALLETAS PARADISE
+      CONSERVAR   Galletas paradise            cod=-     exist=   19  movs=  5  ventas=  4  creado=2026-09-07  id=e5d2218c
+      dar de baja Galletas Paradise            cod=G001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=33fc2ab6
+  GALLETAS YUMMY
+      CONSERVAR   Galletas yummy               cod=G040  exist=    4  movs= 12  ventas=  9  creado=2026-09-03  id=64f1c055
+      dar de baja Galletas Yummy               cod=G030  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=9f52bc21
+  GELATINA
+      CONSERVAR   Gelatina                     cod=GE1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=119898b2
+      dar de baja Gelatina                     cod=GE1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=d65484c0
+  GOYA
+      CONSERVAR   Goya                         cod=SA3   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=77c14dc4
+      dar de baja Goya                         cod=SA3   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e1a34906
+  GUISANTE
+      CONSERVAR   Guisante                     cod=GU1   exist=    5  movs=  4  ventas=  1  creado=2026-08-15  id=a0e661e1
+      dar de baja Guisante                     cod=GU1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=58a1dac9
+  HUEVO SORPRESA
+      CONSERVAR   Huevo sorpresa               cod=CH05  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=393fedc6
+      dar de baja Huevo sorpresa               cod=CH05  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=cab2ee1e
+  INCIENSO
+      CONSERVAR   Incienso                     cod=IC1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=3140a821
+      dar de baja Incienso                     cod=IC1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=6ad98f0d
+  JABON DE BANO FLORONA
+      CONSERVAR   Jabón de Baño Florona        cod=JA3   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=573dbd92
+      dar de baja Jabón de Baño Florona        cod=JA3   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=72e3a960
+  JABON DE BANO NATURAL
+      CONSERVAR   Jabón de Baño Natural        cod=JA2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1f54df40
+      dar de baja Jabón de Baño Natural        cod=JA2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=742a4ec9
+  JABON DE LAVAR
+      CONSERVAR   Jabón de Lavar               cod=JA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=b22d86ea
+      dar de baja Jabón de Lavar               cod=JA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=bc9c7429
+  JAMONILLA DE POLLO
+      CONSERVAR   Jamonilla de Pollo           cod=LP1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=140d99b2
+      dar de baja Jamonilla de Pollo           cod=LP1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=323bd040
+  JAMONILLA DE RES
+      CONSERVAR   Jamonilla de Res             cod=LR2   exist=    0  movs=  4  ventas=  1  creado=2026-08-15  id=f89ace8b
+      dar de baja Jamonilla de Res             cod=LR2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=3b910edb
+  JUGO DE CAJITA
+      CONSERVAR   Jugo de Cajita               cod=J002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=460e61c5
+      dar de baja Jugo de Cajita               cod=J002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=9f12aed9
+  KETCHUP
+      CONSERVAR   Ketchup                      cod=K1    exist=    1  movs=  7  ventas=  4  creado=2026-08-15  id=ca04ca6d
+      dar de baja Ketchup                      cod=K1    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=b0fa8d8b
+  LAPICERO
+      CONSERVAR   Lapicero                     cod=LA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=2f13efa7
+      dar de baja Lapicero                     cod=LA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=bc0e6184
+  LECHE CONDENSADA
+      CONSERVAR   Leche condensada             cod=-     exist=   12  movs= 12  ventas=  8  creado=2026-09-03  id=07ebf772
+      dar de baja Leche Condensada             cod=C010  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=cfdf1943
+  LINTERNAS
+      CONSERVAR   Linternas                    cod=L001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=54105099
+      dar de baja Linternas                    cod=L001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=98cbd3d2
+  LUPIX FRESA
+      CONSERVAR   Lupix Fresa                  cod=P005  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=6232776a
+      dar de baja Lupix Fresa                  cod=P005  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a7d3a8c2
+  MAIZ
+      CONSERVAR   Maíz                         cod=LM3   exist=    2  movs=  6  ventas=  3  creado=2026-08-15  id=3e72ac99
+      dar de baja Maíz                         cod=LM3   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=6d63df6f
+  MALTA GUAJIRA
+      CONSERVAR   Malta Guajira                cod=M001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=082ce28a
+      dar de baja Malta Guajira                cod=M001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=f5e99d0c
+  MANTEQUILLA
+      CONSERVAR   Mantequilla                  cod=MA1   exist=    5  movs=  7  ventas=  3  creado=2026-08-15  id=4099c98e
+      dar de baja Mantequilla                  cod=MA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=adcace45
+  MARRANETAS DE 350
+      CONSERVAR   Marranetas de 350            cod=MR1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=c049619d
+      dar de baja Marranetas de 350            cod=MR1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e4700974
+  MAYONESA CHIQUITA
+      CONSERVAR   Mayonesa Chiquita            cod=MY2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=00320bf6
+      dar de baja Mayonesa Chiquita            cod=MY2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=ca89a10f
+  MAYONESA GRANDE
+      CONSERVAR   Mayonesa Grande              cod=MY1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=129c5a82
+      dar de baja Mayonesa Grande              cod=MY1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1e3ce8cf
+  MONEDA CHOCOLATE
+      CONSERVAR   Moneda Chocolate             cod=CH04  exist=    6  movs=  3  ventas=  0  creado=2026-08-15  id=93366c7e
+      dar de baja Moneda Chocolate             cod=CH04  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=28a9a8ba
+  NARANJA AGRIA
+      CONSERVAR   Naranja agria                cod=-     exist=   32  movs=  4  ventas=  1  creado=2026-09-03  id=6d733e59
+      dar de baja Naranja agria                cod=S007  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=64240f52
+  NATILLA
+      CONSERVAR   Natilla                      cod=NA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=66cfb63b
+      dar de baja Natilla                      cod=NA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=b778c417
+  NECTAR DE JUGO
+      CONSERVAR   Néctar de Jugo               cod=J001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=9db2eb46
+      dar de baja Néctar de Jugo               cod=J001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=bcef8843
+  OJITOS
+      CONSERVAR   Ojitos                       cod=CH02  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1dd350ae
+      dar de baja Ojitos                       cod=CH02  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a11d1045
+  OREGANO
+      CONSERVAR   Orégano                      cod=SA5   exist=    4  movs=  4  ventas=  0  creado=2026-08-15  id=7c12ff7a
+      dar de baja Orégano                      cod=SA5   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=bcb5f82b
+  PALETICA
+      CONSERVAR   Paletica                     cod=C006  exist=   88  movs=  3  ventas=  1  creado=2026-08-15  id=a5804153
+      dar de baja Paletica                     cod=C006  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e71c4eb8
+  PANQUESITOS ROYS
+      CONSERVAR   Panquesitos Roys             cod=P001  exist=   35  movs= 11  ventas=  6  creado=2026-08-15  id=8a235aa6
+      dar de baja Panquesitos Roys             cod=P001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e8b203b3
+  PAPEL SANITARIO
+      CONSERVAR   Papel Sanitario              cod=PA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a2e18950
+      dar de baja Papel Sanitario              cod=PA1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e94ef91e
+  PARRANDA
+      CONSERVAR   Parranda                     cod=CE01  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=16f869ed
+      dar de baja Parranda                     cod=CE01  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=4d7d7c9d
+  PASTILLITA
+      CONSERVAR   Pastillita                   cod=C007  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=000a68d1
+      dar de baja Pastillita                   cod=C007  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=89f86cf3
+  PECHUGA
+      CONSERVAR   Pechuga                      cod=CA04  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=684b16d1
+      dar de baja Pechuga                      cod=CA04  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a72f82bc
+  PELLY DE 100
+      CONSERVAR   Pelly de 100                 cod=P1    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=558d703c
+      dar de baja Pelly de 100                 cod=P1    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=f66d7cad
+  PELLY DE 400
+      CONSERVAR   Pelly de 400                 cod=P4    exist=    1  movs= 11  ventas=  7  creado=2026-08-15  id=2a237146
+      dar de baja Pelly de 400                 cod=P4    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=91b6433c
+  PELLY DE 800
+      CONSERVAR   Pelly de 800                 cod=P8    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=df7a1683
+      dar de baja Pelly de 800                 cod=P8    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e9751cf6
+  PELLY DE 900
+      CONSERVAR   Pelly de 900                 cod=P9    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1b630e3b
+      dar de baja Pelly de 900                 cod=P9    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=916b6b06
+  PETER BONA
+      CONSERVAR   Peter Bona                   cod=P006  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=5fda60e5
+      dar de baja Peter Bona                   cod=P006  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=94bd06c5
+  PETER COSMILK
+      CONSERVAR   Peter Cosmilk                cod=P008  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=166bb00e
+      dar de baja Peter Cosmilk                cod=P008  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=af292507
+  PETER ROXY
+      CONSERVAR   Peter Roxy                   cod=P007  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=0363d7ee
+      dar de baja Peter Roxy                   cod=P007  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=32f87412
+  PICADILLO POLLO
+      CONSERVAR   Picadillo Pollo              cod=CA06  exist=    7  movs= 12  ventas=  9  creado=2026-08-15  id=16dd63af
+      dar de baja Picadillo Pollo              cod=CA06  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=95561437
+  PISTAH
+      CONSERVAR   Pistah                       cod=P004  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=4b94a8ff
+      dar de baja Pistah                       cod=P004  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=fc57ef4c
+  PURE TOMATE
+      CONSERVAR   Puré Tomate                  cod=TO1   exist=    0  movs=  2  ventas=  1  creado=2026-08-15  id=2a91f4d7
+      dar de baja Puré Tomate                  cod=TO1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=9f40000e
+  REFRESCO COLA
+      CONSERVAR   Refresco Cola                cod=RE2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=d04584a7
+      dar de baja Refresco Cola                cod=RE2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=e468485a
+  REFRESCO DE POLVITO LUMINY
+      CONSERVAR   Refresco de polvito  Lumin   cod=-     exist=    0  movs=  2  ventas=  1  creado=2026-09-10  id=566edf96
+      dar de baja Refresco de polvito Luminy   cod=-     exist=    0  movs=  0  ventas=  0  creado=2026-09-10  id=47067781
+  REFRESCO LIMON
+      CONSERVAR   Refresco Limón               cod=RE4   exist=   -5  movs=  1  ventas=  0  creado=2026-08-15  id=1900b1a3
+      dar de baja Refresco Limón               cod=RE4   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=1cf78981
+  REFRESCO MATE
+      CONSERVAR   Refresco Mate                cod=RE5   exist=    2  movs= 13  ventas=  8  creado=2026-08-15  id=958a940c
+      dar de baja Refresco Mate                cod=RE5   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=3bb5535a
+  REFRESCO NARANJA
+      CONSERVAR   Refresco Naranja             cod=RE1   exist=    4  movs= 27  ventas= 24  creado=2026-08-15  id=aa508bc2
+      dar de baja Refresco Naranja             cod=RE1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=4a0a231b
+  REFRESCO PINA
+      CONSERVAR   Refresco Piña                cod=RE3   exist=    1  movs= 11  ventas=  7  creado=2026-08-15  id=fdfd2773
+      dar de baja Refresco Piña                cod=RE3   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a287ec2b
+  RON 5 SHOT
+      CONSERVAR   Ron 5 Shot                   cod=RO1   exist=   12  movs=  1  ventas=  0  creado=2026-08-15  id=299d2ef5
+      dar de baja Ron 5 Shot                   cod=RO1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=3f543f53
+  SAL
+      CONSERVAR   Sal                          cod=SAL1  exist=    2  movs= 10  ventas=  6  creado=2026-08-15  id=6fdda4d1
+      dar de baja Sal                          cod=-     exist=    0  movs=  0  ventas=  0  creado=2026-09-10  id=33a385f3
+  SAZON COMPLETO
+      CONSERVAR   Sazón Completo               cod=SA6   exist=   19  movs= 14  ventas= 10  creado=2026-08-15  id=0061d1da
+      dar de baja Sazón Completo               cod=SA6   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=eadb2764
+  SAZONING FRESKO
+      CONSERVAR   Sazoning Fresko              cod=SA2   exist=   23  movs= 37  ventas= 30  creado=2026-08-15  id=a5a1e4ab
+      dar de baja Sazoning Fresko              cod=SA2   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=8e5fe443
+  SORBETO BITE
+      CONSERVAR   Sorbeto Bite                 cod=S002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=316441ff
+      dar de baja Sorbeto Bite                 cod=S002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=c57ee061
+  SORBETO PARTY
+      CONSERVAR   Sorbeto Party                cod=S001  exist=   27  movs=  4  ventas=  1  creado=2026-08-15  id=4cf04159
+      dar de baja Sorbeto Party                cod=S001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=8aa5bace
+  TEIPE
+      CONSERVAR   Teipe                        cod=TE1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=53f1d3f3
+      dar de baja Teipe                        cod=TE1   exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=a9c68a31
+  TOCINETA
+      CONSERVAR   Tocineta                     cod=CA02  exist=    0  movs= 14  ventas= 11  creado=2026-08-15  id=ca69130f
+      dar de baja Tocineta                     cod=CA02  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=abb5dc14
+  VINAGRE
+      CONSERVAR   Vinagre                      cod=V1    exist=    9  movs=  5  ventas=  2  creado=2026-08-15  id=007be880
+      dar de baja Vinagre                      cod=V1    exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=276ea280
+  VINO TINTO
+      CONSERVAR   Vino Tinto                   cod=B001  exist=    0  movs=  4  ventas=  1  creado=2026-08-15  id=f9599c18
+      dar de baja Vino Tinto                   cod=B001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=29c1a0e1
+  VODKA
+      CONSERVAR   Vodka                        cod=B002  exist=    4  movs=  8  ventas=  3  creado=2026-08-15  id=4394e5d2
+      dar de baja Vodka                        cod=B002  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=6361e068
+  YOGURT
+      CONSERVAR   Yogurt                       cod=-     exist=    2  movs=  6  ventas=  1  creado=2026-09-04  id=eca73aeb
+      dar de baja Yogurt                       cod=Y001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=83bc30d5
+  ZUMO DE LIMON
+      CONSERVAR   Zumo de limon                cod=-     exist=    6  movs=  4  ventas=  1  creado=2026-09-03  id=54d68c92
+      dar de baja Zumo de limón                cod=Z001  exist=    0  movs=  0  ventas=  0  creado=2026-08-15  id=981168cb
+
+TOTAL grupos duplicados activos: 110   |   fichas implicadas: 222
