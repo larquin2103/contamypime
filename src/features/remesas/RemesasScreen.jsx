@@ -14,7 +14,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2 } from '../../lib/currency'
-import { formatDateTime, localDay, todayLocal } from '../../lib/dates'
+import { formatDateTime, localDay, dayLabel } from '../../lib/dates'
 import { fileToThumbnail } from '../../lib/image'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
@@ -113,22 +113,6 @@ function EquivalentNote({ remittance }) {
   const eq = remittanceEquivalent(remittance, baseCurrency)
   if (!eq) return null
   return <p className="muted">≈ {formatMoney(eq.amount, eq.currency)}</p>
-}
-
-// Etiqueta legible de un dia ('YYYY-MM-DD' de `localDay`). "Hoy" y "Ayer" se
-// nombran asi porque es como los llama quien trabaja; el resto va en fecha corta.
-// Se construye a mano desde la clave y NO se pasa por `new Date(dia)`: esa cadena
-// se interpreta como UTC y en Cuba (UTC-4/-5) devolveria el dia ANTERIOR.
-function dayLabel(day) {
-  if (!day) return 'Sin fecha'
-  if (day === todayLocal()) return 'Hoy'
-  const [y, m, d] = day.split('-').map(Number)
-  const ayer = new Date()
-  ayer.setDate(ayer.getDate() - 1)
-  if (day === localDay(ayer)) return 'Ayer'
-  return new Date(y, m - 1, d).toLocaleDateString('es-CU', {
-    day: '2-digit', month: 'short', year: 'numeric'
-  })
 }
 
 // Badge del GRUPO legible (Por cobrar / En proceso / Completado): lo ve el dueno en

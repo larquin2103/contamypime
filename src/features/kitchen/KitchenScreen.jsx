@@ -13,6 +13,8 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { cleanQty } from '../../lib/qty'
 import { shortfall } from '../../lib/kitchenMath'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { localDay, dayLabel } from '../../lib/dates'
+import { Accordion, AccordionSection as Section } from '../../components/Accordion'
 import { COCINA, COCINA_LABEL, RECIPE_KINDS } from '../../db/constants'
 
 // Tablero de elaboracion. La MISMA pantalla sirve a los dos tableros (`kind`), para
@@ -66,6 +68,35 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
     for (const p of products) m[p.id] = p
     return m
   }, [products])
+
+  // --- Agrupacion por DIA DE ELABORACION ---------------------------------------
+  // La lista salia como un bloque plano: todas las elaboraciones se veian iguales y
+  // la fecha se repetia fila a fila. Se agrupan por el dia local en que se hicieron
+  // (`localDay`: el dia del NEGOCIO y no UTC, el mismo criterio que usan los rangos
+  // de los reportes), con el MISMO acordeon que las entregas.
+  //
+  // Es PRESENTACION y nada mas: no se filtra, no se reordena y no se lee un registro
+  // de mas. `kitchenRepo.recent` ya devuelve de la mas nueva a la mas vieja y un Map
+  // conserva su orden de insercion, asi que los dias salen del mas reciente al mas
+  // antiguo sin volver a ordenar, y dentro de cada dia las filas quedan como venian.
+  //
+  // `short` = elaboraciones de ese dia hechas EN DESCUBIERTO. Marca el unico trabajo
+  // que un dia puede dejar pendiente: la existencia quedo en negativo esperando que
+  // se registre la entrada. `shortages` solo existe si el dueño tiene activo el
+  // permiso de elaborar con faltante y se uso; sin el, ningun dia se marca.
+  const days = useMemo(() => {
+    const map = new Map()
+    for (const pr of recent) {
+      const day = localDay(pr.createdAt)
+      if (!map.has(day)) map.set(day, [])
+      map.get(day).push(pr)
+    }
+    return [...map.entries()].map(([day, items]) => ({
+      day,
+      items,
+      short: items.filter((pr) => (pr.shortages?.length || 0) > 0).length
+    }))
+  }, [recent])
 
   // Hoja de elaboracion: receta elegida (o null).
   const [producing, setProducing] = useState(null)
@@ -197,9 +228,14 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
     }
   }
 
+  // Solo la HORA: el dia ya va en la cabecera de su grupo y repetirlo en cada fila
+  // era el ruido que sobraba. El espacio antes de "p.m." se cambia por uno DURO: a
+  // 360 px la fila se partia en dos ("08:51" arriba y "p.m." debajo).
   const fmt = (iso) => {
     try {
-      return new Date(iso).toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      return new Date(iso)
+        .toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' })
+        .replace(/\s/g, '\u00a0')
     } catch {
       return ''
     }
@@ -307,16 +343,25 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
       {recent.length > 0 && (
         <section className="card">
           <h3>Elaboraciones recientes</h3>
-          <div className="entry-lines">
-            {recent.map((pr) => (
-              <div key={pr.id} className="entry-line">
-                <div className="entry-line__head">
-                  <div><strong>{pr.recipeName}</strong><span className="muted"> · {cleanQty(pr.units)} → {pr.toArea}</span></div>
-                  <span className="muted">{fmt(pr.createdAt)}</span>
-                </div>
-              </div>
+          {/* El dia mas reciente arranca ABIERTO: es donde esta el trabajo de hoy. SIN
+              `storageKey` a proposito, igual que en las entregas: recordar un dia
+              concreto no sirve de nada, porque mañana ese dia ya no es el de arriba.
+              Con un solo dia el acordeon no pliega nada (regla del componente) y la
+              lista se ve como siempre, con su fecha de cabecera. */}
+          <Accordion defaultOpenId={days[0]?.day}>
+            {days.map((g) => (
+              <Section key={g.day} id={g.day} label={dayLabel(g.day)} badge={g.short || null} layout="entry-lines">
+                {g.items.map((pr) => (
+                  <div key={pr.id} className="entry-line">
+                    <div className="entry-line__head">
+                      <div><strong>{pr.recipeName}</strong><span className="muted"> · {cleanQty(pr.units)} → {pr.toArea}</span></div>
+                      <span className="muted">{fmt(pr.createdAt)}</span>
+                    </div>
+                  </div>
+                ))}
+              </Section>
             ))}
-          </div>
+          </Accordion>
         </section>
       )}
 

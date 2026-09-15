@@ -91,7 +91,8 @@ export function Accordion({ storageKey = null, defaultOpenId = null, children })
 // `badge`/`badgeTone`: aviso en la CABECERA, para que se vea con la seccion
 // cerrada. Nacio para las entregas agrupadas por fecha (marcar el dia que tiene
 // algo por cobrar o sin cerrar), pero no sabe de entregas: recibe lo que se le
-// quiera mostrar. Sin `badge` la cabecera es exactamente la de siempre.
+// quiera mostrar. Se pinta en los DOS modos (plegable y suelta). Sin `badge` la
+// cabecera es exactamente la de siempre.
 export function AccordionSection({
   id,
   label,
@@ -104,9 +105,17 @@ export function AccordionSection({
   children
 }) {
   if (!collapsible) {
+    // El aviso tambien aqui: una lista agrupada por fecha puede tener UN SOLO dia
+    // (las 8 elaboraciones recientes suelen ser todas de hoy), y ese dia es
+    // justamente el que puede traer trabajo pendiente. Sin esto, el unico grupo se
+    // quedaba sin marca. Con `badge` nulo -el default, y lo que pasan Inicio,
+    // Reportes y Ajustes- el DOM es exactamente el de siempre.
     return (
       <section className="home-section">
-        <h3 className="home-section__label">{label}</h3>
+        <h3 className="home-section__label">
+          {label}
+          {badge ? <span className={`badge badge--${badgeTone} acc__badge`}>{badge}</span> : null}
+        </h3>
         <div className={layout}>{children}</div>
       </section>
     )

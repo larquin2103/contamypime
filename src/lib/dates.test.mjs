@@ -9,7 +9,11 @@
 //    bajada (fusiona solo si la entrante es MAYOR) no descarte la mutacion.
 //  - Reproduccion del caso REAL de los respaldos (desfase de ~21 s).
 //  - Robustez: marcas ilegibles no lanzan (no pueden abortar una transaccion).
-import { tsAfter, now } from './dates.js'
+//
+// Y la etiqueta de DIA (dayLabel), que usan las listas agrupadas por fecha (las
+// entregas del dia, las elaboraciones del tablero): "Hoy"/"Ayer" y, sobre todo,
+// que NO se desfase un dia por zona horaria, que es su unico riesgo real.
+import { tsAfter, now, localDay, todayLocal, dayLabel } from './dates.js'
 
 let pass = 0
 let fail = 0
@@ -92,6 +96,59 @@ const ok = (name, cond) => eq(name, !!cond, true)
   const antes = now()
   ok('marca ilegible -> now() (no lanza)', tsAfter('no-es-una-fecha-###') >= antes)
   ok('tipos raros se ignoran', tsAfter(null, undefined, 123, {}, []) >= antes)
+}
+
+// --- etiqueta de DIA (dayLabel) ---------------------------------------------
+// Cabecera de las listas agrupadas por fecha. Vivio dentro de RemesasScreen hasta
+// que la necesito tambien el tablero de elaboracion.
+//
+// El numero de dia se comprueba por TOKENS (partiendo la etiqueta por lo que no
+// sea un digito) y no comparando la cadena entera: asi la prueba no depende del
+// idioma ni del formato que tenga instalado el node de turno, solo de que el dia
+// que sale sea el dia que se pidio.
+const diaDe = (etq) => etq.split(/[^0-9]+/)
+{
+  eq('dia vacio -> "Sin fecha"', dayLabel(''), 'Sin fecha')
+  eq('dia nulo -> "Sin fecha"', dayLabel(null), 'Sin fecha')
+  eq('dia de hoy -> "Hoy"', dayLabel(todayLocal()), 'Hoy')
+
+  const ayer = new Date()
+  ayer.setDate(ayer.getDate() - 1)
+  eq('dia de ayer -> "Ayer"', dayLabel(localDay(ayer)), 'Ayer')
+
+  const anteayer = new Date()
+  anteayer.setDate(anteayer.getDate() - 2)
+  const etqAnteayer = dayLabel(localDay(anteayer))
+  ok('anteayer NO es "Hoy" ni "Ayer"', etqAnteayer !== 'Hoy' && etqAnteayer !== 'Ayer')
+  ok('anteayer sale en fecha corta con SU numero de dia',
+    diaDe(etqAnteayer).includes(String(anteayer.getDate()).padStart(2, '0')))
+
+  // EL RIESGO REAL: `new Date('2026-08-28')` se interpreta como UTC, y con offset
+  // negativo (Cuba, UTC-4/-5) devuelve el dia ANTERIOR. Se recorre un año entero:
+  // la etiqueta tiene que llevar SIEMPRE el numero de dia de su clave.
+  let desfases = 0
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(2026, 0, 1 + i)
+    const etq = dayLabel(localDay(d))
+    if (etq === 'Hoy' || etq === 'Ayer') continue // el dia corriente no lleva numero
+    if (!diaDe(etq).includes(String(d.getDate()).padStart(2, '0'))) desfases++
+  }
+  eq('365 dias: ninguna etiqueta se desfasa del dia de su clave', desfases, 0)
+
+  // CONTROL NEGATIVO: sin el, la prueba de arriba no mediria nada. La version
+  // ingenua (pasar la clave por `new Date`) SI se desfasa. Solo se exige donde el
+  // fallo existe: con offset <= 0 (UTC o al este de Greenwich) no se reproduce.
+  if (new Date().getTimezoneOffset() > 0) {
+    const ingenua = (day) => new Date(day).toLocaleDateString('es-CU', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    })
+    let rotas = 0
+    for (let i = 0; i < 365; i++) {
+      const clave = localDay(new Date(2026, 0, 1 + i))
+      if (!diaDe(ingenua(clave)).includes(clave.slice(-2))) rotas++
+    }
+    eq('control negativo: la version ingenua desfasa los 365 dias', rotas, 365)
+  }
 }
 
 console.log(`\n${pass} pass, ${fail} fail`)

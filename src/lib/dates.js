@@ -58,3 +58,24 @@ export function formatDateTime(iso) {
     return iso
   }
 }
+
+// Etiqueta legible de un DIA ('YYYY-MM-DD', el que devuelve `localDay`). "Hoy" y
+// "Ayer" se nombran asi porque es como los llama quien trabaja; el resto va en
+// fecha corta. Para cabeceras de listas agrupadas por fecha (entregas del dia,
+// elaboraciones del tablero).
+//
+// La fecha se construye A MANO desde la clave y NO se pasa por `new Date(dia)`:
+// esa cadena se interpreta como UTC y en Cuba (UTC-4/-5) devolveria el dia
+// ANTERIOR. Vivio primero dentro de RemesasScreen; subio aqui al necesitarla el
+// tablero, para no dejar dos copias de esta misma regla.
+export function dayLabel(day) {
+  if (!day) return 'Sin fecha'
+  if (day === todayLocal()) return 'Hoy'
+  const [y, m, d] = day.split('-').map(Number)
+  const ayer = new Date()
+  ayer.setDate(ayer.getDate() - 1)
+  if (day === localDay(ayer)) return 'Ayer'
+  return new Date(y, m - 1, d).toLocaleDateString('es-CU', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  })
+}
