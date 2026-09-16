@@ -8,7 +8,7 @@ del negocio *De todo un tin* (`respaldo_mypicuadre_2026-09-12` de la dueña y de
 pasada encontró una causa raíz que la primera no vio, **invalidó una de sus conclusiones** y
 **cambió el orden de los arreglos**. Lo que cambió está en el §0; lo demás se corrigió en su sitio.
 
-**F1 y F2 ya están programados en la rama (ver sus actas); F3 y F4 no.** Aquí está el qué, el dónde y el por qué, más el
+**F1, F2 y F3 ya están programados en la rama (ver sus actas); F4 no.** Aquí está el qué, el dónde y el por qué, más el
 procedimiento que el cliente puede seguir. Todo lo que se afirma se verificó leyendo el código y
 calculando sobre los respaldos; **la app NO se ejecutó**.
 
@@ -33,7 +33,7 @@ Cuatro cosas, y la primera es grave:
    compuertas `> 0`, no una; el documento solo encontró la del repo. Ver §3-F2.
 
 También: la línea base de pruebas que se citaba (*8 suites / 462 aserciones*) estaba vencida. Hoy
-son **14 suites / 802 aserciones** (F1 y F2 añadieron `stockLocation.test.mjs`), medidas el 15-09-2026, todas en verde, con `npm run build`
+son **14 suites / 814 aserciones** (F1–F3 añadieron `stockLocation.test.mjs`), medidas el 15-09-2026, todas en verde, con `npm run build`
 **exit 0**.
 
 ---
@@ -279,7 +279,43 @@ Tienda       150     154      154     <- IDENTICO: el trabajo diario del vendedo
 - **Aviso para el cliente:** un negativo corregido saldrá en **🔴 rojo** con ~100 %
   (`evalSemaphore` usa `Math.abs(expected)`; no rompe ni divide por cero). Es normal, no es alarma.
 
-### F3 — El conteo cuadra contra la CACHÉ, no contra el libro mayor
+### F3 — El conteo cuadra contra la CACHÉ, no contra el libro mayor — ✅ **HECHO en la rama (15-09-2026)**
+
+> **Acta.** `submit` y `approve` derivan ahora del **libro mayor** (índice `[productId+location]`, la
+> misma consulta que `salesRepo` hace inline). El comentario de `submit` **dejó de mentir**.
+>
+> **Incidente histórico reproducido con los datos reales:**
+>
+> ```
+> conteo bf07fcac | Tienda | enviado 2026-09-10T01:36 | aprobado
+> Galletas de soda:  systemStock registrado = 48,  físico = 7,  diff = -41
+> El LIBRO MAYOR en ese instante decía -3  (12 movimientos)
+>
+>    ANTES (caché):  delta = 7 - 48   = -41   <- asiento clavado, append-only
+>    CON F3 (libro): delta = 7 - (-3) = +10   <- deja el producto en 7, lo contado
+> ```
+>
+> El asiento de −41 está en el libro, fechado a esa misma hora. **41 de las 44 unidades negativas de
+> ese producto las puso este cálculo, no las ventas.**
+>
+> **Y no era un caso aislado:** de las **73 líneas** contadas y aprobadas del historial, **19 (26 %)**
+> tenían la caché distinta del libro. **Cautela sobre esa cifra:** el libro «de ese instante» se
+> reconstruye filtrando `createdAt < submittedAt`, y un movimiento creado offline en otro teléfono
+> puede haber llegado después con fecha anterior. Esa reconstrucción **no distingue** «la caché estaba
+> mal» de «el movimiento llegó tarde». Las dos posibilidades apuntan al mismo sitio —el libro es a lo
+> que todo converge—, pero **el 26 % no debe leerse como 19 errores de caché demostrados**.
+>
+> `startDraft` **sigue leyendo la caché a propósito** (es una foto para armar la lista y no escribe
+> nada; derivar 400+ productos costaría una consulta por producto sin ganar nada). **Coste real:** una
+> consulta por índice por producto **contado**, no por producto del catálogo.
+>
+> **Lo que NO se tocó, a propósito:** la atomicidad de `approve` (sigue haciendo N transacciones) y la
+> recomposición de la caché —que habría exigido editar `features/sync/`—. Si el asiento sale correcto,
+> la caché se autorrepara en la siguiente bajada, como hoy.
+>
+> TDD con el ciclo observado (`ledgerQty` falla primero por no estar exportada). **40/40**; cubre el
+> residuo de punto flotante y que una cantidad no numérica no envenene la suma con `NaN`. Build
+> **exit 0**, **14 suites / 814 aserciones**. **Nadie lo ha ejecutado en un dispositivo.**
 
 - **Dónde:** `countsRepo.js` — `submit:142` y `approve:164`.
 - **El comentario miente:** `submit:121-126` afirma *"el stock del sistema se relee AHORA desde el
@@ -344,14 +380,15 @@ Refresco Limón     pide  5   saldo 0   <<< RECHAZADA
 
 ### Orden, y cómo validarlo
 
-**F1** ✅ → **F2** ✅ → **F3** (evita que el conteo vuelva a inyectar basura) → **F4**.
-**F1 y F2 están hechos en la rama**; lo siguiente es **F3**.
+**F1** ✅ → **F2** ✅ → **F3** ✅ → **F4** (candado de la deuda interna).
+**F1, F2 y F3 están hechos en la rama**; lo único que queda es **F4**, y es el que cambia la
+operación diaria: necesita decisión del dueño antes de escribirse.
 
 **F4 no puede desplegarse antes que F2.** Si el candado rechaza una deuda porque la existencia está
 en 0 o en negativo, el único remedio es el conteo — que sin F2 no lista negativos. Al revés, el
 cliente queda atrapado.
 
-`npm run build` limpio y las **14 suites node** (802 aserciones, ya con `stockLocation`) antes de
+`npm run build` limpio y las **14 suites node** (814 aserciones, ya con `stockLocation`) antes de
 cada commit.
 
 **Ninguna de las 13 suites cubre esto, ni puede:** `countsRepo`, `transfersRepo` y `debtsRepo`
