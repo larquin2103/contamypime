@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { usersRepo } from '../repositories/usersRepo'
 import { useEscapeClose } from '../lib/useEscapeClose'
 import { PinInput } from './PinInput'
+import { backdropProps } from '../lib/modalClose'
 
 // Pide un PIN para autorizar una operacion sensible (extraccion, deuda interna,
 // retiro al cierre) que registra un vendedor.
@@ -40,7 +41,7 @@ export function OwnerAuthModal({ onAuthorized, onCancel, self = null }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div className="modal-backdrop" {...backdropProps(onCancel)}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Autorización" onClick={(e) => e.stopPropagation()}>
         <h3>{self ? 'Confirma con tu PIN' : 'Autorización'}</h3>
         <p className="muted">

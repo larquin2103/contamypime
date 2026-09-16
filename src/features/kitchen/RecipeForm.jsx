@@ -12,6 +12,7 @@ import { matchesQuery } from '../../lib/search'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { configRepo } from '../../repositories/configRepo'
 import { unitsForSelect, activeUnits, unitLabel } from '../../lib/unitsConfig'
+import { backdropProps } from '../../lib/modalClose'
 
 // Alta / edicion de una receta (modulos 'cocina' y 'cocteleria'). La define el DUEÑO.
 // Imita a ProductForm (mismo estilo, misma foto/moneda gateadas) y agrega el checklist
@@ -197,7 +198,7 @@ export function RecipeForm({ recipe, outputProduct, newKind = null, products, ca
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={editing ? 'Editar receta' : 'Nueva receta'} onClick={(e) => e.stopPropagation()}>
         <h3>{editing ? 'Editar receta' : 'Nueva receta'} · {RECIPE_KIND_LABELS[kind]}</h3>
 

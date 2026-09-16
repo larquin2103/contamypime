@@ -59,9 +59,9 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las 13 suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**766 aserciones** en total, medidas el 13-09-2026, con las
-68 de `unitsConfig.test.mjs` dentro). Ojo:
+**Pruebas:** NO hay script `npm test` (ni linter). Las **15** suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (**894 aserciones** en total, medidas el 16-09-2026; las dos
+últimas en llegar son `stockLocation` —F1/H5— y `modalClose` —el cierre de los modales—). Ojo:
 diez viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/`,
 `fichaReports.test.mjs` en `src/features/reports/` y `helpContent.test.mjs` en
 `src/features/help/`, así que un glob `src/lib/*.test.mjs` **se salta tres**:
@@ -72,6 +72,7 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/fichaCosto.test.mjs src/lib/fichaLines.test.mjs \
          src/lib/kitchenMath.test.mjs src/lib/orderTotals.test.mjs \
          src/lib/saleRevenue.test.mjs src/lib/unitsConfig.test.mjs \
+         src/lib/stockLocation.test.mjs src/lib/modalClose.test.mjs \
          src/features/sync/retryQueue.test.mjs \
          src/features/reports/fichaReports.test.mjs \
          src/features/help/helpContent.test.mjs; do node "$t"; done
@@ -538,6 +539,40 @@ por área, % de cargo por servicio, encabezado/pie del ticket). Repo: `ordersRep
     por categoría y por área queden coherentes entre sí. **El costo no se toca** (la mercancía
     costó lo mismo aunque se regalara el precio). Sin descuento el factor es 1 y la aritmética es
     **idéntica** a la de antes (200.000 comparaciones, 0 diferencias).
+
+## Cierre de los modales (base, 16-09-2026)
+
+**Ningún modal se cierra por accidente llevándose lo que estabas escribiendo.** Nace de un fallo
+real: el dueño seleccionaba con el ratón el valor de un campo, soltaba el botón un poco más allá
+del borde del recuadro **y el formulario se cerraba perdiéndolo todo**.
+
+**Por qué pasaba.** Los **30** modales se montan igual —un fondo `.modal-backdrop` con `onClick`
+que cierra y, dentro, el recuadro con `stopPropagation`—. Esa parada protege el clic normal de
+dentro, pero **no** el gesto que empieza dentro y termina fuera: el navegador dispara el `click`
+sobre el **ancestro común** de donde se apretó y donde se soltó, y ese ancestro **es el fondo**. El
+evento no viene de dentro, así que no hay nada que detener.
+
+- **La regla vive en `src/lib/modalClose.js`** (pura, con su suite: `shouldCloseOnBackdrop` y los
+  dos manejadores `backdropProps`). **No es un hook**: la marca del gesto se guarda en el propio
+  nodo del fondo (`dataset`), así que se puede llamar dentro de un `&&` o un `map` sin las reglas
+  de los hooks, el cambio en cada pantalla es de **una línea**, y el comportamiento **completo** se
+  prueba con node sin React.
+- **Dos reglas.** (1) El fondo cierra solo si el gesto **empezó** en el fondo — esto mata el caso
+  del arrastre **sin preguntar nada**, porque seleccionar texto nunca fue una intención de cerrar.
+  (2) Los **22 modales con campos** no se cierran por el fondo **en absoluto**: se sale por
+  *Cancelar*, por la X o con **Escape** (`useEscapeClose`, que no se tocó). Los **8 de aviso**
+  —PIN, bienvenida, menú de mesa, motivo de entrega fallida…— **conservan** el cierre por el fondo:
+  ahí no hay nada que perder.
+- **Se descartó preguntar «¿hay cambios sin guardar?»**, y conviene saber por qué: sin tocar la
+  lógica de cada formulario solo se puede **adivinar** desde fuera, y en esta app hay datos que se
+  meten **sin escribir en un campo** —el PIN es un teclado de botones, los insumos de una receta se
+  marcan, las escalas de precio se añaden con un botón—, así que la adivinanza tendría huecos y
+  prometería una protección que no da.
+- **Antes de tocar nada se comprobó que nadie queda encerrado:** los 22 formularios tienen salida
+  visible (botón *Cancelar* o equivalente). Era el único modo real de romper algo.
+- **CERO lógica de negocio tocada, cero esquema, cero sincronización.** El diff son **exactamente**
+  la línea del fondo y el `import`, en 18 ficheros: medido fichero a fichero (`+n+1 / -n`), **0
+  cambios inesperados**.
 
 ## Divisas (módulo `divisas`)
 

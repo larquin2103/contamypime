@@ -21,6 +21,7 @@ import {
   PARTNER_MOVEMENT_LABELS,
   WAREHOUSE
 } from '../../db/constants'
+import { backdropProps } from '../../lib/modalClose'
 
 // Bloque C (modulo 'cuentas'): proveedores (consignacion, cuenta por pagar) y
 // terceros/acreedores (entregas de mercancia, cuenta por cobrar). El saldo de
@@ -155,7 +156,7 @@ function PartnerForm({ onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Nuevo proveedor o tercero</h3>
         <label className="field">
@@ -311,7 +312,7 @@ function PaymentForm({ partner, balance, baseCurrency, userId, onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>{isProvider ? `Pagar a ${partner.name}` : `Cobro de ${partner.name}`}</h3>
         <p className="muted">Deuda actual: <strong>{formatMoney(balance, baseCurrency)}</strong></p>
@@ -399,7 +400,7 @@ function DeliveryForm({ partner, baseCurrency, userId, onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Entregar mercancía a {partner.name}</h3>
         <p className="muted">

@@ -9,6 +9,7 @@ import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime, localDay } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { DEBT_SETTLE_METHODS, DEBT_SETTLE_LABELS } from '../../db/constants'
+import { backdropProps } from '../../lib/modalClose'
 
 // Gestion de deudas internas y historial de extracciones (dueño o administrativo).
 export function FinancesScreen() {
@@ -148,7 +149,7 @@ function SettleDebtModal({ debt, debtorName, onCancel, onConfirm }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div className="modal-backdrop" {...backdropProps(onCancel, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Liquidar deuda" onClick={(e) => e.stopPropagation()}>
         <h3>Liquidar deuda</h3>
         <div className="kv">

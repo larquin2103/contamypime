@@ -21,6 +21,7 @@ import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
 import { Trash2 } from 'lucide-react'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
+import { backdropProps } from '../../lib/modalClose'
 
 // ---------------------------------------------------------------------------
 // Cuenta de UNA mesa (modulo 'mesas').
@@ -996,7 +997,7 @@ export function TableScreen() {
       {/* Aplicar descuento: se teclea el %. Si lo pide el vendedor, despues se abre
           el modal de autorizacion (OwnerAuthModal) con el PIN de un mando. */}
       {askDiscount && (
-        <div className="modal-backdrop" onClick={() => setAskDiscount(false)}>
+        <div className="modal-backdrop" {...backdropProps(() => setAskDiscount(false), { form: true })}>
           <div className="modal" role="dialog" aria-modal="true" aria-label="Aplicar descuento" onClick={(e) => e.stopPropagation()}>
             <h3>Descuento de la cuenta</h3>
             <p className="muted">

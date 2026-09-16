@@ -17,6 +17,7 @@ import {
   applyBackup,
   backupSummary
 } from './backupService'
+import { backdropProps } from '../../lib/modalClose'
 
 // Bloque 32 - Respaldo y proteccion de datos. Solo el dueño: el respaldo
 // contiene TODO el negocio (costos, usuarios, finanzas), igual que la sync.
@@ -236,7 +237,7 @@ function RestorePreview({ backup, busy, onConfirm, onCancel }) {
   const s = backupSummary(backup)
   useEscapeClose(onCancel)
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div className="modal-backdrop" {...backdropProps(onCancel)}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Revisar respaldo" onClick={(e) => e.stopPropagation()}>
         <h3>Revisar respaldo</h3>
         <p className="muted">

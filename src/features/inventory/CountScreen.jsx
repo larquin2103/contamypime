@@ -18,6 +18,7 @@ import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { stockAtLocation } from '../../lib/stockLocation'
 import { WAREHOUSE, ELABORATION, COCINA, ENTREGAS_AREA, locationLabel } from '../../db/constants'
+import { backdropProps } from '../../lib/modalClose'
 
 // Existencia de un producto en una ubicacion. Era un "espejo de countsRepo"
 // copiado a mano, y con el mismo respaldo de la v5 que inventaba existencia en el
@@ -486,7 +487,7 @@ function CountReview({ count, ownerId }) {
       </button>
 
       {rejecting && (
-        <div className="modal-backdrop" onClick={() => setRejecting(false)}>
+        <div className="modal-backdrop" {...backdropProps(() => setRejecting(false), { form: true })}>
           <div className="modal" role="dialog" aria-modal="true" aria-label="Rechazar conteo" onClick={(e) => e.stopPropagation()}>
             <h3>Rechazar conteo</h3>
             <label className="field">

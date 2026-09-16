@@ -22,6 +22,7 @@ import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { buildCloseReport, openWhatsapp } from '../../lib/whatsapp'
+import { backdropProps } from '../../lib/modalClose'
 
 export function ShiftScreen() {
   const { activeShift, loading } = useShift()
@@ -666,7 +667,7 @@ function CloseShiftPanel({ shift, onCancel, onClosed, forcedByOwner = false }) {
       )}
 
       {warnNoCount && (
-        <div className="modal-backdrop" onClick={() => setWarnNoCount(false)}>
+        <div className="modal-backdrop" {...backdropProps(() => setWarnNoCount(false))}>
           <div className="modal" role="dialog" aria-modal="true" aria-label="No contaste el efectivo" onClick={(e) => e.stopPropagation()}>
             <h3>⚠️ No contaste el efectivo</h3>
             <p>

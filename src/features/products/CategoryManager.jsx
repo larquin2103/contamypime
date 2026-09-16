@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { backdropProps } from '../../lib/modalClose'
 
 // Gestion de categorias (solo dueño). Baja logica: nunca se borran.
 export function CategoryManager({ onClose }) {
@@ -19,7 +20,7 @@ export function CategoryManager({ onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Categorías" onClick={(e) => e.stopPropagation()}>
         <h3>Categorías</h3>
 

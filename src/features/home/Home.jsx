@@ -24,6 +24,7 @@ import { FOREIGN_CURRENCIES, ROLE_LABELS, COUNT_STATUS } from '../../db/constant
 import { StartChecklist } from '../help/StartChecklist'
 import { WelcomeModal } from '../help/WelcomeModal'
 import { BackupReminder } from '../backup/BackupReminder'
+import { backdropProps } from '../../lib/modalClose'
 
 // Aviso al vendedor cuando el dueño resuelve su conteo fisico (aprobado/rechazado).
 function CountNotice({ userId }) {
@@ -175,7 +176,7 @@ function AvatarEditor({ user, current, onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Tu foto" onClick={(e) => e.stopPropagation()}>
         <h3>Tu foto</h3>
         <div className="avatar-editor">

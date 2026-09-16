@@ -9,6 +9,7 @@ import { PinInput } from '../../components/PinInput'
 import { ROLES, ROLE_LABELS } from '../../db/constants'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { backdropProps } from '../../lib/modalClose'
 
 // Gestion de usuarios (solo dueño). Los usuarios nunca se borran: se desactivan.
 // Tras sincronizar pueden aparecer duplicados (si se creo un dueño local antes
@@ -172,7 +173,7 @@ function EditUserForm({ user, onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={`Editar ${user.name}`} onClick={(e) => e.stopPropagation()}>
         <h3>Editar — {user.name}</h3>
 
@@ -272,7 +273,7 @@ function NewUserForm({ onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Nuevo usuario" onClick={(e) => e.stopPropagation()}>
         <h3>Nuevo usuario</h3>
         <label className="field">
@@ -352,7 +353,7 @@ function ResetPinForm({ user, onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose)}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={`Resetear PIN de ${user.name}`} onClick={(e) => e.stopPropagation()}>
         <h3>Resetear PIN — {user.name}</h3>
         <p className="muted">Define un nuevo PIN para este usuario.</p>

@@ -29,6 +29,7 @@ import {
   REMESA_CENTRAL, REMESA_CENTRAL_LABEL, PAYMENT_MODE, PAYMENT_MODE_LABELS, DELIVERY_FAIL_REASONS,
   DELIVERY_KIND, DELIVERY_KIND_LABELS, ENTREGAS_AREA, ENTREGAS_AREA_LABEL
 } from '../../db/constants'
+import { backdropProps } from '../../lib/modalClose'
 
 // Modulo 'remesas' (F2 Ordenes · F3 Custodia · F4 Mensajeros · F5 Entregas).
 // Pantalla unica con conciencia de ROL:
@@ -649,7 +650,7 @@ function AssignModal({ remittance: r, userId, couriers, onClose, onDone }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Asignar a mensajero</h3>
         <p className="muted">
@@ -720,7 +721,7 @@ function DeliverModal({ remittance: r, userId, onClose, onDone }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Entregar al beneficiario</h3>
         <p className="muted">
@@ -835,7 +836,7 @@ function CollectModal({ remittance: r, userId, thenAssignCourier = null, onClose
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>{isPago ? 'Registrar pago' : 'Registrar cobro'}</h3>
         <p className="muted">
@@ -1141,7 +1142,7 @@ function RemittanceForm({ userId, existing = null, couriers = [], onPayThenAssig
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>{isEdit ? 'Editar entrega' : 'Nueva entrega'}</h3>
 
@@ -1546,7 +1547,7 @@ function SettlementsSection({ couriers, balances, settlements, userId, userName 
 function FailReasonModal({ onClose, onPick }) {
   useEscapeClose(onClose)
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose)}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Motivo de la entrega fallida" onClick={(e) => e.stopPropagation()}>
         <h3>¿Por qué no se entregó?</h3>
         <p className="muted">
@@ -1618,7 +1619,7 @@ function FundModal({ mode, couriers, balances, userId, onClose, onDone }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>{provision ? 'Dar fondo al mensajero' : 'Devolver fondo'}</h3>
         {couriers.length === 0 ? (
@@ -1710,7 +1711,7 @@ function ReturnProductModal({ couriers, userId, onClose, onDone }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Devolver producto al área</h3>
         {couriers.length === 0 ? (
@@ -1784,7 +1785,7 @@ function SettleModal({ couriers, balances, userId, onClose, onDone }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Liquidar mensajero</h3>
         {couriers.length === 0 ? (

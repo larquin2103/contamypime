@@ -11,6 +11,7 @@ import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { CASH_CURRENCIES, PARTNER_TYPES } from '../../db/constants'
+import { backdropProps } from '../../lib/modalClose'
 
 // Etiquetas del origen de cada movimiento de cuenta (lista completa en accountsRepo,
 // compartida con el reporte para que no se separen: aqui faltaban el cobro de entrega
@@ -259,7 +260,7 @@ function AccountForm({ onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Nueva cuenta</h3>
         <label className="field">
@@ -367,7 +368,7 @@ function AdjustForm({ account, userId, onClose }) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <h3>Ajuste manual · {account.name}</h3>
         <div className="tabs">

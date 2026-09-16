@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { backdropProps } from '../../lib/modalClose'
 
 const STORAGE_KEY = 'welcomeSeen'
 
@@ -18,7 +19,7 @@ export function WelcomeModal() {
   const showDays = Number.isFinite(daysLeft) && (status === 'active' || status === 'expiring')
 
   return (
-    <div className="modal-backdrop" onClick={close}>
+    <div className="modal-backdrop" {...backdropProps(close)}>
       <div className="modal welcome-modal" role="dialog" aria-modal="true" aria-label="Bienvenida a MypiCuadre" onClick={(e) => e.stopPropagation()}>
         <h2 className="brand">¡Bienvenido a MypiCuadre!</h2>
         <p className="muted">Tu sistema de ventas y cuadre de caja, funciona sin internet.</p>

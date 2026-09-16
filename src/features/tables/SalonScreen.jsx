@@ -13,6 +13,7 @@ import { formatMoney } from '../../lib/currency'
 import { logError } from '../../lib/errorLog'
 import { ORDER_STATUS } from '../../db/constants'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
+import { backdropProps } from '../../lib/modalClose'
 
 // ---------------------------------------------------------------------------
 // Panel del SALON (modulo 'mesas'). De un vistazo: el estado de cada mesa del
@@ -315,7 +316,7 @@ export function SalonScreen() {
 
       {/* Acciones al tocar una mesa libre o reservada */}
       {menu && (
-        <div className="modal-backdrop" onClick={() => setMenu(null)}>
+        <div className="modal-backdrop" {...backdropProps(() => setMenu(null))}>
           <div className="modal salon-menu" onClick={(e) => e.stopPropagation()}>
             <h3 className="salon-menu__title">{menu.table}</h3>
             <p className="muted">{menu.area}</p>

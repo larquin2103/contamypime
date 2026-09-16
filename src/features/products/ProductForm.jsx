@@ -13,6 +13,7 @@ import { cleanQty } from '../../lib/qty'
 import { normalizeTiers } from '../../lib/priceTiers'
 import { unitsForSelect, activeUnits, unitLabel } from '../../lib/unitsConfig'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { backdropProps } from '../../lib/modalClose'
 
 // Alta / edicion de producto. Solo dueño (la creacion desde entrada de
 // mercancia por el vendedor llega en el Bloque 7).
@@ -171,7 +172,7 @@ export function ProductForm({ product, categories, onClose, onCreated, hideOpeni
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdropProps(onClose, { form: true })}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={editing ? 'Editar producto' : 'Nuevo producto'} onClick={(e) => e.stopPropagation()}>
         <h3>{editing ? 'Editar producto' : 'Nuevo producto'}</h3>
 

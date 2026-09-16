@@ -15,6 +15,7 @@ import { shareFile } from '../../lib/whatsapp'
 import { formatMoney } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { backdropProps } from '../../lib/modalClose'
 
 // Muestra un objeto de caja por moneda ({ MN: 100, USD: 5 }) en una línea.
 function cashLine(obj) {
@@ -152,7 +153,7 @@ function ImportPreview({ snap, busy, onConfirm, onCancel }) {
   const ss = snap.shiftSummary || null
   useEscapeClose(onCancel)
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
+    <div className="modal-backdrop" {...backdropProps(onCancel)}>
       <div className="modal" role="dialog" aria-modal="true" aria-label="Revisar turno entrante" onClick={(e) => e.stopPropagation()}>
         <h3>Revisar turno entrante (v{snap.meta?.version || 1})</h3>
         <p className="muted">

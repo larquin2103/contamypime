@@ -16,6 +16,7 @@ import { useEscapeClose } from '../../lib/useEscapeClose'
 import { localDay, dayLabel } from '../../lib/dates'
 import { Accordion, AccordionSection as Section } from '../../components/Accordion'
 import { COCINA, COCINA_LABEL, RECIPE_KINDS } from '../../db/constants'
+import { backdropProps } from '../../lib/modalClose'
 
 // Tablero de elaboracion. La MISMA pantalla sirve a los dos tableros (`kind`), para
 // no mantener dos copias de lo mismo:
@@ -366,7 +367,7 @@ export function KitchenScreen({ kind = RECIPE_KINDS.KITCHEN }) {
       )}
 
       {producing && (
-        <div className="modal-backdrop" onClick={() => setProducing(null)}>
+        <div className="modal-backdrop" {...backdropProps(() => setProducing(null), { form: true })}>
           <div className="modal" role="dialog" aria-modal="true" aria-label="Elaborar" onClick={(e) => e.stopPropagation()}>
             <h3>Elaborar: {producing.name}</h3>
             <p className="muted">
