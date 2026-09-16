@@ -655,11 +655,13 @@ colecciones de sync nuevas.**
   la suma; aquí el inventario ya está en el libro mayor y no se descuadra nada). **No queda ningún
   rol huérfano.**
 
-## Estado del trabajo en curso (14-09-2026)
+## Estado del trabajo en curso (15-09-2026)
 
-**Lo último fusionado es `cocteleria` + descuento de mesa + unidades de medida** (14-09-2026); su
-acta, con las mediciones y los riesgos de convivencia, está en **«Fusión del 14-09-2026»**, justo
-debajo. Lo que sigue es el registro de las fusiones anteriores, que se deja tal cual.
+**Lo último fusionado es la puesta a punto de la interfaz** (15-09-2026): acordeones, login por
+nombre y accesibilidad, más el documento de corrección de existencias. Su acta está en **«Fusión
+del 15-09-2026»**, justo debajo. Es la fusión **más limpia de las registradas aquí**: sin esquema
+Dexie, sin sincronización, sin capa de datos y **sin una sola escritura a la base**. Lo que sigue
+es el registro de las fusiones anteriores, que se deja tal cual.
 
 **EL MÓDULO `fichas` YA ESTÁ FUSIONADO A `main`.** El dueño lo autorizó el **11-09-2026** y se
 hizo **fast-forward** de los **28 commits** de `claude/awesome-dirac-484azm`: `origin/main` pasó de
@@ -672,6 +674,120 @@ superpowers en `.claude/settings.json`. Auditoría de esa fusión, con sus medic
 **Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que
 alguien corra `npm run deploy`. **Antes de ese despliegue hay que tomar el respaldo de retroceso**
 (ver el aviso de v18/v19 más abajo: el esquema es de ida).
+
+### Fusión del 15-09-2026 — interfaz (acordeones, login, accesibilidad) + corrección de existencias
+
+**FUSIONADO A `main` el 15-09-2026**, con autorización explícita del dueño. **Fast-forward** de los
+**13 commits** de `claude/awesome-dirac-484azm`: `origin/main` pasó de `95fbf39` a **`9a3784b`**, y
+rama y `main` quedaron **idénticas** (`git rev-list --left-right --count origin/main...HEAD` = `0 0`
+y `git diff HEAD origin/main` **vacío**). Se hizo con `git push origin HEAD:main`, **sin `--force`**
+y sin checkout de `main`: si no hubiera sido fast-forward, el servidor lo habría rechazado en vez de
+reescribir historia. **Comprobar el commit real con `git rev-parse origin/main` tras un `git fetch`:
+no dar por bueno ningún hash escrito aquí.**
+
+Subieron 12 commits de **interfaz** —el acordeón reutilizable `components/Accordion.jsx` y el paso a
+categorías plegables de Inicio, Ajustes, Reportes y Auditoría; el agrupado por día de Entregas y del
+tablero de elaboración; el selector de ubicación del mando en el Catálogo; y el rediseño del Login
+con sus dos P0 de accesibilidad— **más** `docs/CORRECCION-EXISTENCIAS.md` reescrito (ver el apartado
+propio, más abajo).
+
+**Auditoría previa (ejecutada, no citada):**
+
+- `npm run build` **exit 0** y **13 suites / 774 aserciones** en verde, medidas **en el commit exacto
+  que se fusionó** (`9a3784b`), no en uno anterior.
+- **CERO cambios en `src/features/sync/`, `src/db/db.js`, `src/repositories/`, `firestore.rules` y
+  `package.json`.** Dexie sigue en **v19** y `SYNC_COLLECTIONS` en **34**. El único fichero sensible
+  tocado es `src/lib/dates.js`, y su cambio es **estrictamente aditivo** (una función `dayLabel` al
+  final): **`tsAfter` no aparece en el diff**.
+- **Cero escrituras a la base en las 1.900 líneas.** Las tres coincidencias de `.add(` son
+  `Set.add()` en memoria. Y cero cambios en consultas (`useLiveQuery`/`toArray`/`where`/repos) en
+  Auditoría, Entregas y Ajustes: **sus refactors son puramente de presentación**.
+- **Sin fugas de licencia.** Saltó una alarma y se investigó hasta el fondo: `ReportsScreen` pasó de
+  **6 a 2** menciones de `LICENSE_MODULES.REMESAS`. **No es una fuga**: las cinco puertas
+  individuales se consolidaron en **una** categoría `{ id: 'entregas', show: hasModule(REMESAS) }`
+  que contiene **los mismos cinco reportes**, y el render filtra por `show` a nivel de categoría y de
+  ficha. La puerta del descargador (`key.startsWith('remesas') && hasModule(...)`) sigue intacta.
+  **Fragilidad latente anotada:** el filtro es `show !== false`, o sea **fail-open**; hoy es seguro
+  porque `hasModule` es `modules.includes(m)` (booleano estricto) y `modules` nunca es `undefined`
+  (`LicenseProvider.jsx:104`), pero un `show:` que evalúe a `undefined` **se colaría**.
+- **Puertas de rol intactas** en los siete ficheros, salvo `Catalog`, que **suma cuatro**
+  (`isManager` 7→11): más restrictivo, no menos. Su selector de ubicación nace en `''` = "Todas", con
+  lo que `locMode`/`shownLoc` valen **exactamente** lo que valían `areaMode`/`viewLoc`: sin tocarlo,
+  la pantalla es la de hoy.
+- **0 identificadores no definidos** en los 11 ficheros JS/JSX (esbuild + acorn). Es la puerta que el
+  build NO cubre, porque **no hay linter**. La herramienta se validó con **control negativo** (inyectar
+  un identificador inexistente lo detecta; el fichero limpio da 0). **Limitación declarada:** es una
+  aproximación de ámbito **plano** — caza erratas y nombres inexistentes, **no** cazaría usar una
+  variable de otra función.
+- **Nada de lo que no se tocó cambia de aspecto.** De las 26 clases de las reglas CSS nuevas, solo
+  **tres** existían ya (`.card`, `.link-recover`, `.user-chip`), y las dos últimas se usan **solo en
+  `Login.jsx`**; `.card` únicamente dentro de `.acc-stack > .card:last-child`. Sin contenido perdido
+  en el refactor: los enlaces `to="/…"` salen 41→41 (Inicio), 3→3 (Ajustes) y 1→1 (Reportes).
+- **Los ids repetidos de `Home.jsx` no son un fallo**, aunque lo parezcan: hay **cuatro** `<Accordion>`
+  en una cadena ternaria `isCook ? … : isCourier ? … : isManager ? … : (…)`, y **solo uno se pinta a
+  la vez**. No hay ids duplicados en el DOM.
+- **Accesibilidad comprobada en el código, no supuesta:** el panel cerrado del acordeón recibe
+  `visibility:hidden` de verdad (`global.css:3356`), así que su contenido **no queda navegable con el
+  teclado** pese a seguir en el árbol; `prefers-reduced-motion` está contemplado; `.sr-only` existe y
+  es el patrón estándar. `dayLabel` lleva sus pruebas **con control negativo** que demuestra que la
+  versión ingenua (`new Date(dia)`) desfasa los 365 días del año.
+- **Peso**, construyendo `95fbf39` en un worktree aparte: el chunk principal pasa de **983.55 kB**
+  (gzip 285.61) a **990.50 kB** (gzip **288.01**): **+6.95 kB, +0.71 %**. El CSS, de 78.05 a
+  **81.52 kB** (gzip +0.70). En conjunto **+3.10 kB gzip (+1,0 %)**. Como el chunk lleva hash,
+  **actualizar cuesta la descarga completa (~288 kB gzip por teléfono)**, no el delta.
+
+**Riesgos de CONVIVENCIA de versiones: NINGUNO.** Es la diferencia de fondo con la fusión del 14-09,
+que traía tres. Todo es interfaz: sin esquema, sin formato de dato nuevo, sin escrituras. Un teléfono
+actualizado y otro sin actualizar intercambian **exactamente** lo mismo que hoy. La única persistencia
+nueva es `localStorage mc_acc_*` (sección abierta del acordeón), **local del dispositivo** como
+`mc_theme`: no viaja a la nube ni entra en respaldos, y si la sección recordada ya no existe —se quitó
+un módulo, cambió el rol— el componente se queda con todo cerrado en vez de dejar un estado imposible.
+
+**Cambio visible que hay que avisar al vendedor ANTES de desplegar:** el **login ya no lista a los
+usuarios**; hay que escribir el nombre. El campo **no autentica**: filtra en memoria la lista que ya
+se cargaba, y al tocar una coincidencia se sigue llamando a `login(u.id, pin)` **igual que siempre**.
+Hay salida de emergencia («Ver todos los usuarios»), pero **solo aparece cuando la búsqueda no
+encuentra a nadie**: si alguien teclea una letra que casa con *otro* usuario, ve una lista sin él y
+sin escape, y tiene que borrar y reescribir. **Es una arista conocida, no un fallo.**
+
+**Lo que NO se pudo garantizar: NADIE HA EJECUTADO LA APP.** Ni un login, ni un acordeón abierto en un
+teléfono. Código, build y pruebas en node.
+
+**Esta fusión no sube esquema**, así que el retroceso a un build del mismo esquema es viable; el
+respaldo previo al despliegue sigue siendo lo sensato.
+
+### Corrección de existencias — PLAN ABIERTO, cero código escrito (15-09-2026)
+
+**Todo el traspaso vive en `docs/CORRECCION-EXISTENCIAS.md`: LEERLO ANTES DE TOCAR NADA.** Lo que
+subió en esta fusión es **solo ese documento**; **F1–F4 no están programados**. Nace de la auditoría
+forense sobre los dos respaldos del negocio *De todo un tin* (12-09-2026, `schema 19`), esta vez
+**con los respaldos cargados y calculados**, no leídos.
+
+- **La causa raíz no es la caché: es una línea obsoleta que la lee mal.** Los datos están sanos (305
+  claves de `stockByLocation`, **0 divergentes** contra el libro en los dos aparatos). Lo que miente
+  es el **respaldo heredado de la v5** en `stockAtLocation`: cuando falta la clave `__almacen`
+  devuelve el **total del producto** como si estuviera en el almacén central. **58 productos
+  afectados**, en los dos respaldos. La línea está **copiada en 13 sitios** de `src/`, y
+  `recomputeStock` la regenera en cada bajada de sync, así que **reaparece sola**.
+- **🛑 AVISO OPERATIVO, vigente hasta que F1 se despliegue:** contar el **Almacén central** clavaría
+  **−1.482 unidades negativas** nuevas (54 productos fantasma de los 56 que entran al conteo), y el
+  **traspaso** almacén→área deja sacar esas mismas 1.482 unidades de un almacén vacío
+  (`transfersRepo.js:33`; la pantalla se usa: 27 traspasos registrados). **El conteo de Tienda sí es
+  seguro** (0 divergencias). La versión anterior del documento mandaba contar las dos ubicaciones:
+  esa instrucción era una bomba y **ya está corregida**.
+- **Orden de los arreglos:** **F1** (quitar el respaldo obsoleto — una línea, **coste cero**, valida
+  58→0 divergencias en los dos respaldos con control negativo) → **F2** (el conteo ve los negativos:
+  `> 0` → `!== 0` en **tres** compuertas, `countsRepo:81` y `CountScreen:265` y `:162`, no en una) →
+  **F3** (`submit`/`approve` derivan del libro mayor) → **F4** (candado de existencia en la deuda
+  interna). **F4 no puede desplegarse antes que F2**: si el candado rechaza una deuda por existencia
+  en cero, el único remedio es el conteo.
+- **F3 renuncia a reusar `recomputeStock`**: exigía editar `src/features/sync/` y **no hace falta**.
+  Ninguno de los cuatro toca la sincronización, ni el esquema, ni `SYNC_COLLECTIONS`.
+- **Ninguna de las 13 suites cubre F1–F4, ni puede** (`countsRepo`, `transfersRepo` y `debtsRepo`
+  necesitan base de datos). Se propone **`fake-indexeddb` como `devDependency`** —aditivo, fuera del
+  bundle, con precedente en `docs/FICHA-COSTO.md` §9.17— para probarlos de verdad.
+- Los cuatro tocan **lógica de producción**, así que chocan con la regla 2: son **correcciones de
+  defecto** y necesitan **autorización explícita del dueño** antes de escribirse.
 
 ### Fusión del 14-09-2026 — `cocteleria`, descuento de mesa y unidades de medida
 
