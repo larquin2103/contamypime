@@ -507,6 +507,28 @@ por área, % de cargo por servicio, encabezado/pie del ticket). Repo: `ordersRep
   - **Red de seguridad:** reporte *"Descuentos autorizados no aplicados"* — mesas cobradas
     completas pese a haber un descuento autorizado en los eventos. Delata el caso en que la fusión
     pisó la cabecera.
+  - **CORTESÍA — la mesa regalada al 100% (16-09-2026).** El 100% siempre se pudo aplicar, pero
+    entonces el total daba 0 y el cobro exigía `total > 0`: la mesa quedaba **congelada sin ninguna
+    salida** (*Liberar* solo funciona con la mesa vacía), y con ella **el cierre de turno**, que se
+    bloquea si el área tiene mesas abiertas. Ahora se cierra por el **camino normal** como una venta
+    de **importe 0**: el consumo y su **costo** quedan registrados y el ingreso es 0 — que es
+    exactamente lo que se pedía, *"el costo sí, la venta no"*. No hizo falta inventar nada: la venta
+    ya congelaba el `unitCost` de cada línea, el stock ya salió al agregar cada ítem y `saleRevenue`
+    ya prorratea el descuento **sin tocar el costo**. **No se guarda ninguna marca nueva:** una venta
+    con `discountPct === 100` **ES** la cortesía (derivable, sin esquema Dexie ni colección de sync).
+    La regla vive en `lib/orderTotals.js` (`isCourtesy`, pura y probada) y exige **las tres cosas a
+    la vez**: que haya líneas (si no, una mesa vacía se "cobraría" y nacería una venta de la nada),
+    que el descuento sea del 100% (si no, se colaría cualquier mesa que dé 0 por otro motivo, que no
+    autorizó nadie) y que no quede importe por cobrar. Con cortesía **no se pide forma de pago** y el
+    cobro se fuerza a **efectivo 0** en la moneda base (si no, podía nacer una "transferencia de 0"
+    con referencia vacía); sumar 0 no mueve la caja ni el arqueo, y `salesRepo` ya ignora los
+    importes de 0 al acreditar tesorería. El **ticket** imprime `CORTESÍA · NO COBRADO` y el reporte
+    *Ventas por mesa* marca esas filas como **Cortesía** —la columna *Método* diría "Efectivo", que
+    es mentira— con un pie de cuántas y cuánto consumo se regaló, **data-driven**: sin ninguna, el
+    reporte sale idéntico. **Sin descuento del 100% nada cambia**, y no se razonó: se extrajo el
+    `canPay` real de la rama y el de `main` y se compararon sobre **2.160 combinaciones**, con
+    **0 diferencias** fuera de la cortesía y control negativo que sí las detecta (608). Acta en
+    `docs/COCTELERIA-Y-MESAS.md` **§C6**.
   - **El panel del dueño muestra el valor REAL:** el descuento se **prorratea** entre las líneas
     de la venta (`lib/saleRevenue.js`), en proporción a su importe, para que total, por producto,
     por categoría y por área queden coherentes entre sí. **El costo no se toca** (la mercancía

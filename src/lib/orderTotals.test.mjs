@@ -6,7 +6,7 @@
 // asi que el invariante "con discountPct = 0 la salida es identica a la de antes"
 // es lo que impide tocar dinero de verdad. Va primero, y comparado contra la
 // formula ANTERIOR escrita a mano.
-import { orderTotals, cleanPct, discountFromEvents } from './orderTotals.js'
+import { orderTotals, cleanPct, discountFromEvents, isCourtesy } from './orderTotals.js'
 
 let pass = 0
 let fail = 0
@@ -191,6 +191,69 @@ const EV = (action, pct, createdAt, userId = 'u1') => ({ entity: 'order', action
   // Sin fecha: no revienta y sigue eligiendo uno (el criterio es estable).
   const d = discountFromEvents([EV('order_discount', 20, undefined), EV('order_discount', 30, '2026-01-01T00:00:00.000Z')])
   ok(d && [20, 30].includes(d.pct), '7) un evento sin fecha no revienta la derivacion')
+}
+
+// ---------------------------------------------------------------------------
+// 8) CORTESIA: la mesa que se regala entera (100%) y hay que poder CERRAR.
+//
+// QUE CAZA ESTA TANDA. Con el 100% aplicado el total da 0, y la pantalla exigia
+// `total > 0` para dejar cobrar: la mesa quedaba CONGELADA y, como el cierre de
+// turno se bloquea con mesas abiertas, atrancaba el turno entero del vendedor.
+// La salida es cerrarla como venta de importe 0 —el consumo y su COSTO quedan
+// registrados, el ingreso es 0—, y esta funcion es la que decide cuando eso vale.
+//
+// Las TRES condiciones tienen que ir juntas, y cada una tapa un agujero distinto:
+//  - sin `hay lineas`, una mesa VACIA se podria "cobrar" y nacer una venta de la nada;
+//  - sin `100%`, se colaria cualquier mesa que de 0 por otro motivo (todo a precio 0),
+//    que NO es una cortesia autorizada por nadie;
+//  - sin `total <= 0`, un 100% mal calculado dejaria pasar un cobro de verdad sin cobrarlo.
+{
+  const linea = (lineTotal) => ({ lineTotal })
+
+  // El caso que origina todo: dos consumos y el 100% aplicado.
+  const t100 = orderTotals([linea(150), linea(50)], { servicePct: 10, discountPct: 100 })
+  eq(t100.discount, 200, '8) 100% regala el consumo entero')
+  eq(t100.service, 0, '8) al regalar todo no se cobra servicio')
+  eq(t100.total, 0, '8) el total de una mesa regalada es 0')
+  ok(isCourtesy([linea(150), linea(50)], t100), '8) mesa con consumo y 100% SI es cortesia')
+
+  // Una mesa que hoy se cobra bien NO puede volverse cortesia por accidente.
+  const t0 = orderTotals([linea(150)], { servicePct: 10, discountPct: 0 })
+  ok(!isCourtesy([linea(150)], t0), '8) sin descuento NO es cortesia')
+  const t50 = orderTotals([linea(150)], { servicePct: 10, discountPct: 50 })
+  ok(!isCourtesy([linea(150)], t50), '8) descuento parcial NO es cortesia')
+  const t99 = orderTotals([linea(150)], { servicePct: 0, discountPct: 99.9 })
+  ok(!isCourtesy([linea(150)], t99), '8) 99.9% NO es cortesia: queda importe por cobrar')
+
+  // Mesa VACIA: aunque el total sea 0, no hay nada que regalar.
+  const tVacia = orderTotals([], { servicePct: 10, discountPct: 100 })
+  eq(tVacia.total, 0, '8) una mesa vacia totaliza 0')
+  ok(!isCourtesy([], tVacia), '8) mesa VACIA no es cortesia aunque totalice 0')
+
+  // Consumo a precio 0 SIN descuento: da 0, pero nadie autorizo nada.
+  const tGratis = orderTotals([linea(0)], { servicePct: 10, discountPct: 0 })
+  eq(tGratis.total, 0, '8) una linea de importe 0 totaliza 0')
+  ok(!isCourtesy([linea(0)], tGratis), '8) total 0 SIN descuento del 100% no es cortesia')
+
+  // Y con el 100% sobre un consumo de 0 si vale: hay linea y hay autorizacion.
+  const tGratis100 = orderTotals([linea(0)], { servicePct: 10, discountPct: 100 })
+  ok(isCourtesy([linea(0)], tGratis100), '8) 100% sobre consumo 0 sigue siendo cortesia')
+
+  // Robustez: no puede reventar con basura (la pantalla la llama en cada render).
+  ok(!isCourtesy(null, null), '8) sin argumentos no revienta y no es cortesia')
+  ok(!isCourtesy(undefined, t100), '8) sin lineas no es cortesia')
+  ok(!isCourtesy([linea(150)], undefined), '8) sin totales no es cortesia')
+  ok(!isCourtesy([linea(150)], { discountPct: 100 }), '8) sin total calculado no es cortesia')
+
+  // El 100% llega desde la cabecera como texto en algun camino (el input del %).
+  ok(isCourtesy([linea(10)], { discountPct: '100', total: 0 }), '8) el 100% como texto vale igual')
+
+  // Residuo de punto flotante: restar pesos deja -2.66e-15 y eso NO puede
+  // impedir cerrar la mesa (es el mismo motivo por el que existe cleanQty).
+  ok(isCourtesy([linea(10)], { discountPct: 100, total: -0.0000000001 }), '8) un residuo negativo no bloquea el cierre')
+
+  // Un total POSITIVO con 100% seria un calculo incoherente: no se cierra sin cobrar.
+  ok(!isCourtesy([linea(10)], { discountPct: 100, total: 5 }), '8) con importe por cobrar NO es cortesia')
 }
 
 console.log(`${pass} pass, ${fail} fail`)

@@ -94,3 +94,43 @@ export function orderTotals(items = [], { servicePct = 0, waived = false, discou
     total: round2(taxable + service)
   }
 }
+
+// ---------------------------------------------------------------------------
+// CORTESIA: la mesa que se regala ENTERA y aun asi hay que poder cerrar.
+//
+// EL PROBLEMA. Con el 100% aplicado el total da 0, y la pantalla exigia
+// `total > 0` para dejar cobrar: el boton quedaba muerto y la mesa CONGELADA,
+// sin ninguna otra salida (liberar solo funciona con la mesa vacia, y esta tiene
+// consumo). Y no atrancaba solo la mesa: el cierre de turno se bloquea cuando el
+// area tiene mesas abiertas, asi que se llevaba por delante el turno del vendedor.
+//
+// LA SALIDA, decidida con el dueño: cerrarla por el CAMINO NORMAL como una venta
+// de importe 0. El costo queda registrado y el ingreso es 0 —que es justo lo que
+// se pedia: "el costo si, la venta no"—. No hace falta inventar nada para eso:
+// la venta ya congela el `unitCost` de cada linea, el stock ya salio al agregar
+// cada item, y `saleRevenue` ya prorratea el descuento SIN tocar el costo (la
+// mercancia costo lo mismo aunque se regalara el precio).
+//
+// NO SE GUARDA NINGUNA MARCA NUEVA: una venta con `discountPct === 100` ES una
+// cortesia. Es derivable del dato que ya se congela, asi que no puede
+// desincronizarse, no toca el esquema Dexie y no añade colecciones de sync.
+//
+// LAS TRES CONDICIONES VAN JUNTAS, y cada una tapa un agujero distinto:
+//  - HAY LINEAS: sin esto una mesa VACIA se podria "cobrar" y naceria una venta
+//    de la nada (el total de una mesa sin consumo tambien es 0).
+//  - 100%: sin esto se colaria cualquier mesa que de 0 por otro motivo -todo el
+//    consumo a precio 0-, y eso NO lo autorizo nadie. El 100% si: aplicarlo exige
+//    autorizacion del mando y deja su evento en auditoria con quien lo autorizo.
+//  - TOTAL <= 0: es la comprobacion de ultima instancia. Si por lo que sea queda
+//    importe por cobrar, esto NO es una cortesia y no se cierra sin cobrarlo.
+//
+// El `<= 0` y no `=== 0` es deliberado: restar pesos deja residuos de punto
+// flotante (-2.66e-15) y un cero real puede llegar en negativo. Es el mismo
+// motivo por el que existe `cleanQty`. Un total POSITIVO nunca pasa.
+export function isCourtesy(items, totals) {
+  if (!Array.isArray(items) || items.length === 0) return false
+  if (!totals) return false
+  const total = Number(totals.total)
+  if (!Number.isFinite(total)) return false
+  return cleanPct(totals.discountPct) >= 100 && total <= 0
+}

@@ -1477,3 +1477,98 @@ estaba indexado**. El despliegue sigue siendo **reversible**.
    **reporte lo delatará después**. No hay forma de saber lo que no ha llegado; para eso está la red
    de seguridad.
 4. **Nadie ha ejecutado la app.** Como todo lo demás: build, pruebas puras y Dexie simulado.
+
+---
+
+### C6 — La mesa regalada al 100% deja de quedarse congelada (16-09-2026)
+
+**El defecto, reportado por el dueño.** Un descuento del **100 %** siempre se pudo aplicar
+(`submitDiscount` solo rechaza pasar de 100), pero entonces el total daba **0** y el cobro exigía
+`total > 0` (`TableScreen.jsx:263`): el botón quedaba muerto y **la mesa no se podía cerrar por
+ningún camino** — *Liberar* solo funciona con la mesa vacía, y esta tiene consumo.
+
+**Y no atrancaba solo esa mesa.** `ShiftScreen.jsx:274` **bloquea el cierre de turno** cuando el
+área tiene mesas abiertas: una cortesía dejaba al vendedor sin poder cerrar su turno.
+
+**Lo que pidió el dueño:** que se pueda cerrar, que quede registrado y que **se registre el costo
+pero no la venta**.
+
+#### Lo que ya estaba construido, y por eso el arreglo es pequeño
+
+- `salesRepo.create` **no exige** que el total sea mayor que 0. El único candado era esa línea de UI.
+- La venta **ya congela `unitCost` por línea** (`salesRepo.js:178`), así que el costo queda registrado
+  aunque el precio sea 0.
+- `saleRevenue` ya prorratea el descuento **sin tocar el costo** — está escrito así a propósito: la
+  mercancía costó lo mismo aunque se regalara el precio.
+- El stock ya salió al agregar cada ítem (`ordersRepo.addItem`), que es lo correcto: se consumió.
+- `salesRepo` ya ignora los importes de 0 al acreditar tesorería (`if (amt <= 0) return`), así que
+  una cortesía **no ensucia las cuentas** con un movimiento vacío.
+
+O sea: «el costo sí, la venta no» **es exactamente** lo que el sistema ya hacía con una venta al
+100 % de descuento. Faltaba dejarla pasar y que no se confundiera con una venta normal.
+
+#### La decisión de fondo: no se guarda ninguna marca nueva
+
+Una venta con **`discountPct === 100` ES una cortesía**. Es **derivable** de un campo que ya se
+congelaba, así que no puede desincronizarse, no toca el esquema Dexie, no añade colecciones de sync
+y no hay un `courtesy: true` que pueda contradecir al `discountPct`. Es el mismo criterio que
+`hasForeign` en los reportes: **data-driven**.
+
+#### El arreglo
+
+1. **`isCourtesy(items, totals)`** en `lib/orderTotals.js`: pura, con su suite (**19 aserciones
+   nuevas**, 45 → 64 en esa suite). **Las tres condiciones van juntas** y cada una tapa un agujero:
+   - **hay líneas** — sin esto una mesa **vacía** se podría "cobrar" y nacería una venta de la nada
+     (una mesa sin consumo también totaliza 0);
+   - **100 %** — sin esto se colaría cualquier mesa que dé 0 por otro motivo (todo el consumo a
+     precio 0), que **no lo autorizó nadie**; el 100 % sí exige autorización del mando y deja su
+     evento en auditoría;
+   - **total ≤ 0** — comprobación de última instancia: si queda importe por cobrar, no se cierra sin
+     cobrarlo. El `≤` y no `===` es deliberado: restar pesos deja residuos (−2,66e-15).
+2. **`canPay`** pasa a `courtesy || (…lo de antes…)`.
+3. **El cobro**: con cortesía no se pide forma de pago (no hay nada que cobrar) y el payload se
+   fuerza a **efectivo de importe 0** en la moneda base, **sin mirar la pestaña seleccionada** —si
+   no, podía nacer una "transferencia de 0" con referencia vacía—. Sumar 0 no mueve la caja ni el
+   arqueo del turno.
+4. **El ticket** imprime `CORTESÍA · NO COBRADO`.
+5. **El reporte *Ventas por mesa*** marca esas filas como **Cortesía** en la columna *Método* (que
+   con "Efectivo" estaría mintiendo: no entró dinero) y añade un pie con **cuántas** mesas se
+   regalaron y **cuánto consumo** se fue en ellas. **Data-driven**: sin ninguna cortesía en el rango,
+   el reporte sale **idéntico** al de siempre.
+
+#### La prueba que sostiene que no rompe nada
+
+`canPay` es la condición que decide si se cobra una mesa, así que se midió en vez de razonarla: se
+**extrajo el cuerpo real** de la función de la rama y el de `origin/main` —no una copia a mano— y se
+evaluaron los dos sobre **2.160 combinaciones** de método de pago, total, pagado, debido y estado del
+mixto:
+
+```
+comparados: 2160   identicos: 1552   difieren: 608 (todos con cortesia)
+difieren SIN cortesia: 0            <-- las mesas que hoy se cobran, intactas
+control negativo (cortesia siempre activa): 608 diferencias detectadas
+```
+
+El **control negativo** es lo que hace válida la prueba: sin él, un barrido que no compara nada
+también daría 0 diferencias.
+
+Además, **control negativo de la suite**: quitando la guarda de mesa vacía falla 1 aserción, y
+aceptando cualquier descuento falla otra. El test caza lo que dice cazar.
+
+**Build exit 0**, **14 suites / 853 aserciones**, **0 identificadores sin definir** en los tres
+ficheros tocados (esbuild + acorn, con su control negativo). El byte NUL de `reportsService.js`
+sigue intacto (1 antes, 1 después): el fichero se parcheó **en binario** a propósito.
+
+#### Lo que hay que saber
+
+- **Cambia conducta** (regla 2): hoy una mesa al 100 % no se puede cerrar, después sí. Es corrección
+  de un defecto, pedida por el dueño. **Sin descuento del 100 % todo queda idéntico**, y eso es lo
+  que miden las 2.160 comparaciones.
+- **Convivencia de versiones:** un teléfono **sin actualizar** sigue con la mesa congelada. No rompe
+  nada —la venta que genere el actualizado se lee igual en el viejo— pero **no se arregla hasta que
+  actualicen los dos**.
+- **El panel del dueño se dejó fuera a propósito.** El costo de lo regalado ya entra en *Gastos
+  (costo de lo vendido)*; sacarlo en una línea propia obliga a tocar `analyticsRepo.report`, que
+  alimenta todo el panel, y eso merece su propia medición.
+- **Nadie ha ejecutado la app.** Ni una mesa regalada, ni un ticket impreso. Código, build y pruebas
+  en node.

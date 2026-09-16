@@ -1355,6 +1355,12 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
   // criterio data-driven que las columnas USD). Sin descuentos, el reporte sale
   // IDENTICO al de siempre: mismas columnas, mismas filas y mismo fichero.
   const hasDiscount = sales.some((s) => Number(s.discountAmount || 0) > 0)
+  // CORTESIAS (mesas regaladas al 100%). Mismo criterio data-driven: sin ninguna,
+  // el reporte sale IDENTICO al de siempre. No hace falta ningun campo nuevo en la
+  // venta: `discountPct === 100` ES la cortesia, y ya se congelaba.
+  const hasCourtesy = sales.some((s) => Number(s.discountPct || 0) >= 100)
+  let nCortesias = 0
+  let totCortesia = 0
 
   const rows = []
   let totSub = 0
@@ -1374,6 +1380,11 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
     const consumoUsd = (s.items || []).reduce((a, it) => { const u = foreignOf(it, it.lineTotal); return a + (u === '' ? 0 : u) }, 0)
     const hasF = (s.items || []).some((it) => it.priceCurrency)
     if (hasForeign) totConsumoUsd = round2(totConsumoUsd + consumoUsd)
+    // Una mesa regalada se cierra como efectivo de importe 0 (no entra dinero), asi
+    // que poner "Efectivo" en su fila seria enga~noso: se marca como CORTESIA. El
+    // consumo regalado se acumula aparte para que el due~no vea el agujero real.
+    const esCortesia = Number(s.discountPct || 0) >= 100
+    if (esCortesia) { nCortesias++; totCortesia = round2(totCortesia + sub) }
     rows.push([
       formatDateTime(s.createdAt),
       areaLabel(s.area),
@@ -1386,13 +1397,17 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
       s.serviceChargePct ? `${s.serviceChargePct}%` : '',
       serv,
       tot,
-      methodOf(s),
+      esCortesia ? 'Cortesía' : methodOf(s),
       ...(hasForeign ? [hasF ? round2(consumoUsd) : ''] : [])
     ])
   }
   const avg = sales.length ? round2(totTotal / sales.length) : 0
   rows.push(['', '', '', 'TOTALES', '', round2(totSub), ...(hasDiscount ? [round2(totDisc)] : []), '', round2(totServ), round2(totTotal), '', ...(hasForeign ? [round2(totConsumoUsd)] : [])])
   rows.push(['', '', '', `Cuentas: ${sales.length}`, '', '', ...(hasDiscount ? [''] : []), 'Ticket promedio', avg, '', '', ...(hasForeign ? [''] : [])])
+  // Solo si hubo alguna: cuantas mesas se regalaron y cuanto consumo se fue en ellas.
+  if (hasCourtesy) {
+    rows.push(['', '', '', `Cortesías: ${nCortesias}`, '', round2(totCortesia), ...(hasDiscount ? [''] : []), '', '', '', 'Regalado', ...(hasForeign ? [''] : [])])
+  }
   return {
     title: 'Ventas por mesa',
     subtitle: rangeLabel(from, to),

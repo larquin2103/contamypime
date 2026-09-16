@@ -15,7 +15,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
-import { orderTotals } from '../../lib/orderTotals'
+import { orderTotals, isCourtesy } from '../../lib/orderTotals'
 import { logError } from '../../lib/errorLog'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
@@ -148,6 +148,11 @@ export function TableScreen() {
   const pct = totals.servicePct
   const service = totals.service
   const total = totals.total
+  // CORTESIA (mesa regalada entera). La regla vive en lib/orderTotals, es pura y
+  // tiene su suite: hay consumo, el descuento es del 100% y no queda importe por
+  // cobrar. Sin el 100% esto es SIEMPRE false y la pantalla se comporta igual que
+  // hasta hoy, que es lo que impide que toque una mesa que ya se cobra bien.
+  const courtesy = isCourtesy(live, totals)
 
   if (!hasModule(LICENSE_MODULES.TABLES)) {
     return <div className="screen"><p className="muted">Este módulo no está incluido en tu licencia.</p></div>
@@ -259,13 +264,18 @@ export function TableScreen() {
   const effChangeCur = cashCurrency === baseCurrency ? baseCurrency : changeCurrency
   const changeGiven = effChangeCur === cashCurrency ? changeInPay : changeBase
 
+  // Una mesa REGALADA se cierra sin cobrar: si no, el `total > 0` la dejaba
+  // congelada para siempre -y con ella el cierre de turno, que se bloquea cuando
+  // el area tiene mesas abiertas-. Con `courtesy` en false la condicion es
+  // EXACTAMENTE la de antes, carácter por carácter.
   const canPay =
-    total > 0 &&
+    courtesy ||
+    (total > 0 &&
     (payMethod === PAYMENT_METHODS.CASH
       ? paid >= dueInCash && dueInCash > 0
       : payMethod === PAYMENT_METHODS.TRANSFER
         ? true
-        : mixOk)
+        : mixOk))
 
   // --- Descuento de la mesa ----------------------------------------------------
   // El MANDO lo aplica y lo quita directo (ya esta autenticado). El VENDEDOR necesita
@@ -391,7 +401,26 @@ export function TableScreen() {
         creditAccounts: hasModule(LICENSE_MODULES.ACCOUNTS)
       }
       let payload
-      if (payMethod === PAYMENT_METHODS.MIXED) {
+      if (courtesy) {
+        // Mesa regalada: NO hay cobro. Se registra como efectivo de importe 0 en
+        // la moneda base y no se mira la pestaña que estuviera seleccionada, para
+        // que no nazca una "transferencia de 0" con referencia vacia. Sumar 0 no
+        // mueve la caja ni el arqueo del turno, asi que el cuadre queda intacto.
+        // El consumo y su COSTO si quedan registrados: `salesRepo` congela el
+        // `unitCost` de cada linea, y `discountPct: 100` es lo que identifica la
+        // cortesia despues (no se guarda ninguna marca nueva: es derivable).
+        payload = {
+          ...common,
+          paymentMethod: PAYMENT_METHODS.CASH,
+          paymentCurrency: baseCurrency,
+          cashAmount: 0,
+          amountPaid: 0,
+          change: 0,
+          changeCurrency: baseCurrency,
+          changeRate: null,
+          rate: null
+        }
+      } else if (payMethod === PAYMENT_METHODS.MIXED) {
         payload = {
           ...common,
           paymentMethod: PAYMENT_METHODS.MIXED,
@@ -431,12 +460,14 @@ export function TableScreen() {
       // moneda). Se toma del MISMO payload guardado en la venta -sin recalcular-
       // para que el ticket muestre lo cobrado aun antes de releer la venta de la
       // BD. Luego el ticket usa (sale || done.pay) como fuente.
-      const pay = payMethod === PAYMENT_METHODS.CASH
+      const pay = courtesy
+        ? { paymentMethod: 'cash', cashCurrency: baseCurrency, cashAmount: 0, amountPaid: 0, change: 0, changeCurrency: baseCurrency }
+        : payMethod === PAYMENT_METHODS.CASH
         ? { paymentMethod: 'cash', cashCurrency: payload.paymentCurrency, cashAmount: payload.cashAmount, amountPaid: payload.amountPaid, change: payload.change, changeCurrency: payload.changeCurrency }
         : payMethod === PAYMENT_METHODS.TRANSFER
           ? { paymentMethod: 'transfer', transferCurrency: payload.transferCurrency, transferAmount: payload.transferAmount }
           : { paymentMethod: 'mixed', payments: payload.payments, change: payload.change, changeCurrency: payload.changeCurrency }
-      setDone({ subtotal, discount, discountPct, service, pct, total, method: payMethod, pay })
+      setDone({ subtotal, discount, discountPct, service, pct, total, method: payMethod, pay, courtesy })
       setPaying(false)
       if (nudgePush) nudgePush()
     } catch (e) {
@@ -528,6 +559,8 @@ export function TableScreen() {
             <div className="thermal__row"><span>Servicio {d.pct}%</span><span>{formatMoney(d.service, baseCurrency)}</span></div>
           )}
           <div className="thermal__row thermal__total"><span>TOTAL</span><span>{formatMoney(d.total, baseCurrency)}</span></div>
+          {/* Mesa regalada: el cliente se lleva su comprobante y dice lo que es. */}
+          {d.courtesy && <div className="thermal__row thermal__total"><span>CORTESÍA</span><span>NO COBRADO</span></div>}
           <div className="thermal__pay">{payLabel}</div>
           {/* Modulo 'divisas' (GATEADO): monto pagado en divisa (USD) — efectivo. */}
           {foreignPay && P.paymentMethod === 'cash' && P.cashCurrency && P.cashCurrency !== baseCurrency && (
@@ -651,14 +684,26 @@ export function TableScreen() {
       {/* Cobro */}
       {paying && (
         <section className="card">
-          <h3>Cobrar {formatMoney(total, baseCurrency)}</h3>
-          <div className="tabs">
+          <h3>{courtesy ? 'Cerrar mesa de cortesía' : `Cobrar ${formatMoney(total, baseCurrency)}`}</h3>
+          {/* Mesa REGALADA: no se pide forma de pago porque no hay nada que cobrar.
+              Se dice en claro lo que va a quedar registrado, que es lo que el dueño
+              va a ver despues en los reportes. */}
+          {courtesy && (
+            <div>
+              <p className="warn-text"><strong>Esta cuenta está regalada al 100%.</strong></p>
+              <p className="muted">
+                No se cobra nada. Queda registrado el consumo con su costo, el descuento
+                del 100% y quién lo autorizó. No entra dinero en la caja.
+              </p>
+            </div>
+          )}
+          <div className="tabs" hidden={courtesy}>
             <button className={`tab ${payMethod === PAYMENT_METHODS.CASH ? 'is-active' : ''}`} onClick={() => setPayMethod(PAYMENT_METHODS.CASH)}>Efectivo</button>
             <button className={`tab ${payMethod === PAYMENT_METHODS.TRANSFER ? 'is-active' : ''}`} onClick={() => setPayMethod(PAYMENT_METHODS.TRANSFER)}>Transferencia</button>
             <button className={`tab ${payMethod === PAYMENT_METHODS.MIXED ? 'is-active' : ''}`} onClick={() => setPayMethod(PAYMENT_METHODS.MIXED)}>Mixto</button>
           </div>
 
-          {payMethod === PAYMENT_METHODS.CASH && (
+          {!courtesy && payMethod === PAYMENT_METHODS.CASH && (
             <>
               <div className="pay-currencies">
                 {CASH_CURRENCIES.map((c) => (
@@ -859,7 +904,7 @@ export function TableScreen() {
           <div className="modal__actions">
             <button className="btn btn--ghost" onClick={() => setPaying(false)}>Cancelar</button>
             <button className="btn btn--primary" disabled={busy || !canPay} onClick={charge}>
-              {busy ? 'Cobrando…' : 'Confirmar cobro'}
+              {busy ? (courtesy ? 'Cerrando…' : 'Cobrando…') : (courtesy ? 'Cerrar sin cobrar' : 'Confirmar cobro')}
             </button>
           </div>
         </section>
