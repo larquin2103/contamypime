@@ -6,7 +6,7 @@
 // asi que el invariante "con discountPct = 0 la salida es identica a la de antes"
 // es lo que impide tocar dinero de verdad. Va primero, y comparado contra la
 // formula ANTERIOR escrita a mano.
-import { orderTotals, cleanPct, discountFromEvents, isCourtesy } from './orderTotals.js'
+import { orderTotals, cleanPct, discountFromEvents, isCourtesy, isCourtesyPct } from './orderTotals.js'
 
 let pass = 0
 let fail = 0
@@ -254,6 +254,37 @@ const EV = (action, pct, createdAt, userId = 'u1') => ({ entity: 'order', action
 
   // Un total POSITIVO con 100% seria un calculo incoherente: no se cierra sin cobrar.
   ok(!isCourtesy([linea(10)], { discountPct: 100, total: 5 }), '8) con importe por cobrar NO es cortesia')
+}
+
+// ---------------------------------------------------------------------------
+// 9) UNA SOLA definicion de "esto es una cortesia".
+//
+// QUE CAZA. El criterio del 100% estaba escrito en TRES sitios a la vez: la
+// pantalla al cobrar, el ticket y el reporte. Es el fallo de F1 en miniatura -la
+// expresion copiada a mano acaba divergiendo- y aqui ya habia divergido: el
+// ticket RECIEN cobrado decia CORTESIA y el REIMPRESO no, porque se armaba desde
+// la venta guardada y miraba otra cosa. Ahora los tres llaman a `isCourtesyPct`.
+{
+  ok(isCourtesyPct(100), '9) 100% es cortesia')
+  ok(isCourtesyPct('100'), '9) el 100% como texto vale igual (viene de un input)')
+  ok(isCourtesyPct(150), '9) por encima de 100 sigue siendo cortesia (cleanPct lo recorta)')
+  ok(!isCourtesyPct(99.9), '9) 99.9% NO es cortesia')
+  ok(!isCourtesyPct(0), '9) sin descuento NO es cortesia')
+  ok(!isCourtesyPct(undefined), '9) sin dato NO es cortesia')
+  ok(!isCourtesyPct(null), '9) null NO es cortesia')
+  ok(!isCourtesyPct('mucho'), '9) basura NO es cortesia')
+  ok(!isCourtesyPct(-100), '9) un negativo NO es cortesia')
+
+  // La venta GUARDADA y la mesa VIVA tienen que dar el mismo veredicto: es lo que
+  // impide que el ticket reimpreso diga una cosa y el recien cobrado otra.
+  const linea = (lineTotal) => ({ lineTotal })
+  const t = orderTotals([linea(200)], { servicePct: 10, discountPct: 100 })
+  const ventaGuardada = { discountPct: t.discountPct }   // lo que queda en `sales`
+  eq(isCourtesy([linea(200)], t), isCourtesyPct(ventaGuardada.discountPct),
+    '9) mesa viva y venta guardada coinciden en el 100%')
+  const t50 = orderTotals([linea(200)], { servicePct: 10, discountPct: 50 })
+  eq(isCourtesy([linea(200)], t50), isCourtesyPct({ discountPct: t50.discountPct }.discountPct),
+    '9) mesa viva y venta guardada coinciden en el 50%')
 }
 
 console.log(`${pass} pass, ${fail} fail`)

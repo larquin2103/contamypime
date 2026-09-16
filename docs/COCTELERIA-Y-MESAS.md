@@ -1572,3 +1572,66 @@ sigue intacto (1 antes, 1 después): el fichero se parcheó **en binario** a pro
   alimenta todo el panel, y eso merece su propia medición.
 - **Nadie ha ejecutado la app.** Ni una mesa regalada, ni un ticket impreso. Código, build y pruebas
   en node.
+
+#### C6.1 — Auditoría del diff antes de `main` (16-09-2026): **tres hallazgos propios**
+
+El dueño pidió auditar el diff «sin asumir nada». Salieron **tres cosas**, todas de esta misma
+tanda y todas corregidas antes de fusionar. Se registran porque el valor de una auditoría es lo que
+encuentra, no lo que confirma.
+
+**H1 — El ticket REIMPRESO no decía «CORTESÍA».** El ticket se arma con
+`const d = done || {…desde la venta guardada…}`: en el cobro recién hecho `done` trae lo que le
+pusimos, pero **al reimprimir** (o al abrir la mesa ya cobrada desde otro equipo) se reconstruye
+desde `sales`, que **no tenía** el campo `courtesy` que estábamos arrastrando. Resultado: el mismo
+ticket decía una cosa recién cobrado y otra reimpreso. **Arreglado derivándolo** del porcentaje
+congelado en vez de arrastrarlo — que es la doctrina que ya se había elegido para todo lo demás.
+
+**H2 — El criterio del 100 % estaba escrito en TRES sitios**: la pantalla al cobrar, el ticket y el
+reporte. Es **el fallo de F1 en miniatura** (la expresión copiada a mano que acaba divergiendo), y
+de hecho **ya había divergido**: H1 es exactamente eso. Ahora hay **una sola definición**,
+`isCourtesyPct(discountPct)` en `lib/orderTotals.js`, y la llaman los tres. `isCourtesy` (la de la
+mesa viva) también la usa por dentro, así que la mesa y la venta guardada **no pueden dar veredictos
+distintos** — hay una aserción que lo comprueba justamente así.
+
+**H3 — Los formularios de transferencia y mixto seguían pintándose.** Se había blindado con
+`!courtesy` el bloque de **efectivo**, pero no los otros dos: si el vendedor tenía seleccionada
+*Transferencia* cuando cerraba una cortesía, veía el campo de referencia pidiéndole datos bajo el
+aviso de «cuenta regalada». El cobro ya era correcto (el payload se fuerza a efectivo 0), pero la
+pantalla era incoherente. **Los tres bloques van ahora con `!courtesy`.**
+
+#### C6.2 — La prueba que faltaba: el reporte, EJECUTADO en los dos árboles
+
+Que el reporte salga idéntico sin cortesías estaba **razonado, no medido**. Ahora está medido: se
+empaquetó con esbuild el `buildTablesReport` **real** de la rama y el de `origin/main` (worktree
+aparte), se sembró la misma base con `fake-indexeddb` —ventas de mesa sin descuento, con descuento
+parcial, con servicio eximido, en divisa, por transferencia y mixtas— y se comparó la salida
+completa (`head`, `rows`, `filename`, `orientation`):
+
+```
+IDENTICO  sin_cortesia__divisas_false
+IDENTICO  sin_cortesia__divisas_true
+DIFIERE   con_cortesia__divisas_false   <- solo la fila marcada y el pie nuevo
+DIFIERE   con_cortesia__divisas_true    <- idem, con la columna USD en su sitio
+control negativo (bundle alterado): DETECTADO
+```
+
+Las 8 filas comunes salen **iguales** en el escenario con cortesía: lo único que cambia es que esa
+mesa dice `Cortesía` en vez de `Efectivo` y que aparece el pie `Cortesías: 1 · 107 · Regalado`, con
+el **número de columnas correcto** en los dos modos. La tilde se comprobó por *codepoint*
+(`U+00ED`), no a ojo: lo que se veía raro era la consola de Windows, no el dato.
+
+#### C6.3 — Estado final verificado
+
+- `npm run build` **exit 0**; chunk **992,85 kB** (gzip **288,90**) frente a **990,50** (gzip
+  **288,01**) en `main`: **+2,35 kB, +0,24 %**.
+- **14 suites / 864 aserciones**, 0 fallos (esta suite: 45 → **75**).
+- **0 identificadores sin definir** en los tres ficheros, con control negativo. Esta puerta valió su
+  precio: al unificar el criterio faltaba el `import` de `isCourtesyPct` en `reportsService.js`, y el
+  build **no lo detecta** — habría sido un `ReferenceError` en el teléfono, al abrir el reporte.
+- Byte NUL de `reportsService.js`: **1 antes, 1 después**.
+- `canPay`: **2.160 comparaciones** contra el código real de `main`, **0 diferencias** fuera de la
+  cortesía, control negativo 608.
+- **Cero** ficheros tocados en `src/db/`, `src/features/sync/`, `package.json` y `firestore.rules`.
+- Las **12 líneas borradas** del diff se revisaron una a una: todas tienen su línea sustituta
+  (imports ampliados, la apertura del `if`, el `h3`, el rótulo del botón). **No desaparece ninguna
+  funcionalidad.**

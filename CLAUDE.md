@@ -527,8 +527,12 @@ por área, % de cargo por servicio, encabezado/pie del ticket). Repo: `ordersRep
     es mentira— con un pie de cuántas y cuánto consumo se regaló, **data-driven**: sin ninguna, el
     reporte sale idéntico. **Sin descuento del 100% nada cambia**, y no se razonó: se extrajo el
     `canPay` real de la rama y el de `main` y se compararon sobre **2.160 combinaciones**, con
-    **0 diferencias** fuera de la cortesía y control negativo que sí las detecta (608). Acta en
-    `docs/COCTELERIA-Y-MESAS.md` **§C6**.
+    **0 diferencias** fuera de la cortesía y control negativo que sí las detecta (608); y el
+    `buildTablesReport` **real de los dos árboles** se ejecutó sobre la misma base sembrada
+    (`fake-indexeddb`): **salida idéntica** sin cortesías, con y sin `divisas`. **El criterio del
+    100% vive en UN solo sitio** (`isCourtesyPct`) porque escribirlo tres veces —pantalla, ticket y
+    reporte— ya había divergido: el ticket **reimpreso** no decía CORTESÍA. Acta y los tres
+    hallazgos de la auditoría en `docs/COCTELERIA-Y-MESAS.md` **§C6**.
   - **El panel del dueño muestra el valor REAL:** el descuento se **prorratea** entre las líneas
     de la venta (`lib/saleRevenue.js`), en proporción a su importe, para que total, por producto,
     por categoría y por área queden coherentes entre sí. **El costo no se toca** (la mercancía

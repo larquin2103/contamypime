@@ -15,7 +15,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
-import { orderTotals, isCourtesy } from '../../lib/orderTotals'
+import { orderTotals, isCourtesy, isCourtesyPct } from '../../lib/orderTotals'
 import { logError } from '../../lib/errorLog'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
@@ -467,7 +467,7 @@ export function TableScreen() {
         : payMethod === PAYMENT_METHODS.TRANSFER
           ? { paymentMethod: 'transfer', transferCurrency: payload.transferCurrency, transferAmount: payload.transferAmount }
           : { paymentMethod: 'mixed', payments: payload.payments, change: payload.change, changeCurrency: payload.changeCurrency }
-      setDone({ subtotal, discount, discountPct, service, pct, total, method: payMethod, pay, courtesy })
+      setDone({ subtotal, discount, discountPct, service, pct, total, method: payMethod, pay })
       setPaying(false)
       if (nudgePush) nudgePush()
     } catch (e) {
@@ -559,8 +559,14 @@ export function TableScreen() {
             <div className="thermal__row"><span>Servicio {d.pct}%</span><span>{formatMoney(d.service, baseCurrency)}</span></div>
           )}
           <div className="thermal__row thermal__total"><span>TOTAL</span><span>{formatMoney(d.total, baseCurrency)}</span></div>
-          {/* Mesa regalada: el cliente se lleva su comprobante y dice lo que es. */}
-          {d.courtesy && <div className="thermal__row thermal__total"><span>CORTESÍA</span><span>NO COBRADO</span></div>}
+          {/* Mesa regalada: el cliente se lleva su comprobante y dice lo que es.
+              Se DERIVA del porcentaje, no se arrastra en `done`: si no, el ticket
+              recien cobrado lo decia y el REIMPRESO no (ese se arma desde la venta
+              guardada, que no tiene mas que el `discountPct`). Misma funcion que
+              usa el reporte: no pueden divergir. */}
+          {isCourtesyPct(d.discountPct) && (
+            <div className="thermal__row thermal__total"><span>CORTESÍA</span><span>NO COBRADO</span></div>
+          )}
           <div className="thermal__pay">{payLabel}</div>
           {/* Modulo 'divisas' (GATEADO): monto pagado en divisa (USD) — efectivo. */}
           {foreignPay && P.paymentMethod === 'cash' && P.cashCurrency && P.cashCurrency !== baseCurrency && (
@@ -766,7 +772,7 @@ export function TableScreen() {
             </>
           )}
 
-          {payMethod === PAYMENT_METHODS.TRANSFER && (
+          {!courtesy && payMethod === PAYMENT_METHODS.TRANSFER && (
             <>
               <div className="pay-currencies">
                 {TRANSFER_CURRENCIES.map((c) => (
@@ -791,7 +797,7 @@ export function TableScreen() {
             </>
           )}
 
-          {payMethod === PAYMENT_METHODS.MIXED && (
+          {!courtesy && payMethod === PAYMENT_METHODS.MIXED && (
             <>
               <p className="muted">
                 Cobra la cuenta en varias partes (efectivo y/o transferencia, en distintas

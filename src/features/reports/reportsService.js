@@ -1,7 +1,7 @@
 import { db } from '../../db/db'
 import { formatDateTime, localDay } from '../../lib/dates'
 import { round2, formatMoney, foreignToBase, baseToForeign, isForeignPriced } from '../../lib/currency'
-import { discountFromEvents } from '../../lib/orderTotals'
+import { discountFromEvents, isCourtesyPct } from '../../lib/orderTotals'
 import {
   SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
   areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION, COCINA,
@@ -1358,7 +1358,7 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
   // CORTESIAS (mesas regaladas al 100%). Mismo criterio data-driven: sin ninguna,
   // el reporte sale IDENTICO al de siempre. No hace falta ningun campo nuevo en la
   // venta: `discountPct === 100` ES la cortesia, y ya se congelaba.
-  const hasCourtesy = sales.some((s) => Number(s.discountPct || 0) >= 100)
+  const hasCourtesy = sales.some((s) => isCourtesyPct(s.discountPct))
   let nCortesias = 0
   let totCortesia = 0
 
@@ -1383,7 +1383,7 @@ export async function buildTablesReport({ from = null, to = null, divisas = fals
     // Una mesa regalada se cierra como efectivo de importe 0 (no entra dinero), asi
     // que poner "Efectivo" en su fila seria enga~noso: se marca como CORTESIA. El
     // consumo regalado se acumula aparte para que el due~no vea el agujero real.
-    const esCortesia = Number(s.discountPct || 0) >= 100
+    const esCortesia = isCourtesyPct(s.discountPct)
     if (esCortesia) { nCortesias++; totCortesia = round2(totCortesia + sub) }
     rows.push([
       formatDateTime(s.createdAt),

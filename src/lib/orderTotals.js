@@ -127,10 +127,23 @@ export function orderTotals(items = [], { servicePct = 0, waived = false, discou
 // El `<= 0` y no `=== 0` es deliberado: restar pesos deja residuos de punto
 // flotante (-2.66e-15) y un cero real puede llegar en negativo. Es el mismo
 // motivo por el que existe `cleanQty`. Un total POSITIVO nunca pasa.
+// "Esto es una cortesia", a partir SOLO del porcentaje congelado. Existe porque
+// el criterio del 100% hacia falta en TRES sitios -la pantalla al cobrar, el
+// ticket y el reporte- y escribirlo tres veces es exactamente el fallo de F1: la
+// expresion copiada a mano acaba divergiendo. Ya habia divergido de hecho: el
+// ticket RECIEN cobrado decia CORTESIA y el REIMPRESO no, porque se armaba desde
+// la venta guardada y no miraba el porcentaje.
+//
+// Va por `cleanPct` para que un 150 cuente (se recorta a 100), un texto '100'
+// valga -el porcentaje viene de un input- y la basura caiga a 0 sin reventar.
+export function isCourtesyPct(discountPct) {
+  return cleanPct(discountPct) >= 100
+}
+
 export function isCourtesy(items, totals) {
   if (!Array.isArray(items) || items.length === 0) return false
   if (!totals) return false
   const total = Number(totals.total)
   if (!Number.isFinite(total)) return false
-  return cleanPct(totals.discountPct) >= 100 && total <= 0
+  return isCourtesyPct(totals.discountPct) && total <= 0
 }
