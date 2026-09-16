@@ -8,7 +8,8 @@ del negocio *De todo un tin* (`respaldo_mypicuadre_2026-09-12` de la dueña y de
 pasada encontró una causa raíz que la primera no vio, **invalidó una de sus conclusiones** y
 **cambió el orden de los arreglos**. Lo que cambió está en el §0; lo demás se corrigió en su sitio.
 
-**F1, F2 y F3 ya están programados en la rama (ver sus actas); F4 no.** Aquí está el qué, el dónde y el por qué, más el
+**F1, F2, F3 y F4 están LOS CUATRO programados en la rama** (ver sus actas, y la validación del
+§7 contra los respaldos reales). Aquí está el qué, el dónde y el por qué, más el
 procedimiento que el cliente puede seguir. Todo lo que se afirma se verificó leyendo el código y
 calculando sobre los respaldos; **la app NO se ejecutó**.
 
@@ -338,7 +339,11 @@ Tienda       150     154      154     <- IDENTICO: el trabajo diario del vendedo
   una sola es un cambio mayor y de más riesgo del que quita. **No tocarlo**, dejarlo anotado.
 - **Coste:** una consulta por índice por producto contado (142 en el conteo más grande de esta base).
 
-### F4 — La deuda interna no tiene candado de existencia
+### F4 — La deuda interna no tiene candado de existencia — ✅ **HECHO en la rama (16-09-2026, `4eb3cb6`)**
+
+> **Validado con datos reales (§7.5):** **2 de las 10** deudas internas del aparato sacaron
+> producto con existencia **0**, y una de ellas es la causa **completa** del `−5` de Refresco
+> Limón. No era un riesgo teórico.
 
 - **Dónde:** `repositories/debtsRepo.js:11-60` (`create`) y `features/cash/CashScreen.jsx:176-178`.
 - **Qué pasa hoy:** `create` escribe el `INTERNAL_DEBT_OUT` **sin comprobar nada**. Es el único repo
@@ -380,16 +385,17 @@ Refresco Limón     pide  5   saldo 0   <<< RECHAZADA
 
 ### Orden, y cómo validarlo
 
-**F1** ✅ → **F2** ✅ → **F3** ✅ → **F4** (candado de la deuda interna).
-**F1, F2 y F3 están hechos en la rama**; lo único que queda es **F4**, y es el que cambia la
-operación diaria: necesita decisión del dueño antes de escribirse.
+**F1** ✅ → **F2** ✅ → **F3** ✅ → **F4** ✅ (candado de la deuda interna).
+**Los cuatro están hechos en la rama**, más el hallazgo **H5** del §6. F4 es el que cambia la
+operación diaria (rechaza sacar lo que no hay), así que **el dueño tiene que saberlo antes de
+desplegar**, no después.
 
 **F4 no puede desplegarse antes que F2.** Si el candado rechaza una deuda porque la existencia está
 en 0 o en negativo, el único remedio es el conteo — que sin F2 no lista negativos. Al revés, el
 cliente queda atrapado.
 
-`npm run build` limpio y las **14 suites node** (814 aserciones, ya con `stockLocation`) antes de
-cada commit.
+`npm run build` limpio y las **14 suites node** antes de cada commit. Medido el 16-09-2026 en el
+commit de hoy: **834 aserciones, 0 fallos** (`stockLocation.test.mjs` aporta 60).
 
 **Ninguna de las 13 suites cubre esto, ni puede:** `countsRepo`, `transfersRepo` y `debtsRepo`
 necesitan base de datos. **El build y las pruebas actuales no detectarían un error en F1–F4.**
@@ -499,9 +505,13 @@ Por eso **lo recomendable es esperar a F2**.
   fusión entre dos aparatos.
 - **Los respaldos son del 12-09-2026.** Los teléfonos pueden haberse movido desde entonces; los
   números son ciertos a esa fecha.
-- **No se sabe por qué se vendieron 3 unidades de Galletas de soda en negativo.** El build que
-  corría entonces fue sobrescrito y no se puede inspeccionar.
-- **F1–F4 no están programados.** Este documento es el plan, no el acta.
+- **No se sabe por qué se vendieron unidades en negativo.** El build que corría entonces fue
+  sobrescrito y no se puede inspeccionar. *(El §7.3 atribuye ya cada uno de los cuatro negativos
+  a su causa: dos son de esas ventas sin entrada registrada, uno del conteo y uno de la deuda
+  interna.)*
+- ~~**F1–F4 no están programados.** Este documento es el plan, no el acta.~~ **Vencido el
+  16-09-2026:** los cuatro están programados y commiteados, y el §7 los valida contra los
+  respaldos reales. El documento es ya plan **y** acta.
 
 ---
 
@@ -591,3 +601,140 @@ necesidad. Queda anotado para decidirlo aparte. *(`stockRepo.stockAt` además no
 
 **Nadie ha ejecutado la app.** Ni un conteo aprobado, ni una deuda rechazada, ni una fusión entre
 dos aparatos.
+
+---
+
+## 7. Acta de la validación del 16-09-2026 — los respaldos reales, cargados y calculados
+
+Validación de **F1–F4 y H5 contra los dos respaldos del negocio** (`12-09-2026`, esquema 19),
+pedida por el dueño. **Ejecutada, no citada**: los ficheros se cargaron y se calcularon, y las
+funciones que se probaron son las **reales del repo** —`src/lib/stockLocation.js` importado como
+módulo, no copiado—. La versión "vieja" con la que se compara se **extrajo de `origin/main`**
+(`git show`), no se reconstruyó de memoria.
+
+### 7.1 H5: cero exposición, y por una razón estructural
+
+La duda que quedaba abierta era que el único respaldo disponible (04-09) fuese un aparato
+secundario y que **la exposición viviera en la historia larga, sin examinar**. Ya está examinada,
+en los **dos** aparatos del negocio:
+
+| Aparato | Movimientos | Sin `location` | Rango |
+|---|---|---|---|
+| Vendedor (exportado 16:40) | **1.621** | **0** | 13-08 → 12-09-2026 |
+| Dueño (exportado 16:20) | **1.613** | **0** | 13-08 → 12-09-2026 |
+
+Ubicaciones en juego: solo `Tienda` (1.370 / 1.364) y `__almacen` (251 / 249).
+
+**Y no es casualidad: es estructural.** El negocio abrió el **13-08-2026** y el Bloque 20 —el que
+empezó a escribir `location`— es de **`ab7abb2`, 30-06-2026**. Ninguna escritura de este negocio es
+anterior al campo, así que **no puede tener un solo movimiento sin él**.
+
+**H5 se mantiene igual**, y conviene decir por qué sin adornarlo: en **este** negocio no arreglaba
+nada. Es defensa de un camino que sigue abierto —la bajada de sync y el JSON de turno escriben el
+documento tal cual, y la migración v5 solo tocó lo que ya estaba en el dispositivo— y cuesta cero.
+Lo que la validación cambia es la **honestidad del expediente**: antes no se sabía; ahora se sabe.
+
+### 7.2 F1: las cifras del §2, reproducidas al dígito
+
+Sobre `respaldo_mypicuadre_2026-09-12vendedor.json`, 414 productos × 2 ubicaciones = 828 pares:
+
+- **58 divergencias** entre la caché leída *a la vieja* y el libro mayor. Con `stockAtLocation` de
+  la rama: **0**.
+- Con el criterio **exacto** de `countsRepo.js:104` (`p.active && existencia > 0`), un conteo del
+  **Almacén central** listaría **56 productos**, de ellos **54 con existencia fantasma**, y
+  aprobarlo a cero clavaría **−1.482 unidades**. **Es exactamente la cifra del §2.**
+- En el aparato del **dueño** la misma cuenta da **58 listados, 54 fantasmas, −1.486 unidades**
+  (variante que no estaba registrada: el §2 midió sobre el del vendedor).
+- **Con F1 la lista del almacén pasa de 56 productos a 2** (4 en el del dueño): los que de verdad
+  tienen existencia allí.
+- **La caché está sana**: 305 claves de `stockByLocation` en el vendedor (304 en el dueño),
+  **0 divergentes** contra el libro. Se confirma el diagnóstico del §2 — el dato nunca estuvo mal;
+  mentía la línea que lo leía.
+- **226 productos sin mapa** (los que nunca tuvieron un movimiento), y **todos con `stock` 0**: la
+  rama pre-v5 que `stockAtLocation` conserva no introduce **ni un** fantasma en este negocio.
+
+### 7.3 F2: los cuatro negativos, y de dónde salió cada uno
+
+Caché y libro mayor coinciden **exactamente** en los cuatro. Con el filtro viejo (`> 0`) la lista de
+Tienda tiene **150** productos; con el `!== 0` de F2, **154**: entran los cuatro, como decía el §4.6.
+
+| Producto | Tienda | Causa, derivada del libro mayor | Lo evita |
+|---|---|---|---|
+| Galletas de soda | **−30** | el ajuste del conteo del 10-09 puso **−41** de las −44 originales | **F3** |
+| Chupa chiquito | **−14** | 15 unidades vendidas con **1 sola entrada** registrada | el conteo |
+| Refresco Limón | **−5** | **la deuda interna** del 09-09 sacó 5 con existencia **0** | **F4** |
+| Chicle de menta | **−1** | 1 vendida **sin ninguna entrada** registrada | el conteo |
+
+### 7.4 F3: era peor de lo documentado — diecinueve líneas, no una
+
+Los **10 conteos** del aparato son de **Tienda**; **ninguno del almacén**, así que el aviso operativo
+del §4.3 **no se ha violado** todavía.
+
+De las **73 líneas contadas y aprobadas**, **19 (el 26 %) no dejaron la existencia en lo que el
+vendedor contó**, con **113 unidades** de desviación acumulada, repartidas en **6 de los 7 conteos
+aprobados**. El §2 solo citaba Galletas de soda:
+
+```
+Galletas de soda      conto 7,  escribio -41 sobre libro  -3  -> quedo -44   (desvio -51)
+Peter cowtales        conto 18, escribio  -1 sobre libro   0  -> quedo  -1   (desvio -19)
+Malta Guajira grande  conto 8,  escribio  -5 sobre libro   1  -> quedo  -4   (desvio -12)
+Burger                conto 44, escribio  -9 sobre libro  61  -> quedo  52   (desvio  +8)
+Toallitas humedas 20u conto 7,  escribio   2 sobre libro   0  -> quedo   2   (desvio  -5)
+```
+
+Parte de la desviación es de **una o dos unidades** y tiene una causa inocente: el `systemStock` se
+congela al **crear** el conteo y el mando aprueba **después**, así que las ventas del intervalo ya
+no estaban en la foto. Da igual el tamaño — **el conteo no dejaba la existencia en lo contado**, que
+es justo lo único que se le pide.
+
+**F3 lo cierra por construcción**, verificado en el código y no supuesto: `countsRepo.approve`
+calcula `delta = físico − stockFromLedger(producto, ubicación)` en el momento de aprobar, con lo que
+la existencia resultante **es** el físico contado. `submit` usa la misma fuente, así que el número
+que el mando revisa es el mismo contra el que se calcula el asiento.
+
+### 7.5 F4: dos de las diez deudas internas sacaron lo que no había
+
+| Fecha | Producto | Sacó | Había |
+|---|---|---|---|
+| 09-09 22:27 | Refresco Limón | 5 | **0** |
+| 09-09 02:17 | Hamburguesa | 12 | **0** |
+
+La primera **es la causa completa** del `−5` que el producto arrastra hoy: su único movimiento en
+Tienda es esa deuda. La segunda quedó tapada por 326 unidades que entraron después (hoy está en
++240), pero el negativo existió. Las otras ocho tenían existencia de sobra.
+
+**No era un riesgo teórico: pasó dos veces de diez.** F4 (`4eb3cb6`) lo rechaza.
+
+### 7.6 Los dos aparatos no están averiados: van con latencia
+
+El respaldo del vendedor es un **superconjunto estricto** del del dueño: 8 movimientos, 3 ventas,
+2 traspasos y 1 turno que el dueño no tiene, **todos entre las 15:59 y las 16:37** del 12-09 — y el
+respaldo del dueño se exportó a las **16:20**, veinte minutos antes que el otro. **Cero registros
+exclusivos del dueño.** No hay pérdida de datos entre aparatos: hay retraso de sincronización, que
+es lo esperado.
+
+### 7.7 Estado técnico de la rama, verificado hoy
+
+- `npm run build` → **exit 0**.
+- **14 suites node / 834 aserciones, 0 fallos** (`stockLocation.test.mjs`: 60).
+- **F1, F2, F3 y F4 están los cuatro hechos y commiteados** en `claude/awesome-dirac-484azm`
+  (`add6000`, `e2c805d`, `848db06`, `743e66d`, `4eb3cb6`), más `0c55964` de H5.
+- **Ninguna copia del respaldo obsoleto queda en `src/`**: los 12 ficheros que lo tenían importan
+  hoy `stockAtLocation`, y las lecturas restantes de `stockByLocation` son todas de la forma segura
+  `?.[loc] || 0`.
+- **Corrección de una imprecisión propia:** el comentario de `lib/stockLocation.js` decía "doce
+  sitios, once con respaldo". Recontado contra `origin/main` fichero por fichero, son **trece
+  sitios y doce con respaldo** — la tabla del §2 siempre estuvo bien. Ya está corregido en el
+  código.
+
+### 7.8 Lo que esta validación NO dice
+
+- **Nadie ha ejecutado la app.** Ni un conteo aprobado, ni una deuda rechazada, ni una fusión entre
+  dos aparatos. Sigue siendo lectura de código + aritmética sobre los respaldos + build + suites.
+- **Las cifras son del 12-09-2026.** Los teléfonos han seguido operando: negativos, conteos y deudas
+  pueden haber cambiado desde entonces.
+- **No valida la migración ni la sincronización**: un respaldo es una foto de las tablas, no el
+  comportamiento de IndexedDB ni de Firestore en el teléfono.
+- **Sigue sin explicarse** por qué se vendieron unidades en negativo (Chicle de menta, Chupa
+  chiquito): con el código de hoy `salesRepo` las habría rechazado, y el build que corría entonces
+  fue sobrescrito.

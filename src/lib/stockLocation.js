@@ -10,8 +10,8 @@ import { cleanQty } from './qty.js'
 // que no re-derivan del libro. Quien necesite la verdad de ultima instancia usa
 // `stockRepo.stockAt` (asincrona, suma el libro por `[productId+location]`).
 //
-// POR QUE EXISTE (F1, 15-09-2026). Esta expresion estaba COPIADA en doce sitios, y
-// once de ellos arrastraban un respaldo heredado de la v5: cuando faltaba la clave
+// POR QUE EXISTE (F1, 15-09-2026). Esta expresion estaba COPIADA en TRECE sitios, y
+// DOCE de ellos arrastraban un respaldo heredado de la v5: cuando faltaba la clave
 // de la ubicacion, devolvian `p.stock` -el TOTAL del producto en TODAS las
 // ubicaciones- como si estuviera en el almacen central. Ese respaldo tenia sentido
 // en la v5, cuando habia productos sin mapa; pero la migracion (`db.js`) le puso
@@ -29,8 +29,15 @@ import { cleanQty } from './qty.js'
 // que un producto que nunca paso por el almacen se queda sin esa clave despues de
 // cada bajada de sync. Reaparecia solo.
 //
-// Con la clave presente -305 de 305 casos en los dos respaldos- devuelve
-// EXACTAMENTE lo de siempre: es una correccion de defecto, no un cambio de conducta.
+// Con la clave presente -305 de 305 casos en el respaldo del vendedor, 304 de 304
+// en el del dueño- devuelve EXACTAMENTE lo de siempre: es una correccion de
+// defecto, no un cambio de conducta.
+//
+// (16-09-2026: el conteo de este comentario decia "doce sitios, once con respaldo".
+// Recontado contra `origin/main` fichero por fichero: las lecturas con el respaldo
+// son DOCE y el sitio trece es `TableScreen:162`, que ya estaba bien. La tabla de
+// `docs/CORRECCION-EXISTENCIAS.md` §2 siempre tuvo las trece bien; el desfase de uno
+// estaba aqui. Doce ficheros importan hoy esta funcion: son exactamente esos doce.)
 export function stockAtLocation(p, location) {
   const byLoc = p?.stockByLocation
   // Hay mapa: manda el mapa. Clave ausente = 0 (el libro mayor dice 0).
