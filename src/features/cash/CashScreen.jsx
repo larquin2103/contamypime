@@ -16,7 +16,7 @@ import { CASH_CURRENCIES, WAREHOUSE, locationLabel } from '../../db/constants'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
-import { stockAtLocation } from '../../lib/stockLocation'
+import { stockAtLocation, resolveSourceLocation } from '../../lib/stockLocation'
 
 export function CashScreen() {
   const { user, isManager } = useAuth()
@@ -172,9 +172,15 @@ function DebtForm({ shift, user, isManager }) {
 
   const sellArea = shift?.area || ''
   const canPickSource = !isElaborator && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
-  // Ubicación de la que se rebaja: el almacén si se eligió, si no el área del turno.
-  const sourceLoc = canPickSource && fromWarehouse ? WAREHOUSE : sellArea
-  const stockAt = (p) => canPickSource ? stockAtLocation(p, sourceLoc) : Number(p.stock || 0)
+  // Lo que se le pasa al repo: el almacén si se eligió; si no, vacío (= clásico).
+  const pickedLoc = canPickSource && fromWarehouse ? WAREHOUSE : ''
+  // Ubicación REAL de la que se va a rebajar. Se resuelve con la MISMA función que
+  // usa `debtsRepo` (F4): antes esta pantalla tenía su propia versión de la regla y
+  // se separaba de la del repo. Con un mando CON turno pero SIN área, el repo
+  // rebajaba del almacén y aquí se enseñaba `p.stock` —el total del producto en
+  // TODAS las ubicaciones—, o sea un número que no era el que se iba a descontar.
+  const sourceLoc = resolveSourceLocation(pickedLoc, sellArea)
+  const stockAt = (p) => stockAtLocation(p, sourceLoc)
 
   const results = useMemo(() => {
     if (!query.trim()) return []
@@ -182,7 +188,12 @@ function DebtForm({ shift, user, isManager }) {
   }, [products, query])
 
   const value = product ? round2((Number(qty) || 0) * product.price) : 0
-  const valid = product && Number(qty) > 0 && debtor
+  // Existencia en la ubicación de la que se va a rebajar, y si alcanza. Es un aviso
+  // de la UI: el candado de verdad está en `debtsRepo` (contra el LIBRO MAYOR, dentro
+  // de su transacción), porque esta caché puede ir por detrás tras una sincronización.
+  const stockHere = product ? stockAt(product) : 0
+  const enough = !product || Number(qty) <= stockHere
+  const valid = product && Number(qty) > 0 && debtor && enough
 
   const doCreate = async (authName) => {
     setBusy(true)
@@ -197,7 +208,7 @@ function DebtForm({ shift, user, isManager }) {
       unitValue: product.price,
       note,
       // Con mayorista, rebaja del almacén si se eligió; si no, vacío = área (clásico).
-      sourceLocation: canPickSource && fromWarehouse ? WAREHOUSE : ''
+      sourceLocation: pickedLoc
     })
     setProduct(null)
     setQty('1')
@@ -275,6 +286,14 @@ function DebtForm({ shift, user, isManager }) {
               <input value={formatMoney(value, baseCurrency)} readOnly />
             </label>
           </div>
+          {/* Existencia en la ubicación REAL de la que se va a rebajar, y aviso si no
+              alcanza (F4). Sin esto el botón se quedaba desactivado sin decir por qué,
+              que es peor que dejar pasar la deuda: el vendedor no sabría qué hacer. */}
+          <p className={enough ? 'muted' : 'error'}>
+            {enough
+              ? `Existencia en ${locationLabel(sourceLoc)}: ${stockHere} ${product.unit}`
+              : `Solo hay ${stockHere} ${product.unit} en ${locationLabel(sourceLoc)}. Registra primero la entrada de la mercancía.`}
+          </p>
           <label className="field">
             <span>Quien se lleva (deudor)</span>
             <select value={debtor} onChange={(e) => setDebtor(e.target.value)}>

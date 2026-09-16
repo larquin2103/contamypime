@@ -40,6 +40,20 @@ export function stockAtLocation(p, location) {
   return location === WAREHOUSE ? Number(p?.stock || 0) : 0
 }
 
+// De DONDE sale el producto de una operacion: la ubicacion elegida explicitamente
+// si la hay, si no el area del turno, y si tampoco, el almacen central.
+//
+// POR QUE EXISTE (F4). Esta regla estaba escrita DOS VECES y distinto: una en
+// `debtsRepo.create` y otra en `CashScreen`. Resultado: con un mando CON turno pero
+// SIN area, el repo rebajaba del ALMACEN y la pantalla enseñaba `p.stock` —el total
+// del producto en TODAS las ubicaciones—, o sea un numero que no era el que se iba a
+// descontar. Ahora la regla vive en un sitio y la llaman los dos, asi que no pueden
+// volver a separarse. Es la misma leccion de F1: una expresion copiada a mano acaba
+// divergiendo.
+export function resolveSourceLocation(explicit, shiftArea) {
+  return String(explicit || '').trim() || String(shiftArea || '').trim() || WAREHOUSE
+}
+
 // Existencia REAL derivada del LIBRO MAYOR: la suma de las cantidades de una lista
 // de movimientos (los de un producto en una ubicacion, normalmente traidos por el
 // indice `[productId+location]`).

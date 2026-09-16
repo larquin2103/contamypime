@@ -18,7 +18,7 @@
 //     existencia en el almacen. Quitar esa rama romperia bases viejas.
 //  4) Que no invente existencia en un AREA. La copia de `conversionsRepo` caia al
 //     total en CUALQUIER ubicacion, no solo en el almacen: era la peor de las doce.
-import { stockAtLocation, negativeLocations, ledgerQty } from './stockLocation.js'
+import { stockAtLocation, negativeLocations, ledgerQty, resolveSourceLocation } from './stockLocation.js'
 import { WAREHOUSE } from '../db/constants.js'
 
 let pass = 0
@@ -182,6 +182,30 @@ function eqJson(actual, expected, label) {
   eq(ledgerQty([{ qty: 'x' }, { qty: 3 }]), 3, 'una cantidad no numerica no envenena la suma')
 }
 function round(n) { return Math.round((n + Number.EPSILON) * 1000) / 1000 }
+
+// --- 9) resolveSourceLocation: de DONDE sale el producto (F4) ----------------
+// La deuda interna rebaja de `sourceLocation || area del turno || almacen`. Esa
+// regla estaba escrita DOS VECES y distinto —una en `debtsRepo` y otra en
+// `CashScreen`—, y por eso la pantalla enseñaba un numero que no era el que se iba
+// a descontar: con un mando CON turno pero SIN area, el repo rebajaba del almacen y
+// la pantalla mostraba el total del producto en todas las ubicaciones. Ahora la
+// regla vive en un sitio y las dos la llaman, asi que no pueden volver a separarse.
+{
+  eq(resolveSourceLocation('', 'Tienda'), 'Tienda', 'sin eleccion explicita: el area del turno')
+  eq(resolveSourceLocation(WAREHOUSE, 'Tienda'), WAREHOUSE,
+    'con eleccion explicita (mayorista): manda esa, no el area')
+  eq(resolveSourceLocation('', ''), WAREHOUSE,
+    'mando CON turno pero SIN area: el almacen — ESTE es el caso que la pantalla enseñaba mal')
+  eq(resolveSourceLocation(null, null), WAREHOUSE, 'sin nada: el almacen')
+  eq(resolveSourceLocation(undefined, undefined), WAREHOUSE, 'indefinidos: el almacen')
+}
+{
+  // Los espacios se recortan en los dos niveles: un area " " no es un area.
+  eq(resolveSourceLocation('  ', 'Tienda'), 'Tienda', 'eleccion en blanco: cae al area')
+  eq(resolveSourceLocation('', '  '), WAREHOUSE, 'area en blanco: cae al almacen')
+  eq(resolveSourceLocation('  Tienda  ', ''), 'Tienda', 'la eleccion se recorta')
+  eq(resolveSourceLocation('', '  Carniceria  '), 'Carniceria', 'el area se recorta')
+}
 
 console.log(`${pass} pass, ${fail} fail`)
 if (fail) process.exit(1)

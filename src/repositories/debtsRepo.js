@@ -3,7 +3,8 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
-import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
+import { MOVEMENT_TYPES, locationLabel } from '../db/constants'
+import { ledgerQty, resolveSourceLocation } from '../lib/stockLocation'
 
 // Deuda interna: retiro de producto sin pago. Descuenta inventario, NO cuenta
 // como ingreso y queda como deuda asociada a un usuario registrado.
@@ -17,8 +18,35 @@ export const debtsRepo = {
     // del turno (sin area, el almacen) — comportamiento clasico. Con mayorista, la
     // pantalla puede pasar sourceLocation (almacen central) para rebajar de ahi.
     const shift = shiftId ? await db.shifts.get(shiftId) : null
-    const loc = String(sourceLocation || '').trim() || (shift?.area || '').trim() || WAREHOUSE
+    const loc = resolveSourceLocation(sourceLocation, shift?.area)
     await db.transaction('rw', db.internalDebts, db.stockMovements, db.products, async () => {
+      // CANDADO DE EXISTENCIA (F4). Hasta aqui este era el UNICO repo que rebajaba
+      // inventario sin comprobar nada: ni contra la cache ni contra el libro. La
+      // evidencia esta en los datos del negocio — Refresco Limon quedo en -5 y ese
+      // -5 es el UNICO movimiento del producto en toda su vida.
+      //
+      // Se valida contra el LIBRO MAYOR y no contra la cache (el mismo candado de
+      // ultima instancia que `salesRepo`), DENTRO de la transaccion que ya incluia
+      // `db.stockMovements`: no hace falta ampliar su alcance. Cuesta UNA consulta
+      // por indice, porque una deuda es de un solo producto.
+      //
+      // Y se valida en TODAS las ubicaciones, incluido el almacen central —a
+      // diferencia de `salesRepo`, que lo exime para la venta mayorista—. Aqui no
+      // habia ninguna doctrina de excepcion que preservar: no habia control alguno.
+      // Ademas el vendedor YA no puede VENDER lo que no hay en su area; no tendria
+      // sentido que si pudiera sacarlo como deuda.
+      const movs = await db.stockMovements
+        .where('[productId+location]').equals([productId, loc]).toArray()
+      const avail = ledgerQty(movs)
+      // Los dos lados limpios: restar pesos deja residuos (2.4999999996), y sin esto
+      // una deuda de 2.5 kg contra 2.5 kg reales se rechazaria sin motivo.
+      if (avail < cleanQty(q)) {
+        const p0 = await db.products.get(productId)
+        throw new Error(
+          `Solo hay ${avail} ${p0?.unit || ''} de ${p0?.name || 'este producto'} en ${locationLabel(loc)}`
+            .replace(/\s+/g, ' ')
+        )
+      }
       await db.internalDebts.add({
         id,
         shiftId,
