@@ -18,7 +18,7 @@
 //     existencia en el almacen. Quitar esa rama romperia bases viejas.
 //  4) Que no invente existencia en un AREA. La copia de `conversionsRepo` caia al
 //     total en CUALQUIER ubicacion, no solo en el almacen: era la peor de las doce.
-import { stockAtLocation, negativeLocations } from './stockLocation.js'
+import { stockAtLocation, negativeLocations, ledgerQty } from './stockLocation.js'
 import { WAREHOUSE } from '../db/constants.js'
 
 let pass = 0
@@ -145,6 +145,43 @@ function eqJson(actual, expected, label) {
   eqJson(negativeLocations({ stockByLocation: { [AREA]: -0.5 } }), [{ location: AREA, qty: -0.5 }],
     'medio kilo en negativo SI es real')
 }
+
+// --- 8) ledgerQty: la existencia REAL, sumando el libro mayor (F3) -----------
+// El stock de verdad NO es la cache: es la suma de los movimientos. `approve`
+// escribe un asiento append-only en el libro, asi que tiene que calcular el delta
+// contra el libro y no contra una cache que puede ir por detras. Paso esto por su
+// propia funcion porque la suma esta repetida inline en salesRepo, ordersRepo,
+// kitchenRepo y stockRepo, y es donde se cuela el residuo de punto flotante.
+{
+  const m = (qty) => ({ qty })
+  eq(ledgerQty([]), 0, 'libro vacio: cero')
+  eq(ledgerQty([m(10)]), 10, 'un solo movimiento')
+  eq(ledgerQty([m(10), m(-3), m(-2)]), 5, 'entradas y salidas se compensan')
+  eq(ledgerQty([m(5), m(-8)]), -3, 'el resultado NEGATIVO se conserva, no se recorta a cero')
+}
+{
+  // El caso que motivo F3: Galletas de soda. El libro daba -3 y la cache decia 48;
+  // `approve` calculo 7 - 48 y clavo un -41 append-only. Con el libro, 7 - (-3) = 10.
+  const libro = [{ qty: 14 }, { qty: -12 }, { qty: -5 }]
+  eq(ledgerQty(libro), -3, 'F3: el libro de Galletas da -3 (la cache decia 48)')
+  eq(round(7 - ledgerQty(libro)), 10, 'F3: el delta correcto es +10, no -41')
+}
+{
+  // Residuo de punto flotante al restar pesos: sin limpiar, un cero real sale
+  // como 2.66e-15 y `approve` escribiria un ajuste fantasma de esa nada.
+  eq(ledgerQty([{ qty: 0.1 }, { qty: 0.2 }, { qty: -0.3 }]), 0,
+    'residuo de punto flotante: un cero real es CERO, no 2.66e-15')
+  eq(ledgerQty([{ qty: 2.5 }, { qty: -0.25 }]), 2.25, 'fracciones reales se conservan')
+}
+{
+  // Entradas defectuosas: cero, nunca NaN. Un NaN aqui se propagaria al delta y
+  // `stockRepo.adjust` escribiria un movimiento con cantidad NaN en el libro.
+  eq(ledgerQty(null), 0, 'libro nulo: cero')
+  eq(ledgerQty(undefined), 0, 'libro indefinido: cero')
+  eq(ledgerQty([{}, { qty: null }, { qty: 4 }]), 4, 'movimientos sin cantidad cuentan como cero')
+  eq(ledgerQty([{ qty: 'x' }, { qty: 3 }]), 3, 'una cantidad no numerica no envenena la suma')
+}
+function round(n) { return Math.round((n + Number.EPSILON) * 1000) / 1000 }
 
 console.log(`${pass} pass, ${fail} fail`)
 if (fail) process.exit(1)

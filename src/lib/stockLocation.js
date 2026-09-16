@@ -40,6 +40,31 @@ export function stockAtLocation(p, location) {
   return location === WAREHOUSE ? Number(p?.stock || 0) : 0
 }
 
+// Existencia REAL derivada del LIBRO MAYOR: la suma de las cantidades de una lista
+// de movimientos (los de un producto en una ubicacion, normalmente traidos por el
+// indice `[productId+location]`).
+//
+// POR QUE EXISTE (F3). La cache es una foto que puede ir por detras del libro —y en
+// una fusion de sync puede llegar directamente MAL—, mientras que el libro es
+// append-only y es la fuente de verdad. Donde se ESCRIBE un asiento hay que calcular
+// contra el libro: el conteo de Galletas de soda registro `systemStock: 48` cuando el
+// libro daba -3, `approve` calculo 7-48 y clavo un -41 permanente. 41 de las 44
+// unidades negativas de ese producto las puso el conteo, no las ventas.
+//
+// Se limpia con `cleanQty` porque sumar y restar pesos deja residuos: un cero real
+// sale como 2.66e-15 y provocaria un ajuste fantasma por esa nada. Una cantidad
+// ausente o no numerica cuenta como 0 y NO envenena la suma con NaN, que se
+// propagaria al delta y acabaria escrito en el libro.
+export function ledgerQty(movements) {
+  if (!Array.isArray(movements)) return 0
+  let total = 0
+  for (const m of movements) {
+    const q = Number(m?.qty)
+    if (Number.isFinite(q)) total += q
+  }
+  return cleanQty(total)
+}
+
 // Ubicaciones de un producto que estan en NEGATIVO, con su cantidad:
 // `[{ location, qty }]`, vacio si no hay ninguna.
 //

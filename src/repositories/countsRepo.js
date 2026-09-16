@@ -10,7 +10,22 @@ import { stockRepo } from './stockRepo'
 // arrastraba el respaldo de la v5 que inventaba existencia en el almacen (F1):
 // era ESTA copia la que clavaba los -1482 al aprobar un conteo del almacen.
 // Ahora es una sola funcion pura y probada, compartida por los doce sitios.
-import { stockAtLocation } from '../lib/stockLocation'
+import { stockAtLocation, ledgerQty } from '../lib/stockLocation'
+
+// Existencia REAL de un producto en una ubicacion, derivada del LIBRO MAYOR (F3).
+// Es la misma consulta por el mismo indice que `salesRepo` hace inline para su
+// candado de ultima instancia.
+//
+// `startDraft` sigue leyendo la CACHE a proposito: es una foto para armar la lista
+// y no escribe nada, y derivar 400+ productos del libro cada vez que se inicia un
+// conteo costaria una consulta por producto sin ganar nada (`submit` y `approve`
+// releen despues, que es donde se decide). Aqui, en cambio, se ESCRIBE un asiento
+// append-only en el libro: el delta tiene que salir del libro.
+async function stockFromLedger(productId, location) {
+  const movs = await db.stockMovements
+    .where('[productId+location]').equals([productId, location || WAREHOUSE]).toArray()
+  return ledgerQty(movs)
+}
 
 // Marca de tiempo de una MUTACION del conteo: nunca por debajo de la version que
 // reemplaza (ver `tsAfter` en lib/dates). El conteo lo mutan DOS dispositivos en
@@ -126,6 +141,11 @@ export const countsRepo = {
   // ventas/salidas ocurridas durante el conteo. Asi la diferencia mostrada coincide
   // con el ajuste que aplica approve() (que tambien usa el stock actual) y no se
   // generan diferencias fantasma al cerrar el turno.
+  //
+  // Hasta F3 este comentario MENTIA: decia "libro mayor" y leia la cache. Ahora los
+  // dos —submit y approve— derivan de verdad del libro, que es lo unico que hace
+  // cierta la frase de arriba: si cada uno mirase una fuente distinta, la diferencia
+  // que el mando aprueba no seria la que se aplica.
   async submit(id) {
     const c = await db.counts.get(id)
     if (!c) return
@@ -139,9 +159,13 @@ export const countsRepo = {
         continue
       }
       const phys = Number(it.physicalQty)
-      // Stock del sistema EN VIVO al momento de enviar (refleja la ultima venta).
+      // Stock del sistema EN VIVO al momento de enviar (refleja la ultima venta),
+      // derivado del LIBRO MAYOR (F3) y no de la cache: es el numero que el mando
+      // va a ver al revisar, y tiene que ser EL MISMO contra el que `approve`
+      // calcula el ajuste. Si el producto ya no existe se conserva la foto del
+      // borrador, igual que antes.
       const p = await db.products.get(it.productId)
-      const sysNow = p ? stockAtLocation(p, loc) : Number(it.systemStock || 0)
+      const sysNow = p ? await stockFromLedger(it.productId, loc) : Number(it.systemStock || 0)
       const diff = round2(phys - sysNow)
       const sem = evalSemaphore(sysNow, phys, cfg)
       items.push({ ...it, systemStock: sysNow, physicalQty: phys, counted: true, diff, semaphore: sem.color })
@@ -163,7 +187,12 @@ export const countsRepo = {
       if (!it.counted) continue
       const p = await db.products.get(it.productId)
       if (!p) continue
-      const delta = round2(Number(it.physicalQty) - stockAtLocation(p, loc))
+      // El delta sale del LIBRO MAYOR, no de la cache (F3). Aqui se escribe un
+      // asiento append-only que NO se puede deshacer: el conteo de Galletas de soda
+      // registro 48 cuando el libro daba -3, se calculo 7-48 y quedo un -41 clavado
+      // para siempre. 41 de sus 44 unidades negativas las puso este calculo.
+      const sysNow = await stockFromLedger(it.productId, loc)
+      const delta = round2(Number(it.physicalQty) - sysNow)
       if (delta !== 0) {
         await stockRepo.adjust({
           productId: it.productId,
