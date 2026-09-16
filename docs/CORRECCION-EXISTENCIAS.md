@@ -8,7 +8,7 @@ del negocio *De todo un tin* (`respaldo_mypicuadre_2026-09-12` de la dueña y de
 pasada encontró una causa raíz que la primera no vio, **invalidó una de sus conclusiones** y
 **cambió el orden de los arreglos**. Lo que cambió está en el §0; lo demás se corrigió en su sitio.
 
-**F1 ya está programado en la rama (ver su acta); F2–F4 no.** Aquí está el qué, el dónde y el por qué, más el
+**F1 y F2 ya están programados en la rama (ver sus actas); F3 y F4 no.** Aquí está el qué, el dónde y el por qué, más el
 procedimiento que el cliente puede seguir. Todo lo que se afirma se verificó leyendo el código y
 calculando sobre los respaldos; **la app NO se ejecutó**.
 
@@ -219,7 +219,42 @@ return location === WAREHOUSE ? Number(p.stock || 0) : 0    // solo pre-v5 sin m
   rechazarse**. Es el comportamiento correcto — hoy dejan sacar de un almacén vacío — pero el dueño
   tiene que saberlo antes.
 
-### F2 — El conteo físico no puede ver lo negativo
+### F2 — El conteo físico no puede ver lo negativo — ✅ **HECHO en la rama (15-09-2026)**
+
+> **Por qué hace falta, si los candados deberían impedir los negativos.** Porque hay **dos vías que
+> no son un fallo y no se pueden cerrar**:
+>
+> 1. **El descubierto autorizado** (`allowShortProduction`). El propio diseño ya dice que la
+>    existencia *«queda en negativo hasta que una entrada, un traspaso **o el conteo** la neteen»*
+>    (`CLAUDE.md:638`). Ese camino **estaba roto**: el conteo no listaba negativos.
+> 2. **La carrera offline.** Dos vendedores sin internet consultan cada uno **su** copia del libro
+>    mayor, los dos ven la última unidad, los dos venden, y al fusionar el libro suma **−1**. Los dos
+>    candados funcionaron. Y el stock derivado del libro **no se recorta a cero en ninguna parte**
+>    (comprobado: ni un `Math.max(0, …)` sobre stock): el negativo es posible **por construcción** en
+>    offline-first. Aquí no es teórico — venden **tres personas** (413, 217 y 83 ventas) en la misma
+>    área y en al menos dos aparatos.
+>
+> Las vías que **sí** son fallo se cierran aparte: F1 (hecho) y F4 (pendiente).
+>
+> **Acta.** Las tres compuertas cambiadas, y además el **aviso al dueño**, porque hasta ahora un
+> negativo era **mudo**: cero avisos en toda la app y el catálogo lo esconde con su filtro `> 0`.
+> Tipo nuevo `NEGATIVE_STOCK_STATE` en la categoría **`inventario`** (no `elaboracion`: el
+> descubierto autorizado es solo una de las causas, y donde se cuadra un negativo es en el conteo).
+> Deriva del **estado** y no de un evento —al revés que el aviso que ya existía— porque la venta
+> doble entre dos teléfonos no deja ningún registro: el negativo aparece **al fusionar**. El id lleva
+> producto+ubicación+**día**, así que se repite una vez al día mientras siga sin cuadrar y
+> **desaparece solo** al netearlo. Corre **una vez por día local** para no anular el early-out del
+> barrido de 60 s, y **se salta lo inactivo** (el conteo tampoco lo ofrece).
+>
+> | | antes | después |
+> |---|---|---|
+> | Conteo de **Tienda** | 150 productos | **154** (+4: los cuatro negativos) |
+> | Conteo del **almacén** | 2 | 2 (sin cambio) |
+> | Avisos al dueño con los datos reales | 0 | **4**, uno por negativo |
+>
+> TDD con el ciclo observado (`negativeLocations` falla primero por no estar exportada). **28/28** en
+> la suite; validada contra los dos respaldos: encuentra los 4 conocidos y **ni uno de más**. Build
+> **exit 0**, **14 suites / 802 aserciones**. **Nadie lo ha ejecutado en un dispositivo.**
 
 - **Dónde:** **tres** compuertas, no una:
   1. `repositories/countsRepo.js:81` — `p.active && stockAtLocation(p, location) > 0`
@@ -309,14 +344,14 @@ Refresco Limón     pide  5   saldo 0   <<< RECHAZADA
 
 ### Orden, y cómo validarlo
 
-**F1** ✅ (impide la catástrofe y es gratis) → **F2** (desbloquea al cliente) → **F3** (evita que el
-conteo vuelva a inyectar basura) → **F4**. **F1 está hecho en la rama**; lo siguiente es **F2**.
+**F1** ✅ → **F2** ✅ → **F3** (evita que el conteo vuelva a inyectar basura) → **F4**.
+**F1 y F2 están hechos en la rama**; lo siguiente es **F3**.
 
 **F4 no puede desplegarse antes que F2.** Si el candado rechaza una deuda porque la existencia está
 en 0 o en negativo, el único remedio es el conteo — que sin F2 no lista negativos. Al revés, el
 cliente queda atrapado.
 
-`npm run build` limpio y las **14 suites node** (790 aserciones, ya con `stockLocation`) antes de
+`npm run build` limpio y las **14 suites node** (802 aserciones, ya con `stockLocation`) antes de
 cada commit.
 
 **Ninguna de las 13 suites cubre esto, ni puede:** `countsRepo`, `transfersRepo` y `debtsRepo`
