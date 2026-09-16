@@ -33,7 +33,7 @@ Cuatro cosas, y la primera es grave:
    compuertas `> 0`, no una; el documento solo encontró la del repo. Ver §3-F2.
 
 También: la línea base de pruebas que se citaba (*8 suites / 462 aserciones*) estaba vencida. Hoy
-son **14 suites / 790 aserciones** (F1 añadió `stockLocation.test.mjs`), medidas el 15-09-2026, todas en verde, con `npm run build`
+son **14 suites / 802 aserciones** (F1 y F2 añadieron `stockLocation.test.mjs`), medidas el 15-09-2026, todas en verde, con `npm run build`
 **exit 0**.
 
 ---
