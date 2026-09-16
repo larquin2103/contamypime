@@ -18,7 +18,7 @@
 //     existencia en el almacen. Quitar esa rama romperia bases viejas.
 //  4) Que no invente existencia en un AREA. La copia de `conversionsRepo` caia al
 //     total en CUALQUIER ubicacion, no solo en el almacen: era la peor de las doce.
-import { stockAtLocation, negativeLocations, ledgerQty, resolveSourceLocation } from './stockLocation.js'
+import { stockAtLocation, negativeLocations, ledgerQty, ledgerQtyAt, resolveSourceLocation } from './stockLocation.js'
 import { WAREHOUSE } from '../db/constants.js'
 
 let pass = 0
@@ -206,6 +206,64 @@ function round(n) { return Math.round((n + Number.EPSILON) * 1000) / 1000 }
   eq(resolveSourceLocation('  Tienda  ', ''), 'Tienda', 'la eleccion se recorta')
   eq(resolveSourceLocation('', '  Carniceria  '), 'Carniceria', 'el area se recorta')
 }
+
+
+// --- 9) EL MOVIMIENTO SIN UBICACION (auditoria del 16-09-2026) ----------------
+// `ledgerQty` suma lo que se le da; quien lo llamaba traia las filas por el INDICE
+// compuesto `[productId+location]`, y ese indice NO contiene los movimientos que
+// no tienen `location`: no es que valgan otra cosa, es que no estan.
+//
+// Que eso existe no es una hipotesis: antes del Bloque 20, `stockRepo.record`
+// escribia los movimientos SIN el campo; la sincronizacion es anterior a esa
+// version; `pullEngine.mergeIncoming` hace `bulkPut` del documento de la nube TAL
+// CUAL y `handoffService` lo mismo con el JSON de un turno. Ninguno normaliza.
+//
+// `recomputeStock` (la cache) SI los cuenta, con `m.location || WAREHOUSE`. Si el
+// conteo mira una fuente y la cache otra, el ajuste que se clava -append-only, no
+// se puede deshacer- sale mal. Medido: con 10 sin ubicacion y -3 en el almacen,
+// contar 7 escribia +10 y dejaba el producto en 17.
+//
+// `ledgerQtyAt` agrupa EXACTAMENTE como `recomputeStock`, asi que las dos no pueden
+// discrepar. Aqui se le pasan TODOS los movimientos del producto, no los de una
+// ubicacion.
+{
+  const movs = [
+    { qty: 10 },                              // pre-Bloque 20: sin el campo
+    { qty: -3, location: WAREHOUSE },
+    { qty: 4, location: 'Tienda' }
+  ]
+  eq(ledgerQtyAt(movs, WAREHOUSE), 7, 'sin ubicacion cuenta como almacen (igual que recomputeStock)')
+  eq(ledgerQtyAt(movs, 'Tienda'), 4, 'la otra ubicacion no se contamina')
+  eq(ledgerQty(movs.filter((m) => m.location === WAREHOUSE)), -3,
+    'control: sumando SOLO lo que el indice devolveria, salen los -3 que clavaban el ajuste falso')
+
+  // `location` nula o vacia: el indice tampoco las contiene, y `|| WAREHOUSE` las
+  // trata como almacen, que es lo que hace la cache.
+  eq(ledgerQtyAt([{ qty: 5, location: null }, { qty: 2, location: '' }], WAREHOUSE), 7,
+    'location nula o vacia cuenta como almacen')
+
+  // NO REGRESION: si todos los movimientos llevan su ubicacion -el caso de los 474
+  // de 474 del respaldo real del negocio- el resultado es el mismo de siempre.
+  const sanos = [
+    { qty: 10, location: WAREHOUSE },
+    { qty: -3, location: WAREHOUSE },
+    { qty: 4, location: 'Tienda' }
+  ]
+  eq(ledgerQtyAt(sanos, WAREHOUSE), ledgerQty(sanos.filter((m) => m.location === WAREHOUSE)),
+    'con todos los movimientos ubicados: identico a lo que hacia la rama')
+  eq(ledgerQtyAt(sanos, 'Tienda'), 4, 'y en el area tambien')
+
+  // Robustez: lo mismo que `ledgerQty`, porque el resultado acaba en un asiento.
+  eq(ledgerQtyAt([], WAREHOUSE), 0, 'lista vacia -> 0')
+  eq(ledgerQtyAt(null, WAREHOUSE), 0, 'entrada no-lista -> 0, no excepcion')
+  eq(ledgerQtyAt([{ qty: 'x', location: WAREHOUSE }, { qty: 2, location: WAREHOUSE }], WAREHOUSE), 2,
+    'cantidad no numerica no envenena la suma con NaN')
+  eq(ledgerQtyAt([{ qty: 0.1, location: WAREHOUSE }, { qty: 0.2, location: WAREHOUSE }], WAREHOUSE), 0.3,
+    'residuo de punto flotante limpiado (0.1+0.2)')
+  eq(ledgerQtyAt([{ qty: 2.5, location: WAREHOUSE }, { qty: -2.5, location: WAREHOUSE }], WAREHOUSE), 0,
+    'un cero real sale 0, no 2.66e-15 (evita un ajuste fantasma)')
+}
+
 
 console.log(`${pass} pass, ${fail} fail`)
 if (fail) process.exit(1)

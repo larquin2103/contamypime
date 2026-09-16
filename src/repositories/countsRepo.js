@@ -10,7 +10,7 @@ import { stockRepo } from './stockRepo'
 // arrastraba el respaldo de la v5 que inventaba existencia en el almacen (F1):
 // era ESTA copia la que clavaba los -1482 al aprobar un conteo del almacen.
 // Ahora es una sola funcion pura y probada, compartida por los doce sitios.
-import { stockAtLocation, ledgerQty } from '../lib/stockLocation'
+import { stockAtLocation, ledgerQtyAt } from '../lib/stockLocation'
 
 // Existencia REAL de un producto en una ubicacion, derivada del LIBRO MAYOR (F3).
 // Es la misma consulta por el mismo indice que `salesRepo` hace inline para su
@@ -21,10 +21,16 @@ import { stockAtLocation, ledgerQty } from '../lib/stockLocation'
 // conteo costaria una consulta por producto sin ganar nada (`submit` y `approve`
 // releen despues, que es donde se decide). Aqui, en cambio, se ESCRIBE un asiento
 // append-only en el libro: el delta tiene que salir del libro.
+// NO se filtra por el indice compuesto `[productId+location]`, que seria lo
+// natural: ese indice NO CONTIENE los movimientos sin `location` -en IndexedDB un
+// registro al que le falta un componente de una clave compuesta no se indexa-, y
+// pueden llegar por sincronizacion o por el JSON de un turno sin que ningun
+// escritor los haya creado aqui. La cache (`recomputeStock`) SI los cuenta, asi que
+// mirar el indice hacia que el asiento de `approve` -append-only, irreversible-
+// saliera distinto de la existencia real. `ledgerQtyAt` agrupa igual que la cache.
 async function stockFromLedger(productId, location) {
-  const movs = await db.stockMovements
-    .where('[productId+location]').equals([productId, location || WAREHOUSE]).toArray()
-  return ledgerQty(movs)
+  const movs = await db.stockMovements.where('productId').equals(productId).toArray()
+  return ledgerQtyAt(movs, location)
 }
 
 // Marca de tiempo de una MUTACION del conteo: nunca por debajo de la version que

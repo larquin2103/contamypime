@@ -79,6 +79,39 @@ export function ledgerQty(movements) {
   return cleanQty(total)
 }
 
+// Existencia de un producto EN UNA UBICACION, derivada del libro mayor, agrupando
+// EXACTAMENTE como lo hace `recomputeStock` (pullEngine): `m.location || WAREHOUSE`.
+// Recibe TODOS los movimientos del producto, no los de una ubicacion.
+//
+// POR QUE NO SE FILTRA CON EL INDICE (auditoria del 16-09-2026). Lo natural seria
+// pedirle las filas al indice compuesto `[productId+location]`, y eso es lo que se
+// hacia. El problema es que ese indice NO CONTIENE los movimientos que no tienen
+// `location`: en IndexedDB, un registro al que le falta un componente de una clave
+// compuesta no se indexa. No es que valgan otra cosa: es que no estan, en silencio.
+//
+// Y esos movimientos pueden existir. No es hipotesis:
+//   - Antes del Bloque 20, `stockRepo.record` escribia los movimientos SIN el campo.
+//   - La sincronizacion es ANTERIOR a esa version, asi que esos documentos se
+//     subieron a la nube.
+//   - `pullEngine.mergeIncoming` los baja y hace `bulkPut` TAL CUAL, sin normalizar.
+//   - `handoffService` hace lo mismo con los movimientos de un JSON de turno.
+//   - La migracion v5 solo arreglo lo que ya estaba en el dispositivo al migrar.
+// O sea: ningun escritor puede crear uno hoy, pero NADA impide que llegue uno.
+//
+// La cache (`recomputeStock`) SI los cuenta. Si el conteo mira el indice y la cache
+// mira otra cosa, el ajuste que `approve` clava -append-only, irreversible- sale
+// mal. Medido con Dexie 4.4.4 sobre IndexedDB: con 10 sin ubicacion y -3 en el
+// almacen, contar 7 escribia +10 y dejaba el producto en 17.
+//
+// Agrupando igual que la cache, las dos fuentes no pueden discrepar. Coste medido
+// sobre el respaldo real del negocio: ningun producto tiene movimientos en mas de
+// una ubicacion, asi que no se lee NI UNA fila de mas.
+export function ledgerQtyAt(movements, location) {
+  if (!Array.isArray(movements)) return 0
+  const loc = location || WAREHOUSE
+  return ledgerQty(movements.filter((m) => (m?.location || WAREHOUSE) === loc))
+}
+
 // Ubicaciones de un producto que estan en NEGATIVO, con su cantidad:
 // `[{ location, qty }]`, vacio si no hay ninguna.
 //

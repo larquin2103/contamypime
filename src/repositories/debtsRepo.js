@@ -4,7 +4,7 @@ import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, locationLabel } from '../db/constants'
-import { ledgerQty, resolveSourceLocation } from '../lib/stockLocation'
+import { ledgerQtyAt, resolveSourceLocation } from '../lib/stockLocation'
 
 // Deuda interna: retiro de producto sin pago. Descuenta inventario, NO cuenta
 // como ingreso y queda como deuda asociada a un usuario registrado.
@@ -35,9 +35,12 @@ export const debtsRepo = {
       // habia ninguna doctrina de excepcion que preservar: no habia control alguno.
       // Ademas el vendedor YA no puede VENDER lo que no hay en su area; no tendria
       // sentido que si pudiera sacarlo como deuda.
-      const movs = await db.stockMovements
-        .where('[productId+location]').equals([productId, loc]).toArray()
-      const avail = ledgerQty(movs)
+      // Por `productId` y NO por el indice compuesto `[productId+location]`: ese
+      // indice se salta EN SILENCIO los movimientos sin `location` (pueden llegar
+      // por sync o por el JSON de un turno), y aqui eso rechazaria una deuda
+      // legitima diciendo que hay 0. `ledgerQtyAt` agrupa igual que la cache.
+      const movs = await db.stockMovements.where('productId').equals(productId).toArray()
+      const avail = ledgerQtyAt(movs, loc)
       // Los dos lados limpios: restar pesos deja residuos (2.4999999996), y sin esto
       // una deuda de 2.5 kg contra 2.5 kg reales se rechazaria sin motivo.
       if (avail < cleanQty(q)) {

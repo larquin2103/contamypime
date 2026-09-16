@@ -502,3 +502,92 @@ Por eso **lo recomendable es esperar a F2**.
 - **No se sabe por qué se vendieron 3 unidades de Galletas de soda en negativo.** El build que
   corría entonces fue sobrescrito y no se puede inspeccionar.
 - **F1–F4 no están programados.** Este documento es el plan, no el acta.
+
+---
+
+## 6. Acta de la auditoría del 16-09-2026 — H5, el índice que se salta filas
+
+Auditoría de F1–F4 completos, pedida antes de fusionar a `main`. **Un hallazgo**, sobre código
+propio de la rama, ya corregido en ella.
+
+### Qué estaba mal
+
+F3 y F4 leían el libro mayor **a través del índice compuesto `[productId+location]`**. En
+IndexedDB, un registro al que le **falta un componente** de una clave compuesta **no se indexa**:
+un movimiento sin `location` no está en ese índice. No vale otra cosa — **no está**, en silencio.
+
+`recomputeStock` (la caché, en `pullEngine`) **sí los cuenta**, con `m.location || WAREHOUSE`. Las
+dos fuentes agrupaban distinto, y el conteo **escribe un asiento append-only que no se deshace**.
+
+### Que esos movimientos pueden existir no es hipótesis
+
+Cada eslabón verificado en el código, no supuesto:
+
+| Hecho | Dónde se comprobó |
+|---|---|
+| Antes del Bloque 20 los movimientos se escribían **sin campo `location`** | `git show ab7abb2^:src/repositories/stockRepo.js` |
+| La **sincronización es anterior** a esa versión | `a0f1d2f` (Fase 4) precede a `ab7abb2` en el historial |
+| La bajada escribe el documento **tal cual** | `pullEngine.mergeIncoming` → `bulkPut(toPut)`, sin normalizar |
+| El JSON de un turno también | `handoffService.js:195` → `bulkPut(snap.stockMovements)` |
+| La migración v5 solo arregla lo que **ya estaba** en el dispositivo | `db.js`, `version(5).upgrade` |
+
+Ningún escritor puede crear uno hoy (los 15 ponen `|| WAREHOUSE` o una constante), pero **nada
+impide que llegue uno**. El invariante no lo sostenía nadie.
+
+### El daño, medido
+
+Reproducido con Dexie 4.4.4 sobre IndexedDB, no razonado:
+
+```
+Movimientos:  10 @ SIN ubicacion     -3 @ __almacen
+Cache: __almacen = 7        Indice: -3
+
+El vendedor cuenta 7:
+  antes de F3 (cache) -> ajuste 0     (correcto)
+  con F3 (indice)     -> ajuste +10   (append-only)  ->  el producto queda en 17
+```
+
+Es **la misma avería que F3 viene a arreglar**, con el signo cambiado y otra causa.
+
+### Evidencia EN CONTRA, que también se registra
+
+El respaldo real disponible (`respaldo_mypicuadre_2026-09-04.json`, esquema 17) tiene **474 de 474
+movimientos con `location`**: **cero exposición ahí**. Pero es un aparato **secundario** — 31
+ventas, cuando los aparatos del negocio tienen 413, 217 y 83 — y la exposición vive justo en la
+historia larga, que **no se ha podido examinar**.
+
+Se corrigió igual: la escritura es irreversible, el fallo es mudo, `main` hoy **no** tiene esa
+exposición en el conteo (lee la caché, que sí los cuenta), y el arreglo no cuesta nada.
+
+### El arreglo
+
+`lib/stockLocation.js` gana **`ledgerQtyAt(movimientos, ubicación)`**, que agrupa **exactamente
+como `recomputeStock`**. `countsRepo.stockFromLedger` y el candado de `debtsRepo` consultan ahora
+por `productId` y agrupan con ella. **Las dos fuentes ya no pueden discrepar: es la misma regla.**
+
+**Coste medido sobre el respaldo real: cero filas de más.** Ningún producto tiene movimientos en
+más de una ubicación (352 productos, máximo 9 movimientos, mediana 1).
+
+### Validación
+
+- **9.000 comparaciones** entre el cálculo del conteo y el **bucle real de `recomputeStock`
+  extraído de `pullEngine.js`** (no una copia), sobre 3.000 libros aleatorios, 2.610 de ellos con
+  algún movimiento sin ubicación: **0 divergencias**.
+- **Control negativo**: la versión anterior divergía **2.610 veces** en el mismo barrido.
+- **No regresión**: con todos los movimientos ubicados —el caso del respaldo real— **6.000 de
+  6.000 idénticos** a lo que hacía la rama.
+- El escenario que producía el +10, con el **cuerpo real de `stockFromLedger` extraído del
+  fichero** y un IndexedDB de verdad: **ajuste 0**. Y `15 == 15` con todo ubicado.
+- Build limpio, **14 suites / 834 aserciones**, 0 identificadores sin definir, 0 imports huérfanos.
+
+### Lo que NO se tocó, y por qué
+
+`salesRepo`, `kitchenRepo`, `ordersRepo` y `stockRepo.stockAt` usan el mismo índice y están en
+`main`. Allí sirve para **rechazar**, así que falla del lado seguro (como mucho bloquea una venta
+legítima); aquí servía para **calcular un asiento**. Tocarlos ampliaría el alcance de la fusión sin
+necesidad. Queda anotado para decidirlo aparte. *(`stockRepo.stockAt` además no lo llama nadie.)*
+
+### Sigue sin poder garantizarse
+
+**Nadie ha ejecutado la app.** Ni un conteo aprobado, ni una deuda rechazada, ni una fusión entre
+dos aparatos.
