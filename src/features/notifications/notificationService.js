@@ -576,6 +576,12 @@ export async function refreshFromSources() {
     }
   }
 
+  // La marca de agua de los EVENTOS se escribe aquí y no más abajo: el barrido de
+  // ESTADO que viene después no debe poder impedirla. Si fallara con el cursor sin
+  // escribir, los mismos eventos se re-derivarían en cada pasada (idempotentes, pero
+  // trabajo tirado) y el podado nunca correría.
+  writeCursor(maxTs)
+
   // --- Barrido de ESTADO: existencias en negativo sin cuadrar (F2) ------------
   // UNA VEZ POR DÍA local. El barrido general corre cada 60 s y recorrer 400+
   // productos en cada pasada anularía el early-out de arriba; y como el aviso es uno
@@ -586,24 +592,29 @@ export async function refreshFromSources() {
   // Se salta lo INACTIVO a propósito: `countsRepo.startDraft` solo lista productos
   // activos, así que avisar de uno dado de baja sería mandar al dueño a cuadrar algo
   // que el conteo no le va a ofrecer.
-  const hoy = localDay()
-  if (
-    readNegStockDay() !== hoy &&
-    enabled(prefs, NOTIFICATION_TYPES.NEGATIVE_STOCK_STATE, NOTIFICATION_SEVERITY.WARNING)
-  ) {
-    if (!products) products = await db.products.toArray()
-    for (const p of products) {
-      if (!p.active) continue
-      for (const neg of negativeLocations(p)) {
-        matched++
-        const res = await createNotification(buildNegativeStockState(p, neg, hoy))
-        if (res.created) created++
+  //
+  // Va envuelto y DESPUÉS del cursor, como el podado: es una función secundaria y no
+  // puede llevarse por delante la derivación de eventos, que es la principal.
+  try {
+    const hoy = localDay()
+    if (
+      readNegStockDay() !== hoy &&
+      enabled(prefs, NOTIFICATION_TYPES.NEGATIVE_STOCK_STATE, NOTIFICATION_SEVERITY.WARNING)
+    ) {
+      if (!products) products = await db.products.toArray()
+      for (const p of products) {
+        if (!p.active) continue
+        for (const neg of negativeLocations(p)) {
+          matched++
+          const res = await createNotification(buildNegativeStockState(p, neg, hoy))
+          if (res.created) created++
+        }
       }
+      writeNegStockDay(hoy)
     }
-    writeNegStockDay(hoy)
+  } catch (e) {
+    console.warn('[notif] negstock', e?.message)
   }
-
-  writeCursor(maxTs)
   // R2 - Control de crecimiento: tras el barrido, poda los avisos viejos. Es
   // best-effort (nunca rompe el barrido ni borra UNREAD/recientes).
   try {
