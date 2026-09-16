@@ -18,7 +18,7 @@
 //     existencia en el almacen. Quitar esa rama romperia bases viejas.
 //  4) Que no invente existencia en un AREA. La copia de `conversionsRepo` caia al
 //     total en CUALQUIER ubicacion, no solo en el almacen: era la peor de las doce.
-import { stockAtLocation } from './stockLocation.js'
+import { stockAtLocation, negativeLocations } from './stockLocation.js'
 import { WAREHOUSE } from '../db/constants.js'
 
 let pass = 0
@@ -92,6 +92,58 @@ const OTRA = 'Carniceria'
 {
   const arroz = { stock: 2.5, stockByLocation: { [AREA]: 2.5 } }
   eq(stockAtLocation(arroz, AREA), 2.5, 'un peso fraccionario no se redondea')
+}
+
+// --- 7) negativeLocations: donde hay que cuadrar algo (F2) --------------------
+// El aviso al dueño y el conteo necesitan saber QUE ubicaciones de un producto
+// estan en negativo. En un sistema offline-first el negativo no se puede impedir
+// del todo (dos vendedores sin internet venden la misma ultima unidad y la fusion
+// suma -1) y el descubierto autorizado lo crea a proposito, asi que hay que poder
+// detectarlo y corregirlo. Devuelve SIEMPRE un array, para no obligar a nadie a
+// comprobar null.
+function eqJson(actual, expected, label) {
+  const a = JSON.stringify(actual)
+  const e = JSON.stringify(expected)
+  if (a === e) { pass++; return }
+  fail++
+  console.error(`FAIL ${label}\n  esperado: ${e}\n  obtenido: ${a}`)
+}
+{
+  eqJson(negativeLocations({ stock: 10, stockByLocation: { [WAREHOUSE]: 7, [AREA]: 3 } }), [],
+    'todo en positivo: ninguna ubicacion que cuadrar')
+  eqJson(negativeLocations({ stock: 0, stockByLocation: { [AREA]: 0 } }), [],
+    'cero NO es negativo: no se avisa de lo agotado')
+  eqJson(negativeLocations({ stock: -30, stockByLocation: { [AREA]: -30 } }),
+    [{ location: AREA, qty: -30 }],
+    'un negativo en su area se reporta con su cantidad')
+  eqJson(negativeLocations({ stock: -5, stockByLocation: { [WAREHOUSE]: 2, [AREA]: -7 } }),
+    [{ location: AREA, qty: -7 }],
+    'solo la ubicacion negativa, aunque otra este en positivo')
+  eqJson(negativeLocations({ stock: -9, stockByLocation: { [WAREHOUSE]: -2, [AREA]: -7 } }),
+    [{ location: WAREHOUSE, qty: -2 }, { location: AREA, qty: -7 }],
+    'dos ubicaciones negativas: se reportan las dos')
+}
+{
+  // Pre-v5 sin mapa: su existencia vive en el almacen, asi que un total negativo
+  // es un negativo DEL ALMACEN. Coherente con `stockAtLocation`.
+  eqJson(negativeLocations({ stock: -4 }), [{ location: WAREHOUSE, qty: -4 }],
+    'pre-v5 sin mapa: el total negativo es del almacen')
+  eqJson(negativeLocations({ stock: 4 }), [], 'pre-v5 en positivo: nada que cuadrar')
+}
+{
+  // Entradas defectuosas: array vacio, nunca excepcion (lo recorre un barrido
+  // sobre TODO el catalogo, y un producto a medio crear no puede tumbarlo).
+  eqJson(negativeLocations(null), [], 'producto nulo: array vacio')
+  eqJson(negativeLocations(undefined), [], 'producto indefinido: array vacio')
+  eqJson(negativeLocations({}), [], 'producto sin stock ni mapa: array vacio')
+}
+{
+  // Residuo de punto flotante: restar pesos deja -2.66e-15, que NO es un faltante.
+  // Se limpia igual que hace `cleanQty` en el resto del inventario.
+  eqJson(negativeLocations({ stockByLocation: { [AREA]: -0.0000000000000027 } }), [],
+    'residuo de punto flotante: NO es un negativo real')
+  eqJson(negativeLocations({ stockByLocation: { [AREA]: -0.5 } }), [{ location: AREA, qty: -0.5 }],
+    'medio kilo en negativo SI es real')
 }
 
 console.log(`${pass} pass, ${fail} fail`)

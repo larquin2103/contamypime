@@ -1,4 +1,5 @@
 import { WAREHOUSE } from '../db/constants.js'
+import { cleanQty } from './qty.js'
 
 // Existencia de un producto en UNA ubicacion, leida de la cache
 // (`products.stockByLocation`). Funcion PURA y sin Dexie: por eso tiene su suite
@@ -37,4 +38,37 @@ export function stockAtLocation(p, location) {
   // Sin mapa = producto anterior a la v5: para el, y solo para el, el total ES su
   // existencia en el almacen. Se conserva para no romper bases viejas.
   return location === WAREHOUSE ? Number(p?.stock || 0) : 0
+}
+
+// Ubicaciones de un producto que estan en NEGATIVO, con su cantidad:
+// `[{ location, qty }]`, vacio si no hay ninguna.
+//
+// POR QUE HACE FALTA (F2). El negativo no es un fallo que se pueda eliminar del
+// todo, y por eso hay que poder VERLO y CORREGIRLO:
+//  - El descubierto AUTORIZADO lo crea a proposito (`allowShortProduction`), y el
+//    propio diseño dice que queda en negativo "hasta que una entrada, un traspaso
+//    o EL CONTEO la neteen".
+//  - Y en una app offline-first no hay candado que lo impida: dos vendedores sin
+//    internet consultan cada uno SU copia del libro mayor, los dos ven la ultima
+//    unidad, los dos venden, y al fusionar el libro suma -1. Los dos candados
+//    funcionaron. Ademas el stock derivado del libro no se recorta a cero en
+//    ninguna parte de la app: el negativo es posible por construccion.
+//
+// El CERO no se reporta: agotado es un estado normal, no algo que cuadrar.
+//
+// Se limpia con `cleanQty` porque restar pesos deja residuos de punto flotante
+// (-2.66e-15): sin eso, un producto que cuadra perfecto se avisaria como negativo.
+export function negativeLocations(p) {
+  const byLoc = p?.stockByLocation
+  if (byLoc) {
+    const out = []
+    for (const loc of Object.keys(byLoc)) {
+      const q = cleanQty(byLoc[loc])
+      if (q < 0) out.push({ location: loc, qty: q })
+    }
+    return out
+  }
+  // Pre-v5 sin mapa: su existencia vive en el almacen (ver `stockAtLocation`).
+  const total = cleanQty(p?.stock)
+  return total < 0 ? [{ location: WAREHOUSE, qty: total }] : []
 }

@@ -157,8 +157,10 @@ export function CountScreen() {
   // Ubicación a contar: el dueño/administrativo elige; el vendedor cuenta su área
   // (o el almacén, si tiene el permiso mayorista y lo eligió).
   const targetLoc = isManager ? countLoc : sellerCountLoc
-  // ¿Hay algo que contar en ese destino? (existencia > 0 en esa ubicación)
-  const hasItems = products.some((p) => p.active && stockAt(p, targetLoc) > 0)
+  // ¿Hay algo que contar en ese destino? (existencia distinta de 0 en esa ubicación)
+  // `!== 0` (F2): si en el destino solo quedan existencias NEGATIVAS, el conteo
+  // tiene que poder iniciarse igual — es justamente cuando hace mas falta.
+  const hasItems = products.some((p) => p.active && stockAt(p, targetLoc) !== 0)
 
   return (
     <div className="screen">
@@ -256,10 +258,13 @@ function CountEditor({ draft }) {
     return m
   }, [categories])
 
-  // Un ítem es contable si su sistema EN VIVO es > 0, o si ya tiene un físico
+  // Un ítem es contable si su sistema EN VIVO NO es cero, o si ya tiene un físico
   // anotado (para no perder lo contado si una venta lo dejó en 0 mientras tanto).
+  // El `!== 0` es la SEGUNDA de las tres compuertas de F2: sin ella, el negativo
+  // entraba al borrador desde el repo y la pantalla lo escondía igual, así que
+  // arreglar solo el repo no habría servido de nada.
   const isVisible = (it) =>
-    Number(sysOf(it)) > 0 || (it.physicalQty !== null && it.physicalQty !== '')
+    Number(sysOf(it)) !== 0 || (it.physicalQty !== null && it.physicalQty !== '')
 
   const groups = useMemo(() => {
     const g = {}

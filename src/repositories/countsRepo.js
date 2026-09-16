@@ -75,7 +75,12 @@ export const countsRepo = {
   async startDraft(userId, location = WAREHOUSE) {
     const products = await db.products.toArray()
     const items = products
-      .filter((p) => p.active && stockAtLocation(p, location) > 0)
+      // `!== 0` y no `> 0` (F2): una existencia NEGATIVA tiene que poder contarse,
+      // porque `countsRepo.approve` es el UNICO sitio de toda la app que llama a
+      // `stockRepo.adjust` — sin esto, un negativo no se puede corregir NUNCA desde
+      // la aplicacion. El CERO se sigue excluyendo, igual que siempre: agotado es un
+      // estado normal y meter 226 productos vacios en la lista no ayudaria a nadie.
+      .filter((p) => p.active && stockAtLocation(p, location) !== 0)
       .map((p) => ({
         productId: p.id,
         name: p.name,

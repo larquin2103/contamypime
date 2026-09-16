@@ -1,5 +1,6 @@
 import { db } from '../../db/db'
-import { now } from '../../lib/dates'
+import { now, localDay } from '../../lib/dates'
+import { negativeLocations } from '../../lib/stockLocation'
 import { newId } from '../../lib/ids'
 import { round2 } from '../../lib/currency'
 import { configRepo } from '../../repositories/configRepo'
@@ -57,6 +58,28 @@ function writeCursor(ts) {
     if (ts) localStorage.setItem(CURSOR_KEY, ts)
   } catch {
     /* best-effort, como lib/lockout.js */
+  }
+}
+
+// Último día local en que se barrió el ESTADO del inventario (F2). El barrido
+// general corre cada 60 s, y recorrer 400+ productos en cada pasada tiraría por
+// tierra el early-out que evita cargar los mapas cuando no hay candidatos. Como el
+// aviso de negativo es uno por día, con mirarlo una vez al día basta: 1 de cada
+// ~1440 pasadas. Device-local, como los otros dos cursores.
+const NEGSTOCK_DAY_KEY = 'mc_notif_negstock_day'
+
+function readNegStockDay() {
+  try {
+    return localStorage.getItem(NEGSTOCK_DAY_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+function writeNegStockDay(day) {
+  try {
+    if (day) localStorage.setItem(NEGSTOCK_DAY_KEY, day)
+  } catch {
+    /* best-effort */
   }
 }
 
@@ -424,6 +447,34 @@ function buildNegativeStock(production, ctx) {
   }
 }
 
+// Aviso de EXISTENCIA EN NEGATIVO sin cuadrar (F2). Deriva del ESTADO, no de un
+// evento, porque la causa puede no tener uno: el descubierto autorizado sí lo tiene
+// (`productions.shortages` -> buildNegativeStock), pero una venta doble entre dos
+// teléfonos offline no deja ningún registro que diga "aquí se fue a negativo"; el
+// negativo aparece al FUSIONAR. Por eso el id lleva producto+ubicación+día: se
+// repite una vez al día mientras siga sin cuadrar y desaparece solo al netearlo.
+function buildNegativeStockState(product, neg, day) {
+  return {
+    type: NOTIFICATION_TYPES.NEGATIVE_STOCK_STATE,
+    sourceId: `${product.id}:${neg.location}`,
+    disc: day,
+    severity: NOTIFICATION_SEVERITY.WARNING,
+    title: 'Existencia en negativo',
+    message: `${product.name}: ${neg.qty} ${product.unit || ''} en ${locationLabel(neg.location)}. Cuádralo con un conteo físico.`.replace(/\s+/g, ' ').trim(),
+    createdAt: now(),
+    createdBy: null,
+    requiresAction: true,
+    audience: 'manager',
+    metadata: {
+      sourceCollection: 'products',
+      sourceId: product.id,
+      location: neg.location,
+      qty: neg.qty,
+      day
+    }
+  }
+}
+
 // --- Barrido derivado (offline-first, incremental) ---------------------------
 // Lee SOLO lo posterior al piso y materializa los avisos nuevos. Rendimiento:
 //  - priceChanges: rango por índice `createdAt` (= su syncTs) -> solo lo nuevo.
@@ -504,10 +555,12 @@ export async function refreshFromSources() {
 
   let created = 0
   let matched = 0
+  // Se comparte con el barrido de ESTADO de abajo para no leer el catálogo dos veces.
+  let products = null
   // Early-out: sin candidatos NO se cargan los mapas (500 productos + usuarios).
   if (candidates.length) {
     const users = await db.users.toArray()
-    const products = await db.products.toArray()
+    products = await db.products.toArray()
     const ctx = {
       userName: Object.fromEntries(users.map((u) => [u.id, u.name])),
       userRole: Object.fromEntries(users.map((u) => [u.id, ROLE_LABELS[u.role] || 'Usuario'])),
@@ -521,6 +574,33 @@ export async function refreshFromSources() {
       const res = await createNotification(desc)
       if (res.created) created++
     }
+  }
+
+  // --- Barrido de ESTADO: existencias en negativo sin cuadrar (F2) ------------
+  // UNA VEZ POR DÍA local. El barrido general corre cada 60 s y recorrer 400+
+  // productos en cada pasada anularía el early-out de arriba; y como el aviso es uno
+  // por día, no hay nada que ganar mirando más. Si la categoría está apagada NO se
+  // lee el catálogo NI se escribe el cursor del día: así, al encenderla, el aviso
+  // sale en el siguiente barrido y no al día siguiente.
+  //
+  // Se salta lo INACTIVO a propósito: `countsRepo.startDraft` solo lista productos
+  // activos, así que avisar de uno dado de baja sería mandar al dueño a cuadrar algo
+  // que el conteo no le va a ofrecer.
+  const hoy = localDay()
+  if (
+    readNegStockDay() !== hoy &&
+    enabled(prefs, NOTIFICATION_TYPES.NEGATIVE_STOCK_STATE, NOTIFICATION_SEVERITY.WARNING)
+  ) {
+    if (!products) products = await db.products.toArray()
+    for (const p of products) {
+      if (!p.active) continue
+      for (const neg of negativeLocations(p)) {
+        matched++
+        const res = await createNotification(buildNegativeStockState(p, neg, hoy))
+        if (res.created) created++
+      }
+    }
+    writeNegStockDay(hoy)
   }
 
   writeCursor(maxTs)

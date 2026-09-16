@@ -53,7 +53,18 @@ export const NOTIFICATION_TYPES = {
   // `allowShortProduction`) y una existencia quedó en NEGATIVO. Deriva de
   // `productions` (que ya sincroniza), no de un barrido del stock: es un EVENTO con
   // su fecha y su autor. Sin el permiso no hay ninguno.
-  NEGATIVE_STOCK: 'negative_stock'
+  NEGATIVE_STOCK: 'negative_stock',
+  // F2: una existencia quedó en NEGATIVO y sigue sin cuadrar. A diferencia del
+  // anterior, este NO deriva de un evento sino del ESTADO del inventario, porque
+  // la causa puede no tener evento propio: dos vendedores sin internet venden la
+  // misma última unidad, cada uno valida contra SU copia del libro mayor, los dos
+  // pasan, y la fusión suma -1. Ningún candado local puede impedirlo y el stock
+  // derivado del libro no se recorta a cero en ninguna parte.
+  //
+  // Se materializa UNA VEZ POR DÍA local mientras siga sin cuadrar (el día va en el
+  // discriminador del id): así recuerda sin apilar un aviso por barrido, y deja de
+  // aparecer solo en cuanto el conteo lo netea.
+  NEGATIVE_STOCK_STATE: 'negative_stock_state'
 }
 
 // Categorías que ve el dueño en Ajustes (los interruptores de NotificationSettings).
@@ -81,7 +92,12 @@ export const TYPE_CATEGORY = {
   [NOTIFICATION_TYPES.TRANSFER_MISMATCH]: NOTIFICATION_CATEGORIES.TRANSFERENCIAS,
   [NOTIFICATION_TYPES.DELIVERY_FAILED]: NOTIFICATION_CATEGORIES.REMESAS,
   [NOTIFICATION_TYPES.SETTLEMENT_DIFF]: NOTIFICATION_CATEGORIES.REMESAS,
-  [NOTIFICATION_TYPES.NEGATIVE_STOCK]: NOTIFICATION_CATEGORIES.ELABORACION
+  [NOTIFICATION_TYPES.NEGATIVE_STOCK]: NOTIFICATION_CATEGORIES.ELABORACION,
+  // 'inventario' y NO 'elaboracion': el descubierto autorizado es solo UNA de las
+  // causas de un negativo (y de las pocas que son intencionadas). Este aviso habla
+  // de que hay existencia que cuadrar, venga de donde venga, y el sitio donde se
+  // cuadra es el conteo — que es justo lo que gobierna la categoría 'inventario'.
+  [NOTIFICATION_TYPES.NEGATIVE_STOCK_STATE]: NOTIFICATION_CATEGORIES.INVENTARIO
 }
 
 // Preferencias por defecto del dueño (clave 'notificationPreferences' en config,
