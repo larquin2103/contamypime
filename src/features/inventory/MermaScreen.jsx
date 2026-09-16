@@ -11,6 +11,7 @@ import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney, isForeignPriced, foreignToBase } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { WAREHOUSE, WAREHOUSE_LABEL, locationLabel } from '../../db/constants'
+import { stockAtLocation } from '../../lib/stockLocation'
 
 // Mermas (deterioro/perdida): rebaja de inventario que NO es venta. Solo el
 // dueño/administrativo (ve costos). Se elige la ubicacion (almacen o area), el
@@ -34,7 +35,7 @@ export function MermaScreen() {
   const [error, setError] = useState('')
 
   // Existencia del producto en la ubicacion elegida (derivada de la cache).
-  const stockAt = (p) => Number(p.stockByLocation?.[location] ?? (location === WAREHOUSE ? p.stock : 0) ?? 0)
+  const stockAt = (p) => stockAtLocation(p, location)
   const results = useMemo(() => {
     if (!query.trim()) return []
     return products.filter((p) => matchesQuery(p, query) && stockAt(p) > 0).slice(0, 12)

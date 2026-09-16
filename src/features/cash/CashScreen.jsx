@@ -16,6 +16,7 @@ import { CASH_CURRENCIES, WAREHOUSE, locationLabel } from '../../db/constants'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
+import { stockAtLocation } from '../../lib/stockLocation'
 
 export function CashScreen() {
   const { user, isManager } = useAuth()
@@ -173,9 +174,7 @@ function DebtForm({ shift, user, isManager }) {
   const canPickSource = !isElaborator && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
   // Ubicación de la que se rebaja: el almacén si se eligió, si no el área del turno.
   const sourceLoc = canPickSource && fromWarehouse ? WAREHOUSE : sellArea
-  const stockAt = (p) => canPickSource
-    ? Number(p.stockByLocation?.[sourceLoc] ?? (sourceLoc === WAREHOUSE ? p.stock : 0) ?? 0)
-    : Number(p.stock || 0)
+  const stockAt = (p) => canPickSource ? stockAtLocation(p, sourceLoc) : Number(p.stock || 0)
 
   const results = useMemo(() => {
     if (!query.trim()) return []

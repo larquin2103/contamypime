@@ -3,6 +3,7 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
+import { stockAtLocation } from '../lib/stockLocation'
 
 // Conversion de productos en una ubicacion (almacen central -> mayorista; o el
 // centro de elaboracion). Se CONSUMEN uno o VARIOS insumos (una receta: pan +
@@ -50,9 +51,9 @@ export const conversionsRepo = {
       for (const x of ins) {
         const p = await db.products.get(x.productId)
         if (!p) throw new Error('Un producto insumo no existe')
-        const avail = p.stockByLocation?.[loc] != null
-          ? Number(p.stockByLocation[loc])
-          : Number(p.stock || 0)
+        // Esta era la peor de las doce copias del respaldo de la v5: caia al TOTAL
+        // del producto en CUALQUIER ubicacion, no solo en el almacen. Ver `stockAtLocation`.
+        const avail = stockAtLocation(p, loc)
         if (x.qty > avail) {
           throw new Error(`No hay suficiente "${p.name}" (disponible ${avail})`)
         }

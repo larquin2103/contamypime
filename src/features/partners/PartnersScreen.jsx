@@ -13,6 +13,7 @@ import { formatMoney, round2 } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
 import { matchesQuery } from '../../lib/search'
 import { useEscapeClose } from '../../lib/useEscapeClose'
+import { stockAtLocation } from '../../lib/stockLocation'
 import {
   PARTNER_TYPES,
   PARTNER_TYPE_LABELS,
@@ -364,7 +365,7 @@ function DeliveryForm({ partner, baseCurrency, userId, onClose }) {
   const [busy, setBusy] = useState(false)
   useEscapeClose(onClose)
 
-  const availOf = (p) => Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
+  const availOf = (p) => stockAtLocation(p, WAREHOUSE)
   const results = useMemo(() => {
     if (!query.trim()) return []
     return products.filter((p) => matchesQuery(p, query) && availOf(p) > 0).slice(0, 10)

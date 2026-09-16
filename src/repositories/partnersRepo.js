@@ -5,6 +5,7 @@ import { round2 } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, PARTNER_MOVEMENT_TYPES, PARTNER_TYPES, WAREHOUSE } from '../db/constants'
 import { addAccountMovementRaw } from './accountsRepo'
+import { stockAtLocation } from '../lib/stockLocation'
 
 // Terceros del negocio (Bloque C, modulo 'cuentas'): proveedores que dejan
 // mercancia en consignacion y acreedores/terceros a los que se les entrega
@@ -160,7 +161,7 @@ export const partnersRepo = {
       // Validacion de existencia en el almacen ANTES de rebajar nada.
       for (const it of lines) {
         const p = await db.products.get(it.productId)
-        const avail = Number(p?.stockByLocation?.[WAREHOUSE] ?? p?.stock ?? 0)
+        const avail = stockAtLocation(p, WAREHOUSE)
         if (avail < it.qty) {
           throw new Error(`No hay existencia en el almacén de ${it.name} (hay ${avail}, pides ${it.qty})`)
         }

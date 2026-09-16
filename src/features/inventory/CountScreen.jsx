@@ -16,15 +16,14 @@ import { formatMoney, isForeignPriced, foreignToBase, round2 } from '../../lib/c
 import { formatDateTime } from '../../lib/dates'
 import { useEscapeClose } from '../../lib/useEscapeClose'
 import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
+import { stockAtLocation } from '../../lib/stockLocation'
 import { WAREHOUSE, ELABORATION, COCINA, ENTREGAS_AREA, locationLabel } from '../../db/constants'
 
-// Existencia de un producto en una ubicacion (espejo de countsRepo) para saber
-// si hay algo que contar en el destino elegido.
-function stockAt(p, location) {
-  const byLoc = p.stockByLocation
-  if (byLoc && byLoc[location] != null) return Number(byLoc[location])
-  return location === WAREHOUSE ? Number(p.stock || 0) : 0
-}
+// Existencia de un producto en una ubicacion. Era un "espejo de countsRepo"
+// copiado a mano, y con el mismo respaldo de la v5 que inventaba existencia en el
+// almacen (F1): la pantalla enseñaba a contar 240 hamburguesas que no estaban ahi.
+// Ahora es la misma funcion que usa el repo, asi que no pueden separarse.
+const stockAt = stockAtLocation
 
 // Valor unitario en MN para el IMPORTE informativo del conteo: en la COCINA por
 // COSTO del insumo (lo consumido); en el resto por PRECIO de venta (venta sin

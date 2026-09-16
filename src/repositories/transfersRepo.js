@@ -3,6 +3,7 @@ import { newId } from '../lib/ids'
 import { now } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { MOVEMENT_TYPES, WAREHOUSE, locationLabel } from '../db/constants'
+import { stockAtLocation } from '../lib/stockLocation'
 
 // Traspasos entre ubicaciones (Bloque 20 + módulo elaboración). Es un traspaso
 // append-only: cada producto genera un TRANSFER_OUT en el origen (-cant) y un
@@ -30,7 +31,7 @@ export const transfersRepo = {
       // producto (no se puede sacar lo que no hay). Aborta toda la transacción.
       for (const it of clean) {
         const p = await db.products.get(it.productId)
-        const avail = Number(p?.stockByLocation?.[from] ?? (from === WAREHOUSE ? p?.stock : 0) ?? 0)
+        const avail = stockAtLocation(p, from)
         if (it.qty > avail) {
           throw new Error(`No hay suficiente "${it.name || 'producto'}" en ${locationLabel(from)} (disponible ${avail})`)
         }

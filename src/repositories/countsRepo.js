@@ -6,14 +6,11 @@ import { evalSemaphore } from '../lib/semaphore'
 import { COUNT_STATUS, WAREHOUSE } from '../db/constants'
 import { configRepo } from './configRepo'
 import { stockRepo } from './stockRepo'
-
-// Existencia de un producto en una ubicacion, con respaldo al total cuando es
-// el almacen y aun no hay cache por ubicacion (productos previos a la v5).
-function stockAtLocation(p, location) {
-  const byLoc = p.stockByLocation
-  if (byLoc && byLoc[location] != null) return Number(byLoc[location])
-  return location === WAREHOUSE ? Number(p.stock || 0) : 0
-}
+// Existencia de un producto en una ubicacion. Vivia aqui como copia propia y
+// arrastraba el respaldo de la v5 que inventaba existencia en el almacen (F1):
+// era ESTA copia la que clavaba los -1482 al aprobar un conteo del almacen.
+// Ahora es una sola funcion pura y probada, compartida por los doce sitios.
+import { stockAtLocation } from '../lib/stockLocation'
 
 // Marca de tiempo de una MUTACION del conteo: nunca por debajo de la version que
 // reemplaza (ver `tsAfter` en lib/dates). El conteo lo mutan DOS dispositivos en

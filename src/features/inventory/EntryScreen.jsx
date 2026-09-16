@@ -18,6 +18,7 @@ import { round2, formatMoney } from '../../lib/currency'
 import { WAREHOUSE, WAREHOUSE_LABEL, locationLabel } from '../../db/constants'
 import { ProductForm } from '../products/ProductForm'
 import { parseEntryFile, buildEntryTemplateBlob, entryTemplateHeaders } from '../import/entryImportService'
+import { stockAtLocation } from '../../lib/stockLocation'
 
 export function EntryScreen() {
   const { user, isManager, can } = useAuth()
@@ -74,7 +75,7 @@ export function EntryScreen() {
   const locStock = useMemo(() => {
     const m = {}
     for (const p of products) {
-      m[p.id] = Number(p.stockByLocation?.[effLoc] ?? (effLoc === WAREHOUSE ? p.stock : 0) ?? 0)
+      m[p.id] = stockAtLocation(p, effLoc)
     }
     return m
   }, [products, effLoc])

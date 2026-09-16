@@ -17,6 +17,7 @@ import { round2, formatMoney, baseToForeign, foreignToBase, isForeignPriced } fr
 import { cleanQty } from '../../lib/qty'
 import { parseSms } from '../../lib/sms'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, WAREHOUSE } from '../../db/constants'
+import { stockAtLocation } from '../../lib/stockLocation'
 
 export function SalesScreen() {
   const { user, isElaborator } = useAuth()
@@ -74,12 +75,7 @@ export function SalesScreen() {
   const canPickSource = !isElaborator && !!sellArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
   const sellLoc = sellArea && !(canPickSource && fromWarehouse) ? sellArea : WAREHOUSE
 
-  const availAt = (p, loc) =>
-    cleanQty(
-      loc === WAREHOUSE
-        ? Number(p.stockByLocation?.[WAREHOUSE] ?? p.stock ?? 0)
-        : Number(p.stockByLocation?.[loc] || 0)
-    )
+  const availAt = (p, loc) => cleanQty(stockAtLocation(p, loc))
   const availOf = (p) => availAt(p, sellLoc)
 
   // Al cambiar el origen se revalida el carrito contra la nueva ubicación (el

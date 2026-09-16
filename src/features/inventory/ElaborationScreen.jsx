@@ -11,6 +11,7 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney } from '../../lib/currency'
 import { WAREHOUSE, ELABORATION } from '../../db/constants'
+import { stockAtLocation } from '../../lib/stockLocation'
 import {
   buildElabConsolidatedSales, buildElabOutputs, buildElabReconciliation,
   exportExcel, exportPdf
@@ -21,8 +22,7 @@ import {
 // (2) transformar en elaboración (consume crudo -> nuevo código, con merma),
 // (3) enviar lo elaborado a un área de venta. Todo gateado por el módulo.
 
-const stockAt = (p, loc) =>
-  Number(p?.stockByLocation?.[loc] ?? (loc === WAREHOUSE ? p?.stock : 0) ?? 0)
+const stockAt = stockAtLocation
 
 // Panel de traspaso de una ubicación a otra (checklist con cantidades).
 function TransferPanel({ title, hint, products, fromLocation, fixedTo, areas = [], byUserId }) {

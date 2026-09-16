@@ -4,6 +4,7 @@ import { now } from '../lib/dates'
 import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { MOVEMENT_TYPES, WAREHOUSE, locationLabel } from '../db/constants'
+import { stockAtLocation } from '../lib/stockLocation'
 
 // Mermas: rebaja de inventario por deterioro/perdida. NO es una venta (no entra
 // dinero): solo baja la existencia y deja constancia de la afectacion al COSTO.
@@ -26,7 +27,7 @@ export const mermasRepo = {
     await db.transaction('rw', db.mermas, db.stockMovements, db.products, async () => {
       const p = await db.products.get(productId)
       if (!p) throw new Error('Producto no encontrado')
-      const avail = Number(p.stockByLocation?.[loc] ?? (loc === WAREHOUSE ? p.stock : 0) ?? 0)
+      const avail = stockAtLocation(p, loc)
       if (q > avail) {
         throw new Error(`Solo hay ${avail} ${p.unit} de ${p.name} en ${locationLabel(loc)}`)
       }
