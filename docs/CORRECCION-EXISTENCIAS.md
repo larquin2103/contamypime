@@ -8,7 +8,7 @@ del negocio *De todo un tin* (`respaldo_mypicuadre_2026-09-12` de la dueña y de
 pasada encontró una causa raíz que la primera no vio, **invalidó una de sus conclusiones** y
 **cambió el orden de los arreglos**. Lo que cambió está en el §0; lo demás se corrigió en su sitio.
 
-**Nada de esto está programado todavía.** Aquí está el qué, el dónde y el por qué, más el
+**F1 ya está programado en la rama (ver su acta); F2–F4 no.** Aquí está el qué, el dónde y el por qué, más el
 procedimiento que el cliente puede seguir. Todo lo que se afirma se verificó leyendo el código y
 calculando sobre los respaldos; **la app NO se ejecutó**.
 
@@ -33,7 +33,7 @@ Cuatro cosas, y la primera es grave:
    compuertas `> 0`, no una; el documento solo encontró la del repo. Ver §3-F2.
 
 También: la línea base de pruebas que se citaba (*8 suites / 462 aserciones*) estaba vencida. Hoy
-son **13 suites / 774 aserciones**, medidas el 15-09-2026, todas en verde, con `npm run build`
+son **14 suites / 790 aserciones** (F1 añadió `stockLocation.test.mjs`), medidas el 15-09-2026, todas en verde, con `npm run build`
 **exit 0**.
 
 ---
@@ -162,7 +162,26 @@ Los cuatro tocan **lógica de producción**, así que chocan con la regla 2 (cam
 **correcciones de defecto**, no funciones nuevas. Ninguno va gateado por licencia: los cuatro son
 función base. **Ninguno toca `src/features/sync/`, ni el esquema Dexie, ni `SYNC_COLLECTIONS`.**
 
-### F1 — Quitar el respaldo obsoleto (MÁXIMA PRIORIDAD)
+### F1 — Quitar el respaldo obsoleto — ✅ **HECHO en la rama (15-09-2026)**
+
+> **Acta.** Implementado en dos commits: el **motor** (`src/lib/stockLocation.js` + su suite) y el
+> **cableado** de los doce sitios. Se hizo por **TDD con el ciclo observado**: la suite falla primero
+> por módulo ausente, después se crea el módulo con la lógica **vieja** y falla en los tres asertos
+> que importan —con los números reales del respaldo: Hamburguesa 240 en el almacén, Galletas −30—, y
+> solo entonces se corrige. **16/16 en verde.** Validado además con la **función real** contra los
+> dos respaldos: divergencias contra el libro **58 → 0**, y **305 de 305** casos con la clave
+> presente **idénticos** a la versión vieja. Efecto medido de punta a punta:
+>
+> | Escenario (respaldo del 12-09) | antes (`main`) | después (F1) |
+> |---|---|---|
+> | Conteo del **almacén** contando 0 físico | 56 productos, clavaría **−1.486** | 2 productos, **−4** (los dos que sí existen allí) |
+> | **Traspaso** almacén→área desde un almacén vacío | 54 productos, **1.482 u** | **0** |
+> | Conteo de **Tienda** (trabajo diario) | 150 productos, 3.120 u | **150, 3.120 — idéntico** |
+>
+> `TableScreen` **no se tocó**: ya estaba bien (`?? 0`), era el único de los trece que no había
+> copiado el fallo. Sin imports huérfanos (comprobado a mano: no hay linter). Build **exit 0**,
+> **14 suites / 790 aserciones**, y **0 identificadores no definidos** en los doce ficheros, con
+> control negativo. **Nadie lo ha ejecutado en un dispositivo.**
 
 - **Qué:** cuando el mapa existe, una clave ausente vale **0**. El respaldo al total queda **solo**
   para los productos pre-v5 que no tienen mapa.
@@ -290,14 +309,15 @@ Refresco Limón     pide  5   saldo 0   <<< RECHAZADA
 
 ### Orden, y cómo validarlo
 
-**F1** (impide la catástrofe y es gratis) → **F2** (desbloquea al cliente) → **F3** (evita que el
-conteo vuelva a inyectar basura) → **F4**.
+**F1** ✅ (impide la catástrofe y es gratis) → **F2** (desbloquea al cliente) → **F3** (evita que el
+conteo vuelva a inyectar basura) → **F4**. **F1 está hecho en la rama**; lo siguiente es **F2**.
 
 **F4 no puede desplegarse antes que F2.** Si el candado rechaza una deuda porque la existencia está
 en 0 o en negativo, el único remedio es el conteo — que sin F2 no lista negativos. Al revés, el
 cliente queda atrapado.
 
-`npm run build` limpio y las **13 suites node** (774 aserciones) antes de cada commit.
+`npm run build` limpio y las **14 suites node** (790 aserciones, ya con `stockLocation`) antes de
+cada commit.
 
 **Ninguna de las 13 suites cubre esto, ni puede:** `countsRepo`, `transfersRepo` y `debtsRepo`
 necesitan base de datos. **El build y las pruebas actuales no detectarían un error en F1–F4.**
