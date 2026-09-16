@@ -59,9 +59,10 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las **15** suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**894 aserciones** en total, medidas el 16-09-2026; las dos
-últimas en llegar son `stockLocation` —F1/H5— y `modalClose` —el cierre de los modales—). Ojo:
+**Pruebas:** NO hay script `npm test` (ni linter). Las **16** suites son ficheros `.test.mjs` puros
+que se corren **uno a uno con node** (**1.171 aserciones** en total, medidas el 16-09-2026; las tres
+últimas en llegar son `stockLocation` —F1/H5—, `modalClose` —el cierre de los modales— y
+`navSections` —las puertas de la barra lateral de escritorio, 277 aserciones—). Ojo:
 diez viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/`,
 `fichaReports.test.mjs` en `src/features/reports/` y `helpContent.test.mjs` en
 `src/features/help/`, así que un glob `src/lib/*.test.mjs` **se salta tres**:
@@ -73,6 +74,7 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/kitchenMath.test.mjs src/lib/orderTotals.test.mjs \
          src/lib/saleRevenue.test.mjs src/lib/unitsConfig.test.mjs \
          src/lib/stockLocation.test.mjs src/lib/modalClose.test.mjs \
+         src/lib/navSections.test.mjs \
          src/features/sync/retryQueue.test.mjs \
          src/features/reports/fichaReports.test.mjs \
          src/features/help/helpContent.test.mjs; do node "$t"; done
@@ -573,6 +575,65 @@ evento no viene de dentro, así que no hay nada que detener.
 - **CERO lógica de negocio tocada, cero esquema, cero sincronización.** El diff son **exactamente**
   la línea del fondo y el `import`, en 18 ficheros: medido fichero a fichero (`+n+1 / -n`), **0
   cambios inesperados**.
+
+## Vista de escritorio (base, 16-09-2026)
+
+En la computadora la app se veía **igual que en el teléfono**: una columna de 480 px centrada, sea
+cual sea el monitor. Ahora, **a partir de 1.024 px**, el mismo armazón se reordena en una rejilla con
+**barra lateral** a la izquierda y contenido ancho. Plan, validación y acta en
+**`docs/VISTA-ESCRITORIO.md`** (§11 la validación del plan, §12 la ejecución de F1+F2).
+
+- **El teléfono NO cambia, y está demostrado byte a byte.** Todo vive dentro de
+  `@media screen and (min-width: 1024px)`: por debajo de ese ancho **no existe ni una regla nueva**,
+  y `screen` deja el **ticket térmico** intacto **por construcción** (nunca aplica al imprimir). El
+  diff de `global.css` es **+246 / −0**: cero borrados, estrictamente aditivo. La prueba se hizo
+  montando el **`Layout` real** con el **CSS real** en un arnés de Vite (los cuatro proveedores
+  sustituidos por stubs) y capturando con Edge headless a 390 px: `SHA256` **idéntico** contra
+  `HEAD`, capturas **deterministas** (`--virtual-time-budget` + `--force-device-scale-factor=1`) y
+  **control negativo** (umbral bajado a 320 px) que **sí** difiere. La primera tanda salió **en
+  blanco** —`file://` bloquea los módulos ES— con los tres ficheros del **mismo tamaño**: sin
+  abrirlos, «idénticas» habría sido una mentira perfecta.
+- **La única regla fuera del `@media` es `.app-side { display: none }`.** La barra lateral se monta
+  siempre y el CSS la oculta, **en vez de preguntar el ancho desde JavaScript**: así se conserva la
+  propiedad de que **ningún componente de la app mide la ventana** (cero `innerWidth`, `matchMedia`,
+  `ResizeObserver`, `clientWidth` y `offsetWidth` en todo `src/`), que es la que permite afirmar que
+  el móvil no puede cambiar de comportamiento. `display:none` además la saca del orden de tabulación
+  y del árbol de accesibilidad: en el teléfono no existe ni para un lector de pantalla.
+- **Qué entradas lleva la barra lo decide `src/lib/navSections.js`, un módulo PURO** (sin React, sin
+  Dexie y sin lucide) con **suite propia de 277 aserciones**. **No decide nada nuevo:** replica,
+  entrada por entrada, las puertas que ya aplican `Home.jsx` y la barra inferior. Se hizo así porque
+  la barra inferior tiene 6 entradas y la lateral pasa de veinte: repetir ahí `hasModule(...)` a mano
+  es **exactamente como nace una fuga de licencia**. La suite comprueba que sin licencia **ninguna**
+  ruta de módulo aparece para **ninguno** de los cuatro roles, que con **un solo** módulo salen las
+  suyas y **no las de los otros nueve** (esto caza la puerta copiada y pegada mal), y que **ningún
+  grupo queda vacío** — un título «GESTIÓN» sobre la nada delata el módulo aunque no haya nada
+  clicable. Con **control negativo**: sin él, todas esas aserciones pasarían aunque la función
+  devolviera siempre una lista vacía.
+- **`Layout.jsx`: +118 / −3**, y las tres bajas son sustituciones en el sitio (el `import` de lucide,
+  el `useAuth` y la línea del `<nav>`). Monta **una** consulta viva a `config` (no cinco) y el
+  contador de entregas por cobrar **gateado en la consulta**, no solo en el render. **Solo lee.**
+- **Movimiento: uno solo y autoral** — al cambiar de pantalla, el contenido entra (280 ms). Continúa
+  el idioma que la app ya tenía (misma curva `cubic-bezier(0.22, 1, 0.36, 1)` y misma duración del
+  acordeón) en vez de inventar otro. Lo demás son **estados** de puntero (hover y foco en la lateral
+  y en las tarjetas), que en un móvil no existen y que con ratón son la diferencia entre una tarjeta
+  clicable y un rectángulo. Todo se apaga con `prefers-reduced-motion`.
+- **Dos defectos propios, encontrados midiendo y corregidos:** `--text-3` sobre el blanco del tema
+  claro da **4,47:1** (por debajo del 4,5 exigido) y se cambió a `--muted` (5,36 oscuro / 5,14
+  claro); y `auto-fill` en `.kpi-grid` dejaba una pista vacía que descuadraba el borde derecho →
+  `auto-fit` (en `.home-grid` se deja `auto-fill` **a propósito**: son fichas, y dos fichas
+  estiradas a 1.100 px serían peor que un hueco al final).
+- **CERO lógica de negocio, cero esquema Dexie, cero `SYNC_COLLECTIONS`, cero escrituras a la base.**
+  **Riesgos de convivencia de versiones: ninguno** — no cambia ningún dato ni formato, así que un
+  teléfono actualizado y otro sin actualizar se entienden exactamente igual que hoy. Quitar el
+  bloque `@media` y el componente `SideNav` devuelve la app a como estaba.
+- **Peso:** CSS 81,52 → **84,92 kB**; chunk principal 990,50 → **999,33 kB** (gzip 288,01 →
+  **290,85**). En conjunto **+3,53 kB gzip (+1,2 %)**. Como el chunk lleva hash, actualizar cuesta
+  la descarga completa (~291 kB gzip por teléfono), no el delta.
+- **NADIE HA EJECUTADO LA APP en una computadora.** Y **solo se compuso el Inicio**: las otras 37
+  pantallas heredan lo transversal (armazón, tope de ancho, medida de lectura de 72ch y tope de los
+  campos) pero **no están revisadas una a una** — eso es la **F3**. `.modal` (560 px) no se tocó, y
+  los dos defectos preexistentes de accesibilidad (`.btn--sm` ~34 px, `.badge--bad` 3,72:1) siguen
+  donde estaban.
 
 ## Divisas (módulo `divisas`)
 

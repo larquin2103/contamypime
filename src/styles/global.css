@@ -3460,3 +3460,249 @@ input[type='file'] {
 .acc__item.has-badge--bad .acc__label {
   color: var(--danger-strong);
 }
+
+/* =======================================================================
+   VISTA DE ESCRITORIO (>=1024px)
+   =======================================================================
+   Plan y evidencia en `docs/VISTA-ESCRITORIO.md`.
+
+   POR QUE ESTA TODO AQUI ABAJO Y DENTRO DE UN SOLO @media:
+   - `min-width` -> por debajo de 1024px NO EXISTE NI UNA REGLA NUEVA. El
+     telefono no ve un CSS distinto: ve EXACTAMENTE el mismo de siempre.
+   - `screen`   -> nunca aplica al imprimir, asi que el ticket termico de 58 mm
+     (.thermal / @media print) queda intacto POR CONSTRUCCION, no por suerte.
+   - Ninguna regla existente se modifica: solo se anaden reglas que viven dentro
+     del @media. Borrar este bloque devuelve la app tal como estaba.
+
+   LA UNICA REGLA FUERA DEL @media es `.app-side { display: none }`, que esta
+   justo debajo: la barra lateral se monta siempre (React no pregunta por el
+   ancho de la ventana en ninguna parte de la app, y esa propiedad se conserva
+   a proposito) y es el CSS quien la oculta. `display:none` ademas la saca del
+   orden de tabulacion y del arbol de accesibilidad, asi que en el telefono no
+   existe tampoco para un lector de pantalla. */
+
+.app-side { display: none; }
+
+@media screen and (min-width: 1024px) {
+  :root {
+    --side-w: 244px;
+    /* Tope comodo: mas ancho que esto y las lineas de texto dejan de leerse de
+       un vistazo; el contenido se centra dentro de la columna. */
+    --desk-max: 1400px;
+  }
+
+  /* ----- Armazon: de columna de movil a rejilla de dos columnas -----
+     La cabecera cruza entera (sus dos paneles desplegables se posicionan
+     respecto a ella, asi que siguen cayendo donde deben sin tocar nada).
+     El aviso de licencia solo existe a veces: su fila es `auto`, asi que
+     cuando el componente devuelve null ocupa 0 px. */
+  #root { max-width: none; }
+  .app-shell {
+    display: grid;
+    grid-template-columns: var(--side-w) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "header header"
+      "side   license"
+      "side   main";
+  }
+  .app-header { grid-area: header; padding-inline: 22px; }
+  .license-bar { grid-area: license; }
+  .app-main {
+    grid-area: main;
+    padding: 26px 32px 44px;
+  }
+
+  /* La barra inferior es del telefono: en escritorio la sustituye la lateral. */
+  .app-nav { display: none; }
+
+  /* ----- Barra lateral ----- */
+  .app-side {
+    grid-area: side;
+    display: block;
+    overflow-y: auto;
+    padding: 14px 10px 28px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+  }
+  .app-side__group + .app-side__group { margin-top: 18px; }
+  /* Mismo tratamiento tipografico que las categorias del acordeon: la app ya
+     tiene ese idioma para "titulo de grupo" y no hace falta inventar otro. */
+  .app-side__label {
+    margin: 0 0 6px;
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    /* `--muted` y no `--text-3` (que es lo que usa el acordeon): MEDIDO, sobre el
+       blanco del tema claro `--text-3` da 4,47:1 y se queda por debajo del 4,5
+       exigido. `--muted` da 5,36 en oscuro y 5,14 en claro: pasa en los dos. */
+    color: var(--muted);
+  }
+  .side-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.3;
+    /* La fila entera se mueve como una sola pieza; sin esto el icono y el texto
+       cambian de color en momentos distintos y se nota. */
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+  .side-item__icon {
+    flex: none;
+    color: var(--text-faint);
+    transition: color 140ms ease;
+  }
+  .side-item__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .side-item:hover {
+    background: var(--surface-hi);
+    color: var(--text);
+  }
+  .side-item:hover .side-item__icon { color: var(--accent-light); }
+  .side-item.active {
+    background: var(--surface-hi);
+    color: var(--text);
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .side-item.active .side-item__icon { color: var(--primary-600); }
+  /* El contador rojo de "por cobrar", al final de la fila y no encima del texto. */
+  .side-item__badge {
+    flex: none;
+    margin-left: auto;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 19px;
+    text-align: center;
+  }
+
+  /* ----- Anchos -----
+     El tope de 560px estaba pensado para un movil centrado; aqui la columna ya
+     esta acotada por la lateral, asi que `.screen` solo evita que en un monitor
+     muy ancho el contenido se estire sin fin. */
+  .screen { max-width: var(--desk-max); }
+  /* Las pantallas centradas (login, activacion, error, carga) NO se ensanchan:
+     su tarjeta interior manda y ensancharlas las empeora. */
+  .screen--centered { max-width: none; }
+
+  /* Medida de lectura. Un parrafo de 1.100 px obliga a mover la cabeza para
+     seguir el renglon; 72ch es la medida comoda de siempre. Solo alcanza a los
+     parrafos que SON prosa (hijos directos de la pantalla o de una tarjeta). */
+  .app-main .screen > p,
+  .app-main .card > p { max-width: 72ch; }
+
+  /* Un numero no necesita 1.100 px de campo. Se acota el ancho MAXIMO, no el
+     real: dentro de una rejilla estrecha el campo sigue valiendo lo que valia. */
+  .app-main .field > input,
+  .app-main .field > select { max-width: 460px; }
+  .app-main .field > textarea { max-width: 680px; }
+
+  /* ----- Composicion: las rejillas pensadas para 480 px -----
+     Soltar el ancho sin recomponer da una pantalla PEOR que la de hoy (tarjetas
+     de 1.130 px con dos datos dentro). `auto-fill` reparte segun el sitio real
+     en vez de clavar un numero de columnas que solo sirve a un monitor. */
+  .home-grid { grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px; }
+  .home-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  /* `auto-fit` (no `auto-fill`): el resumen es UNA fila de cifras y tiene que
+     terminar donde terminan las tarjetas de arriba. Con `auto-fill` queda una
+     pista vacia de reserva y el borde derecho se descuadra. En `.home-grid` se
+     deja `auto-fill` a proposito: ahi son fichas, y dos fichas estiradas a
+     1.100 px serian peor que un hueco al final. */
+  .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  /* La tarjeta de tasas se ajusta a su contenido: son dos cifras, no una tabla. */
+  .rates-card { max-width: 420px; }
+
+  /* ----- La tarjeta de accion, recompuesta -----
+     En el movil es vertical porque no cabe de otra forma. Con sitio, el icono
+     va al lado del texto: la fila se lee de un golpe y la tarjeta deja de ser
+     un rectangulo con un hueco arriba. Se hace con `grid-template-areas` sobre
+     el marcado QUE YA EXISTE (icono, titulo y subtitulo son hermanos), asi que
+     no hace falta tocar el JSX. */
+  .action-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "tile title"
+      "tile sub";
+    align-content: center;
+    gap: 3px 12px;
+    min-height: 74px;
+    padding: 14px 16px;
+  }
+  .action-card .action-tile { grid-area: tile; align-self: center; }
+  .action-card__title { grid-area: title; align-self: end; font-size: 14px; }
+  .action-card__sub { grid-area: sub; align-self: start; margin-top: 0; }
+  /* Estados de puntero: en un movil no existen y la app nunca los tuvo. Con
+     raton, una tarjeta que no responde al pasar por encima no parece clicable. */
+  .action-card,
+  .highlight {
+    transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+                border-color 140ms ease,
+                background-color 140ms ease;
+  }
+  .action-card:hover,
+  .highlight:hover {
+    transform: translateY(-1px);
+    border-color: var(--primary-600);
+    background: var(--surface-hi);
+  }
+  .action-card:hover .action-tile { color: var(--accent-light); }
+  .action-card:active,
+  .highlight:active { transform: translateY(0); }
+
+  /* ----- Fijos: la barra de cobro debe respetar la columna lateral -----
+     Venia centrada sobre la VENTANA (left:0/right:0 + margin auto), asi que en
+     escritorio se montaria encima de la lateral. Aqui se centra sobre la
+     columna de contenido. */
+  .pay-bar {
+    left: var(--side-w);
+    bottom: 0;
+    width: min(640px, 100%);
+  }
+  .screen--paybar { padding-bottom: 76px; }
+
+  /* ----- El momento de movimiento -----
+     UNO solo, y es el que cuenta: al cambiar de pantalla, el contenido entra.
+     React monta un elemento nuevo por ruta, asi que la animacion se dispara
+     sola sin que ningun componente escuche la navegacion. Sale desde un estado
+     YA VISIBLE (`backwards` + desplazamiento corto) para que nada parpadee, y
+     usa la misma curva y duracion que el acordeon: la app ya tiene su idioma de
+     movimiento y esto lo continua, no inventa otro. */
+  .app-main > * {
+    animation: desk-screen-in 280ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  @keyframes desk-screen-in {
+    from { opacity: 0; transform: translateY(7px); }
+  }
+}
+
+/* Quien pide menos movimiento no recibe ninguno: la vista de escritorio sigue
+   funcionando igual, solo que sin transiciones ni entrada. */
+@media screen and (min-width: 1024px) and (prefers-reduced-motion: reduce) {
+  .app-main > * { animation: none; }
+  .side-item,
+  .side-item__icon,
+  .action-card,
+  .highlight { transition: none; }
+  .action-card:hover,
+  .highlight:hover { transform: none; }
+}

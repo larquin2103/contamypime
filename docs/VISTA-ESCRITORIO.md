@@ -1,8 +1,13 @@
 # Vista de escritorio — plan validado (16-09-2026)
 
-**Estado: PLAN. Cero código de la aplicación tocado.** Este documento es el traspaso completo para
-decidir si se ejecuta y cómo. Lo que aquí se afirma está **medido o capturado**, y lo que no se pudo
-comprobar está dicho en el §9.
+**Estado: F1 + F2 EJECUTADAS el 16-09-2026.** La validación del plan contra el código —con las
+**cinco correcciones** que hubo que hacerle— está en el **§11**, y el acta de ejecución en el **§12**.
+
+Los **§1 a §10 se dejan tal cual**: son el plan como se aprobó, y sirven de contraste con lo que la
+validación encontró después. Donde el §2 dice «dos líneas» son cuatro, donde dice «38 pantallas»
+son 40, y la referencia visual del §5.3 **no se aprobó** — todo eso está razonado en el §11.
+Lo que aquí se afirma está **medido o capturado**, y lo que no se pudo comprobar está en el §9 y,
+puesto al día, en el §12.6.
 
 ---
 
@@ -168,5 +173,185 @@ las demás.
 
 ---
 
-**Siguiente paso: aprobación del dueño.** Con el visto bueno se ejecuta **F1**, se captura, se
-revisa, y solo entonces se pasa a F2.
+**Aprobado y ejecutado.** El acta de la validación y de F1+F2 está en los §11 y §12, más abajo.
+**Lo siguiente es F3**: pantalla por pantalla, por orden de uso en la computadora.
+
+---
+
+## 11. Validación del plan contra el código (16-09-2026)
+
+Antes de escribir una línea se contrastó **cada afirmación del §1 al §6 contra el repositorio**.
+Todo lo de abajo está **medido**, no leído.
+
+### 11.1 Lo que el plan afirmaba y es exacto
+
+`#root{max-width:480px}` en **:147** y `.app-nav` en **:228** · **3.462** líneas de CSS ·
+`.screen` 560 (**:258**), `.modal` 560 (**:629**), `.auth-card` 380 (**:291**) · **18** rejillas,
+**5** con `auto-fill` y las 5 de columnas fijas citadas · y —la clave de toda la estrategia—
+**ningún componente mide la ventana**: cero `innerWidth`, `matchMedia`, `ResizeObserver`,
+`clientWidth` y `offsetWidth` en todo `src/` (se comprobaron los cinco, el plan citaba tres).
+El armazón es `.app-shell` en columna con `header + aviso + main + nav` como **hermanos**, así que
+la rejilla no necesita tocar el JSX: confirmado.
+
+### 11.2 Lo que el plan NO decía, y se corrigió antes de programar
+
+1. **`.screen` lo usan 40 ficheros, no 38.** Los dos extra son `router.jsx` (pantalla de carga) y
+   `ErrorBoundary.jsx`. Subir `.screen` a 1.400 px alcanza también a **login, onboarding,
+   activación y error**; esos se salvan porque van con `.screen--centered` + `.auth-card` (380 px),
+   pero **`OtherShiftBlocked.jsx` usa `.screen` pelado** con dos frases dentro y quedaría en una
+   tarjeta de 1.400 px. Por eso el bloque trae `.screen--centered { max-width: none }` y una
+   **medida de lectura de 72ch** para la prosa.
+2. **El corsé de 480 px está en CUATRO sitios, no en dos.** Además de `:147` y `:228`:
+   `.pay-bar` (**:3090**, que el §6 sí listaba) y **`.salon-menu` (:3137), que no aparecía en el
+   plan**. Se decide dejar `.salon-menu` como está: es un menú de acciones y ensancharlo lo
+   empeora — pero queda **dicho**, no omitido.
+3. **Los dos desplegables NO son `position: fixed`**: solo sus fondos lo son; los paneles son
+   `position: absolute` anclados a `.app-header`. Como la cabecera cruza entera, **siguen cayendo
+   donde deben sin tocar nada**. Esto quita trabajo del §6.
+4. **`.nav-item` no tiene `:hover` ni `:focus-visible`** — solo cambia de color en `.active`. En un
+   ratón eso es un defecto propio del escritorio que el plan no contemplaba.
+5. §2 dice «solo 5 `@media`» y enumera 4. La quinta coincidencia del `grep` es un comentario.
+
+### 11.3 La referencia visual del §5.3 NO se aprobó
+
+El §9 admite que el render es HTML escrito a mano, pero el §5.3 pedía aprobar esa captura como
+**referencia visual**. No coincide con los componentes reales:
+
+- El `ActionCard` real **lleva icono** (`.action-tile`, `Home.jsx:108`) **y contador**; la maqueta
+  no tiene ninguno de los dos.
+- La tarjeta de tasas real se titula **«Tasas vigentes»** y muestra celdas de **solo lectura**;
+  la maqueta dice «Tasas de hoy» y pinta **dos campos de entrada**.
+- La barra lateral de la maqueta **no tiene iconos**; los `NavLink` reales sí.
+
+Y como diseño repetía el defecto del §5.2: cabeceras de acordeón de 1.130 px con el chevron a
+1.100 px de su etiqueta, tarjetas de título + subtítulo sin estado, y dos anchos arbitrarios
+(520 y 1.130) sin sistema. **Se descartó y se rehizo.**
+
+---
+
+## 12. F1 + F2 EJECUTADAS (16-09-2026)
+
+Se ejecutaron **juntas** a propósito: el §5.2 demuestra que el armazón **sin** composición da una
+pantalla peor que la de hoy, así que desplegar F1 sola sería empeorar la app a medias.
+
+### 12.1 Tres decisiones del dueño, tomadas antes de programar
+
+1. **Barra lateral con navegación real**, no las 6 entradas de la barra inferior. Un lateral de
+   248 px con seis enlaces al lado de un Inicio con ~41 es relleno.
+2. **Las tarjetas de acción se recomponen con CSS**, sin tocar el JSX: el marcado real ya trae
+   icono, contador, título y subtítulo.
+3. **Movimiento:** estados de puntero + entrada de pantalla al cambiar de ruta.
+
+### 12.2 Qué se escribió
+
+| Fichero | Qué |
+|---|---|
+| `src/lib/navSections.js` (nuevo, 224 líneas) | **Módulo PURO** que decide qué entradas lleva la barra. Sin React, sin Dexie y sin lucide. |
+| `src/lib/navSections.test.mjs` (nuevo, 204 líneas) | Suite **16ª**: **277 aserciones**. |
+| `src/components/Layout.jsx` | **+118 / −3**. Las 3 bajas son la línea de `import` de lucide, la del `useAuth` y la de `<nav>`: **sustituciones en el sitio, nada eliminado**. |
+| `src/styles/global.css` | **+246 / −0**. **Cero borrados: estrictamente aditivo.** |
+
+**Por qué el inventario es un módulo puro y no condicionales dentro del JSX:** la barra inferior
+tiene 6 entradas y sus puertas caben de un vistazo; la lateral pasa de veinte, y ahí es donde nace
+una fuga de licencia. Con la decisión en una función pura, **la fuga se caza en la suite y no en
+producción**. La suite comprueba, entre otras cosas: sin licencia **ninguna** de las rutas de
+módulo aparece para **ninguno** de los cuatro roles; con **un solo** módulo comprado salen las
+suyas y **no las de los otros nueve** (esto caza la puerta copiada y pegada mal); y **ningún grupo
+queda vacío**, porque un título «GESTIÓN» sobre la nada delata el módulo aunque no haya nada
+clicable. Lleva **control negativo**: sin él, todas esas aserciones pasarían aunque la función
+devolviera siempre una lista vacía.
+
+**La única regla fuera del `@media`** es `.app-side { display: none }`. La barra se monta siempre y
+el CSS la oculta, en vez de preguntar el ancho desde JavaScript: así se **conserva la propiedad del
+§4** —ningún componente mide la ventana— que es la que permite afirmar que el móvil no puede
+cambiar de comportamiento. `display:none` además la saca del orden de tabulación y del árbol de
+accesibilidad: en el teléfono no existe ni para un lector de pantalla.
+
+**Coste de montarla en todas las pantallas:** **una** consulta viva a `config` (la tabla más
+pequeña) en lugar de cinco, y el contador de entregas por cobrar **gateado en la consulta**, no
+solo en el render — sin el módulo `remesas` no se toca `remittances`. Solo LEE: la barra no
+escribe nada.
+
+### 12.3 El movimiento
+
+**Uno solo y autoral**, no efectos sueltos: al cambiar de pantalla, el contenido entra
+(`desk-screen-in`, 280 ms). React monta un elemento nuevo por ruta, así que se dispara sin que
+ningún componente escuche la navegación. **Continúa el idioma que la app ya tenía** —la misma curva
+`cubic-bezier(0.22, 1, 0.36, 1)` y la misma duración del acordeón— en vez de inventar otro. Lo
+demás son **estados**, no animaciones: hover y foco en la lateral y en las tarjetas, que en un
+móvil no existen y que con ratón son la diferencia entre una tarjeta clicable y un rectángulo.
+Todo se apaga con `prefers-reduced-motion`.
+
+### 12.4 Cómo quedó
+
+![Escritorio a 1440 px, tema oscuro](img/escritorio-f1-oscuro.png)
+
+*El armazón real (`Layout.jsx`) con el CSS real, a 1440 px. Barra lateral con las secciones del
+negocio, tarjetas de acción con el icono al lado del texto, resumen alineado con las tarjetas de
+arriba y el campo acotado. Los iconos de la zona derecha son un marcador del arnés; en la app son
+los de lucide que ya usa el Inicio.*
+
+![Escritorio a 1440 px, tema claro](img/escritorio-f1-claro.png)
+
+*El mismo armazón en tema claro, que es donde estaban los números de contraste bajos.*
+
+### 12.5 Verificación ejecutada
+
+**El teléfono no cambia: BYTE A BYTE.** Y esta vez no con un HTML escrito a mano, sino montando el
+**`Layout` real** (el componente, con el CSS real) en un arnés con los cuatro proveedores
+sustituidos por stubs, compilado con Vite y capturado con Edge headless a 390 px dentro de un
+iframe (`--window-size` **miente** en Windows) con `--virtual-time-budget=5000` y
+`--force-device-scale-factor=1`:
+
+```
+telefono 390px:  HEAD (425c88a)  vs  rama con el cambio   -> SHA256 IDENTICO
+la misma pagina capturada dos veces                       -> SHA256 IDENTICO (determinista)
+CONTROL NEGATIVO (umbral bajado de 1024 a 320 px)         -> SHA256 DISTINTO
+```
+
+El **control negativo** es lo que hace válida la prueba. Y la primera tanda de capturas salió **en
+blanco** —`file://` bloquea los módulos ES— con los tres ficheros del **mismo tamaño**: sin
+abrirlos, «idénticas» habría sido una mentira perfecta. Por eso se sirvieron por HTTP y se miraron.
+
+**Dos defectos propios, encontrados midiendo y corregidos:**
+
+1. **Contraste en tema claro.** `--text-3` sobre el blanco de la lateral da **4,47:1**, por debajo
+   del 4,5 exigido. Se cambió a `--muted`: **5,36** en oscuro y **5,14** en claro. (El primer
+   cálculo usó los valores del tema oscuro y daba números falsos: el tema claro **sí** redefine
+   `--accent-light` y `--primary-600` a `#17864a`. Con los valores correctos, los siete pares
+   medidos pasan en los dos temas.)
+2. **`auto-fill` en `.kpi-grid`** dejaba una pista vacía de reserva y el borde derecho del resumen
+   no cuadraba con el de las tarjetas de arriba. Se pasó a `auto-fit`. En `.home-grid` se deja
+   `auto-fill` **a propósito**: ahí son fichas, y dos fichas estiradas a 1.100 px serían peor que
+   un hueco al final.
+
+**Lo demás:** `npm run build` **exit 0** · **16 suites / 1.171 aserciones** en verde (las 15 de
+siempre, sin tocar, más las 277 nuevas) · detector de la skill de diseño sobre los dos ficheros
+tocados: **0 hallazgos en lo escrito** (los 5 que salen —cuatro `border-left` de 3-4 px y un
+`transition: width`— son **preexistentes en `main`** y no se tocan, porque el cambio es aditivo).
+
+**Peso:** CSS 81,52 → **84,92 kB** (+3,40; gzip +0,69). Chunk principal 990,50 → **999,33 kB**
+(+8,83; gzip 288,01 → **290,85**, +2,84). En conjunto **+3,53 kB gzip (+1,2 %)**. Como el chunk
+lleva hash, **actualizar cuesta la descarga completa (~291 kB gzip por teléfono)**, no el delta.
+
+### 12.6 Lo que NO se puede garantizar
+
+- **NADIE HA EJECUTADO LA APP.** Ni un clic en la barra lateral desde una computadora real. Lo
+  capturado es el **`Layout` real** con el **CSS real**, pero los proveedores son stubs, el
+  contenido de la zona derecha es representativo y los iconos del arnés son un marcador; la app no
+  se puede abrir aquí (`router.jsx` exige licencia firmada, usuarios en IndexedDB y sesión).
+- **Solo se compuso el Inicio.** Las **37 pantallas restantes** heredan el armazón, el tope de
+  ancho, la medida de lectura y el tope de los campos —que es lo transversal—, pero **no están
+  revisadas una a una**. Las que tienen composición propia (reportes con tablas anchas, el punto de
+  venta, el salón de mesas) siguen pendientes: eso es la F3.
+- **`.modal` (560 px) no se tocó.** En escritorio se ve estrecho pero correcto; ensancharlo es una
+  decisión caso por caso, como dice el §6.
+- **El umbral de 1.024 px sigue siendo una propuesta**, no una medición. Una tableta en horizontal
+  cae del lado de escritorio.
+- **Los dos defectos preexistentes del §9 siguen ahí** (`.btn--sm` ~34 px y `.badge--bad` 3,72:1).
+  La barra lateral **no** hereda el primero: sus filas miden 34 px pero son **solo de puntero**
+  (por debajo de 1.024 px no existen), y el criterio de 44 px es de **toque**.
+- **Convivencia de versiones: ninguna.** Sin esquema, sin dato nuevo, sin formato nuevo y sin una
+  sola escritura a la base. Un teléfono actualizado y otro sin actualizar intercambian exactamente
+  lo mismo que hoy. Quitar el bloque `@media` y el componente `SideNav` devuelve la app a como
+  estaba.

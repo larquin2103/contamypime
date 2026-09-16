@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, Moon, Sun } from 'lucide-react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import {
+  Home, Package, ScrollText, DollarSign, Settings, Users, LogOut, Moon, Sun,
+  LayoutDashboard, UtensilsCrossed, ArrowLeftRight, Wallet, PackagePlus, PackageMinus,
+  Send, Split, Factory, ClipboardList, ChefHat, CookingPot, Martini, FileText,
+  BookOpen, ShieldCheck, Handshake, Calculator, RefreshCw, Save, HelpCircle, Banknote
+} from 'lucide-react'
 import { useAuth } from '../app/providers/AuthProvider'
 import { useShift } from '../app/providers/ShiftProvider'
 import { useSync } from '../app/providers/SyncProvider'
@@ -8,6 +14,11 @@ import { useLicense } from '../app/providers/LicenseProvider'
 import { NotificationBell } from '../features/notifications/NotificationBell'
 import { NotificationBoundary } from '../features/notifications/NotificationBoundary'
 import { getTheme, setTheme } from '../lib/theme'
+import { configRepo } from '../repositories/configRepo'
+import { remittancesRepo } from '../repositories/remittancesRepo'
+import { isPendingCollection } from '../lib/remesas'
+import { LICENSE_MODULES } from '../lib/license'
+import { buildNavSections } from '../lib/navSections'
 
 // Conmutador de tema (Fase 8 - B1): en la cabecera, a la IZQUIERDA de la nube de
 // sync y accesible a TODOS los roles (la preferencia es local del dispositivo, no
@@ -152,11 +163,113 @@ function LicenseBanner() {
   return null
 }
 
+// Mapa clave -> icono. Vive aqui, no en `lib/navSections.js`: asi el inventario
+// de la barra es un modulo PURO que se prueba con node sin arrastrar lucide.
+const NAV_ICONS = {
+  home: Home, dashboard: LayoutDashboard, package: Package, shift: ScrollText,
+  money: DollarSign, tables: UtensilsCrossed, swap: ArrowLeftRight, wallet: Wallet,
+  in: PackagePlus, out: PackageMinus, send: Send, split: Split, factory: Factory,
+  clipboard: ClipboardList, chef: ChefHat, pot: CookingPot, cocktail: Martini,
+  file: FileText, book: BookOpen, shield: ShieldCheck, handshake: Handshake,
+  calc: Calculator, sync: RefreshCw, save: Save, users: Users, settings: Settings,
+  help: HelpCircle, remesas: Banknote
+}
+
+// Barra lateral de ESCRITORIO (>=1024px). Se monta siempre y el CSS la oculta por
+// debajo de ese ancho con `display:none`, que ademas la saca del orden de
+// tabulacion y del arbol de accesibilidad: en el telefono no existe ni para un
+// lector de pantalla. Se hizo asi a proposito, en vez de preguntar el ancho desde
+// JavaScript, porque HOY NINGUN COMPONENTE DE LA APP MIDE LA VENTANA (cero
+// innerWidth, matchMedia y ResizeObserver en todo `src/`) y esa propiedad es la
+// que permite afirmar que el movil no puede cambiar de comportamiento.
+//
+// Que entradas lleva lo decide `buildNavSections`, que es puro y tiene suite
+// propia (`navSections.test.mjs`): las puertas de licencia y de rol no se
+// escriben aqui a mano.
+function SideNav({ sections }) {
+  return (
+    <nav className="app-side" aria-label="Secciones">
+      <div className="app-side__inner">
+        {sections.map((g) => (
+          <div className="app-side__group" key={g.id}>
+            {g.label && <p className="app-side__label">{g.label}</p>}
+            {g.items.map((it) => {
+              const Icon = NAV_ICONS[it.icon] || Home
+              return (
+                <NavLink
+                  key={it.to + it.label}
+                  to={it.to}
+                  end={it.end}
+                  className="side-item"
+                  title={it.label}
+                >
+                  <Icon className="side-item__icon" size={17} strokeWidth={1.9} />
+                  <span className="side-item__label">{it.label}</span>
+                  {it.badge > 0 && (
+                    <span className="side-item__badge" aria-label={`${it.badge} por cobrar`}>
+                      {it.badge}
+                    </span>
+                  )}
+                </NavLink>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+// Valor de partida de la consulta de configuracion, mientras resuelve. Es una
+// constante de MODULO, no un objeto nuevo en cada render: lo que esta apagado no
+// se pinta, que es el lado seguro (oculta, no cuela).
+const NAV_DEFAULTS = {
+  areas: [],
+  elaboration: { enabled: false, name: 'Elaboración' },
+  sellerEntries: false,
+  sellerKitchenBoard: false,
+  sellerCocktailBoard: false
+}
+
 // Shell de la app autenticada: cabecera fina + contenido + navegacion inferior.
+// En escritorio (>=1024px) el mismo armazon se reordena por CSS en una rejilla
+// con la navegacion a la izquierda; el JSX no pregunta por el ancho.
 // La identidad rica (avatar, saludo, rol) vive en el Home; aqui solo la marca.
 export function Layout({ children }) {
-  const { logout, isOwner, isCook, isCourier } = useAuth()
+  const { logout, isOwner, isManager, isSeller, isElaborator, isCook, isCourier } = useAuth()
   const { canSell } = useShift()
+  const { hasModule, modules } = useLicense()
+
+  // Contexto de la barra lateral. Es UNA sola consulta viva (no cinco) para que
+  // el coste de montarla en TODAS las pantallas sea el de una lectura de `config`,
+  // que es la tabla mas pequena de la base. Solo LEE: la barra no escribe nada.
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
+  const canCocktails = hasModule(LICENSE_MODULES.COCKTAILS)
+  const navCfg = useLiveQuery(async () => ({
+    areas: await configRepo.getAreas(),
+    elaboration: await configRepo.getElaboration(),
+    sellerEntries: await configRepo.get('sellerEntries', false),
+    // Cada permiso se lee SOLO con su modulo: sin el no hay entrada que gatear, y
+    // asi un negocio sin la licencia no paga ni la consulta.
+    sellerKitchenBoard: canKitchen ? await configRepo.get('sellerKitchenBoard', true) : false,
+    sellerCocktailBoard: canCocktails ? await configRepo.get('sellerCocktailBoard', false) : false
+  }), [canKitchen, canCocktails], NAV_DEFAULTS)
+
+  // Contador de entregas "por cobrar", el mismo que ya muestra el Inicio. Gateado
+  // EN LA CONSULTA (no solo en el render): sin el modulo no se toca `remittances`.
+  const canRemesas = isManager && hasModule(LICENSE_MODULES.REMESAS)
+  const remittances = useLiveQuery(
+    () => (canRemesas ? remittancesRepo.list() : Promise.resolve([])),
+    [canRemesas],
+    []
+  )
+
+  const sections = buildNavSections({
+    isOwner, isManager, isSeller, isElaborator, isCook, isCourier, canSell,
+    modules,
+    ...navCfg,
+    pendingCollection: remittances.filter(isPendingCollection).length
+  })
 
   return (
     <div className="app-shell">
@@ -180,9 +293,11 @@ export function Layout({ children }) {
 
       <LicenseBanner />
 
+      <SideNav sections={sections} />
+
       <main className="app-main">{children}</main>
 
-      <nav className="app-nav">
+      <nav className="app-nav" aria-label="Navegación principal">
         <NavLink to="/" end className="nav-item">
           <Home size={21} strokeWidth={1.9} /><span>Inicio</span>
         </NavLink>
