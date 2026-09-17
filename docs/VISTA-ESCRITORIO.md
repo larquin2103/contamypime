@@ -355,3 +355,42 @@ lleva hash, **actualizar cuesta la descarga completa (~291 kB gzip por teléfono
   sola escritura a la base. Un teléfono actualizado y otro sin actualizar intercambian exactamente
   lo mismo que hoy. Quitar el bloque `@media` y el componente `SideNav` devuelve la app a como
   estaba.
+
+### 12.7 Repaso independiente del 17-09-2026 — un coste no documentado
+
+Se volvió a auditar el commit `5753a37` **sin dar por buena el acta anterior**. Todo lo que el
+§12.5 afirma se sostiene, y se comprobó por separado:
+
+- **El CSS es puramente aditivo:** `+246 / -0`. Solo dos bloques `@media`, los dos
+  `min-width: 1024px`. De las 18 líneas nuevas que caen fuera, **17 son comentarios** y la única
+  regla real es `.app-side { display: none }` — verificado contando llaves, no leyendo. Las reglas
+  que **muestran** la barra lateral (`:3520` en adelante) están **dentro** del media query.
+- **La barra inferior del teléfono es idéntica carácter por carácter** a la de `425c88a`, salvo el
+  `aria-label` añadido (invisible). Se extrajo el bloque `<nav className="app-nav">` de las dos
+  versiones y se comparó: quitando solo ese atributo, **coinciden exactamente**.
+- **Build exit 0 · 16 suites / 1.171 aserciones, 0 fallos** (comprobado por *código de salida*:
+  `navSections.test.mjs` imprime «0 fallos» y no «0 fail», así que un recuento por texto la da por
+  rota sin estarlo).
+
+**Lo que el acta NO decía, y hay que saber:** el `Layout` ganó **dos `useLiveQuery` que antes no
+existían**, y el `Layout` corre para **todos los roles, también en el teléfono**, aunque la barra
+lateral esté oculta — React no sabe nada del CSS y `SideNav` se monta igual.
+
+| Consulta nueva | Qué cuesta | Para quién |
+|---|---|---|
+| `navCfg` | **6 lecturas de `config` por clave primaria** (`getAreas` 1, `getElaboration` 2, más 3 sueltas) | **todos los roles** |
+| `remittances` | `db.remittances.toArray()` — **tabla completa** | solo **mando con el módulo `remesas`** (si no, `Promise.resolve([])`, que no consulta) |
+
+**Su tamaño real, medido y no supuesto:** el `Layout` **envuelve las `Routes`** (`router.jsx:66`),
+así que **se monta una sola vez por sesión**, no en cada pantalla. Las consultas se repiten solo
+cuando `useLiveQuery` detecta un cambio en las tablas que observa (`config`, que casi nunca cambia,
+y `remittances`). Y un re-render del `Layout` **no** arrastra a las pantallas: `children` es el
+mismo elemento de React y no se vuelve a renderizar.
+
+**Veredicto:** el coste es **marginal** —lecturas locales de IndexedDB, una vez por sesión— pero
+**no es cero**, y el acta del §12.5 decía «sin una sola escritura a la base» sin mencionar que sí
+hay **lecturas nuevas**. Visualmente el teléfono es idéntico (probado byte a byte); funcionalmente
+hace un poco más de trabajo al arrancar. Si alguna vez molesta, la salida es montar `SideNav` solo
+por encima de 1.024 px con `matchMedia` — a cambio de que React pase a depender del ancho de la
+ventana, que hoy **no ocurre en ninguna parte de la app** y es lo que hace todo esto tan barato de
+revertir. **No se cambia ahora**: queda anotado como decisión del dueño.
