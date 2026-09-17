@@ -3886,3 +3886,32 @@ input[type='file'] {
     max-width: 2400px;
   }
 }
+
+/* ===========================================================================
+   LA CUENTA DE UNA MESA EN PANTALLA ESTRECHA (<=560px).
+   Reportado por el dueño desde su telefono con una foto: los nombres se partian
+   LETRA A LETRA ("Aceit / e / vege / tal 1L").
+   MEDIDO, no estimado: a 390 px la fila mide 309 px y a la columna del nombre le
+   quedaban 31. La causa es la columna del importe, que crece con `max-content`
+   para no cortar cifras largas ("14,000.00 MN") y se come lo que queda; con
+   `overflow-wrap: anywhere` el nombre se rompe por donde sea.
+   Es un defecto PREEXISTENTE (viene de `d2d63f9`, ya en `main`): no lo introdujo
+   la vista de escritorio, que no toca `.order-line`.
+   EL ARREGLO: en pantalla estrecha el nombre se lleva su propia fila y debajo
+   van el stepper, el importe y el boton de quitar. El nombre pasa de 31 px a los
+   309 de la fila, y las cifras dejan de competir con el texto.
+   =========================================================================== */
+@media screen and (max-width: 560px) {
+  .order-line {
+    grid-template-columns: auto minmax(0, 1fr) 34px;
+    grid-template-areas:
+      "info info info"
+      "stepper total del";
+    row-gap: 10px;
+    column-gap: 10px;
+  }
+  .order-line__info { grid-area: info; }
+  .order-line .stepper { grid-area: stepper; justify-self: start; }
+  .order-line__total { grid-area: total; justify-self: end; }
+  .order-line__del { grid-area: del; }
+}

@@ -713,3 +713,59 @@ también el costo, **otras 5**.
 chunk 1.000,75 → **1.002,22 kB**.
 
 Resultado a 3.419 px en `img/escritorio-panel-completo.png`.
+
+---
+
+## 18. La cuenta de una mesa en el teléfono — defecto PREEXISTENTE, corregido (17-09-2026)
+
+El dueño envió una foto de su teléfono probando el salón: los nombres de producto se partían **letra
+a letra** (`Aceit / e / vege / tal 1L`, `Ce / me / nto`).
+
+### 18.1 Primero: ¿lo rompió la vista de escritorio?
+
+**No.** Comprobado antes de tocar nada:
+
+- `git diff origin/main -- src/styles/global.css | grep order-line` → **vacío**: el CSS de la línea
+  es **idéntico** al de `main`.
+- En `src/features/tables/` esta rama solo cambia **dos líneas**, y son el cierre de los modales
+  (`backdropProps`).
+- La rejilla viene de **`d2d63f9`**, que ya estaba en `main`.
+
+El defecto es **preexistente** y se manifiesta con nombres largos y cifras grandes.
+
+### 18.2 La causa, medida y no estimada
+
+Montando el markup real de `TableScreen.jsx:627-645` con el CSS real a 390 px:
+
+```
+linea = 309px      nombre = 31px      alto del nombre = 100px
+```
+
+**31 píxeles** para el nombre. La columna del importe usa `max-content` —para no cortar cifras como
+`14,000.00 MN`— y se come el espacio; con `overflow-wrap: anywhere`, el nombre se rompe por donde
+sea. El `@media (max-width: 380px)` que ya existía no ayuda: **el teléfono tiene 390**.
+
+### 18.3 El arreglo
+
+Por debajo de **560 px**, el nombre se lleva **su propia fila** y debajo van el stepper, el importe y
+el botón de quitar:
+
+```
+nombre = 31px -> 324px        alto del nombre = 100px -> 20px
+```
+
+**Esto SÍ cambia el teléfono, a propósito**: es el defecto que se viene a corregir, y es la primera
+vez en todo este trabajo que se toca deliberadamente la vista del móvil. Va en un `@media` de
+**ancho máximo**, así que **no puede alcanzar al escritorio** (verificado contando llaves: la regla
+vive dentro de `screen and (max-width: 560px)`).
+
+`npm run build` **exit 0** · **16 suites / 1.191 aserciones**, 0 fallos · **solo CSS**.
+
+Antes y después en `img/mesa-movil-antes.png` y `img/mesa-movil-despues.png`.
+
+### 18.4 Lo que queda por confirmar con el dueño
+
+En la foto, el pie dice **`TOTAL 0.00 MN`** con tres líneas cargadas. Es **coherente con un descuento
+del 100 %** aplicado a esa mesa (la cortesía del §C6: `total = subtotal - descuento + servicio`, y
+con el 100 % da 0). **No se da por supuesto:** hay que confirmar si esa mesa tenía el descuento
+puesto. Si no lo tenía, es un fallo distinto y hay que investigarlo aparte.
