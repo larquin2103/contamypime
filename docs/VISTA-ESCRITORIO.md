@@ -769,3 +769,38 @@ En la foto, el pie dice **`TOTAL 0.00 MN`** con tres líneas cargadas. Es **cohe
 del 100 %** aplicado a esa mesa (la cortesía del §C6: `total = subtotal - descuento + servicio`, y
 con el 100 % da 0). **No se da por supuesto:** hay que confirmar si esa mesa tenía el descuento
 puesto. Si no lo tenía, es un fallo distinto y hay que investigarlo aparte.
+
+### 18.5 El botón «Quitar» del descuento: una clase que nunca existió
+
+Segunda foto del dueño, misma pantalla. El botón *Quitar* del descuento aparecía **debajo** del
+importe, descolocado, y la etiqueta «Descuento 100 %» partida en dos líneas.
+
+**La causa es concreta y verificable:** el markup usa `className="order-line__right"` en **tres
+sitios** de la cuenta de mesa, y esa clase **no tiene ni una regla en el CSS**. Comprobado también
+contra `main`: `grep -c order-line__right` → **0**. Nunca existió. Sin reglas, el `<span>` se
+comporta como `display: block` y el botón cae a la línea siguiente.
+
+Medido en la reproducción, a 390 px:
+
+```
+antes:    display = block    bloque derecho = 179x33    fila = 43px de alto
+despues:  display = flex     bloque derecho = 186x33    fila = 71px (envuelve ordenada)
+```
+
+**Por qué no se veía en el escritorio:** con sitio de sobra, los elementos en línea dentro de ese
+`block` caben en una fila y parece correcto. El defecto solo se manifiesta **cuando falta espacio**.
+Por eso llevaba tiempo ahí sin que nadie lo viera.
+
+**El arreglo** define la clase (`inline-flex`, con separación) y, en pantalla estrecha, deja que la
+fila envuelva **con el bloque derecho entero** — importe y botón viajan juntos, nunca el botón
+suelto. En pantalla ancha la fila sigue midiendo lo mismo (43 px) y de paso «Hamburguesa de oro»
+deja de partirse en dos líneas.
+
+`npm run build` **exit 0** · **16 suites / 1.191 aserciones** · **solo CSS**.
+Antes y después en `img/mesa-descuento-antes.png` y `img/mesa-descuento-despues.png`.
+
+### 18.6 Confirmado: el `TOTAL 0.00 MN` era correcto
+
+La segunda foto muestra la fila `Descuento 100 % · − 9.845,00 MN`. El total en cero era **la
+cortesía funcionando**, no un fallo. La hipótesis del §18.4 queda cerrada **con evidencia del
+dueño**, no por suposición.

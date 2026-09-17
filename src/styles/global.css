@@ -3887,6 +3887,21 @@ input[type='file'] {
   }
 }
 
+/* El bloque de la DERECHA de una fila de totales: el importe y, cuando procede,
+   su boton ("Quitar" del descuento, "Eximir" del servicio).
+   LA CLASE SE USABA EN TRES SITIOS DE LA CUENTA DE MESA Y NUNCA SE DEFINIO: sin
+   ninguna regla el `<span>` se comportaba como `display: block`, y el boton caia
+   DEBAJO del importe, descolocado. Lo reporto el dueño con una foto de su
+   telefono; medido en la reproduccion: bloque de 179x33 px con display=block.
+   Es un defecto preexistente (el markup entro con el descuento de mesa, ya en
+   `main`, y la regla no llego nunca). */
+.order-line__right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
 /* ===========================================================================
    LA CUENTA DE UNA MESA EN PANTALLA ESTRECHA (<=560px).
    Reportado por el dueño desde su telefono con una foto: los nombres se partian
@@ -3914,4 +3929,15 @@ input[type='file'] {
   .order-line .stepper { grid-area: stepper; justify-self: start; }
   .order-line__total { grid-area: total; justify-self: end; }
   .order-line__del { grid-area: del; }
+
+  /* La fila del descuento lleva etiqueta, importe y boton: en un telefono no
+     caben en una linea. Se deja envolver, pero el bloque de la derecha viaja
+     ENTERO (importe y boton juntos), que es lo que evita el desorden. */
+  .total-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .total-row .order-line__right {
+    margin-left: auto;
+  }
 }
