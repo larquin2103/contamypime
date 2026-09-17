@@ -586,3 +586,63 @@ Resultado en `img/escritorio-panel-atender.png`.
   **~80-120 ventas al día**, no las 713 del mes que leería `analyticsRepo.report()`.
 - **Nadie ha abierto la app.** La captura es una maqueta con el CSS real y las clases reales.
 - El bloque muestra **hasta 5** avisos y remite a la campana si hay más.
+
+---
+
+## 16. El monitor del dueño mide 3.419 px — y el diseño estaba calibrado para 1.400 (17-09-2026)
+
+### 16.1 Cómo se supo, midiendo y no preguntando
+
+La barra lateral ocupa **247 px en la captura** que envió el dueño, y por diseño mide **248 CSS px**.
+Luego la captura está a **escala 1:1** y su viewport es de **3.419 × 1.332** — un monitor
+ultrapanorámico (3440×1440 menos los bordes de la ventana).
+
+**Con el tope de 1.400 px, la aplicación usaba el 41 % de su pantalla**, y las piezas del panel
+(880 px) el 26 %. Por eso lo veía vacío: no faltaba contenido, estaba **encerrado en un tercio**.
+
+**Es un fallo de método, no del dueño.** Cuando se le preguntó «¿hasta dónde estirar?» y eligió
+1.400 px, la pregunta se hizo suponiendo un monitor de 1.440-1.600. **Eligió con un dato que no se
+le dio porque no se había medido.** Se volvió a preguntar con el número delante.
+
+### 16.2 Lo decidido, con el dato correcto
+
+1. **El Inicio se reparte en columnas** a partir de 1.800 px (dos en un portátil ancho, cuatro en su
+   monitor), con tope de 2.400. **No se estira**: una línea de texto de 2.000 px no se puede leer.
+2. **Solo las pantallas con tabla de verdad** suben a 2.400. Y aquí se corrigió otra imprecisión:
+   al buscarlas resultó que **solo tres tienen `<table>`** (el submayor por producto y las dos de
+   turno). Reportes, catálogo y auditoría son **listas de fichas**, no tablas: el resto se revisará
+   una a una y no se toca a ciegas.
+
+### 16.3 Columnas, no rejilla — y por qué
+
+La primera versión usó `grid` y salió mal: las piezas tienen **alturas muy dispares** («Para
+atender» mide el triple que las tasas), una rejilla alinea por **filas**, y la tarjeta de tasas
+quedaba **descolgada** con un hueco enorme encima. Se pasó a `columns`, donde el navegador equilibra
+las alturas. *(`grid-template-rows: masonry` haría esto mismo, pero todavía no está disponible.)*
+
+Para distinguir las pantallas con tabla sin tocar el JSX de cada una se usa **`:has(table)`**. Un
+navegador que no lo soporte **ignora esa regla y se queda en 1.400**: degradación segura, no
+pantalla rota.
+
+### 16.4 Verificación ejecutada
+
+```
+TELEFONO  390px:   LAYOUT IDENTICO (33 cajas) + los `.desk-only` comprobados: ninguno se pinta
+PORTATIL 1600px:   LAYOUT IDENTICO (33 cajas)  <- el escalon anterior NO se rompio
+CONTROL NEGATIVO (umbral 1800 -> 320):  DIFIEREN 20 de 33 cajas
+```
+
+La comprobación a **1.600 px** es la que faltaba en las tandas anteriores: asegura que al añadir un
+escalón nuevo no se estropea el que ya estaba bien.
+
+`npm run build` **exit 0** · **16 suites / 1.178 aserciones**, 0 fallos · **solo CSS** en esta tanda
+· CSS 85,47 → **85,76 kB**.
+
+Resultado a 3.419 px en `img/escritorio-ultrawide.png`.
+
+### 16.5 Lo que sigue sin resolverse
+
+**Sobra espacio vertical.** Con seis piezas en una pantalla de 1.332 px de alto, la mitad inferior
+queda vacía. Eso no lo arregla el reparto en columnas: lo arregla **tener más que decir** (el paso 3,
+las cifras del día) o aceptar que un panel con poco que contar ocupa poco. **No se rellena por
+rellenar.**

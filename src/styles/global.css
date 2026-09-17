@@ -3806,3 +3806,61 @@ input[type='file'] {
   .action-card:hover,
   .highlight:hover { transform: none; }
 }
+
+/* ===========================================================================
+   PANTALLAS MUY ANCHAS (>=1800px). Escalon 2 de la vista de escritorio.
+   Nace de una captura del monitor del dueño: la barra lateral medida en esa
+   imagen ocupa 247 px y por diseño mide 248, asi que la captura esta a escala
+   1:1 y su viewport es de 3.419 px. Con el tope de 1.400 del escalon anterior,
+   la app usaba el 41 % de su pantalla y el resto quedaba vacio.
+   NO se arregla subiendo el tope a secas: una linea de texto de 2.000 px no se
+   puede leer, el ojo pierde el renglon al volver. Se reparte en COLUMNAS.
+   Sigue todo dentro de `screen and (min-width: ...)`: el telefono no ve nada.
+   =========================================================================== */
+@media screen and (min-width: 1800px) {
+  /* El Inicio deja de ser una pila y reparte sus piezas. `auto-fit` con un
+     minimo de 500 px decide cuantas columnas caben: dos en un portatil ancho,
+     cuatro en el monitor del dueño. Ninguna pieza pasa de lo legible. */
+  /* Se reparte con COLUMNAS y no con rejilla, y la razon es visible: las piezas
+     tienen alturas muy distintas ("Para atender" mide el triple que las tasas).
+     Una rejilla alinea por FILAS, asi que la fila entera toma la altura de la
+     pieza mas alta y las tasas caian descolgadas con un hueco enorme encima.
+     `columns` hace fluir el contenido y el navegador equilibra las alturas, que
+     es el comportamiento de un tablero. (`grid-template-rows: masonry` haria
+     esto mismo, pero todavia no esta disponible.) */
+  .home {
+    display: block;
+    columns: 4;
+    column-gap: 18px;
+    max-width: 2400px;
+  }
+  /* Ninguna pieza se parte por la mitad entre dos columnas. */
+  .home > * {
+    break-inside: avoid;
+    margin-bottom: 18px;
+  }
+  /* El saludo cruza entero: es la cabecera de la pantalla, no una pieza mas. */
+  .home-header {
+    column-span: all;
+  }
+  /* Los destacados se apilan DENTRO de su columna: dos tarjetas de 280 px una
+     al lado de la otra serian mas estrechas que en el telefono. */
+  .home-highlights {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* El tope por pieza del escalon anterior sobra: ahora lo pone la columna. */
+  .home > * {
+    max-width: none;
+  }
+
+  /* Las pantallas con una TABLA de verdad ganan ancho; las de formulario NO.
+     Un formulario ancho se lee peor -etiqueta y campo se separan-, asi que se
+     quedan en el tope del escalon anterior. Son tres: el submayor por producto
+     y las dos de turno.
+     `:has()` es la unica forma de distinguirlas sin tocar el JSX de cada una.
+     Un navegador que no lo soporte ignora ESTA regla y se queda con 1.400:
+     degradacion segura, no pantalla rota. */
+  .screen:has(table) {
+    max-width: 2400px;
+  }
+}
