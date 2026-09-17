@@ -3917,27 +3917,60 @@ input[type='file'] {
    309 de la fila, y las cifras dejan de competir con el texto.
    =========================================================================== */
 @media screen and (max-width: 560px) {
+  /* UNA SOLA FILA por producto (decision del dueño, 17-09-2026): nombre,
+     cantidad, importe y papelera en la misma altura. El nombre CEDE y se corta
+     con puntos suspensivos en vez de partirse letra a letra; el importe manda,
+     porque una cifra a medias no se puede leer.
+     Precio: en esta anchura el "45.00 MN c/u" se oculta -no cabe sin robarle
+     otra altura a la fila-. Sigue visible en tableta y escritorio, y el importe
+     de la linea esta a la derecha. */
   .order-line {
-    grid-template-columns: auto minmax(0, 1fr) 34px;
-    grid-template-areas:
-      "info info info"
-      "stepper total del";
-    row-gap: 10px;
-    column-gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto auto 26px;
+    column-gap: 8px;
+    row-gap: 0;
+    padding: 12px 0;
   }
-  .order-line__info { grid-area: info; }
-  .order-line .stepper { grid-area: stepper; justify-self: start; }
-  .order-line__total { grid-area: total; justify-self: end; }
-  .order-line__del { grid-area: del; }
+  .order-line__name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: normal;
+  }
+  .order-line__sub { display: none; }
+  /* Todo lo que NO es el nombre se aprieta, porque el nombre es lo unico que
+     identifica el producto. Medido antes del ajuste: le quedaban 77 px y salia
+     "Cem...". Los botones bajan de 32 a 28 px -siguen siendo objetivos de toque
+     comodos- y el importe pierde un punto de cuerpo. */
+  .order-line .stepper { --stepper-w: auto; padding: 1px; gap: 0; }
+  .order-line .stepper__btn { width: 28px; height: 28px; }
+  .order-line .stepper__qty { min-width: 20px; }
+  .order-line__total { font-size: 0.9rem; }
 
-  /* La fila del descuento lleva etiqueta, importe y boton: en un telefono no
-     caben en una linea. Se deja envolver, pero el bloque de la derecha viaja
-     ENTERO (importe y boton juntos), que es lo que evita el desorden. */
+  /* La fila del descuento, TAMBIEN en una sola linea: etiqueta, importe y el
+     boton de quitar. Para que quepa, el boton se queda con lo justo y la
+     etiqueta cede si hace falta. */
   .total-row {
-    flex-wrap: wrap;
-    row-gap: 6px;
+    flex-wrap: nowrap;
+    column-gap: 8px;
+  }
+  /* La etiqueta del descuento NO se trunca: "Descuento 100%" sin el numero no
+     dice nada, y truncarla fue el primer intento. Se le deja su ancho y lo que
+     cede es el resto. */
+  .total-row > span:first-child {
+    white-space: nowrap;
+    flex: none;
   }
   .total-row .order-line__right {
     margin-left: auto;
+    flex: none;
+  }
+  .total-row .order-line__right {
+    min-width: 0;
+    column-gap: 8px;
+  }
+  .total-row .order-line__right .btn--sm {
+    padding-left: 9px;
+    padding-right: 9px;
+    flex: none;
   }
 }

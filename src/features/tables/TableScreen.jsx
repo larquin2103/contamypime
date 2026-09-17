@@ -657,7 +657,15 @@ export function TableScreen() {
             <span className="warn-text">Descuento {discountPct}%</span>
             <span className="order-line__right">
               <strong className="warn-text">− {formatMoney(discount, baseCurrency)}</strong>
-              {canPay && (
+              {/* La condicion era `canPay`, que es la del COBRO: depende del metodo de
+                  pago y de si el efectivo recibido cubre el total. Resultado: con un
+                  descuento del 50 % y sin teclear el pago, el boton DESAPARECIA y el
+                  descuento no se podia retirar; con el 100 % si salia, porque una
+                  cortesia siempre "se puede cobrar". Nada de eso tiene que ver con
+                  quitar un descuento. Ahora usa `!closed`, EL MISMO criterio con el que
+                  se ofrece ponerlo tres lineas mas abajo: mientras la mesa siga
+                  abierta, lo que se puso se puede quitar. */}
+              {!closed && (
                 <button className="btn btn--ghost btn--sm" disabled={busy} onClick={askClearDiscount}>Quitar</button>
               )}
             </span>
@@ -1006,9 +1014,23 @@ export function TableScreen() {
             </p>
             <label className="field">
               <span>Porcentaje (%)</span>
+              {/* El tope se aplica AL ESCRIBIR y no solo al pulsar "Aplicar": teclear
+                  500 y descubrir el error despues es peor que no dejar teclearlo. Se
+                  recorta a 100 y se avisa en el momento. `min`/`max` ademas ponen los
+                  limites en el propio campo, que es lo que lee un lector de pantalla. */}
               <input
                 type="number" inputMode="decimal" autoFocus value={discInput}
-                onChange={(e) => { setDiscInput(e.target.value); setDiscError('') }}
+                min="0" max="100" step="1"
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (Number(v) > 100) {
+                    setDiscInput('100')
+                    setDiscError('El descuento no puede pasar del 100%')
+                  } else {
+                    setDiscInput(v)
+                    setDiscError('')
+                  }
+                }}
                 placeholder="Ej: 10"
               />
             </label>

@@ -804,3 +804,39 @@ Antes y después en `img/mesa-descuento-antes.png` y `img/mesa-descuento-despues
 La segunda foto muestra la fila `Descuento 100 % · − 9.845,00 MN`. El total en cero era **la
 cortesía funcionando**, no un fallo. La hipótesis del §18.4 queda cerrada **con evidencia del
 dueño**, no por suposición.
+
+### 18.7 La cuenta, en una sola fila — y dos fallos de lógica (17-09-2026)
+
+Tercera foto del dueño. Pidió cuatro cosas, y **dos de ellas no eran de diseño**.
+
+**1. Cada producto en UNA fila** (decisión suya, elegida sobre una alternativa de dos alturas):
+nombre, cantidad, importe y papelera a la misma altura. El nombre **se corta con puntos
+suspensivos** en vez de partirse, y el precio unitario se oculta **solo en esa anchura** (sigue en
+tableta y escritorio). Medido: al nombre le quedaban **77 px** y salía «Cem…»; apretando el stepper
+(32 → 28 px) y el importe, pasó a **106 px** y «Cemento» entra entero.
+
+**2. La fila del descuento, también en una línea.** El primer intento truncaba la etiqueta y salía
+«Descuento 10…», que **se come el dato que importa**. Corregido: la etiqueta no cede, cede el resto.
+Ahora cabe `Descuento 100% · − 9.845,00 MN · [Quitar]` en 43 px de alto.
+
+**3. FALLO DE LÓGICA: el descuento no siempre se podía quitar.** El botón colgaba de **`canPay`**,
+que es la condición del **cobro**: depende del método de pago y de si el efectivo recibido cubre el
+total. Con un descuento del 50 % y sin teclear el pago, **el botón desaparecía y el descuento no se
+podía retirar**; con el 100 % sí salía, porque una cortesía siempre «se puede cobrar» — por eso en
+la foto se veía. Nada de eso tiene que ver con quitar un descuento. Ahora usa **`!closed`**, el
+**mismo criterio** con el que se ofrece ponerlo tres líneas más abajo. **Preexistente en `main`**
+(comprobado: la línea con `canPay &&` está allí).
+
+**4. El porcentaje se acota AL ESCRIBIR.** Antes solo se avisaba al pulsar *Aplicar*: se podía
+teclear 500 y descubrirlo después. Ahora se recorta a 100 en el momento, con su aviso, y el campo
+lleva `min`/`max` —que es lo que lee un lector de pantalla—. La validación al aceptar **se
+conserva**: sigue siendo la última palabra.
+
+Verificado: escritorio **intacto** (nombres completos y precio unitario, fila de descuento de 43 px)
+· `npm run build` **exit 0** · **16 suites / 1.191 aserciones** · **0 identificadores sin definir**.
+
+En `img/mesa-una-fila.png` y `img/mesa-escritorio.png`.
+
+**Lo que cuesta, dicho claro:** en el teléfono **se pierde el precio unitario por línea** y los
+nombres largos se ven cortados. Es la consecuencia directa de pedir una sola fila, y se eligió
+sabiéndolo; se revierte cambiando dos reglas.
