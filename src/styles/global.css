@@ -3693,6 +3693,77 @@ input[type='file'] {
   @keyframes desk-screen-in {
     from { opacity: 0; transform: translateY(7px); }
   }
+
+  /* -------------------------------------------------------------------------
+     F3a - EL INICIO ES UN PANEL DE ESTADO, NO UN SEGUNDO MENU.
+     Decision del dueño el 17-09-2026, a la vista de una captura de su monitor.
+
+     QUE SE VEIA MAL, y por que. Con la barra lateral ya montada -29 entradas en
+     7 grupos- el Inicio seguia pintando SUS PROPIOS acordeones con las mismas
+     secciones: dos menus para lo mismo. Y como el Inicio es la UNICA de las 35
+     pantallas que no usa `.screen`, tampoco heredaba el tope de 1.400 px, asi
+     que esas cabeceras se estiraban hasta el borde del monitor y dejaban el
+     chevron a 1.700 px de su etiqueta.
+
+     En el TELEFONO no cambia nada: alli no hay barra lateral y los acordeones
+     son la unica forma de navegar. Por eso todo esto vive aqui dentro.
+     ------------------------------------------------------------------------- */
+
+  /* 1. El tope que le faltaba: el Inicio es la UNICA de las 35 pantallas sin
+        `.screen`, asi que no heredaba ningun limite. Se lo damos a su propio
+        contenedor y no a `.app-main`, para no meter un segundo tope a las 34
+        que YA traen el suyo. (La regla vive junto a la 3, mas abajo.) */
+
+  /* 2. Fuera el segundo menu. El gancho es `.home .acc` y NO `.home-section`
+        ni `.acc` a secas: ese mismo componente lo usan REPORTES y AJUSTES, y
+        una regla suelta les vaciaria la pantalla. Se comprobo antes de
+        escribirla. Lo que queda visible es el ESTADO: aviso de conteo, turno,
+        accesos destacados y tasas. */
+  .home .acc {
+    display: none;
+  }
+
+  /* 3. UNA COLUMNA DE TRABAJO COHERENTE. Sin esto el Inicio queda escalonado:
+        los avisos acotados a 480 px y los destacados estirados a 1.350, que es
+        peor que el problema que se venia a arreglar. El panel de estado tiene
+        cuatro piezas; se alinean todas al mismo ancho y se leen como una sola
+        columna. El hueco de la derecha NO se rellena por rellenar: cuando
+        lleguen las cifras del dia (decision aparte) ese es su sitio. */
+  .home {
+    max-width: 1400px;
+  }
+  .home > * {
+    max-width: 880px;
+  }
+
+  /* Los destacados, en columnas IGUALES dentro de esa columna. Eran una pila
+        flexible, asi que "Panel del dueño" salia del doble de ancho que
+        "Catalogo" sin ninguna razon. */
+  .home-highlights {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  /* 4. Los avisos dejan de cruzar la pantalla entera. Un aviso de dos lineas
+        con su boton al otro extremo obliga a recorrer 1.700 px con la vista
+        para relacionarlos: el boton tiene que estar JUNTO a lo que explica.
+        `fit-content` con un maximo deja que la caja mida lo que mide su texto,
+        y nunca mas de lo legible. */
+  .cuadre-banner,
+  .shift-status {
+    width: fit-content;
+    min-width: 420px;
+    max-width: min(100%, 860px);
+  }
+
+  /* 5. La tarjeta de tasas mide lo suyo: son dos cifras, no un formulario. */
+  .rates-card {
+    width: fit-content;
+    min-width: 380px;
+    max-width: min(100%, 640px);
+  }
 }
 
 /* Quien pide menos movimiento no recibe ninguno: la vista de escritorio sigue

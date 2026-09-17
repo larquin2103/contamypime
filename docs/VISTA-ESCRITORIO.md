@@ -394,3 +394,73 @@ hace un poco más de trabajo al arrancar. Si alguna vez molesta, la salida es mo
 por encima de 1.024 px con `matchMedia` — a cambio de que React pase a depender del ancho de la
 ventana, que hoy **no ocurre en ninguna parte de la app** y es lo que hace todo esto tan barato de
 revertir. **No se cambia ahora**: queda anotado como decisión del dueño.
+
+---
+
+## 13. F3a EJECUTADA — el Inicio deja de ser un segundo menú (17-09-2026)
+
+Nace de una **captura del monitor del dueño**, no de una maqueta. Lo que se veía: ocho cabeceras de
+acordeón cruzando la pantalla entera, el chevron a ~1.700 px de su etiqueta, el botón *Abrir* al
+extremo opuesto del texto que lo explica, y media pantalla vacía.
+
+### 13.1 El diagnóstico, medido
+
+| Defecto | Evidencia |
+|---|---|
+| El contenido llega al borde | **`Home.jsx` es la ÚNICA de las 35 pantallas sin `.screen`**, así que nunca heredó el tope de 1.400 px |
+| Dos menús para lo mismo | la barra lateral trae **29 entradas en 7 grupos** y el Inicio repetía las mismas secciones |
+| Cabeceras de 1.800 px | consecuencia del primer punto |
+| Destacados descuadrados | `.home-highlights` era una pila flexible: «Panel del dueño» salía del doble de ancho que «Catálogo» |
+
+### 13.2 La decisión del dueño
+
+**El Inicio es un panel de estado, no un menú.** En escritorio se ocultan sus acordeones de
+navegación —para eso está la barra lateral— y queda el estado: avisos, turno, accesos destacados y
+tasas. **En el teléfono no cambia nada**, porque allí no hay barra lateral y los acordeones son la
+única forma de navegar.
+
+### 13.3 Lo que se escribió, y un gancho que evitó un destrozo
+
+Cinco reglas, **todas dentro del `@media screen and (min-width: 1024px)` que ya existía**. Cero JSX,
+cero lógica, cero consultas.
+
+**El gancho es `.home .acc`, y no `.home-section` ni `.acc` a secas.** Ese mismo componente
+`Accordion` lo usan **Reportes y Ajustes**: una regla suelta les habría **vaciado la pantalla**. Se
+comprobó leyendo el componente antes de escribir la regla, no después.
+
+Y una corrección propia tras ver la primera captura: acotar solo los avisos dejaba la página
+**escalonada** (avisos a 480 px, destacados estirados a 1.350). Se pasó a una **columna de trabajo
+coherente** de 880 px con los destacados en dos columnas iguales. El hueco de la derecha **no se
+rellena por rellenar**: es el sitio de las cifras del día, cuando se aprueben.
+
+### 13.4 Verificación ejecutada
+
+```
+telefono 390px: con F3a vs sin F3a          -> PIXEL A PIXEL IDENTICAS
+la misma pagina capturada dos veces         -> PIXEL A PIXEL IDENTICAS (determinista)
+CONTROL NEGATIVO (umbral bajado a 320 px)   -> DIFIEREN en 30,64 % de los pixeles
+```
+
+Las cinco reglas nuevas verificadas **dentro** del media query contando llaves, no leyendo.
+`npm run build` **exit 0** · **16 suites / 1.171 aserciones**, 0 fallos (por código de salida) ·
+CSS 84,92 → **85,25 kB** (+0,33).
+
+Antes y después en `img/escritorio-f3a-antes.png` y `img/escritorio-f3a-inicio.png`.
+
+### 13.5 Lo que NO se hizo, y por qué
+
+**Las cifras de ventas y ganancia del día.** El dueño las pidió, pero **el Inicio no tiene ese dato**
+(no consulta ventas en absoluto) y traerlo **es lógica, no diseño**: correría también en el teléfono,
+porque es la misma pantalla. `analyticsRepo.report` hace `db.sales.toArray()` —todas las ventas, 713
+en un mes en el respaldo real— y `useLiveQuery` lo recalcularía con cada venta que baje por
+sincronización. **Hay vía barata** (índice `createdAt` en `sales`, acotado al día, gateado a mando;
+el patrón ya existe en `notificationService.js:514`), pero se deja como **decisión aparte**: meterla
+dentro de un cambio visual habría roto la regla de «solo escritorio». Mientras tanto, «Panel del
+dueño» queda destacado y esas cifras están a un clic.
+
+### 13.6 Sigue sin poder garantizarse
+
+- **Nadie ha abierto la app.** La captura de validación es una **maqueta**: el CSS es el real y las
+  clases son las reales, pero el markup está escrito a mano. La app no se puede abrir aquí.
+- **Solo se compuso el Inicio.** Las 34 pantallas con `.screen` siguen sin revisar una a una; las de
+  composición propia (reportes con tablas anchas, punto de venta, salón) son la F3b en adelante.
