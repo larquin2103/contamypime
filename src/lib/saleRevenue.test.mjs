@@ -8,7 +8,7 @@
 //   a) SIN descuento, el factor es 1 y el panel calcula lo mismo que antes.
 //   b) CON descuento, la suma de las lineas netas es EXACTAMENTE el consumo
 //      descontado: si no, el total y las partes dejarian de cuadrar entre si.
-import { grossOf, saleNetFactor, netLineRevenue } from './saleRevenue.js'
+import { grossOf, saleNetFactor, netLineRevenue, sumSales } from './saleRevenue.js'
 
 let pass = 0
 let fail = 0
@@ -103,6 +103,118 @@ const sumNet = (sale) => round2((sale.items || []).reduce((a, it) => a + netLine
   const sale = { items: [{ lineTotal: 100, unitCost: 40, qty: 1 }], discountAmount: 50 }
   eq(netLineRevenue(sale, sale.items[0]), 50, '4) el ingreso de la linea baja a la mitad')
   eq(sale.items[0].unitCost, 40, '4) y el costo de la linea NO se toca (la mercancia costo lo mismo)')
+}
+
+// ---------------------------------------------------------------------------
+// sumSales: ingreso, costo y ganancia de un conjunto de ventas.
+//
+// PARA QUE: el panel de escritorio muestra las cifras del DIA en el Inicio. El
+// `analyticsRepo.report()` ya las calcula, pero lee TODAS las ventas de la
+// historia (`db.sales.toArray()`), y el Inicio es la pantalla que mas se abre.
+//
+// EL RIESGO DE ESCRIBIR OTRA SUMA es el fallo de F1 en miniatura: dos sitios que
+// calculan el mismo dinero acaban divergiendo, y aqui divergir significa que el
+// Inicio y el Panel del dueño digan cifras distintas del MISMO dia. Por eso esta
+// tanda no se limita a probar casos: compara `sumSales` contra el BUCLE REAL de
+// `report()`, copiado literalmente del repositorio, sobre ventas aleatorias.
+// Si alguien toca uno de los dos, esta prueba lo caza.
+{
+  // El bucle de analyticsRepo.report(), TAL CUAL esta en el fichero.
+  const bucleDelPanel = (sales) => {
+    let revenue = 0
+    let cost = 0
+    for (const s of sales) {
+      const netFactor = saleNetFactor(s)
+      for (const it of s.items || []) {
+        const lineRev = round2(Number(it.lineTotal ?? it.unitPrice * it.qty) * netFactor)
+        const lineCost = Number((it.unitCost || 0) * it.qty)
+        revenue += lineRev
+        cost += lineCost
+      }
+    }
+    revenue = round2(revenue)
+    cost = round2(cost)
+    return { revenue, cost, profit: round2(revenue - cost) }
+  }
+
+  // 1) Lo basico.
+  const v1 = { items: [{ qty: 2, unitPrice: 50, lineTotal: 100, unitCost: 30 }] }
+  eq(sumSales([v1]), { revenue: 100, cost: 60, profit: 40, count: 1 }, 'sumSales: una venta simple')
+  eq(sumSales([]), { revenue: 0, cost: 0, profit: 0, count: 0 }, 'sumSales: sin ventas, todo en cero')
+  eq(sumSales(null), { revenue: 0, cost: 0, profit: 0, count: 0 }, 'sumSales: sin argumento no revienta')
+
+  // 2) El descuento de mesa se PRORRATEA: es lo que hace que el ingreso sea el
+  //    real y no el bruto. El COSTO no se toca (la mercancia costo lo mismo).
+  // OJO: la venta guarda el IMPORTE del descuento (`discountAmount`), no el
+  //  porcentaje: es lo que lee `saleNetFactor`. La primera version de esta
+  //  prueba uso `discountPct` y fallo, que es justo para lo que sirve.
+  const conDesc = {
+    discountPct: 50,
+    discountAmount: 100,
+    subtotal: 200,
+    items: [{ qty: 1, unitPrice: 200, lineTotal: 200, unitCost: 80 }]
+  }
+  const r = sumSales([conDesc])
+  eq(r.revenue, 100, 'sumSales: el descuento del 50% reduce el ingreso a la mitad')
+  eq(r.cost, 80, 'sumSales: el descuento NO toca el costo')
+  eq(r.profit, 20, 'sumSales: la ganancia sale de los dos anteriores')
+
+  // 3) Una CORTESIA (100%) no ingresa nada, pero su costo si cuenta: es
+  //    exactamente lo que se pidio al cerrar mesas regaladas.
+  const cortesia = {
+    discountPct: 100,
+    discountAmount: 150,
+    subtotal: 150,
+    items: [{ qty: 3, unitPrice: 50, lineTotal: 150, unitCost: 20 }]
+  }
+  const c = sumSales([cortesia])
+  eq(c.revenue, 0, 'sumSales: una cortesia no ingresa nada')
+  eq(c.cost, 60, 'sumSales: el costo de la cortesia SI cuenta')
+  eq(c.profit, -60, 'sumSales: regalar una cuenta da ganancia negativa')
+
+  // 4) `count` son VENTAS, no lineas.
+  eq(sumSales([v1, v1, v1]).count, 3, 'sumSales: cuenta ventas, no lineas')
+
+  // 5) Robustez con datos incompletos (ventas viejas sin `lineTotal` ni costo).
+  eq(sumSales([{ items: [{ qty: 2, unitPrice: 30 }] }]),
+    { revenue: 60, cost: 0, profit: 60, count: 1 },
+    'sumSales: sin lineTotal usa precio x cantidad; sin costo, costo 0')
+  eq(sumSales([{}]), { revenue: 0, cost: 0, profit: 0, count: 1 },
+    'sumSales: una venta sin lineas no revienta')
+
+  // 6) EQUIVALENCIA CON EL PANEL sobre ventas aleatorias. Es el punto de la
+  //    tanda: que las dos sumas no puedan separarse.
+  let sem = 20260917
+  const rnd = () => { sem = (sem * 1103515245 + 12345) % 2147483648; return sem / 2147483648 }
+  let comparados = 0
+  let iguales = 0
+  for (let n = 0; n < 500; n++) {
+    const ventas = []
+    for (let i = 0, k = 1 + Math.floor(rnd() * 4); i < k; i++) {
+      const lineas = []
+      for (let j = 0, m = 1 + Math.floor(rnd() * 3); j < m; j++) {
+        const qty = 1 + Math.floor(rnd() * 5)
+        const unitPrice = round2(10 + rnd() * 990)
+        lineas.push({
+          qty,
+          unitPrice,
+          lineTotal: round2(qty * unitPrice),
+          unitCost: round2(rnd() * unitPrice)
+        })
+      }
+      const sub = round2(lineas.reduce((a, l) => a + l.lineTotal, 0))
+      const pct = [0, 0, 0, 10, 25, 50, 100][Math.floor(rnd() * 7)]
+      ventas.push(pct
+        ? { discountPct: pct, discountAmount: round2(sub * pct / 100), subtotal: sub, items: lineas }
+        : { items: lineas })
+    }
+    const a = bucleDelPanel(ventas)
+    const b = sumSales(ventas)
+    comparados++
+    if (a.revenue === b.revenue && a.cost === b.cost && a.profit === b.profit) iguales++
+    else if (comparados < 4) console.error('  DIFERENCIA:', JSON.stringify(a), JSON.stringify(b))
+  }
+  eq(iguales, comparados, `sumSales coincide con el bucle del panel en ${comparados} conjuntos aleatorios`)
 }
 
 console.log(`${pass} pass, ${fail} fail`)

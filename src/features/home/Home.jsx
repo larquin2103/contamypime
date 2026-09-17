@@ -13,6 +13,8 @@ import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { timeLabel } from '../../lib/dates'
 import { notificationsRepo, NOTIFICATION_SEVERITY } from '../../repositories/notificationsRepo'
+import { analyticsRepo } from '../../repositories/analyticsRepo'
+import { formatMoney } from '../../lib/currency'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { countsRepo } from '../../repositories/countsRepo'
@@ -80,6 +82,58 @@ function ConcurrentShiftWarning() {
         🟢 {open.length} turnos abiertos por área: {open.map(labelOf).join(', ')}.
       </span>
     </Link>
+  )
+}
+
+// CIFRAS DEL DIA (paso 3 del panel de escritorio, 17-09-2026).
+//
+// Ingreso, ganancia y numero de ventas de HOY, para no tener que entrar al Panel
+// del dueño a ver como va el dia.
+//
+// COSTE, que es lo que se pregunto antes de hacerlo: `todaySummary` acota por el
+// indice `createdAt` a una ventana de 48 h y filtra el dia local. En el negocio
+// real son ~160 filas, no las 713 del mes que leeria `analyticsRepo.report()`.
+// Va gateado a `isManager`: en la sesion de un vendedor es `Promise.resolve`
+// y la consulta NI SE LANZA. Y se pinta solo en ESCRITORIO (`desk-only`): en el
+// telefono el sitio de esto sigue siendo el Panel del dueño.
+//
+// La aritmetica NO se reescribe aqui: `sumSales` aplica el descuento de mesa
+// prorrateado y deja el costo intacto, y su suite la compara contra el bucle
+// real del panel. Las dos cifras del mismo dia no pueden separarse.
+const VACIO = { revenue: 0, cost: 0, profit: 0, count: 0 }
+
+function DaySummary({ isManager }) {
+  const { baseCurrency } = useCurrency()
+  const hoy = useLiveQuery(
+    () => (isManager ? analyticsRepo.todaySummary() : Promise.resolve(VACIO)),
+    [isManager],
+    VACIO
+  )
+  if (!isManager) return null
+  return (
+    <section className="card desk-only day-summary">
+      <h3 className="day-summary__title">Hoy</h3>
+      <div className="day-summary__grid">
+        <div className="day-summary__cell">
+          <span className="muted">Ventas</span>
+          <strong>{formatMoney(hoy.revenue, baseCurrency)}</strong>
+        </div>
+        <div className="day-summary__cell">
+          <span className="muted">Ganancia</span>
+          <strong className={hoy.profit < 0 ? 'warn-text' : ''}>
+            {formatMoney(hoy.profit, baseCurrency)}
+          </strong>
+        </div>
+        <div className="day-summary__cell">
+          <span className="muted">Gastos</span>
+          <strong>{formatMoney(hoy.cost, baseCurrency)}</strong>
+        </div>
+        <div className="day-summary__cell">
+          <span className="muted">Ventas hechas</span>
+          <strong>{hoy.count}</strong>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -361,6 +415,8 @@ export function Home() {
 
       {/* Ni el cocinero ni el mensajero tienen turno: no ven el banner de turno. */}
       {!isCook && !isCourier && <ShiftBanner />}
+
+      <DaySummary isManager={isManager} />
 
       <PendingAlerts isManager={isManager} />
 

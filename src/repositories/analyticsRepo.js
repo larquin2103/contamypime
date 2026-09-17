@@ -1,6 +1,6 @@
 import { db } from '../db/db'
 import { round2 } from '../lib/currency'
-import { saleNetFactor } from '../lib/saleRevenue'
+import { saleNetFactor, sumSales } from '../lib/saleRevenue'
 import { localDay } from '../lib/dates'
 import { parseTxnId } from '../lib/sms'
 import { SHIFT_STATUS } from '../db/constants'
@@ -29,6 +29,30 @@ function daysBetween(from, to) {
 // Analitica para el panel del dueño. Todo se deriva de las ventas (no se
 // guardan agregados): costo vs ganancia, ranking y rotacion.
 export const analyticsRepo = {
+  // Cifras del DIA para el panel de escritorio del Inicio: ingreso, costo,
+  // ganancia y numero de ventas. Es lo mismo que la cabecera de `report()` pero
+  // acotado a hoy, y existe por una razon de coste: `report()` hace
+  // `db.sales.toArray()` -TODAS las ventas de la historia- y el Inicio es la
+  // pantalla que mas se abre; ademas corre tambien en el telefono del dueño.
+  //
+  // LA VENTANA ES DE 48 HORAS Y NO DE UN DIA, a proposito. El indice trabaja
+  // sobre `createdAt`, que es UTC, mientras que el dia del negocio es LOCAL
+  // (`localDay`, ver lib/dates). Calcular el corte UTC del dia local aqui seria
+  // reescribir esa regla y arriesgarse a fallar en el cambio de horario. Asi el
+  // INDICE hace el trabajo pesado -de miles de filas a las de dos dias- y el dia
+  // exacto lo decide `localDay`, que es la regla ya probada. En el negocio real
+  // son unas 160 ventas en vez de 713.
+  //
+  // La aritmetica (el descuento de mesa prorrateado, el costo intacto) vive en
+  // `sumSales`, y su suite la compara contra el bucle de `report()` sobre 500
+  // conjuntos aleatorios: las dos cifras no pueden separarse.
+  async todaySummary() {
+    const desde = new Date(Date.now() - 48 * 3600 * 1000).toISOString()
+    const rows = await db.sales.where('createdAt').aboveOrEqual(desde).toArray()
+    const hoy = localDay()
+    return sumSales(rows.filter((s) => !s.voided && localDay(s.createdAt) === hoy))
+  },
+
   async report({ from = null, to = null } = {}) {
     const allSales = await db.sales.toArray()
     const sales = allSales.filter((s) => !s.voided && inRange(s.createdAt, from, to))

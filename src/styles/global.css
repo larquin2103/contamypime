@@ -3793,6 +3793,28 @@ input[type='file'] {
   .home-alerts .notif-item:last-of-type {
     margin-bottom: 0;
   }
+
+  /* 8. Cifras del dia. Dos columnas dentro de la tarjeta: cuatro cifras en una
+        sola fila quedarian en tiras finisimas dentro de una columna del panel,
+        y en dos se leen de un vistazo. Los numeros van con la tipografia que ya
+        usa el resto de la app; no se agrandan para "llenar", que es justo lo que
+        se queria evitar. */
+  .day-summary__title {
+    margin-bottom: 12px;
+  }
+  .day-summary__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 18px;
+  }
+  .day-summary__cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .day-summary__cell strong {
+    font-size: 1.15rem;
+  }
 }
 
 /* Quien pide menos movimiento no recibe ninguno: la vista de escritorio sigue

@@ -50,3 +50,45 @@ export function netLineRevenue(sale, item) {
   const gross = Number(item?.lineTotal ?? (Number(item?.unitPrice || 0) * Number(item?.qty || 0)))
   return round2(gross * saleNetFactor(sale))
 }
+
+// Ingreso, costo y ganancia de un conjunto de ventas. Devuelve
+// `{ revenue, cost, profit, count }`, con `count` en VENTAS (no en lineas).
+//
+// POR QUE EXISTE (paso 3 del panel de escritorio, 17-09-2026). El Inicio muestra
+// las cifras del DIA. `analyticsRepo.report()` ya las calcula, pero lee TODAS
+// las ventas de la historia (`db.sales.toArray()`) y el Inicio es la pantalla
+// que mas se abre; ademas corre tambien en el telefono del dueño.
+//
+// LA REGLA QUE APLICA, y que no se puede reinventar: el descuento de una mesa se
+// PRORRATEA entre las lineas (`saleNetFactor`), para que el ingreso sea el REAL
+// y no el bruto; y el COSTO no se toca, porque la mercancia costo lo mismo
+// aunque se regalara el precio. Una cortesia (100 %) ingresa 0 y su costo SI
+// cuenta.
+//
+// ESTA FUNCION Y EL BUCLE DE `report()` TIENEN QUE DAR LO MISMO. Dos sitios que
+// suman el mismo dinero acaban divergiendo -es el fallo de F1 en miniatura- y
+// divergir aqui significa que el Inicio y el Panel del dueño digan cifras
+// distintas del mismo dia. Por eso la suite no se limita a probar casos:
+// compara esta funcion contra el bucle REAL de `report()`, copiado literal,
+// sobre 500 conjuntos de ventas aleatorias. Si alguien toca uno de los dos, la
+// prueba lo caza.
+//
+// No se refactorizo `report()` para que llamara aqui: ese bucle alimenta TODO el
+// panel del dueño (por producto, por categoria, por area) y tocarlo por una
+// mejora de presentacion seria arriesgar dinero por estetica.
+export function sumSales(sales) {
+  let revenue = 0
+  let cost = 0
+  let count = 0
+  for (const s of sales || []) {
+    count++
+    const netFactor = saleNetFactor(s)
+    for (const it of s?.items || []) {
+      revenue += round2(Number(it.lineTotal ?? it.unitPrice * it.qty) * netFactor)
+      cost += Number((it.unitCost || 0) * it.qty)
+    }
+  }
+  revenue = round2(revenue)
+  cost = round2(cost)
+  return { revenue, cost, profit: round2(revenue - cost), count }
+}

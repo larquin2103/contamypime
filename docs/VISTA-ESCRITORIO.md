@@ -646,3 +646,70 @@ Resultado a 3.419 px en `img/escritorio-ultrawide.png`.
 queda vacía. Eso no lo arregla el reparto en columnas: lo arregla **tener más que decir** (el paso 3,
 las cifras del día) o aceptar que un panel con poco que contar ocupa poco. **No se rellena por
 rellenar.**
+
+---
+
+## 17. Paso 3 — las cifras del día (17-09-2026)
+
+El Inicio muestra ingreso, ganancia, gastos y número de ventas de **hoy**, sin tener que entrar al
+Panel del dueño. Con esto el panel queda completo: estado del turno, cómo va el día, qué hay que
+atender y los accesos.
+
+### 17.1 La regla que NO se reinventó
+
+El ingreso tiene que respetar el **descuento de mesa prorrateado** (y dejar el costo intacto), como
+hace el panel. Escribir otra suma es el fallo de F1 en miniatura, y aquí divergir significa que **el
+Inicio y el Panel del dueño digan cifras distintas del mismo día**.
+
+Por eso la aritmética vive en **`sumSales`** (`lib/saleRevenue.js`), y su suite **no se limita a
+probar casos**: compara la función contra el **bucle real de `analyticsRepo.report()`**, copiado
+literal, sobre **500 conjuntos de ventas aleatorias**. Si alguien toca uno de los dos, la prueba lo
+caza.
+
+**No se refactorizó `report()` para que llamara a `sumSales`.** Ese bucle alimenta todo el panel
+(por producto, por categoría, por área) y tocarlo por una mejora de presentación sería arriesgar
+dinero por estética.
+
+### 17.2 El coste, que era la condición del dueño
+
+`analyticsRepo.todaySummary()` acota por el índice `createdAt` a una ventana de **48 horas** y
+después filtra el día local. En el negocio real son **~160 filas**, no las **713** del mes que
+leería `report()` con su `db.sales.toArray()`.
+
+**La ventana es de 48 h y no de 24 a propósito:** el índice trabaja sobre `createdAt`, que es UTC,
+mientras que el día del negocio es **local** (`localDay`). Calcular aquí el corte UTC del día local
+sería reescribir esa regla y arriesgarse a fallar en un cambio de horario. Así el **índice** hace el
+trabajo pesado y el **día exacto** lo decide la regla ya probada.
+
+Gateado a `isManager`: en la sesión de un vendedor **la consulta ni se lanza**. Y se pinta solo en
+escritorio; en el teléfono el sitio de esto sigue siendo el Panel del dueño.
+
+### 17.3 Dos errores propios que cazaron las herramientas
+
+1. **La suite falló primero por culpa de la prueba, no del código:** las ventas de ejemplo se
+   construyeron con `discountPct`, y `saleNetFactor` lee **`discountAmount`**. Se corrigieron las
+   pruebas, que eran las equivocadas. *(Queda anotado en el propio fichero de pruebas.)*
+2. **El detector de identificadores cazó dos fallos reales** que el build no ve: `formatMoney` sin
+   importar y una prop `baseCurrency={baseCurrency}` con esa variable **inexistente** en ese
+   componente. Cualquiera de los dos **habría reventado el Inicio al abrirlo**. Es la tercera vez
+   que esa herramienta paga su coste.
+
+### 17.4 Verificación ejecutada
+
+```
+TELEFONO  390px:  LAYOUT IDENTICO (33 cajas) + los `.desk-only` comprobados: ninguno se pinta
+PORTATIL 1600px:  7 cajas se desplazan EN VERTICAL por la tarjeta nueva;
+                  `x` y `width` IDENTICOS en las siete -> no es regresion, es el contenido nuevo
+CONTROL NEGATIVO (umbrales -> 320):  DIFIEREN 32 de 33 cajas
+```
+
+Que a 390 px **no se mueva nada** mientras a 1600 px sí, es precisamente la prueba de que la tarjeta
+no llega al teléfono.
+
+Controles negativos de la aritmética: no prorratear el descuento **falla 5 aserciones**; descontar
+también el costo, **otras 5**.
+
+`npm run build` **exit 0** · **16 suites / 1.191 aserciones**, 0 fallos · CSS 85,76 → **86,00 kB**;
+chunk 1.000,75 → **1.002,22 kB**.
+
+Resultado a 3.419 px en `img/escritorio-panel-completo.png`.
