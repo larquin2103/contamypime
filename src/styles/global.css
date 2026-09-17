@@ -3912,39 +3912,51 @@ input[type='file'] {
    `overflow-wrap: anywhere` el nombre se rompe por donde sea.
    Es un defecto PREEXISTENTE (viene de `d2d63f9`, ya en `main`): no lo introdujo
    la vista de escritorio, que no toca `.order-line`.
-   EL ARREGLO: en pantalla estrecha el nombre se lleva su propia fila y debajo
-   van el stepper, el importe y el boton de quitar. El nombre pasa de 31 px a los
-   309 de la fila, y las cifras dejan de competir con el texto.
+   HISTORIA: el primer arreglo le dio al nombre su propia fila; el dueño pidio
+   despues UNA SOLA FILA (y el nombre se corto con puntos suspensivos); y en la
+   cuarta foto pidio que el nombre aprovechara el ancho y siguiera en una
+   sublinea. Lo de abajo es eso ultimo.
+   CORRECCION DE UNA CIFRA ESCRITA AQUI: "la fila mide 309 px" se midio en un
+   navegador de escritorio, cuya barra de desplazamiento se lleva 15 px. En el
+   telefono la barra flota encima y la fila mide 324 px. Todas las medidas de
+   este bloque son SIN barra.
    =========================================================================== */
 @media screen and (max-width: 560px) {
-  /* UNA SOLA FILA por producto (decision del dueño, 17-09-2026): nombre,
-     cantidad, importe y papelera en la misma altura. El nombre CEDE y se corta
-     con puntos suspensivos en vez de partirse letra a letra; el importe manda,
-     porque una cifra a medias no se puede leer.
-     Precio: en esta anchura el "45.00 MN c/u" se oculta -no cabe sin robarle
-     otra altura a la fila-. Sigue visible en tableta y escritorio, y el importe
-     de la linea esta a la derecha. */
+  /* UNA SOLA FILA por producto, AHORA CON EL NOMBRE COMPLETO (cuarta foto del
+     dueño, 17-09-2026). Tres cambios sobre el primer intento:
+     1. El nombre YA NO se corta con puntos suspensivos: aprovecha el ancho que
+        le queda y lo que no cabe sigue en una SUBLINEA DEBAJO.
+     2. El stepper y el importe pasan a columnas de ANCHO FIJO. Antes el importe
+        crecia con la cifra y cada fila empezaba en un sitio distinto: medido a
+        390 px, el stepper caia en x=153.8 / 133.4 / 125.1 en tres filas
+        seguidas -es lo que se ve torcido en la foto-. Ahora comparten columna.
+     3. Vuelve el precio unitario ("45.00 MN c/u") debajo del nombre.
+     El `align-items: center` de la regla base deja stepper, importe y papelera
+     CENTRADOS respecto del bloque del nombre, mida una altura o tres. */
   .order-line {
-    grid-template-columns: minmax(0, 1fr) auto auto 26px;
-    column-gap: 8px;
+    --stepper-w: 80px;
+    --total-w: 92px;
+    grid-template-columns: minmax(0, 1fr) var(--stepper-w) minmax(var(--total-w), max-content) 30px;
+    column-gap: 6px;
     row-gap: 0;
     padding: 12px 0;
   }
-  .order-line__name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    overflow-wrap: normal;
-  }
-  .order-line__sub { display: none; }
-  /* Todo lo que NO es el nombre se aprieta, porque el nombre es lo unico que
-     identifica el producto. Medido antes del ajuste: le quedaban 77 px y salia
-     "Cem...". Los botones bajan de 32 a 28 px -siguen siendo objetivos de toque
-     comodos- y el importe pierde un punto de cuerpo. */
-  .order-line .stepper { --stepper-w: auto; padding: 1px; gap: 0; }
-  .order-line .stepper__btn { width: 28px; height: 28px; }
+  /* `break-word` y NO `anywhere`: parte por los espacios y solo rompe una
+     palabra cuando ella sola no cabe en la linea. `anywhere` es lo que partia
+     los nombres letra a letra ("Aceit / e / vege / tal"), porque ademas encoge
+     la columna hasta una letra. */
+  .order-line__name { overflow-wrap: break-word; }
+  .order-line .stepper { padding: 1px; gap: 0; }
+  .order-line .stepper__btn { width: 26px; height: 26px; }
   .order-line .stepper__qty { min-width: 20px; }
-  .order-line__total { font-size: 0.9rem; }
+  /* El importe manda sobre SU columna (una cifra a medias no se puede leer): el
+     `minmax` la deja crecer si la cantidad es enorme, y entonces -solo
+     entonces- esa fila pierde la alineacion. Medido a 390 px: "84,000.00 MN"
+     ocupa 89.7 px de los 92 de la columna; "1,234,567.00 MN" se sale. */
+  .order-line__total { font-size: 0.85rem; }
+  /* La papelera media 34 px en una columna de 26: se salia 4 px por la derecha
+     y se comia el hueco de la izquierda. Ahora columna y boton miden lo mismo. */
+  .order-line__del { width: 30px; height: 30px; }
 
   /* La fila del descuento, TAMBIEN en una sola linea: etiqueta, importe y el
      boton de quitar. Para que quepa, el boton se queda con lo justo y la
@@ -3973,4 +3985,48 @@ input[type='file'] {
     padding-right: 9px;
     flex: none;
   }
+}
+
+/* ===========================================================================
+   TELEFONOS ESTRECHOS: la misma fila, pero las columnas de control se aprietan.
+   MEDIDO, no estimado: con las medidas de 390 px, a 360 px al nombre le quedan
+   74 px y "Hamburguesa" ya se parte en dos; a 320 px le quedan 34 y una palabra
+   larga ocupa DIECINUEVE lineas (fila de 468 px), que es el defecto letra a
+   letra otra vez.
+   Este bloque va DESPUES del de 560 px a proposito: misma especificidad, gana
+   el ultimo. (La regla de 380 px que hay mas arriba, de la epoca en que el
+   nombre no envolvia, queda superada por esta.)
+   =========================================================================== */
+@media screen and (max-width: 380px) {
+  .order-line {
+    --stepper-w: 70px;
+    --total-w: 84px;
+    column-gap: 4px;
+  }
+  .order-line .stepper__btn { width: 24px; height: 24px; }
+  .order-line .stepper__qty { min-width: 18px; }
+  .order-line__del { width: 26px; height: 26px; }
+  /* El importe baja a 0.8rem: "84,000.00 MN" mide 84.4 px y la columna 84, asi
+     que sigue cabiendo entero y el nombre se lleva los 6 px que sobran. */
+  .order-line__total { font-size: 0.8rem; }
+  .order-line { grid-template-columns: minmax(0, 1fr) var(--stepper-w) minmax(var(--total-w), max-content) 26px; }
+}
+
+/* A partir de aqui la fila unica YA NO CABE: el nombre se quedaria con menos de
+   60 px y se partiria en cuatro alturas. Por debajo de 340 px el nombre se
+   lleva la fila entera y los controles bajan a la siguiente -es la unica
+   distribucion que cabe-. */
+@media screen and (max-width: 340px) {
+  .order-line {
+    grid-template-columns: auto minmax(0, 1fr) 30px;
+    grid-template-areas:
+      "info info info"
+      "stepper total del";
+    row-gap: 8px;
+    column-gap: 8px;
+  }
+  .order-line__info { grid-area: info; }
+  .order-line .stepper { grid-area: stepper; justify-self: start; }
+  .order-line__total { grid-area: total; justify-self: end; }
+  .order-line__del { grid-area: del; width: 30px; height: 30px; }
 }

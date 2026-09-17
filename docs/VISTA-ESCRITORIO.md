@@ -840,3 +840,75 @@ En `img/mesa-una-fila.png` y `img/mesa-escritorio.png`.
 **Lo que cuesta, dicho claro:** en el teléfono **se pierde el precio unitario por línea** y los
 nombres largos se ven cortados. Es la consecuencia directa de pedir una sola fila, y se eligió
 sabiéndolo; se revierte cambiando dos reglas.
+
+### 18.8 El nombre completo, y las columnas dejan de bailar (17-09-2026)
+
+Cuarta foto del dueño. Dos peticiones: que **el nombre aproveche el ancho** y que lo que no quepa
+**siga en una sublínea debajo**, y que **los botones y el precio queden alineados**. Eligió esta
+distribución (una sola fila, el nombre partido en dos alturas) sobre otras dos que se le mostraron,
+y pidió además que **volviera el precio unitario**.
+
+**Lo que había, medido en un arnés con el CSS real a 390 px** (`Layout` no; la cuenta de la mesa,
+con el marcado copiado de `TableScreen.jsx`):
+
+| fila | columna del nombre | ¿entero? | x del stepper |
+|---|---|---|---|
+| Hamburguesa | 112.8 px | sí | 153.8 |
+| Aceite vegetal 1L | 92.4 px | **cortado** | 133.4 |
+| Cemento | 84.1 px | sí | 125.1 |
+
+Los tres steppers caían en un sitio distinto **porque la columna del importe crecía con la cifra**
+(`max-content`). Eso es lo que se ve torcido en la foto, y el dueño no lo mencionó: se vio midiendo.
+
+**Lo que se hizo (solo CSS, tres bloques `@media screen`):**
+
+1. **El nombre ya no se corta.** Fuera `white-space: nowrap` + `text-overflow: ellipsis`; entra
+   `overflow-wrap: break-word` — **no `anywhere`**, que es el que partía letra a letra porque además
+   encoge la columna hasta una letra.
+2. **Stepper e importe en columnas de ancho fijo** (`--stepper-w`, `--total-w`): a 390 px el stepper
+   cae en **x=145 en todas las filas**. El importe conserva `minmax(…, max-content)`, así que una
+   cifra enorme (`1,234,567.00 MN`) crece y **solo esa fila** pierde la alineación: una cifra a
+   medias no se puede leer.
+3. **Vuelve el precio unitario** («45.00 MN c/u») debajo del nombre.
+4. **La papelera medía 34 px en una columna de 26**: se salía 4 px por la derecha y se comía el hueco
+   de la izquierda. Ahora columna y botón miden lo mismo (30 px; 26 px por debajo de 380).
+
+**Dos escalones nuevos, porque la fila única no cabe en cualquier teléfono:**
+
+- **≤380 px:** las columnas de control se aprietan (stepper 70, importe 84 a 0.8rem, papelera 26,
+  hueco 4) para que al nombre le queden **102 px**. Sin esto, a 360 px le quedaban 74 y
+  «Hamburguesa» se partía en dos.
+- **≤340 px:** **no cabe de ninguna manera** (al nombre le quedarían menos de 60 px y una palabra
+  larga ocupaba **19 líneas** — fila de 468 px). Ahí el nombre se lleva la fila entera y los
+  controles bajan a la siguiente. Es una degradación declarada, no un olvido.
+
+**Medido después (390 px, fila de 324 px):** nombre **104 px**; «Hamburguesa» y «Cemento» en una
+línea; «Aceite vegetal 1L» en dos, partido **por el espacio**; stepper alineado en x=145.
+
+**Corrección de una cifra del §18.7:** allí se escribió que la fila mide **309 px**. Eso se midió en
+un navegador de escritorio, cuya **barra de desplazamiento se lleva 15 px**. En el teléfono la barra
+flota encima y la fila mide **324 px**. Todas las medidas de este apartado son sin barra.
+
+**Verificado, ejecutado, no citado:**
+- **Por encima de 560 px no cambia NADA**, y no por razonamiento: a 561, 600, 768 y 1024 px las
+  medidas del DOM son idénticas con el CSS de `HEAD` y con el nuevo, y las **capturas coinciden
+  byte a byte** (`sha256` igual). **Control negativo:** a 390 y 360 px sí difieren.
+- `npm run build` **exit 0** · **16 suites / 1.191 aserciones** en verde.
+- **Peso:** CSS del build **86.82 → 87.58 kB** (gzip 26.95 → **27.08**): **+0.76 kB, +0.13 gzip**.
+  Medido construyendo las dos versiones, no estimado.
+
+**Lo que NO se puede garantizar:**
+- **Nadie ha ejecutado la app.** Todo es el CSS real renderizado en un arnés, no la pantalla de
+  mesas con datos reales.
+- **La fuente no es la del teléfono.** La app pide `Manrope` y **nunca la carga**, así que cae al
+  `system-ui`: aquí **Segoe UI**, en su Android **Roboto**. «Hamburguesa» mide 101.8 px con Segoe y
+  ~97 con Roboto, o sea que en su teléfono **sobra sitio, no falta**. Las medidas son el caso malo.
+- **Se probó `hyphens: auto`** (para que un nombre de una sola palabra parta como «Hambur-guesa» en
+  vez de «Hamburgues/a») y **este motor no lo aplicó**. Se retiró: no se deja en el código algo cuyo
+  efecto no se pudo comprobar.
+- **La papelera pasa de 34 a 30 px** de zona táctil (26 por debajo de 380). Sigue por encima del
+  mínimo de 24 px de la WCAG 2.2, pero es **más pequeña que antes**; esos 4 px son los que dejan
+  «Hamburguesa» en una sola línea a 390 px.
+
+Antes y después en `img/mesa-nombre-antes.png`, `img/mesa-nombre-completo.png` y
+`img/mesa-nombre-360.png`.
