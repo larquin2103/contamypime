@@ -11,6 +11,7 @@ import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
+import { timeLabel } from '../../lib/dates'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { countsRepo } from '../../repositories/countsRepo'
@@ -83,7 +84,10 @@ function ConcurrentShiftWarning() {
 
 // Banner de estado de turno (accion primaria de operacion).
 function ShiftBanner() {
-  const { hasActive, isMine } = useShift()
+  // `activeShift` ya viaja en el contexto: el area y la hora de apertura NO
+  // cuestan ni una consulta mas. Solo se pintan en ESCRITORIO (`desk-only`),
+  // porque en el telefono el banner tiene que seguir siendo el de hoy.
+  const { hasActive, isMine, activeShift } = useShift()
   let title = 'Sin turno abierto'
   let sub = 'Ábrelo para empezar a registrar ventas'
   let cta = 'Abrir'
@@ -95,6 +99,11 @@ function ShiftBanner() {
       <div className="shift-banner__text">
         <strong>{title}</strong>
         <span className="muted">{sub}</span>
+        {hasActive && activeShift?.openedAt && (
+          <span className="muted desk-only shift-banner__detail">
+            {activeShift.area ? `${activeShift.area} · ` : ''}abierto desde las {timeLabel(activeShift.openedAt)}
+          </span>
+        )}
       </div>
       <span className="shift-banner__cta">{cta}</span>
     </Link>

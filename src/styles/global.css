@@ -3483,6 +3483,13 @@ input[type='file'] {
 
 .app-side { display: none; }
 
+/* Contenido que SOLO existe en la vista de escritorio. Se monta siempre -React
+   no pregunta por el ancho de la ventana en ninguna parte de la app- y es el CSS
+   quien lo oculta, igual que con `.app-side`. `display:none` lo saca ademas del
+   orden de tabulacion y del arbol de accesibilidad: en el telefono no existe
+   tampoco para un lector de pantalla. */
+.desk-only { display: none; }
+
 @media screen and (min-width: 1024px) {
   :root {
     --side-w: 244px;
@@ -3746,23 +3753,26 @@ input[type='file'] {
     align-items: stretch;
   }
 
-  /* 4. Los avisos dejan de cruzar la pantalla entera. Un aviso de dos lineas
-        con su boton al otro extremo obliga a recorrer 1.700 px con la vista
-        para relacionarlos: el boton tiene que estar JUNTO a lo que explica.
-        `fit-content` con un maximo deja que la caja mida lo que mide su texto,
-        y nunca mas de lo legible. */
+  /* 4. Lo que solo existe en escritorio, aparece. */
+  .desk-only { display: block; }
+
+  /* 5. UN SOLO ANCHO para las piezas del panel. `fit-content` las ataba a su
+        propio texto y salian tres anchos distintos en la misma columna (404,
+        510 y 510 px en la captura del dueño): se lee como descuadre, no como
+        ritmo. Ahora todas miden lo mismo y el ojo baja por un solo borde. */
   .cuadre-banner,
-  .shift-status {
-    width: fit-content;
-    min-width: 420px;
-    max-width: min(100%, 860px);
+  .shift-status,
+  .shift-banner,
+  .rates-card {
+    width: 100%;
   }
 
-  /* 5. La tarjeta de tasas mide lo suyo: son dos cifras, no un formulario. */
-  .rates-card {
-    width: fit-content;
-    min-width: 380px;
-    max-width: min(100%, 640px);
+  /* 6. El turno dice DESDE CUANDO. El dato ya viajaba en el contexto; lo unico
+        que faltaba era pintarlo, y en el telefono se sigue sin pintar. */
+  .shift-banner__detail {
+    display: block;
+    font-size: 12px;
+    margin-top: 2px;
   }
 }
 

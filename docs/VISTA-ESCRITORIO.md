@@ -464,3 +464,74 @@ dueño» queda destacado y esas cifras están a un clic.
   clases son las reales, pero el markup está escrito a mano. La app no se puede abrir aquí.
 - **Solo se compuso el Inicio.** Las 34 pantallas con `.screen` siguen sin revisar una a una; las de
   composición propia (reportes con tablas anchas, punto de venta, salón) son la F3b en adelante.
+
+---
+
+## 14. Paso 1 del panel — exprimir lo que ya estaba cargado (17-09-2026)
+
+**Reconocimiento previo:** F3a (§13) fue **medio paso**. Quitó los acordeones y dejó para «después»
+lo que iba a ocupar su sitio, y el resultado —cuatro cajas en la esquina de un monitor de 1.800 px—
+era **peor** que el punto de partida. Un panel de estado sin datos de estado es una pantalla vacía.
+
+### 14.1 Lo que se verificó antes de escribir nada
+
+De los tres datos que se ofrecieron como «coste cero», **solo dos lo eran**:
+
+| Dato | ¿Gratis? | Comprobación |
+|---|---|---|
+| Turno: área y hora de apertura | **sí** | `ShiftProvider` ya expone `activeShift` entero |
+| Entregas por cobrar | **sí** | `pendingCollection` ya se calcula en `Home.jsx:221` |
+| Conteos esperando aprobación | **NO** | el Inicio no consulta eso; sería una consulta nueva |
+
+El tercero **se retiró del paso**. Estaba mal ofrecido.
+
+### 14.2 Lo que se hizo
+
+- **`lib/dates.js` gana `timeLabel(iso)`** (pura, con 7 aserciones nuevas): la hora sin la fecha.
+  No se recorta la cadena de `formatDateTime` —recortar por posición se rompe en cuanto cambie el
+  formato— y usa la **misma configuración regional**, para que las dos impriman la hora igual.
+- **El banner de turno dice desde cuándo**: `Tienda · abierto desde las 08:14`. El dato ya viajaba
+  en el contexto; solo faltaba pintarlo.
+- **Un solo ancho** para las piezas del panel. `fit-content` las ataba a su propio texto y salían
+  **tres anchos distintos en la misma columna** (404, 510 y 510 px en la captura del dueño): eso se
+  lee como descuadre, no como ritmo.
+- El markup nuevo va en **`.desk-only`**, que es `display:none` fuera del media query: **en el
+  teléfono no se pinta**, igual que `.app-side`.
+
+### 14.3 La verificación falló, y hubo que cambiar de método
+
+La comparación de **píxeles** dio `0,032 %` de diferencia en el teléfono. Antes de reportarlo como
+hallazgo o descartarlo, se hizo el control: **la misma página capturada tres veces difiere entre sí
+en 0,030 % y 0,034 %**. Es decir, **la diferencia medida estaba por debajo del ruido del propio
+método**: no demostraba ni que hubiera cambio ni que no lo hubiera. Añadir
+`--disable-lcd-text`, `--font-render-hinting=none` y `--disable-font-subpixel-positioning` **no lo
+arregló** (el ruido subió a 0,042-0,059 %).
+
+**Se cambió a medir el LAYOUT, que sí es determinista.** Una página carga las dos versiones en
+iframes de 390 px y compara `getBoundingClientRect` y `display` de cada caja:
+
+```
+TELEFONO 390px:  LAYOUT IDENTICO  (33 cajas comparadas)
+CONTROL NEGATIVO (umbral bajado a 320 px):  DIFIEREN 31 de 33 cajas
+```
+
+Evidencia en `img/escritorio-f3a-layout-movil.png`. **Esta prueba es mejor que la de píxeles** y se
+queda como el método para las fases siguientes: el antialiasing de las fuentes mete ruido del mismo
+orden que lo que se quiere medir, y el layout no.
+
+*(Dato colateral: en este entorno **el JavaScript SÍ se ejecuta** en el navegador sin interfaz. La
+nota de sesiones anteriores que decía lo contrario era incorrecta.)*
+
+### 14.4 Lo demás
+
+`npm run build` **exit 0** · **16 suites / 1.178 aserciones**, 0 fallos · 0 identificadores sin
+definir en los dos ficheros tocados · CSS 85,25 → **85,26 kB**; chunk 999,33 → **999,69 kB**.
+Control negativo de `timeLabel`: devolver la fecha completa **falla 2 aserciones**.
+
+### 14.5 Y lo que hay que decir sin adornos
+
+**El paso 1 ordena, pero no llena.** Con dos datos más y los anchos unificados, la pantalla se lee
+mejor, pero **sigue habiendo mucho hueco**, porque el Inicio sigue sin tener los datos que llenan un
+panel. El salto real es el **paso 2** (los avisos por atender, que ya existen en
+`notificationsRepo`) y el **paso 3** (las cifras del día). Los dos son **lógica**, y los dos
+correrían también en el teléfono del dueño: por eso siguen esperando su decisión.

@@ -13,7 +13,7 @@
 // Y la etiqueta de DIA (dayLabel), que usan las listas agrupadas por fecha (las
 // entregas del dia, las elaboraciones del tablero): "Hoy"/"Ayer" y, sobre todo,
 // que NO se desfase un dia por zona horaria, que es su unico riesgo real.
-import { tsAfter, now, localDay, todayLocal, dayLabel } from './dates.js'
+import { tsAfter, now, localDay, todayLocal, dayLabel, timeLabel, formatDateTime } from './dates.js'
 
 let pass = 0
 let fail = 0
@@ -151,5 +151,38 @@ const diaDe = (etq) => etq.split(/[^0-9]+/)
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// timeLabel: la HORA de un instante, sin la fecha.
+//
+// PARA QUE: el panel de escritorio dice "Turno abierto desde las 8:14". La fecha
+// ahi sobra -es de hoy- y `formatDateTime` la incluye siempre, asi que quedaria
+// "17/09/26, 08:14". Se separa en su propia funcion en vez de recortar la cadena
+// de `formatDateTime`: recortar por posicion se rompe en cuanto cambie el
+// formato, y esta regla se va a usar en mas sitios del panel.
+//
+// Misma configuracion regional que `formatDateTime` (es-CU), para que las dos
+// impriman la hora IGUAL y no se vea una en 24h y otra en 12h en la misma
+// pantalla.
+{
+  const h = (iso) => timeLabel(iso)
+  // Un instante concreto, construido en LOCAL para que la prueba no dependa de
+  // la zona horaria de la maquina que la corre (en UTC daria otra hora).
+  const d = new Date(2026, 8, 17, 8, 14, 0)
+  const esperado = d.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' })
+  eq('timeLabel devuelve la hora local del instante', h(d.toISOString()), esperado)
+  ok('timeLabel no incluye la fecha', !/\d{2}\/\d{2}/.test(h(d.toISOString())))
+
+  // Robustez: lo pinta una pantalla, asi que no puede reventar con basura.
+  eq('timeLabel sin valor devuelve cadena vacia', h(''), '')
+  eq('timeLabel con null devuelve cadena vacia', h(null), '')
+  eq('timeLabel con undefined devuelve cadena vacia', h(undefined), '')
+  eq('timeLabel con una fecha invalida devuelve el valor tal cual', h('no-es-fecha'), 'no-es-fecha')
+
+  // Coherencia con formatDateTime: la hora que imprimen las dos es la MISMA.
+  const iso = new Date(2026, 8, 17, 20, 5, 0).toISOString()
+  ok('timeLabel coincide con la hora que imprime formatDateTime',
+    formatDateTime(iso).includes(timeLabel(iso)))
+}
 console.log(`\n${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

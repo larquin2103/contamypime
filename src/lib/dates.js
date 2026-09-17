@@ -59,6 +59,28 @@ export function formatDateTime(iso) {
   }
 }
 
+// La HORA de un instante, sin la fecha. El panel de escritorio dice "Turno
+// abierto desde las 8:14": ahi la fecha sobra -es de hoy- y `formatDateTime` la
+// incluye siempre.
+//
+// Se hace en su propia funcion y NO recortando la cadena de `formatDateTime`:
+// recortar por posicion se rompe en cuanto cambie el formato. Misma
+// configuracion regional (es-CU) que aquella, para que las dos impriman la hora
+// IGUAL y no se vea una en 24h y otra en 12h en la misma pantalla.
+//
+// Ante un valor vacio devuelve cadena vacia, y ante una fecha invalida devuelve
+// lo que le dieron: lo pinta una pantalla y no puede reventar por un dato roto.
+export function timeLabel(iso) {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return iso
+  }
+}
+
 // Etiqueta legible de un DIA ('YYYY-MM-DD', el que devuelve `localDay`). "Hoy" y
 // "Ayer" se nombran asi porque es como los llama quien trabaja; el resto va en
 // fecha corta. Para cabeceras de listas agrupadas por fecha (entregas del dia,
