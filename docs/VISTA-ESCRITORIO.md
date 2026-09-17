@@ -535,3 +535,54 @@ mejor, pero **sigue habiendo mucho hueco**, porque el Inicio sigue sin tener los
 panel. El salto real es el **paso 2** (los avisos por atender, que ya existen en
 `notificationsRepo`) y el **paso 3** (las cifras del día). Los dos son **lógica**, y los dos
 correrían también en el teléfono del dueño: por eso siguen esperando su decisión.
+
+---
+
+## 15. Paso 2 — «Para atender»: los avisos que ya existían (17-09-2026)
+
+Es el paso que convierte el Inicio en un panel de verdad. **No calcula nada nuevo**: el centro de
+avisos ya existe y ya está poblado por `notificationService` (faltantes de caja, existencias en
+negativo, conteos, entregas fallidas, cambios de precio). Aquí solo se asoman los que siguen **sin
+leer**.
+
+### 15.1 El coste en el teléfono, que era la pregunta del dueño
+
+| | |
+|---|---|
+| Consulta | `notificationsRepo.getUnread()` → `where('status').equals('unread')` |
+| Índice | **sí** (`notifications: 'id, type, status, severity, createdAt, [status+createdAt]'`) |
+| Filas que lee | **solo las no leídas**, no la tabla; que además **se poda sola** (`prune`) |
+| Quién la ejecuta | **solo el mando**: todos los avisos nacen con `audience: 'manager'`, así que en la sesión de un vendedor es `Promise.resolve([])` y **ni se lanza** |
+| Qué se ve en el teléfono | **nada**: el bloque va en `.desk-only`. Allí ese sitio ya lo ocupa la campana de la cabecera, que no se toca |
+
+### 15.2 Estilos reutilizados, no inventados
+
+Las filas usan `.notif-item--critical/warning/info`, **las mismas de la campana**. El mismo aviso
+tiene que verse igual en los dos sitios, y una clase nueva solo serviría para que acabaran
+divergiendo. Solo se añadió el ritmo dentro de la tarjeta.
+
+### 15.3 Verificación ejecutada
+
+```
+TELEFONO 390px:  LAYOUT IDENTICO  (33 cajas comparadas)
+                 y los `.desk-only` comprobados uno a uno: ninguno se pinta
+CONTROL NEGATIVO (umbral bajado a 320 px):  DIFIEREN 32 de 33 cajas
+```
+
+**Un agujero de la prueba, encontrado y cerrado:** las cajas nuevas (`.home-alerts`) **no estaban en
+la lista de selectores comparados**, así que «layout idéntico» no decía nada sobre ellas. Se añadió
+una comprobación **directa**: recorrer todos los `.desk-only` del documento a 390 px y verificar que
+ninguno tiene altura ni `display` distinto de `none` — con una guarda que falla si no encuentra
+ninguno, para que la comprobación no pueda pasar por vacía.
+
+`npm run build` **exit 0** · **16 suites / 1.178 aserciones**, 0 fallos · 0 identificadores sin
+definir · CSS 85,26 → **85,47 kB**; chunk 999,69 → **1.000,75 kB** (+1,06).
+
+Resultado en `img/escritorio-panel-atender.png`.
+
+### 15.4 Lo que sigue pendiente
+
+- **Paso 3: las cifras del día.** Acotadas por el índice `createdAt` — en el respaldo real son
+  **~80-120 ventas al día**, no las 713 del mes que leería `analyticsRepo.report()`.
+- **Nadie ha abierto la app.** La captura es una maqueta con el CSS real y las clases reales.
+- El bloque muestra **hasta 5** avisos y remite a la campana si hay más.

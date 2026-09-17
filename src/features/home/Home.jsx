@@ -12,6 +12,7 @@ import { LICENSE_MODULES } from '../../lib/license'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
 import { useShift } from '../../app/providers/ShiftProvider'
 import { timeLabel } from '../../lib/dates'
+import { notificationsRepo, NOTIFICATION_SEVERITY } from '../../repositories/notificationsRepo'
 import { shiftsRepo } from '../../repositories/shiftsRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { countsRepo } from '../../repositories/countsRepo'
@@ -79,6 +80,70 @@ function ConcurrentShiftWarning() {
         🟢 {open.length} turnos abiertos por área: {open.map(labelOf).join(', ')}.
       </span>
     </Link>
+  )
+}
+
+// LO QUE HAY QUE ATENDER (paso 2 del panel de escritorio, 17-09-2026).
+//
+// No calcula nada: el centro de avisos YA existe y YA esta poblado por
+// `notificationService` (faltantes de caja, existencias en negativo, conteos,
+// entregas fallidas, cambios de precio...). Aqui solo se asoman los que siguen
+// SIN LEER, que es justo lo que el dueño quiere ver al abrir la app.
+//
+// COSTE EN EL TELEFONO, que es la pregunta que importa: `getUnread()` va por el
+// indice `status` y trae SOLO los no leidos -no la tabla entera-, y la tabla
+// ademas se poda sola (`prune`). Va gateado a `isManager` porque TODOS los
+// avisos nacen con `audience: 'manager'`: en la sesion de un vendedor la
+// consulta ni se lanza (`Promise.resolve([])`).
+//
+// Se pinta solo en ESCRITORIO (`desk-only`). En el telefono el sitio de esto es
+// la campana de la cabecera, que ya estaba y no se toca.
+//
+// Los estilos son los de la campana (`notif-item--critical/warning/info`): el
+// mismo aviso tiene que verse igual en los dos sitios, y una clase nueva solo
+// serviria para que acabaran divergiendo.
+const SEV_CLS = {
+  [NOTIFICATION_SEVERITY.CRITICAL]: 'critical',
+  [NOTIFICATION_SEVERITY.WARNING]: 'warning',
+  [NOTIFICATION_SEVERITY.INFO]: 'info'
+}
+
+function PendingAlerts({ isManager }) {
+  const unread = useLiveQuery(
+    () => (isManager ? notificationsRepo.getUnread() : Promise.resolve([])),
+    [isManager],
+    []
+  )
+  if (!isManager) return null
+  // Los mas recientes primero. `getUnread` no ordena (es un filtro por indice),
+  // asi que se ordena aqui: son pocas filas y no compensa otra consulta.
+  const top = [...unread].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 5)
+  return (
+    <section className="card desk-only home-alerts">
+      <h3 className="home-alerts__title">
+        Para atender
+        {unread.length > 0 && <span className="badge badge--bad">{unread.length}</span>}
+      </h3>
+      {top.length === 0 ? (
+        <p className="muted">No hay avisos pendientes.</p>
+      ) : (
+        <>
+          {top.map((a) => (
+            <div key={a.id} className={`notif-item notif-item--${SEV_CLS[a.severity] || 'info'}`}>
+              <div className="notif-item__title">{a.title}</div>
+              <div className="notif-item__msg">{a.message}</div>
+              <div className="notif-item__time">
+                {timeLabel(a.createdAt)}
+                {a.requiresAction ? ' · requiere revisión' : ''}
+              </div>
+            </div>
+          ))}
+          {unread.length > top.length && (
+            <p className="muted">y {unread.length - top.length} más en la campana.</p>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 
@@ -296,6 +361,8 @@ export function Home() {
 
       {/* Ni el cocinero ni el mensajero tienen turno: no ven el banner de turno. */}
       {!isCook && !isCourier && <ShiftBanner />}
+
+      <PendingAlerts isManager={isManager} />
 
       {isManager && <StartChecklist />}
 
