@@ -22,6 +22,7 @@ import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } f
 import { Trash2 } from 'lucide-react'
 import { OwnerAuthModal } from '../../components/OwnerAuthModal'
 import { backdropProps } from '../../lib/modalClose'
+import { useEscapeClose } from '../../lib/useEscapeClose'
 
 // ---------------------------------------------------------------------------
 // Cuenta de UNA mesa (modulo 'mesas').
@@ -86,6 +87,23 @@ export function TableScreen() {
   const [discInput, setDiscInput] = useState('')
   const [discError, setDiscError] = useState('')
   const [pendingDisc, setPendingDisc] = useState(null) // { action:'set'|'clear', pct }
+  // Escape cierra el formulario del descuento, como en los otros 21 modales con
+  // campos. Era el UNICO que no lo tenia, y desde que el fondo ya no cierra
+  // (modalClose) su unica salida era el boton "Cancelar".
+  //
+  // LA GUARDA `!pendingDisc` NO ES ADORNO: aqui hay DOS modales apilados. Cuando
+  // el vendedor pulsa "Aplicar", `requestDiscount` no cierra este formulario,
+  // sino que abre ENCIMA el OwnerAuthModal del PIN -y ese ya escucha Escape por
+  // su cuenta-. Los dos oyentes viven en `document`, asi que una sola pulsacion
+  // los dispara a los dos: sin la guarda, cancelar el PIN se llevaria por delante
+  // el formulario y el porcentaje tecleado. Que es exactamente el fallo que se
+  // arreglo con el cierre por el fondo.
+  //
+  // Hace lo MISMO que el boton "Cancelar" y nada mas: no limpia `discInput` ni
+  // `discError` (de eso ya se encarga "Aplicar" al reabrir). Con el modal
+  // cerrado es un no-op, que es la razon por la que el hook puede llamarse sin
+  // condicionar -lo dice su propio comentario en lib/useEscapeClose.js-.
+  useEscapeClose(() => { if (!pendingDisc) setAskDiscount(false) })
 
   const [done, setDone] = useState(null) // resumen del cobro para el ticket
 
