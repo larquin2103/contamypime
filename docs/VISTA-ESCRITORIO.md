@@ -912,3 +912,30 @@ flota encima y la fila mide **324 px**. Todas las medidas de este apartado son s
 
 Antes y después en `img/mesa-nombre-antes.png`, `img/mesa-nombre-completo.png` y
 `img/mesa-nombre-360.png`.
+
+### 18.9 Escape cierra el descuento — y la guarda que hacía falta (18-09-2026)
+
+Hallazgo 1 de la auditoría previa a `main`. El modal del descuento era el **único de los 22 modales
+con campos sin `useEscapeClose`**, y desde que el fondo ya no cierra (§ *Cierre de los modales*) su
+única salida era el botón *Cancelar*.
+
+**Lo que no era obvio, y por eso no es una línea suelta:** en esta pantalla hay **dos modales
+apilados**. Cuando el vendedor pulsa *Aplicar*, `requestDiscount` **no cierra** el formulario: abre
+encima el `OwnerAuthModal` del PIN (`TableScreen.jsx:1081`), y ese **ya escucha Escape por su
+cuenta**. Los dos oyentes viven en `document`, así que **una sola pulsación dispara los dos**. Sin
+guarda, cancelar el PIN se habría llevado por delante el formulario y el porcentaje tecleado — que
+es exactamente el fallo que se acababa de arreglar con el cierre por el fondo. De ahí `!pendingDisc`.
+
+Hace lo **mismo que el botón *Cancelar*** y nada más: no limpia `discInput` ni `discError` (de eso ya
+se encarga *Aplicar* al reabrir). Con el modal cerrado es un **no-op**, que es la razón por la que el
+hook puede llamarse sin condicionar — lo dice su propio comentario en `lib/useEscapeClose.js`.
+
+**Verificado:** el hook queda en la **línea 106**, antes de los tres `return` tempranos (176/179/180),
+y **no hay ni un hook después de ellos** (medido: 0), así que no puede dar *"rendered fewer hooks"*.
+Los dos oyentes apilados se **simularon con los callbacks reales**: con la guarda, Escape cancela el
+PIN y deja el formulario con su 20 % tecleado; **sin la guarda (control negativo) se lleva las dos
+cosas**. `npm run build` **exit 0** · **16 suites / 1.191 aserciones** · **0 identificadores sin
+definir**. El chunk crece **0,02 kB** y el CSS no cambia (mismo hash).
+
+**No verificado:** la app en ejecución. La simulación reproduce la semántica del hook (un oyente por
+componente montado, todos disparados en la misma pulsación); **no es React corriendo**.

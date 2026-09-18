@@ -777,13 +777,81 @@ colecciones de sync nuevas.**
   la suma; aquí el inventario ya está en el libro mayor y no se descuadra nada). **No queda ningún
   rol huérfano.**
 
-## Estado del trabajo en curso (15-09-2026)
+## Estado del trabajo en curso (18-09-2026)
 
-**Lo último fusionado es la puesta a punto de la interfaz** (15-09-2026): acordeones, login por
-nombre y accesibilidad, más el documento de corrección de existencias. Su acta está en **«Fusión
-del 15-09-2026»**, justo debajo. Es la fusión **más limpia de las registradas aquí**: sin esquema
-Dexie, sin sincronización, sin capa de datos y **sin una sola escritura a la base**. Lo que sigue
-es el registro de las fusiones anteriores, que se deja tal cual.
+**Lo último fusionado es la vista de escritorio, el cierre de los modales y la cuenta de mesa**
+(18-09-2026). Su acta está en **«Fusión del 18-09-2026»**, justo debajo. La de la interfaz
+(15-09-2026) y las anteriores se dejan tal cual, como registro.
+
+### Fusión del 18-09-2026 — escritorio, modales y la cuenta de una mesa
+
+**FUSIONADO A `main` el 18-09-2026**, con autorización explícita del dueño. **Fast-forward** de los
+**14 commits** de `claude/awesome-dirac-484azm` desde `5e1bc3d`. **Comprobar el commit real con
+`git rev-parse origin/main` tras un `git fetch`: no dar por bueno ningún hash escrito aquí.**
+
+Subieron la **vista de escritorio** (barra lateral, F3a del Inicio y los tres pasos del panel), el
+**cierre de los modales** (`lib/modalClose.js`), la **cuenta de una mesa en el teléfono** (una fila,
+nombre completo, columnas alineadas) y dos fallos de lógica del descuento de mesa.
+
+**Auditoría previa (ejecutada, no citada):**
+
+- **Sin esquema, sin sincronización, sin dependencias:** `src/db/db.js`, `src/features/sync/`,
+  `firestore.rules`, `firestore.indexes.json` y `package.json` **con CERO cambios**. Dexie sigue en
+  **v19** y `SYNC_COLLECTIONS` en **34**. No hay que redesplegar reglas.
+- **CERO escrituras a la base en todo el diff** (`.add/.put/.update/.delete/transaction` = 0). De ahí
+  que el **riesgo de convivencia entre teléfonos sea NINGUNO**: sin esquema, sin formato de dato
+  nuevo y sin una sola escritura, un aparato actualizado y otro sin actualizar intercambian
+  exactamente lo mismo que hoy.
+- **Un solo fichero de la capa de datos:** `analyticsRepo.js` (+25/−1), **aditivo y de solo lectura**.
+  `todaySummary()` consulta por el índice `createdAt` —comprobado que **existe** en `db.js:27`, y es
+  el mismo patrón que ya usa `notificationService`— con ventana de 48 h, y filtra el día local.
+- **Las dos sumas de dinero no pueden separarse:** `sumSales` se comparó línea a línea con el bucle
+  real de `report()` (son idénticos) y su suite los contrasta sobre **500 conjuntos aleatorios**.
+  **Control negativo:** un error del 0,01 % en el costo hace fallar 499 de 500.
+- **Sin fugas de licencia:** abriendo la puerta de `navSections` (`has = () => true`) su suite pasa
+  de **277 OK a 93 fallos**. Las puertas de `hasModule` de las pantallas existentes no cambian
+  (Home 17→17, TableScreen 5→5, Remesas 10→10); `Layout` gana 4, o sea **más** restrictivo.
+- **39 líneas borradas en todo `src`**, leídas una a una: 30 son la línea del fondo de los modales,
+  3 imports sustituidos, 2 desestructuraciones ampliadas, el `<nav>` que gana `aria-label` y las 3
+  del arreglo del descuento. **`global.css` es +570 / −0**: estrictamente aditivo.
+- **Solo 3 reglas CSS nuevas fuera de toda `@media`:** `.app-side` y `.desk-only` (clases **nuevas**,
+  0 apariciones en el CSS y el JSX de `main`) y `.order-line__right`, que es el arreglo del botón
+  descolocado. Todo lo demás vive dentro de `min-width:1024` o de los bloques del teléfono.
+- **0 identificadores sin definir** en los 25 ficheros JS/JSX tocados (esbuild + acorn), con
+  **control negativo**. Es la puerta que el build NO cubre, porque no hay linter.
+- **Nadie queda encerrado:** los **30** modales (22 con campos, 8 de aviso) tienen salida visible,
+  comprobado fichero a fichero.
+- `npm run build` **exit 0** · **16 suites / 1.191 aserciones** en verde.
+- **Peso**, construyendo `origin/main` en un worktree aparte: CSS **81,52 → 87,58 kB**, chunk
+  **992,85 → 1.002,35 kB** (gzip **288,90 → 291,95**). En conjunto **+4,26 kB gzip (+1,35 %)**. Como
+  el chunk lleva hash, **actualizar cuesta la descarga completa (~292 kB gzip por teléfono)**.
+
+**Cambios visibles que verán TODOS, también en el teléfono:** los modales **con campos ya no se
+cierran tocando el fondo** (se sale por *Cancelar*, la X o Escape); la **cuenta de la mesa** pasa a
+una fila con el nombre completo, el precio unitario y las columnas alineadas; el botón ***Quitar*
+del descuento aparece siempre que la mesa esté abierta** (colgaba de `canPay`, que es la condición
+del cobro — fallo preexistente en `main`); y el **porcentaje se acota a 100 al escribir**. Además, en
+el Inicio de un mando el teléfono **lanza dos consultas que no se ven** (las tarjetas de escritorio
+se montan y el CSS las oculta), y `Layout` mantiene viva `remittancesRepo.list()` en todas las
+pantallas para un mando con `remesas` (es el contador rojo).
+
+**Dos hallazgos que se dejan ABIERTOS a propósito:**
+1. La prueba de equivalencia usa una **COPIA** del bucle de `report()`. Hoy coinciden (verificado
+   línea a línea), pero si alguien edita `report()` la copia no le sigue y la garantía se apaga en
+   silencio.
+2. **Coste, no corrección:** `remittancesRepo.list()` en el `Layout` es un barrido de tabla y va
+   vivo en todas las pantallas; en el Inicio se duplica con la consulta propia del Inicio.
+
+*(El tercer hallazgo —el modal del descuento sin Escape— se corrigió antes de fusionar; ver
+`docs/VISTA-ESCRITORIO.md` §18.9.)*
+
+**Lo que NO se pudo garantizar: NADIE HA EJECUTADO LA APP.** Ni una pantalla abierta en la
+computadora, ni la barra lateral, ni el panel del día, ni la fila de la mesa en un teléfono real.
+Código, build, pruebas en node y el CSS real renderizado en un arnés. Y **no hubo prueba entre dos
+dispositivos**, aunque nada toca la sincronización.
+
+**Esta fusión no sube esquema**, así que el retroceso a un build del mismo esquema es viable; el
+respaldo previo al despliegue sigue siendo lo sensato.
 
 **EL MÓDULO `fichas` YA ESTÁ FUSIONADO A `main`.** El dueño lo autorizó el **11-09-2026** y se
 hizo **fast-forward** de los **28 commits** de `claude/awesome-dirac-484azm`: `origin/main` pasó de
