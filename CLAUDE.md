@@ -781,15 +781,17 @@ colecciones de sync nuevas.**
 
 **NADA de esto está fusionado todavía.** La vista de escritorio, el cierre de los modales y la
 cuenta de mesa siguen **solo en la rama**: al 19-09-2026 `origin/main` está en `5e1bc3d` y la rama
-va **18 commits por delante, 0 por detrás**. Su acta está en **«Pendiente de fusionar»**, justo
+va **por delante, 0 por detrás**. Su acta está en **«Pendiente de fusionar»**, justo
 debajo. La de la interfaz (15-09-2026) y las anteriores se dejan tal cual, como registro.
 
 ### Pendiente de fusionar — escritorio, modales y la cuenta de una mesa
 
 **NO FUSIONADO.** El acta se escribió el 18-09-2026 dando la fusión por hecha y **nunca se ejecutó**:
 comprobado el 19-09-2026, `origin/main` = `5e1bc3d` y `git rev-list --left-right --count
-origin/main...HEAD` = `0 18`. Sería **fast-forward** de esos **18 commits** desde `5e1bc3d`, y
-**requiere autorización explícita del dueño** (regla 1). **Comprobar el commit real con
+origin/main...HEAD` = `0 19` **justo antes de este commit** (el número crece con cada commit que se
+añada, así que **contarlo con `git rev-list --count origin/main..HEAD`, no leerlo aquí**). Sería
+**fast-forward** desde `5e1bc3d`, y **requiere autorización explícita del dueño** (regla 1).
+**Comprobar el commit real con
 `git rev-parse origin/main` tras un `git fetch`: no dar por bueno ningún hash escrito aquí.**
 
 Subieron la **vista de escritorio** (barra lateral, F3a del Inicio y los tres pasos del panel), el
