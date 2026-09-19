@@ -777,16 +777,19 @@ colecciones de sync nuevas.**
   la suma; aquí el inventario ya está en el libro mayor y no se descuadra nada). **No queda ningún
   rol huérfano.**
 
-## Estado del trabajo en curso (18-09-2026)
+## Estado del trabajo en curso (19-09-2026)
 
-**Lo último fusionado es la vista de escritorio, el cierre de los modales y la cuenta de mesa**
-(18-09-2026). Su acta está en **«Fusión del 18-09-2026»**, justo debajo. La de la interfaz
-(15-09-2026) y las anteriores se dejan tal cual, como registro.
+**NADA de esto está fusionado todavía.** La vista de escritorio, el cierre de los modales y la
+cuenta de mesa siguen **solo en la rama**: al 19-09-2026 `origin/main` está en `5e1bc3d` y la rama
+va **18 commits por delante, 0 por detrás**. Su acta está en **«Pendiente de fusionar»**, justo
+debajo. La de la interfaz (15-09-2026) y las anteriores se dejan tal cual, como registro.
 
-### Fusión del 18-09-2026 — escritorio, modales y la cuenta de una mesa
+### Pendiente de fusionar — escritorio, modales y la cuenta de una mesa
 
-**FUSIONADO A `main` el 18-09-2026**, con autorización explícita del dueño. **Fast-forward** de los
-**15 commits** de `claude/awesome-dirac-484azm` desde `5e1bc3d`. **Comprobar el commit real con
+**NO FUSIONADO.** El acta se escribió el 18-09-2026 dando la fusión por hecha y **nunca se ejecutó**:
+comprobado el 19-09-2026, `origin/main` = `5e1bc3d` y `git rev-list --left-right --count
+origin/main...HEAD` = `0 18`. Sería **fast-forward** de esos **18 commits** desde `5e1bc3d`, y
+**requiere autorización explícita del dueño** (regla 1). **Comprobar el commit real con
 `git rev-parse origin/main` tras un `git fetch`: no dar por bueno ningún hash escrito aquí.**
 
 Subieron la **vista de escritorio** (barra lateral, F3a del Inicio y los tres pasos del panel), el
@@ -813,7 +816,7 @@ nombre completo, columnas alineadas) y dos fallos de lógica del descuento de me
   (Home 17→17, TableScreen 5→5, Remesas 10→10); `Layout` gana 4, o sea **más** restrictivo.
 - **39 líneas borradas en todo `src`**, leídas una a una: 30 son la línea del fondo de los modales,
   3 imports sustituidos, 2 desestructuraciones ampliadas, el `<nav>` que gana `aria-label` y las 3
-  del arreglo del descuento. **`global.css` es +570 / −0**: estrictamente aditivo.
+  del arreglo del descuento. **`global.css` es +593 / −0** contra `main`: estrictamente aditivo.
 - **Solo 3 reglas CSS nuevas fuera de toda `@media`:** `.app-side` y `.desk-only` (clases **nuevas**,
   0 apariciones en el CSS y el JSX de `main`) y `.order-line__right`, que es el arreglo del botón
   descolocado. Todo lo demás vive dentro de `min-width:1024` o de los bloques del teléfono.
@@ -822,9 +825,33 @@ nombre completo, columnas alineadas) y dos fallos de lógica del descuento de me
 - **Nadie queda encerrado:** los **30** modales (22 con campos, 8 de aviso) tienen salida visible,
   comprobado fichero a fichero.
 - `npm run build` **exit 0** · **16 suites / 1.191 aserciones** en verde.
-- **Peso**, construyendo `origin/main` en un worktree aparte: CSS **81,52 → 87,58 kB**, chunk
+- **Peso**, construyendo `origin/main` en un worktree aparte: CSS **81,52 → 87,63 kB**, chunk
   **992,85 → 1.002,35 kB** (gzip **288,90 → 291,95**). En conjunto **+4,26 kB gzip (+1,35 %)**. Como
   el chunk lleva hash, **actualizar cuesta la descarga completa (~292 kB gzip por teléfono)**.
+
+**UNA REGRESIÓN PROPIA, ENCONTRADA DESPUÉS DEL ACTA Y YA CORREGIDA (19-09-2026, `e3b4274`).** El
+acta de arriba **no la vio**, y conviene saber por qué: el dueño reportó que la **ficha de costo** se
+veía mal en su teléfono y que «la fuente se ve un poco más grande». Eran el mismo defecto, y lo
+introdujo `82fc72f` de esta rama: puso dos reglas del descuento de mesa —`flex-wrap: nowrap` y
+`flex: none` sobre `.total-row`— dentro de `@media (max-width:560px)`, y **`.total-row` no es una
+clase de mesas: la usan DIECISÉIS pantallas** (solo `features/costsheets/` tiene 31 filas; también
+ventas, cuentas, socios, entregas, cocina, entradas y traspasos). La etiqueta dejó de poder envolver
+Y de poder encoger, y la fila se salía de la tarjeta llevándose el importe fuera del borde.
+**Medido, no estimado**, con el CSS real de los dos árboles y Edge headless en 11 anchos: a 390 px
+—el teléfono del dueño— `main` desbordaba **0 filas** y esta rama **8 filas y 6 tarjetas**; a 320 px
+eran **catorce**. La letra **no** era mayor (17,6 px en los dos árboles): al no envolver, la etiqueta
+cruzaba la tarjeta de borde a borde y el ojo lo leía como letra mayor.
+El arreglo acota las dos reglas con `:has(> .order-line__right)`, clase que existe **solo** en
+`TableScreen.jsx`; un navegador sin `:has()` las ignora y la fila vuelve a envolver como en `main`
+(degradación al lado seguro, no pantalla rota). Verificado con **0 diferencias sobre 3.213
+comparaciones** contra `main` y **control negativo** que sí las detecta (1.097 de 3.213).
+**La lección para la próxima auditoría:** el acta comprobó que `global.css` era *aditivo* y que las
+clases nuevas no existían en `main`, pero **no** comprobó a cuántas pantallas afectaban las reglas
+añadidas sobre clases **ya existentes**. Aditivo no es inocuo.
+
+**Hallazgo abierto que deja ese arreglo:** la fila del descuento de la mesa **sigue desbordando por
+debajo de 414 px** (también antes de aquel commit): el caso real del dueño pide 314 px y tiene 309 a
+390 px. Decisión del dueño.
 
 **Cambios visibles que verán TODOS, también en el teléfono:** los modales **con campos ya no se
 cierran tocando el fondo** (se sale por *Cancelar*, la X o Escape); la **cuenta de la mesa** pasa a
