@@ -786,7 +786,7 @@ colecciones de sync nuevas.**
 ### Fusión del 18-09-2026 — escritorio, modales y la cuenta de una mesa
 
 **FUSIONADO A `main` el 18-09-2026**, con autorización explícita del dueño. **Fast-forward** de los
-**14 commits** de `claude/awesome-dirac-484azm` desde `5e1bc3d`. **Comprobar el commit real con
+**15 commits** de `claude/awesome-dirac-484azm` desde `5e1bc3d`. **Comprobar el commit real con
 `git rev-parse origin/main` tras un `git fetch`: no dar por bueno ningún hash escrito aquí.**
 
 Subieron la **vista de escritorio** (barra lateral, F3a del Inicio y los tres pasos del panel), el
@@ -817,7 +817,7 @@ nombre completo, columnas alineadas) y dos fallos de lógica del descuento de me
 - **Solo 3 reglas CSS nuevas fuera de toda `@media`:** `.app-side` y `.desk-only` (clases **nuevas**,
   0 apariciones en el CSS y el JSX de `main`) y `.order-line__right`, que es el arreglo del botón
   descolocado. Todo lo demás vive dentro de `min-width:1024` o de los bloques del teléfono.
-- **0 identificadores sin definir** en los 25 ficheros JS/JSX tocados (esbuild + acorn), con
+- **0 identificadores sin definir** en los 24 ficheros JS/JSX tocados (esbuild + acorn), con
   **control negativo**. Es la puerta que el build NO cubre, porque no hay linter.
 - **Nadie queda encerrado:** los **30** modales (22 con campos, 8 de aviso) tienen salida visible,
   comprobado fichero a fichero.
