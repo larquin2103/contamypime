@@ -3960,15 +3960,38 @@ input[type='file'] {
 
   /* La fila del descuento, TAMBIEN en una sola linea: etiqueta, importe y el
      boton de quitar. Para que quepa, el boton se queda con lo justo y la
-     etiqueta cede si hace falta. */
-  .total-row {
+     etiqueta cede si hace falta.
+
+     ACOTADO A LA CUENTA DE MESA, y esto es una CORRECCION: las dos reglas de
+     aqui abajo se escribieron con `.total-row` a secas, y `.total-row` NO es de
+     mesas: la usan DIECISEIS pantallas (31 filas solo en `features/costsheets/`,
+     mas ventas, cuentas, socios, entregas, cocina, entradas y traspasos). El
+     `white-space: nowrap` + `flex: none` sobre la etiqueta impedia que las
+     etiquetas LARGAS de la ficha de costo envolvieran, y la fila se salia de la
+     tarjeta. MEDIDO con el CSS real a 390 px (el telefono del dueño): en la
+     ficha se desbordaban OCHO filas -"Fila 3 · OTROS GASTOS DIRECTOS (suma del
+     desglose)" pedia 520 px en una caja de 309, +211 px- y a 320 px eran CATORCE.
+     El importe quedaba cortado por el borde de la tarjeta.
+
+     El gancho es `:has(> .order-line__right)` porque esa clase existe SOLO en
+     `features/tables/TableScreen.jsx` (3 usos, comprobado), y es justo la que
+     envuelve importe+boton en las filas que se quieren en una linea. Si el
+     navegador no soporta `:has()` ignora las dos reglas y la fila vuelve a
+     envolver como en `main`: degradacion al lado seguro, no pantalla rota (mismo
+     criterio que `.screen:has(table)` mas arriba).
+     Comprobado midiendo los tres CSS (main / rama / corregido) en 11 anchos:
+     por debajo de 561 px la ficha vuelve a ser IDENTICA a `main` -0 diferencias
+     en 15 propiedades por fila- y la cuenta de mesa NO cambia (las filas
+     "Subtotal" y "TOTAL" pierden un `nowrap` y 2 px de hueco que no usaban: su
+     ancho y su alto salen iguales al milimetro). */
+  .total-row:has(> .order-line__right) {
     flex-wrap: nowrap;
     column-gap: 8px;
   }
   /* La etiqueta del descuento NO se trunca: "Descuento 100%" sin el numero no
      dice nada, y truncarla fue el primer intento. Se le deja su ancho y lo que
      cede es el resto. */
-  .total-row > span:first-child {
+  .total-row:has(> .order-line__right) > span:first-child {
     white-space: nowrap;
     flex: none;
   }
