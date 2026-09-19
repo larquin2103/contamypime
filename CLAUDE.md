@@ -785,16 +785,24 @@ las anteriores se dejan tal cual, como registro.
 
 ### Fusión del 19-09-2026 — escritorio, modales y la cuenta de una mesa
 
-**FUSIONADO A `main` el 19-09-2026.** **Fast-forward** de los **21 commits** de
-`claude/awesome-dirac-484azm` desde `5e1bc3d`: `origin/main` quedó en **`e222fbf`**, idéntico a la
-rama (`git rev-list --left-right --count origin/main...HEAD` = `0 0` y `git diff HEAD origin/main`
-**vacío**). Verificado **después** del push, con `git fetch` delante, y comprobando además que
-`5e1bc3d` es **ancestro** de `e222fbf` — o sea, que no se reescribió historia.
+**FUSIONADO A `main` el 19-09-2026.** **Fast-forward** de los **21 commits de código** de
+`claude/awesome-dirac-484azm` desde `5e1bc3d`, que dejaron `main` en **`e222fbf`** — **ese es el
+árbol que se valida abajo y el que se despliega**. Verificado **después** del push, con `git fetch`
+delante: rama y `main` idénticas (`git rev-list --left-right --count origin/main...HEAD` = `0 0` y
+`git diff HEAD origin/main` **vacío**), y `5e1bc3d` **ancestro** de `e222fbf`, o sea que no se
+reescribió historia.
 
-**El acta se escribió dos veces dando la fusión por hecha sin que se hubiera ejecutado; ahora el
-riesgo es el contrario —un acta que diga «no fusionado» cuando ya lo está— y la lección es la
-misma: comprobar el commit real con `git rev-parse origin/main` tras un `git fetch`, no dar por
-bueno ningún hash escrito aquí.**
+**Después de eso subió esta acta**, que es **solo documentación** (`CLAUDE.md`, cero código), así
+que **`origin/main` ya NO vale `e222fbf`**: va por delante en los commits de acta que se hayan
+escrito, **sin que el build cambie**. Es la trampa de siempre y se repite a propósito aquí: **un
+acta que escribe el hash de `main` se autoinvalida en cuanto ella misma se sube.** Por eso el único
+hash que esta acta fija es el del **código** (`e222fbf`); para saber dónde está `main` **hoy**,
+`git rev-parse origin/main` tras un `git fetch`, y para contar la distancia
+`git rev-list --count e222fbf..origin/main`. **No dar por bueno ningún hash leído aquí.**
+
+**El acta se escribió dos veces dando la fusión por hecha sin que se hubiera ejecutado; luego el
+riesgo fue el contrario —decir «no fusionado» cuando ya lo estaba—. La regla es la misma en los dos
+sentidos: comprobar el commit real, no leer el acta.**
 
 **Validación posterior a la fusión, ejecutada sobre el commit exacto que está en `main`
 (`e222fbf`), no citada:**
