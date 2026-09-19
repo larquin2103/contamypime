@@ -3984,16 +3984,32 @@ input[type='file'] {
      en 15 propiedades por fila- y la cuenta de mesa NO cambia (las filas
      "Subtotal" y "TOTAL" pierden un `nowrap` y 2 px de hueco que no usaban: su
      ancho y su alto salen iguales al milimetro). */
-  .total-row:has(> .order-line__right) {
-    flex-wrap: nowrap;
-    column-gap: 8px;
-  }
-  /* La etiqueta del descuento NO se trunca: "Descuento 100%" sin el numero no
-     dice nada, y truncarla fue el primer intento. Se le deja su ancho y lo que
-     cede es el resto. */
-  .total-row:has(> .order-line__right) > span:first-child {
-    white-space: nowrap;
-    flex: none;
+  /* SUELO DE 360 px, y es una CORRECCION medida (19-09-2026). Las dos reglas de
+     aqui dentro obligan a la fila del descuento a ir en UNA linea. Por debajo de
+     360 px esa linea ya no cabe cuando el importe tiene cinco cifras -una
+     cortesia del 100 % sobre una mesa de 12.345,67- y, al no poder envolver, el
+     contenido se sale por el borde de la tarjeta: MEDIDO con `scrollWidth` vs
+     `clientWidth` sobre el CSS real en Edge headless, 30 px de exceso a 320 px y
+     10 px a 340 px, mientras que `main` no desborda nunca porque envuelve.
+     Recortar dinero contra el borde es peor que partir la fila en dos.
+     Por encima de 360 px cabe de sobra y la fila sigue en una linea, que es
+     justo lo que se buscaba. Debajo, se vuelve al comportamiento de `main`:
+     degradacion al lado seguro, no pantalla rota.
+     Se detecto en la auditoria previa a `main`: el primer detector comparaba
+     CAJAS (`getBoundingClientRect`) y no veia nada, porque una fila con `nowrap`
+     NO agranda su caja -el contenido se desborda DENTRO de ella-. */
+  @media (min-width: 360px) {
+    .total-row:has(> .order-line__right) {
+      flex-wrap: nowrap;
+      column-gap: 8px;
+    }
+    /* La etiqueta del descuento NO se trunca: "Descuento 100%" sin el numero no
+       dice nada, y truncarla fue el primer intento. Se le deja su ancho y lo que
+       cede es el resto. */
+    .total-row:has(> .order-line__right) > span:first-child {
+      white-space: nowrap;
+      flex: none;
+    }
   }
   .total-row .order-line__right {
     margin-left: auto;
