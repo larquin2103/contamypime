@@ -779,20 +779,39 @@ colecciones de sync nuevas.**
 
 ## Estado del trabajo en curso (19-09-2026)
 
-**NADA de esto está fusionado todavía.** La vista de escritorio, el cierre de los modales y la
-cuenta de mesa siguen **solo en la rama**: al 19-09-2026 `origin/main` está en `5e1bc3d` y la rama
-va **por delante, 0 por detrás**. Su acta está en **«Pendiente de fusionar»**, justo
-debajo. La de la interfaz (15-09-2026) y las anteriores se dejan tal cual, como registro.
+**YA ESTÁ FUSIONADO.** La vista de escritorio, el cierre de los modales y la cuenta de mesa
+subieron a `main` el **19-09-2026**. Su acta está justo debajo. La de la interfaz (15-09-2026) y
+las anteriores se dejan tal cual, como registro.
 
-### Pendiente de fusionar — escritorio, modales y la cuenta de una mesa
+### Fusión del 19-09-2026 — escritorio, modales y la cuenta de una mesa
 
-**NO FUSIONADO.** El acta se escribió el 18-09-2026 dando la fusión por hecha y **nunca se ejecutó**:
-comprobado el 19-09-2026, `origin/main` = `5e1bc3d` y `git rev-list --left-right --count
-origin/main...HEAD` = `0 19` **justo antes de este commit** (el número crece con cada commit que se
-añada, así que **contarlo con `git rev-list --count origin/main..HEAD`, no leerlo aquí**). Sería
-**fast-forward** desde `5e1bc3d`, y **requiere autorización explícita del dueño** (regla 1).
-**Comprobar el commit real con
-`git rev-parse origin/main` tras un `git fetch`: no dar por bueno ningún hash escrito aquí.**
+**FUSIONADO A `main` el 19-09-2026.** **Fast-forward** de los **21 commits** de
+`claude/awesome-dirac-484azm` desde `5e1bc3d`: `origin/main` quedó en **`e222fbf`**, idéntico a la
+rama (`git rev-list --left-right --count origin/main...HEAD` = `0 0` y `git diff HEAD origin/main`
+**vacío**). Verificado **después** del push, con `git fetch` delante, y comprobando además que
+`5e1bc3d` es **ancestro** de `e222fbf` — o sea, que no se reescribió historia.
+
+**El acta se escribió dos veces dando la fusión por hecha sin que se hubiera ejecutado; ahora el
+riesgo es el contrario —un acta que diga «no fusionado» cuando ya lo está— y la lección es la
+misma: comprobar el commit real con `git rev-parse origin/main` tras un `git fetch`, no dar por
+bueno ningún hash escrito aquí.**
+
+**Validación posterior a la fusión, ejecutada sobre el commit exacto que está en `main`
+(`e222fbf`), no citada:**
+
+- `npm run build` **exit 0** · **16 suites / 1.191 aserciones** en verde, **0 fallos**.
+- **CERO cambios en los ficheros sensibles** entre `5e1bc3d` y `origin/main`: `src/db/db.js`,
+  `src/features/sync/`, `firestore.rules`, `firestore.indexes.json`, `package.json` y
+  `package-lock.json` — `git diff --stat` **vacío**. Dexie sigue en **v19** y `SYNC_COLLECTIONS`
+  en **34**, leídos del árbol. **No hay que redesplegar reglas de Firestore.**
+- **Esta fusión no sube esquema**, así que el retroceso a un build del mismo esquema es viable. El
+  respaldo previo al despliegue (`/backup` desde un dispositivo bueno, guardado **fuera** del
+  teléfono) sigue siendo lo sensato.
+- **Peso del build recién hecho:** CSS **87,66 kB** (gzip 27,10) y chunk principal **1.002,35 kB**
+  (gzip **291,95**) — las mismas cifras que declaraba el acta previa.
+
+**Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que se
+corra `npm run deploy`. **El despliegue lo hace el dueño.**
 
 Subieron la **vista de escritorio** (barra lateral, F3a del Inicio y los tres pasos del panel), el
 **cierre de los modales** (`lib/modalClose.js`), la **cuenta de una mesa en el teléfono** (una fila,
