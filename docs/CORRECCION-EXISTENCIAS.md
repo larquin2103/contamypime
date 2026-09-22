@@ -738,3 +738,54 @@ es lo esperado.
 - **Sigue sin explicarse** por qué se vendieron unidades en negativo (Chicle de menta, Chupa
   chiquito): con el código de hoy `salesRepo` las habría rechazado, y el build que corría entonces
   fue sobrescrito.
+
+---
+
+## 8. Lo que F3 NO cubre — el ajuste del conteo es un DELTA (22-09-2026)
+
+**F3 está bien y no se toca.** Esta sección no lo corrige: acota **hasta dónde llega**, porque el
+22-09-2026 apareció un negativo nuevo en un negocio real (*Burger Premium*) que **F3 no podía
+evitar**, y conviene que quede escrito antes de que alguien dé por cerrado el asunto de los negativos.
+
+**Qué hace F3.** `countsRepo.approve` deriva el sistema del **libro mayor** en vez de la caché:
+
+```js
+const sysNow = await stockFromLedger(it.productId, loc)
+const delta  = round2(Number(it.physicalQty) - sysNow)
+```
+
+Eso arregla el caso del §7.4 —la caché mentía y el conteo clavaba un ajuste equivocado— **dentro de un
+aparato**. El problema es la segunda línea: **lo que se escribe en el libro es un `delta`, no un
+objetivo**, y un delta solo es correcto en el dispositivo que lo calculó.
+
+**El caso medido.** Dos instancias del mismo negocio cuyos libros diferían en 1 unidad de
+`Batido de maní B` en el área *Salones*, porque a una nunca le llegaron los 7 movimientos de una
+producción (fallo de transporte; ver `docs/AUDITORIA-BURGER-PREMIUM-21-09-2026.md` §9.5 y §9.6). El
+conteo se aprobó en la instancia **completa**:
+
+| | libro antes | ajuste escrito | libro después |
+|---|---|---|---|
+| Instancia que contó | **3** | **−3** | **0** ✅ |
+| La otra | **2** | **−3** (el mismo asiento, por sync) | **−1** ❌ |
+
+Comprobado con control negativo por partida doble: reinyectando solo el `+1` que falta, el saldo cuadra
+en 0; y si el asiento hubiera sido un **objetivo absoluto**, las **dos** instancias habrían quedado en
+0. La batería está en `docs/auditoria/bateria-burger-premium.mjs` (H4, aserciones 29–37).
+
+**La consecuencia que hay que tener presente:** el conteo físico —que es **la herramienta de corrección
+de existencias**, la que recomienda el §4 de este documento— **propaga el error de una instancia a la
+otra** cuando los libros no son iguales. Y el remedio intuitivo empeora las cosas:
+
+> **🛑 Contar otra vez el producto en el aparato que muestra el negativo escribiría un delta en sentido
+> contrario que viajaría al otro y lo rompería a él.** El error **cambia de aparato**, no desaparece.
+> Primero hay que **igualar los libros**; contar después.
+
+**Qué NO se va a hacer, y por qué.** Convertir los ajustes en objetivos absolutos arreglaría esto de
+raíz, pero cambiaría **cómo se deriva el stock del libro mayor**, que es el invariante del que cuelga
+toda la app (ventas, traspasos, cocina, reportes, `recomputeStock`). **No es proporcional.** Esto no es
+un defecto propio del conteo: es un **síntoma del transporte**, y se cierra arreglando aquél. El plan
+aprobado está en el **§10** del acta de Burger Premium.
+
+**Mientras tanto, regla operativa:** **contar siempre desde el mismo aparato**, y comprobar antes que
+los aparatos están al día. El aviso *«Existencia en negativo»* del centro de notificaciones **ya existe
+y funcionó** (saltó el 22-09 a las 19:48): es la señal de que esto ha vuelto a pasar.

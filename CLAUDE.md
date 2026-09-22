@@ -777,7 +777,47 @@ colecciones de sync nuevas.**
   la suma; aquí el inventario ya está en el libro mayor y no se descuadra nada). **No queda ningún
   rol huérfano.**
 
-## Estado del trabajo en curso (19-09-2026)
+## Estado del trabajo en curso (22-09-2026)
+
+**LO QUE HAY ABIERTO AHORA MISMO ES LA CORRECCIÓN DE LOS HALLAZGOS DE *BURGER PREMIUM*.** El dueño
+autorizó el **22-09-2026** empezar por los puntos **1, 2 y 3** del plan y dejar el **4 y el 5** para
+decidirlos con lo que mida el 3. **Cuando se escribe esto no hay una sola línea tocada en `src/`.**
+El plan completo, con veredicto de riesgo por punto, está en
+**`docs/AUDITORIA-BURGER-PREMIUM-21-09-2026.md` §10 — LEERLO ANTES DE PROGRAMAR NADA.**
+
+- **1 — H1 (autorizado, riesgo bajo):** candado de venta en **`ordersRepo.voidItem`** (no en
+  `voidOrder`: `voidItem` es el cuello por el que pasan también `removeProduct` y el botón «−»).
+  Entrar por el índice **`shiftId`**, porque `sales` **no tiene índice por `orderId`** y un
+  `where('orderId')` lanzaría. Borde obligatorio: `order.shiftId` puede ser `null` en una mesa
+  reservada — **nunca lanzar por sorpresa**. ~15 líneas, un fichero, sin esquema ni sync.
+- **2 — H3-a (autorizado, riesgo bajo salvo cuota):** poder **forzar la resubida** de una colección
+  desde `/cloud` poniendo `push:<colección>` hacia atrás. Es **lo único que repara el daño ya
+  existente**. Reenviar filas idénticas es idempotente; el riesgo real es la **cuota de Firestore**,
+  ya al 120 % del tope, así que debe pedir **una fecha** y decir cuántas filas subirá.
+- **3 — H3-b (autorizado, riesgo nulo):** diagnóstico **de solo lectura** de roturas de atomicidad.
+  Hoy no se sabe si son 8 casos o 800, y sin esa cifra el 5 no se puede decidir.
+- **4 (H2) y 5 (H3-c): EN ESPERA.** El 4 repara la cabecera al leerla (patrón de
+  `reconcileDiscount`, **sin tocar `updatedAt`**); el 5 es cirugía en `pushEngine` y **no se toca sin
+  el 3 delante**.
+- **H4 DESCARTADO a propósito, y no es pereza:** el ajuste del conteo físico es un **delta**, así que
+  propaga el error entre instancias (ver `docs/CORRECCION-EXISTENCIAS.md` §8). Convertirlo en
+  objetivo absoluto cambiaría cómo se deriva el stock del libro mayor en toda la app. **Es un síntoma
+  del transporte; se cierra con el 5.**
+
+**Los tres hallazgos están VALIDADOS con tres respaldos reales y 37 aserciones** (§9 del acta), y la
+batería es reproducible: `node docs/auditoria/bateria-burger-premium.mjs <A1> <B> <A2>` — **no entra
+en el build** (lee `src/` como texto, no escribe nada). Dos correcciones al acta original que hay que
+tener presentes: **sus horas son UTC**, no locales (§9.8), y **la prueba del cursor que proponía era
+incapaz de detectar nada** (§9.6). Hay **al menos tres instancias** del negocio y del teléfono del
+dueño **no existe ningún respaldo**.
+
+**🛑 Aviso operativo vigente:** no volver a contar el producto que aparece en negativo en el aparato
+que lo muestra — escribiría un delta en sentido contrario que rompería al otro. Primero igualar los
+libros (punto 2), contar después.
+
+**Lo de abajo es el registro de las fusiones anteriores y se deja tal cual.**
+
+## Estado del trabajo anterior (19-09-2026)
 
 **YA ESTÁ FUSIONADO.** La vista de escritorio, el cierre de los modales y la cuenta de mesa
 subieron a `main` el **19-09-2026**. Su acta está justo debajo. La de la interfaz (15-09-2026) y

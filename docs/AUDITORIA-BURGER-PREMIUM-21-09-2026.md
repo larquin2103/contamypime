@@ -628,3 +628,277 @@ certezas. Hay que pedirlo **sin borrar ni reinstalar nada antes**, y luego compr
 - **Por qué 97 líneas se congelaron con costo 0** (§5.4). Es lo más probable que sea el H3, pero no
   hay registro de cambios de costo que lo pruebe.
 - **Qué hay en la nube.** No se consultó Firestore.
+
+---
+
+## 9. Validación del 22-09-2026 — con el segundo y el TERCER respaldo
+
+El §7 pedía un segundo respaldo para convertir las hipótesis en certezas. Llegaron **dos**, y con
+ellos los tres hallazgos quedan **confirmados**, aparece **uno nuevo (H4)** y hay que **rectificar
+tres cosas** del §0 al §8. Todo lo de abajo se vuelve a medir con:
+
+```bash
+node docs/auditoria/bateria-burger-premium.mjs <A1> <B> <A2>
+```
+
+**37/37 aserciones en verde**, sobre los tres respaldos **y** el árbol de trabajo (la batería lee
+`src/` como texto para comprobar las afirmaciones de código; no importa nada de la app, no escribe
+y no toca la base). Dos aserciones fallaron en la primera corrida y **eran errores del script**, no
+hallazgos: una exigía que hubiera coincidencias donde lo correcto era que no hubiera ninguna, y
+otra usaba una ventana de tiempo que colaba una anulación de más. Se corrigieron, no se silenciaron.
+
+### 9.1 Los tres ficheros
+
+| | Exportado | Tamaño | `SHA256` |
+|---|---|---|---|
+| **A1** | `2026-09-21T20:22:18.640Z` | 1 160 864 | `56d3ab425bc79efc1bddab7692cda19ce2dd5bf4a788c50f06a133452a99aebb` |
+| **B** | `2026-09-22T14:34:24.603Z` | 1 369 529 | `6f206d5f50996e65513ca23ab7c06365a53f8f2039090357cfb5b23b84e2ecd2` |
+| **A2** | `2026-09-22T19:57:24.021Z` | 1 479 945 | `70e0933e1318697171dfc1b4f2d217951a3e74a3283ed0aacc361bcc807fcb98` |
+
+Los tres llevan `schema 19` y `fromUserName: Abar` — que es **quien exportó**, no el aparato.
+
+> **🛑 EL FICHERO QUE SE AUDITÓ EN EL §0 YA NO EXISTE.** Tenía el mismo nombre y la misma ruta que
+> **B** (`respaldo_mypicuadre_2026-09-22.json`, 1 303 782 bytes, `4369af82…`) y **B lo sobrescribió**.
+> No está en disco. Lo que salvó el trabajo fue encontrar **A1** en `Downloads`, que se exportó
+> **después de las 19:54** y por eso contiene la mitad que faltaba. **Guardar cada respaldo con un
+> nombre distinto.**
+
+### 9.2 Hay al menos TRES instancias, y dos de ellas están probadas
+
+**Prueba, no inferencia:** **A2 se exportó 5 h 23 min DESPUÉS que B y le faltan 7 filas de
+`stockMovements` que B sí tiene.** Como nadie borra de `stockMovements` en todo `src/` (comprobado
+sobre el árbol completo) y `applyBackup` solo hace `bulkPut`, una base **no puede perder filas**. Por
+tanto **A y B son bases distintas**. A1 y A2 comparten exactamente el mismo hueco: son el mismo lado.
+
+La **tercera** la aporta el dueño: **ninguno de los tres respaldos es del teléfono de Abar**, desde el
+que se abrió el turno que solapó con el del día 20. Encaja con lo que ya decían los datos por otro
+camino: las producciones de las **19:48:30 y 19:48:46** tienen su documento en las dos instancias y
+sus movimientos **en ninguna**, y como se escriben en una sola transacción, quien las creó **no es ni
+A ni B**.
+
+> Esto **responde** lo que el §1.1 declaró incontestable, pero **no** por la vía del reloj: por
+> append-only. La pregunta del §1.3 sigue en pie para saber *qué* aparato es cada uno.
+
+### 9.3 H1 — CONFIRMADO
+
+- `ordersRepo.js` **no toca `db.sales` ni una vez** (0 apariciones; la única mención a `salesRepo` está
+  en un comentario, línea 459). El único candado sigue siendo `order.status !== OPEN`.
+- `sales` está indexada `id, shiftId, sellerId, createdAt, voided` — **sin `orderId`**. Confirma que el
+  arreglo del §H1 tiene que entrar por `shiftId` o por `filter`.
+- La venta `6367f8fe` (27 860 MN, `voided:false`) **está en la misma base que ejecutó la anulación**:
+  la evidencia que necesitaría el candado estaba disponible localmente.
+- 49 líneas contra **53** devoluciones → neto **+4**, tal como decía el §H1.
+- **Alcance: 1 pedido de 30 en toda la historia.** No es sistémico.
+
+### 9.4 H2 — CONFIRMADO COMO LATENTE; no actuó
+
+En **A1**, el pedido quedó `closed` con su `saleId` **256 ms** después del `createdAt` de la venta: el
+`markClosed` **sí se ejecutó** donde se cobró. Y hoy no hay ningún pedido abierto con venta viva. Se
+confirma lo que el §H2 ya rectificaba del primer informe verbal.
+
+### 9.5 H3 — CONFIRMADO, con las dos mitades delante
+
+`voidItem` escribe la línea y su movimiento **en una transacción y con el mismo `ts`**. Esa igualdad es
+la firma que permite emparejarlos, y se cumple:
+
+| Línea | En A1 | En A2 / B |
+|---|---|---|
+| `a5f1b7dc` Jugo MANGO | `voidedAt 19:54:05.406` | anulada otra vez a las `00:25:04.599` |
+| `ac5a18bb` Jugo MANGO | `voidedAt 19:54:06.053` | `00:25:04.509` |
+| `aa12af31` Jugo MANGO | `voidedAt 19:54:07.281` | `00:25:04.408` |
+| `f724e5b2` Batido de maní | `voidedAt 19:55:46.948` | `00:25:02.882` |
+
+**4/4 pares exactos al milisegundo** entre `voidedAt` y el `createdAt` de su movimiento. Y **los
+movimientos SÍ están en las dos instancias, y son las mismas filas** (`2556cdc5 5a2e8dc8 6e4c3889
+834610e8`). Una transacción, dos colecciones, **dos suertes**.
+
+**Segundo caso, independiente:** las 7 filas de la producción `1cc0fd86` (21-09 20:02:30) que A2 no
+tiene. **Tercer y cuarto caso:** las dos producciones huérfanas en las dos instancias, y el espejo
+(`05038036`: movimientos sin su snapshot).
+
+### 9.6 RECTIFICACIÓN — la prueba del cursor del §7.4 no servía
+
+El §7.4 mandaba buscar *"un cursor por delante de la última fila real de su colección"*. **Esa prueba
+es incapaz de detectar nada**, y hay que decirlo: la fila que levantó el cursor sigue siendo local, así
+que entra en ese máximo. Aplicada a los tres ficheros da **0 cursores adelantados de 63**, y eso **no
+exonera** al mecanismo.
+
+La prueba que sí mide da **positivo**:
+
+- Las 7 filas perdidas están **por debajo** del cursor `push:stockMovements` de la instancia que
+  debería subirlas (`2026-09-22T14:30:34.409Z` frente a filas selladas en `2026-09-21T20:02:30.917Z`).
+- Y **no están en ninguna cola de reintento** en ninguno de los tres ficheros.
+
+**Dónde mirar, acotado:** el motor de **bajada no tiene cursor** — `pullInitial` hace `getDocs` de la
+colección entera y `onSnapshot` escucha toda la colección—, así que una fila que no está en local casi
+con seguridad **no está en Firestore**: la pérdida es del lado de **subida**.
+
+Y el código ofrece un mecanismo concreto que el §H3 no tenía: en `pushEngine.js`, `batch.commit()` se
+lanza **sin `await`** (con `.then/.catch`) y `setCursorForward` corre **inmediatamente después, sin
+esperar la confirmación**. Si el aparato se cierra, se duerme o se mata el proceso entre ambas cosas,
+las filas quedan **debajo del cursor y fuera de la cola**, en silencio — y encaja con que las colas
+estén vacías: el `.catch` que las habría encolado nunca llegó a correr. **Es la hipótesis que mejor
+encaja, no una medición.**
+
+### 9.7 H4 (NUEVO) — el ajuste del conteo físico es un DELTA
+
+`countsRepo.approve` calcula `delta = physicalQty − stockFromLedger(local)` y lo escribe como asiento
+append-only. El conteo del 22-09 14:02 registró `systemStock = 3`, físico `0`, y escribió **−3**:
+
+| | libro antes | tras el mismo −3 |
+|---|---|---|
+| Instancia que contó (B) | **3** | **0** ✅ correcto |
+| La otra (A) | **2** | **−1** ← el negativo |
+
+Esa diferencia de 1 es **exactamente** la producción que le falta a A. Control negativo: reinyectando
+solo ese `+1`, el saldo cuadra en 0. Segundo control: si el ajuste fuera un **objetivo absoluto**, las
+dos instancias habrían quedado en 0.
+
+**El conteo físico —la única herramienta de corrección disponible— exportó el error de una instancia a
+la otra.** La corrección **F3** de `docs/CORRECCION-EXISTENCIAS.md`, que **ya está en el código**,
+arregla el caso *dentro* de un aparato y **no hace nada** para éste.
+
+> **🛑 TRAMPA OPERATIVA, vigente hasta que los libros se igualen:** volver a contar ese producto en el
+> aparato que muestra **−1** escribiría un delta de **+1** que viajaría al otro y lo rompería a él. El
+> error **cambiaría de aparato**, no desaparecería.
+
+### 9.8 RECTIFICACIÓN — las horas de este documento son UTC
+
+El §2 dice *"día local Cuba UTC−4"* y a continuación imprime las horas **crudas del ISO**, que son
+**UTC**. Las dos cosas no pueden ser ciertas a la vez. **No se puede determinar la zona del dispositivo
+desde el respaldo** (se intentó con el día local que los ids de notificación llevan dentro: ninguna cae
+entre las 00:00 y las 04:00 UTC, que es la única franja que lo discriminaría). Si los aparatos están en
+hora de Cuba, **las horas reales son 4 h antes** de las escritas aquí: la mesa se anuló a las **20:25**
+locales, no a las 00:25. **Preguntárselo al dueño antes de contrastar estas horas con lo que recuerda.**
+
+### 9.9 Lo que pasó después, y que el acta no podía saber
+
+- El turno `8aa167a5` del Dependiente (abierto desde el 20-09) lo **cerró Abar a la fuerza** el 22-09
+  14:12: esperado = declarado = 62 070, diferencia 0, y retiró todo. Abrió y cerró además un turno
+  vacío (14:07–14:09) solo para retirar los 90 050 de arrastre. **Las dos cajas quedan en 0.**
+- El conteo del 22-09 dio de baja **103 unidades en Salones (69 450 MN a precio de venta)** y 31 netas
+  en cocina. **Hasta 44** de esas unidades coinciden producto por producto con lo que devolvió la
+  anulación del H1 — es una atribución por coincidencia, no una causación probada unidad a unidad.
+- Del §5.3 se corrigieron **Hielo** (500 → 0,018) y **Sal** (750 → 0,49). **`Carne de res` sigue en
+  472 MN/g = 472 000 MN/kg**, y el inventario sigue valorado en **127 778 821 MN**. Sigue abierto.
+- `cashMovements` sigue en **0** en toda la historia, pero los dos retiros se registraron como
+  `ownerWithdrawal` al cerrar, que es el canal correcto.
+- **Quedan ~34 unidades de bebida embotellada** dadas de baja que la anulación no explica (Holanda
+  Premium −25 con solo 2 devueltas, importada −11, Maltas −5…). La cerveza no se elabora, así que no es
+  "elaborar de más": o es faltante real, o son ventas que nunca llegaron a esa instancia — que sería
+  otra vez el H3. **Con estos ficheros no se puede distinguir.**
+
+### 9.10 Lo que esta validación NO afirma
+
+- **Qué aparato físico es cada instancia.** No hay `deviceId`.
+- **Si la venta había llegado a la instancia que anuló, a las 00:25.** De eso depende que el candado
+  del H1 hubiera evitado **este** caso concreto; **no es determinable**.
+- **El mecanismo exacto** por el que se perdieron esas filas (§9.6).
+- **La zona horaria** de los aparatos (§9.8).
+- **Nadie ha ejecutado la app.** Ni antes ni ahora: respaldos + lectura de código.
+
+---
+
+## 10. Plan de corrección — aprobado el 22-09-2026
+
+El dueño autorizó **empezar por 1, 2 y 3**, y **dejar 4 y 5 para decidirlos con lo que mida el 3**.
+**Cuando se escribe esto no hay una sola línea de código tocada en `src/`.**
+
+| # | Qué | Ficheros | Tamaño | Esquema / sync | Riesgo | Estado |
+|---|---|---|---|---|---|---|
+| **1** | **H1** — candado de venta en `voidItem` | 1 | ~15 líneas | ninguno | Bajo | **AUTORIZADO** |
+| **2** | **H3-a** — forzar resubida de una colección | 2 | ~40 líneas | ninguno | Bajo (salvo cuota) | **AUTORIZADO** |
+| **3** | **H3-b** — diagnóstico de atomicidad (solo lectura) | 1–2 | ~70 líneas | ninguno | Nulo | **AUTORIZADO** |
+| **4** | **H2** — reparar la cabecera al leerla | 3 | ~30 líneas | ninguno | Medio | **EN ESPERA** |
+| **5** | **H3-c** — que nada dependa solo del cursor | `pushEngine` | medio | ninguno; sí cuota | Alto | **EN ESPERA** |
+| — | **H4** — ajuste como objetivo absoluto | el libro entero | grande | cambia el invariante | Muy alto | **DESCARTADO** |
+
+### 10.1 Antes de programar: cinco cosas que no son código
+
+1. **NO volver a contar el Batido de maní en el aparato que muestra −1** (§9.7).
+2. **Corregir el costo de `Carne de res`.** Riesgo cero, es dato, y hoy envenena todo el panel de gastos.
+3. **Fecha y hora automáticas** en los tres aparatos.
+4. **Respaldo del teléfono de Abar**, la tercera instancia, que no se ha visto nunca.
+5. **Contar siempre desde el mismo aparato.**
+
+### 10.2 · 1 — H1: candado de venta
+
+**Dónde:** `src/repositories/ordersRepo.js`, dentro de **`voidItem`** — no en `voidOrder`. `voidItem`
+es el cuello real: `voidOrder`, `removeProduct` y el botón «−» pasan todos por ahí, así que hoy también
+se pueden quitar líneas **una a una** de una mesa ya cobrada.
+
+**Cómo:** antes de mover nada, buscar una venta **no anulada** cuyo `orderId` sea este pedido, entrando
+por el índice **`shiftId`** (que sí existe) y filtrando en memoria. Si existe → **rechazar** con un
+mensaje claro.
+
+- **Borde obligatorio:** `order.shiftId` puede ser `null` (mesa *reservada* que nunca se ocupó:
+  `reserve` lo pone a null y `occupy` lo rellena). Con `shiftId` nulo, caer a `filter` o no aplicar el
+  candado — **nunca lanzar por sorpresa**.
+- **Coste:** una consulta indexada por pulsación del «−». Las ventas de un turno son pocas (13 en uno
+  de 44 h). Proporcionado.
+- **Propiedades:** estrictamente aditivo (un camino de error nuevo); sin venta, el comportamiento es
+  **idéntico al de hoy**. Cero escrituras, cero esquema, cero `SYNC_COLLECTIONS`, **cero riesgo de
+  convivencia** entre un teléfono actualizado y otro sin actualizar.
+- **Limitación declarada:** si la venta no ha llegado a esa base, el candado **no salta**. Degrada al
+  lado seguro, pero **no garantiza** haber evitado el caso del 21-09. Eso lo arregla el 5, no el 1.
+
+### 10.3 · 2 — H3-a: forzar la resubida de una colección
+
+**Es lo único de la lista que repara el daño que YA existe**, incluido el −1 de hoy.
+
+**Dónde:** `CloudScreen` (`/cloud`), solo dueño. **Qué hace:** poner `push:<colección>` **hacia atrás**
+a una fecha que elija el dueño; la siguiente subida reenvía todo lo que quedó tapado. `setCursorForward`
+solo avanza, así que hay que escribir `syncState` directamente.
+
+- **Por qué es seguro con los datos:** reenviar filas idénticas es **idempotente** (`batch.set` por id),
+  y `syncState` es **local** (no está en `SYNC_COLLECTIONS`).
+- **El riesgo real es la CUOTA de Firestore**, que según `docs/SYNC-LECTURAS.md` ya va al **120 % del
+  tope**. Por eso debe pedir **una fecha**, nunca reenviar todo, y **decir cuántas filas va a subir
+  antes de hacerlo**.
+- **Secuencia para el caso de hoy:** resubir `stockMovements` desde justo antes de
+  `2026-09-21T20:02:30` en la instancia que tiene las 7 filas → la otra las recibe → su libro pasa de
+  −1 a 0 → **y solo entonces** volver a contar, si hace falta.
+
+### 10.4 · 3 — H3-b: diagnóstico de atomicidad (solo lectura)
+
+Hoy no sabemos si esto son 8 casos o 800, y sin esa cifra el 5 no se puede decidir. Listar las roturas
+—documentos sin sus movimientos y movimientos sin su documento, en `productions` / `purchases` /
+`transfers`— es **aritmética sobre tablas que ya se leen**: cero escrituras, cero esquema, cero sync.
+Puede vivir primero como script (la batería del §9 ya hace justo eso) y solo después como tarjeta en
+`/auditoria`.
+
+### 10.5 · 4 y 5 — en espera, y por qué
+
+- **4 (H2).** Mismo patrón que `ordersRepo.reconcileDiscount`, que ya tiene **tres sitios de llamada**
+  que copiar, y **sin tocar `updatedAt`** (es derivado: cada aparato se repara a sí mismo y no genera
+  eco). Es **medio** riesgo porque escribe la cabecera y compite con el LWW; va **después** del 1, no
+  antes. Con el 1 puesto, el 4 pasa de ser seguridad a ser comodidad (desatasca la mesa).
+- **5 (H3-c).** La pieza buena **ya existe**: `retryQueue`, cuyo propio comentario dice que *cursor y
+  reintentos son mecanismos separados*. Lo que falta es que **toda fila entre a la cola por id hasta
+  que el servidor confirme**. Hay una variante de tres líneas —mover `setCursorForward` dentro del
+  `.then()`— que es tentadora y **tiene una trampa**: sin internet el cursor no avanzaría nunca y cada
+  ciclo reencolaría todo lo pendiente. **No se toca sin el 3 delante.**
+
+### 10.6 H4: por qué se descarta, sin inflarlo
+
+**El H4 no tiene arreglo barato propio, y no lo necesita: es un síntoma del H3.** Arreglado el
+transporte, desaparece. Convertir los ajustes en **objetivos absolutos** cambiaría cómo se deriva el
+stock del libro mayor —usado en toda la app— y no es proporcional al problema. Mientras tanto bastan la
+regla operativa del §10.1.1 y el aviso *«Existencia en negativo»*, que **ya existe y funcionó** (saltó
+el 22-09 a las 19:48).
+
+### 10.7 Pruebas
+
+No hay linter ni `npm test`, y **las 16 suites no pueden cubrir nada de esto**: `ordersRepo`,
+`countsRepo` y `pushEngine` necesitan base de datos. Se propone **`fake-indexeddb` como
+`devDependency`** —no está instalada; es aditiva, queda fuera del bundle, y tiene precedente en
+`docs/FICHA-COSTO.md` §9.17— para probar el 1 y el 4 de verdad. Si el dueño prefiere no añadir
+dependencias, se valida solo con build y lectura de código, **y se dirá así**.
+
+### 10.8 Lo que este plan no puede prometer
+
+- **Nada de esto se ha ejecutado.** No hay código escrito.
+- El **1** y el **4** tocan **lógica de producción**: chocan con la regla 2 de `CLAUDE.md` y son
+  correcciones de defecto. El dueño autorizó el 1 el 22-09-2026; el 4 sigue esperando.
+- El **2 gasta cuota** en un proyecto que ya está por encima del tope.
+- El **5** sigue **sin mecanismo probado** (§9.6).
