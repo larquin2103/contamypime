@@ -59,8 +59,8 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). **22** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.342 aserciones**, medidas el 23-09-2026). Las tres de la
+**Pruebas:** NO hay script `npm test` (ni linter). **24** suites son ficheros `.test.mjs` puros que
+se corren **uno a uno con node** (**1.391 aserciones**, medidas el 23-09-2026). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -85,7 +85,9 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/atomicity.test.mjs \
          src/lib/convergence.test.mjs \
          src/lib/syncLogPolicy.test.mjs \
-         src/features/sync/commitWatch.test.mjs; do node "$t"; done
+         src/features/sync/commitWatch.test.mjs \
+         src/features/sync/compareResend.test.mjs \
+         src/features/sync/compareResendEngine.test.mjs; do node "$t"; done
 ```
 
 **Dos suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2) y `src/lib/syncLog.test.mjs` (el
@@ -98,10 +100,11 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **24 suites / 1.400 aserciones** en total, medidas el 23-09-2026 tras las
+Con esas dos dentro: **26 suites / 1.449 aserciones** en total, medidas el 23-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
-`convergence` (15), `syncLogPolicy` (29), `syncLog` (11) y `commitWatch` (36, el vigilante de lotes
-de subida sin confirmar).
+`convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
+de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (26), el reenvío que compara
+antes de escribir.
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -801,6 +804,28 @@ colecciones de sync nuevas.**
   rol huérfano.**
 
 ## Estado del trabajo en curso (23-09-2026)
+
+**EN LA RAMA, SIN FUSIONAR: el reenvío que compara antes de escribir** (spec
+`docs/superpowers/specs/2026-09-23-reenvio-comparando-design.md`, plan
+`docs/superpowers/plans/2026-09-23-reenvio-comparando.md`). Sirve para reparar desde `/cloud` las
+versiones de `products`, `counts` y `auditEvents` que un aparato tiene y la nube no. Es lo que le
+falta a La Patrona de A hacia B.
+
+- **Cómo decide:** una `runTransaction` por documento lee del servidor y escribe **solo** si la nube
+  no lo tiene o lo local es **estrictamente** más nuevo por `syncTs`. Con marcas iguales no escribe,
+  y si la nube es más nueva no escribe nunca.
+- **Dónde vive:** en ficheros nuevos (`compareResend.js` puro, `compareResendEngine.js` con todo
+  inyectado, `compareResendFirebase.js`). **`pushEngine.js` no se toca.** El panel solo lo ve el
+  dueño con la sync activa, y la tanda tiene un tope de 1.000 documentos.
+- **Validado con los respaldos reales:**
+  - A → B escribe 36 fichas, 3 conteos y 5 eventos, con 0 casos de «la nube tenía uno más
+    nuevo»; B → A escribe **0**;
+  - con `mergeIncoming` + `recomputeStock` reales, B recibe precio y baja de A en 36 de 36, y su
+    stock sigue igual a su propio libro.
+- **Lo que no se puede garantizar:**
+  - **no se ha ejecutado contra la Firestore real** ni en un teléfono;
+  - cada documento escrito puede costar una lectura en cada aparato conectado;
+  - **no repara lo que ningún aparato tiene**.
 
 **FUSIONADO A `main` EL 23-09-2026**, con autorización explícita del dueño: fast-forward de 27
 commits, `0711357` → **`732f4ec`** (ese es el árbol de código validado; comprobar `main` de hoy con

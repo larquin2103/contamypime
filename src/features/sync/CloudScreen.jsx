@@ -15,6 +15,8 @@ import { syncNow, initialPull } from './syncEngine'
 import { listDevices, removeDevice, getDeviceId } from './deviceRegistry'
 import { countResend, forceResend } from './pushEngine'
 import { RESENDABLE, localInputToIso } from './resend'
+import { COMPARE_RESENDABLE } from './compareResend'
+import { countCompareResend, compareResend } from './compareResendFirebase'
 
 export function CloudScreen() {
   const { isOwner } = useAuth()
@@ -150,6 +152,7 @@ export function CloudScreen() {
       {cloudUser && <DevicesPanel maxDevices={maxDevices} />}
 
       {cloudUser && syncEnabled && <ResendPanel />}
+      {cloudUser && syncEnabled && <CompareResendPanel />}
 
       {cloudUser === null && (
         <>
@@ -426,6 +429,103 @@ function ResendPanel() {
         <small>
           Úsalo solo en el aparato que tiene las filas que faltan en los demás. Reenviar lo mismo dos
           veces no duplica nada.
+        </small>
+      </p>
+    </section>
+  )
+}
+
+// Panel «Reparar versiones (comparando con la nube)» (spec 2026-09-23). Para
+// colecciones que CAMBIAN: lee la version de la nube y solo escribe si la local es
+// mas nueva, asi que no puede hacer retroceder nada aunque se lance en el aparato
+// equivocado. Solo reparacion manual del dueño, con el coste a la vista.
+const COMPARE_LABELS = {
+  products: 'Productos (fichas)',
+  counts: 'Conteos físicos',
+  auditEvents: 'Eventos de auditoría'
+}
+
+function CompareResendPanel() {
+  const [col, setCol] = useState(COMPARE_RESENDABLE[0])
+  const [when, setWhen] = useState('')
+  const [sinceIso, setSinceIso] = useState(null)
+  const [count, setCount] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState('')
+  const [error, setError] = useState('')
+  const [ok, setOk] = useState('')
+
+  const reset = () => { setCount(null); setSinceIso(null); setOk(''); setProgress('') }
+  const changeCol = (e) => { setCol(e.target.value); reset(); setError('') }
+  const changeWhen = (e) => { setWhen(e.target.value); reset(); setError('') }
+
+  const doCount = async () => {
+    setError(''); setOk(''); setBusy(true)
+    try {
+      const iso = localInputToIso(when)
+      if (!iso) throw new Error('Escribe una fecha válida.')
+      setCount(await countCompareResend(col, iso))
+      setSinceIso(iso)
+    } catch (e) {
+      setError(e.message); setCount(null); setSinceIso(null)
+    } finally { setBusy(false) }
+  }
+
+  const doRun = async () => {
+    setError(''); setOk(''); setBusy(true); setProgress('')
+    try {
+      const s = await compareResend(col, sinceIso, { onProgress: (d, t) => setProgress(`${d} / ${t}`) })
+      const msg = `Escritos: ${s.escritos}. Ya iguales: ${s.iguales}. La nube tenía uno más nuevo (no se tocó): ${s.nubeMasNueva}.` +
+        (s.errores ? ` Errores: ${s.errores} (ver /errors).` : '') +
+        (s.pendientes ? ` Quedaron ${s.pendientes} sin revisar: se cortó la conexión.` : '')
+      if (s.errores || s.pendientes) setError(msg); else setOk(msg)
+      setCount(null); setSinceIso(null)
+    } catch (e) {
+      setError(e.message)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <section className="card">
+      <h3>Reparar versiones (comparando con la nube)</h3>
+      <label className="field">
+        <span>Colección</span>
+        <select value={col} onChange={changeCol}>
+          {COMPARE_RESENDABLE.map((name) => (
+            <option key={name} value={name}>{COMPARE_LABELS[name] || name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Desde</span>
+        <input type="datetime-local" value={when} onChange={changeWhen} />
+      </label>
+
+      <button className="btn btn--block" disabled={busy} onClick={doCount}>Contar</button>
+
+      {count !== null && sinceIso && (
+        <p className="muted">
+          Se revisarán {count} documentos desde el {new Date(sinceIso).toLocaleString('es')}. Gasta {count}{' '}
+          lecturas y, como mucho, {count} escrituras de la cuota de Firestore. Solo se escribe lo que la nube
+          tenga más viejo o no tenga.
+        </p>
+      )}
+
+      <button
+        className="btn btn--primary btn--block"
+        disabled={busy || count === null || count <= 0}
+        onClick={doRun}
+      >
+        {busy && progress ? `Revisando… ${progress}` : count ? `Reparar ${count} documentos` : 'Reparar documentos'}
+      </button>
+
+      {error && <p className="error">{error}</p>}
+      {ok && <p className="ok-text">{ok}</p>}
+
+      <p className="muted">
+        <small>
+          Úsalo en el aparato que tiene los datos buenos. Necesita internet. Lanzarlo en el aparato
+          equivocado no estropea nada: lo que en la nube ya sea más nuevo no se toca.
         </small>
       </p>
     </section>
