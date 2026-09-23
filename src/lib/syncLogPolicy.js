@@ -13,13 +13,23 @@
 //    romperia la deduplicacion.
 // ---------------------------------------------------------------------------
 
-export function createSyncGate({ budget = 30 } = {}) {
+// "Sesion" = carga de la pagina: una PWA abierta varios dias solo registra la
+// PRIMERA vez que aparece cada fallo. Una sola entrada en /errors no significa
+// que pasara una sola vez.
+// `perStage` (revision): un fallo sin `code` usa su mensaje como codigo; si el
+// mensaje cambia en cada ciclo, una sola etapa se comeria el presupuesto entero.
+export function createSyncGate({ budget = 30, perStage = 5 } = {}) {
   const seen = new Set()
+  const byStage = new Map()
   let left = budget
   return {
     shouldLog(key) {
       if (left <= 0 || seen.has(key)) return false
+      const stage = String(key).split('|')[0]
+      const used = byStage.get(stage) || 0
+      if (used >= perStage) return false
       seen.add(key)
+      byStage.set(stage, used + 1)
       left -= 1
       return true
     },

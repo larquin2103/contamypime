@@ -43,6 +43,16 @@ eq(codeOf(null), 'desconocido', 'nada -> desconocido')
   eq(g2.shouldLog('a'), true, 'dos puertas no comparten estado (la de la app va aparte)')
 }
 eq(createSyncGate().left(), 30, 'presupuesto por defecto: 30 por sesion (decision del duenio)')
+// Revision (menor 5): una etapa con mensajes cambiantes no se come las 30.
+{
+  const g = createSyncGate({ budget: 30, perStage: 5 })
+  let n = 0
+  for (let i = 0; i < 20; i++) if (g.shouldLog(syncKey('bajada-periodica', null, `msg-${i}`))) n++
+  eq(n, 5, 'tope por etapa: 5')
+  eq(g.shouldLog(syncKey('subida-periodica', null, 'x')), true, 'otra etapa sigue teniendo hueco')
+  eq(g.left(), 24, 'el tope por etapa no gasta presupuesto de mas')
+}
+eq(createSyncGate().shouldLog('solo-clave'), true, 'una clave sin separador tambien vale (etapa = la clave)')
 
 // Mensaje: legible, con el detalle, y nunca pasado del tope del registro.
 eq(syncMessage('bajada-oyente-caido', 'products', 'permission-denied', ''), 'bajada-oyente-caido products permission-denied', 'mensaje sin detalle')

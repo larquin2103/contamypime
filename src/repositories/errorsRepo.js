@@ -14,7 +14,7 @@ export const errorsRepo = {
     try {
       await db.errorLog.add({
         id: newId(),
-        source,                      // 'window' | 'promise' | 'react'
+        source,                      // 'window' | 'promise' | 'react' | 'sync'
         message: String(message || 'Error desconocido').slice(0, 500),
         stack: String(stack || '').slice(0, 2000),
         route,

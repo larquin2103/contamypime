@@ -241,7 +241,8 @@ async function onBatchError(col, slice, e, ctx) {
 async function onOneError(col, id, e, now) {
   const code = e?.code || ''
   console.warn('[sync] retry', col.name, code || e?.message)
-  logSyncEvent('subida-reintento-fallido', col.name, e, id)
+  // El permanente ya lo registra logSync ('PAUSED-permanente'): no se duplica.
+  if (!isPermanent(code)) logSyncEvent('subida-reintento-fallido', col.name, e, id)
   if (isPermanent(code)) {
     logSync(col.name, id, code, 'PAUSED-permanente')
     await withRetry(col.name, (list) => onPermanent(list, id, code, now))

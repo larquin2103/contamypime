@@ -9,8 +9,15 @@ import { logSyncEvent } from './syncLog'
 let pass = 0
 let fail = 0
 const ok = (c, l) => { if (c) pass++; else { fail++; console.error('FAIL', l) } }
-const settle = () => new Promise((r) => setTimeout(r, 50)) // errorsRepo.add no se espera
-globalThis.window = { location: { pathname: '/cloud' } }
+// errorsRepo.add no se espera: se sondea hasta que el recuento llegue (o 2 s).
+const settle = async (min = 0) => {
+  for (let i = 0; i < 40; i++) {
+    if ((await db.errorLog.count()) >= min) return
+    await new Promise((r) => setTimeout(r, 50))
+  }
+}
+// En el navegador window === globalThis, asi que location es global.
+globalThis.location = { pathname: '/cloud' }
 
 await db.errorLog.clear()
 logSyncEvent('subida-lote-rechazado', 'stockMovements', { code: 'unavailable', message: 'Backend unavailable' }, '3 fila(s) T1..T3')
@@ -37,20 +44,22 @@ let threw = false
 try {
   logSyncEvent('x', null, undefined)
   logSyncEvent('y', null, Object.create(null))
-  const w = globalThis.window
-  delete globalThis.window
-  logSyncEvent('z', null, new Error('sin window'))
-  globalThis.window = w
+  const l = globalThis.location
+  delete globalThis.location
+  logSyncEvent('z', null, new Error('sin location'))
+  globalThis.location = l
 } catch { threw = true }
-await settle()
+await settle(5)
 ok(!threw, 'nunca lanza')
+// Revision (menor 3): sin location TAMBIEN se escribe (antes la clave se gastaba sin escribir).
+ok((await db.errorLog.toArray()).some((r) => /^z /.test(r.message)), 'sin location la entrada se escribe igual')
 
-// Presupuesto propio de 30 por sesion (ya van 4 claves: x, y y las dos de arriba; z no llego a escribir).
+// Presupuesto propio de 30 por sesion (ya van 5 claves: las dos de arriba, x, y y z).
 for (let i = 0; i < 40; i++) logSyncEvent(`etapa-${i}`, null, { code: 'c' })
-await settle()
+await settle(30)
 const total = await db.errorLog.where('source').equals('sync').count().catch(async () => (await db.errorLog.toArray()).filter((r) => r.source === 'sync').length)
 ok(total <= 30, `no pasa de 30 por sesion (hay ${total})`)
-ok(total >= 29, `pero si llega al presupuesto (hay ${total})`)
+ok(total === 30, `y llega EXACTO al presupuesto (hay ${total})`)
 
 console.log(`syncLog: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

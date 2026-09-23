@@ -15,7 +15,7 @@ export function logSyncEvent(stage, col, error, detail = '') {
     errorsRepo.add({
       source: 'sync',
       message: syncMessage(stage, col, code, [detail, msg].filter(Boolean).join(' · ')),
-      route: window.location?.pathname || '',
+      route: globalThis.location?.pathname || '', // sin window no lanza (revision, menor 3)
       appVersion
     })
   } catch { /* jamas tumbar la sync por registrar */ }
