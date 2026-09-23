@@ -18,18 +18,27 @@
 // que pasara una sola vez.
 // `perStage` (revision): un fallo sin `code` usa su mensaje como codigo; si el
 // mensaje cambia en cada ciclo, una sola etapa se comeria el presupuesto entero.
-export function createSyncGate({ budget = 30, perStage = 5 } = {}) {
+// `reserve` (revision del commit 2): `slots` de las `budget` entradas quedan
+// RESERVADAS para las etapas de `stages` (el vigilante de lotes); las demas no
+// pueden gastarlas. El total no cambia.
+export function createSyncGate({ budget = 30, perStage = 5, reserve = null } = {}) {
   const seen = new Set()
   const byStage = new Map()
+  const reservedStages = new Set(reserve?.stages || [])
+  const slots = Math.max(0, Number(reserve?.slots) || 0)
+  let reservedUsed = 0
   let left = budget
   return {
     shouldLog(key) {
       if (left <= 0 || seen.has(key)) return false
       const stage = String(key).split('|')[0]
+      const isReserved = reservedStages.has(stage)
+      if (!isReserved && left <= Math.max(0, slots - reservedUsed)) return false
       const used = byStage.get(stage) || 0
       if (used >= perStage) return false
       seen.add(key)
       byStage.set(stage, used + 1)
+      if (isReserved) reservedUsed += 1
       left -= 1
       return true
     },

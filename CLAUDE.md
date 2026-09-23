@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **22** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.320 aserciones**, medidas el 23-09-2026). Las tres de la
+se corren **uno a uno con node** (**1.342 aserciones**, medidas el 23-09-2026). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -98,9 +98,9 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **24 suites / 1.377 aserciones** en total, medidas el 23-09-2026 tras las
+Con esas dos dentro: **24 suites / 1.400 aserciones** en total, medidas el 23-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
-`convergence` (15), `syncLogPolicy` (23), `syncLog` (10) y `commitWatch` (20, el vigilante de lotes
+`convergence` (15), `syncLogPolicy` (29), `syncLog` (11) y `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su

@@ -53,6 +53,22 @@ eq(createSyncGate().left(), 30, 'presupuesto por defecto: 30 por sesion (decisio
   eq(g.left(), 24, 'el tope por etapa no gasta presupuesto de mas')
 }
 eq(createSyncGate().shouldLog('solo-clave'), true, 'una clave sin separador tambien vale (etapa = la clave)')
+// Revision del commit 2: 2 de las 30 quedan RESERVADAS para el vigilante de lotes;
+// las demas etapas no pueden gastarlas. El total sigue siendo 30 (decision del duenio).
+{
+  const g = createSyncGate({ budget: 30, perStage: 30, reserve: { stages: ['vig-a', 'vig-b'], slots: 2 } })
+  let n = 0
+  for (let i = 0; i < 40; i++) if (g.shouldLog(syncKey('otra', null, `c${i}`))) n++
+  eq(n, 28, 'las demas etapas se paran en 28')
+  eq(g.shouldLog(syncKey('vig-a', null, 'en-linea')), true, 'la reservada a entra')
+  eq(g.shouldLog(syncKey('vig-b', null, 'lotes')), true, 'la reservada b entra')
+  eq(g.shouldLog(syncKey('vig-a', null, 'otro')), false, 'y el total no pasa de 30')
+  eq(g.left(), 0, 'presupuesto agotado exacto')
+}
+{
+  const g = createSyncGate({ budget: 30, reserve: { stages: ['vig-a'], slots: 2 } })
+  eq(g.shouldLog(syncKey('vig-a', null, 'x')), true, 'la reservada tambien entra con hueco libre')
+}
 
 // Mensaje: legible, con el detalle, y nunca pasado del tope del registro.
 eq(syncMessage('bajada-oyente-caido', 'products', 'permission-denied', ''), 'bajada-oyente-caido products permission-denied', 'mensaje sin detalle')

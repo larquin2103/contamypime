@@ -58,8 +58,13 @@ ok((await db.errorLog.toArray()).some((r) => /^z /.test(r.message)), 'sin locati
 for (let i = 0; i < 40; i++) logSyncEvent(`etapa-${i}`, null, { code: 'c' })
 await settle(30)
 const total = await db.errorLog.where('source').equals('sync').count().catch(async () => (await db.errorLog.toArray()).filter((r) => r.source === 'sync').length)
-ok(total <= 30, `no pasa de 30 por sesion (hay ${total})`)
-ok(total === 30, `y llega EXACTO al presupuesto (hay ${total})`)
+ok(total === 28, `las etapas normales se paran en 28: 2 quedan para el vigilante (hay ${total})`)
+// La reservada del vigilante SIGUE entrando aunque las demas agotaran su parte.
+logSyncEvent('subida-sin-confirmar', null, { code: 'en-linea' }, '1 coleccion(es), 3 fila(s), T1..T3: stockMovements:3')
+await settle(29)
+const conVig = (await db.errorLog.toArray()).filter((r) => r.source === 'sync')
+ok(conVig.some((r) => /^subida-sin-confirmar /.test(r.message)), 'el aviso del vigilante entra con el presupuesto normal agotado')
+ok(conVig.length === 29, `y el total no pasa de 30 (hay ${conVig.length})`)
 
 console.log(`syncLog: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

@@ -5,7 +5,12 @@ import { createSyncGate, syncKey, codeOf, syncMessage } from './syncLogPolicy'
 // Registro de la SINCRONIZACION en /errors (La Patrona §14.5). La politica (que
 // se guarda y cuanto) vive en syncLogPolicy.js, pura y probada; esto solo escribe.
 // Como logError: nunca lanza y nunca se espera (no frena la sync ni el cobro).
-const gate = createSyncGate({ budget: 30 })
+// 2 de las 30 reservadas para el vigilante de lotes (features/sync/commitWatch.js):
+// sus dos etapas son las que dicen QUE coleccion perdio filas.
+const gate = createSyncGate({
+  budget: 30,
+  reserve: { stages: ['subida-sin-confirmar', 'subida-confirmada-tarde'], slots: 2 }
+})
 
 export function logSyncEvent(stage, col, error, detail = '') {
   try {

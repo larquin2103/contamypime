@@ -500,3 +500,64 @@ queda validado sobre el fichero de verdad que la guarda no altera su rama.
 - **A → B:** 36 fichas (mutables), 5 eventos y 3 conteos. **H3-a no lo cubre**, a propósito:
   reenviar una colección mutable a ciegas puede pisar una versión más nueva en la nube.
 
+### 14.6 Registro de la sincronización en `/errors` (23-09-2026, programado a raíz de §14.5)
+
+**Por qué.** Los fallos de la sync solo iban a `console.warn`, que en el teléfono no ve nadie y se
+pierde al cerrar. Por eso §13 y §14 tuvieron que **inferir** el mecanismo. Ahora quedan en el
+registro local del aparato (`/errors`, origen «Sincronización»), que el dueño puede compartir.
+
+**Qué se registra** (commits `5725278`, `9dc9742` y `699ec2a` más su revisión):
+- **Subida:** lote rechazado, reintento fallido (solo el transitorio; el permanente ya lo registraba
+  `logSync`) y fallo de la cola de reintentos.
+- **Bajada:** oyente `onSnapshot` caído, fusión descartada (`handleIncoming`), bajada periódica
+  fallida y **«el servidor no respondió, se leyó de la caché»**, la huella de la cuota agotada.
+- **Sesión:** token no renovado, recuperación fallida y registro del aparato fallido.
+- **El vigilante de lotes, el único cambio dentro de `doPush`:**
+  - `subida-sin-confirmar`: lotes que llevan 120 s sin confirmarse **estando en línea**;
+  - `subida-confirmada-tarde`: esos mismos lotes cuando por fin se confirman o fallan.
+  - Cada etapa deja **un solo aviso por ronda**, con todas las colecciones atascadas, sus filas y
+    el rango de marcas; si no caben, dice «(+N más)».
+  - Sin red no avisa, pero **se rearma** (hasta 30 veces, una hora), y tras reconectar da una
+    ventana más antes de avisar.
+
+**Límites del presupuesto (decisión del dueño: 30 por sesión, aparte de los 25 de `logError`).**
+- Una entrada por etapa + colección + código, con tope de 5 por etapa.
+- 2 de las 30 quedan reservadas para el vigilante, para que las demás etapas no se las coman.
+
+**Cómo leerlo, y lo que NO dice:**
+- **«Sesión» es la carga de la página.** Una PWA abierta varios días solo registra la **primera**
+  vez de cada fallo. Una sola entrada no significa que pasara una sola vez.
+- **`subida-sin-confirmar` puede dar falsos positivos:** `navigator.onLine` solo dice que hay
+  interfaz de red (un wifi sin salida cuenta como «en línea»), y una cola grande tras horas sin red
+  puede tardar más de 120 s de forma legítima. Por eso existe `subida-confirmada-tarde`: **un aviso
+  «sin confirmar» sin su «confirmada tarde» es la señal que interesa.**
+- **Los temporizadores viven en memoria.** Si la app se cierra antes de que venzan, ese lote no
+  deja rastro. Y Android puede retrasarlos con la app en segundo plano.
+- **No arregla nada:** solo hace visible. El arreglo es H3-c.
+
+**Garantías verificadas, y cómo:**
+- **`doPush`:** frente a `origin/main` difiere solo en `batch.commit()` →
+  `watchCommit(col.name, slice, batch.commit())`, verificado con `diff`. `watchCommit` devuelve
+  **la misma promesa** (`===`), lleva su ramal aparte con su propio manejo de rechazo y no puede
+  lanzar.
+- **El resto de la sync:** `pushChanges` tiene el mismo md5. `pullEngine`, `collections`,
+  `retryQueue`, `db`, reglas y `package.json` no cambian. `errorLog` es local: no está en
+  `SYNC_COLLECTIONS` y el respaldo lo excluye.
+- **Tres revisiones independientes:** una por commit y otra de la corrección, todas **sin
+  críticos**.
+  - La del commit 1 detectó una entrada doble, un `throw` posible y que una etapa podía comerse
+    el presupuesto.
+  - La del commit 2 detectó que el tope por etapa escondía `stockMovements`, `purchases`,
+    `transfers` y `productions`, y que un lote vencido sin red no se volvía a vigilar.
+  - Todo corregido, con controles negativos.
+- **Una prueba no medía nada y se corrigió.** La de la ventana de gracia miraba antes del volcado
+  del agregado; se detectó porque su control negativo **no falló**.
+- **Pruebas:** build exit 0; 24 suites / 1.400 aserciones. Chunk 1.008,34 → 1.011,57 kB (gzip
+  294,04 → 295,37).
+- **Nadie lo ha ejecutado en un dispositivo.**
+
+**Uso operativo.** Tras desplegar, pedir a cada aparato de un negocio con síntomas que comparta
+`/errors` **antes** de cualquier reparación. Si aparece `subida-sin-confirmar` sin su «confirmada
+tarde» para `stockMovements` o `products`, eso confirma la hipótesis del §14.5 **con dato**, no por
+inferencia.
+
