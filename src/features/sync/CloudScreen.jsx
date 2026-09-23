@@ -436,9 +436,10 @@ function ResendPanel() {
 }
 
 // Panel «Reparar versiones (comparando con la nube)» (spec 2026-09-23). Para
-// colecciones que CAMBIAN: lee la version de la nube y solo escribe si la local es
-// mas nueva, asi que no puede hacer retroceder nada aunque se lance en el aparato
-// equivocado. Solo reparacion manual del dueño, con el coste a la vista.
+// colecciones que CAMBIAN: lee la version de la nube y solo escribe si la local
+// tiene MARCA mas nueva. La garantia es por marca, no por contenido (ver
+// compareResend.js): en productos reemplaza la ficha entera, asi que se lanza en el
+// aparato con los datos buenos. Solo reparacion manual del dueño, coste a la vista.
 const COMPARE_LABELS = {
   products: 'Productos (fichas)',
   counts: 'Conteos físicos',
@@ -518,7 +519,11 @@ function CompareResendPanel() {
         disabled={busy || count === null || count <= 0 || count > MAX_PER_RUN}
         onClick={doRun}
       >
-        {busy && progress ? `Revisando… ${progress}` : count ? `Reparar ${count} documentos` : 'Reparar documentos'}
+        {busy && progress
+          ? `Revisando… ${progress}`
+          : count > MAX_PER_RUN
+            ? `Acota la fecha (máx. ${MAX_PER_RUN})`
+            : count ? `Reparar ${count} documentos` : 'Reparar documentos'}
       </button>
 
       {error && <p className="error">{error}</p>}
