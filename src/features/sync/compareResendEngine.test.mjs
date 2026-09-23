@@ -82,6 +82,17 @@ const P = (id, t, extra = {}) => ({ id, name: `P${id}`, updatedAt: t, ...extra }
   eq(s.pendientes, 2, 'quedan 2 pendientes')
   eq(h.logs.some((l) => l.stage === 'comparar-reenvio' && l.code === 'unavailable'), true, 'el corte va a /errors')
 }
+// Revision final (menor 3): 'deadline-exceeded' tambien es de red y corta la tanda.
+{
+  let n = 0
+  const h = harness({
+    local: { counts: [P('1', 'T1'), P('2', 'T2'), P('3', 'T3')] },
+    txHook: async () => { n++; if (n === 1) { const e = new Error('lento'); e.code = 'deadline-exceeded'; throw e } }
+  })
+  const s = await h.r.run('counts', '')
+  eq(s.pendientes, 2, 'deadline-exceeded corta: quedan 2 pendientes')
+  eq(s.escritos, 0, 'y no sigue escribiendo')
+}
 // Un error que NO es de red se cuenta y se sigue.
 {
   let n = 0

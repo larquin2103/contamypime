@@ -15,7 +15,7 @@ import { syncNow, initialPull } from './syncEngine'
 import { listDevices, removeDevice, getDeviceId } from './deviceRegistry'
 import { countResend, forceResend } from './pushEngine'
 import { RESENDABLE, localInputToIso } from './resend'
-import { COMPARE_RESENDABLE } from './compareResend'
+import { COMPARE_RESENDABLE, MAX_PER_RUN } from './compareResend'
 import { countCompareResend, compareResend } from './compareResendFirebase'
 
 export function CloudScreen() {
@@ -476,7 +476,7 @@ function CompareResendPanel() {
     try {
       const s = await compareResend(col, sinceIso, { onProgress: (d, t) => setProgress(`${d} / ${t}`) })
       const msg = `Escritos: ${s.escritos}. Ya iguales: ${s.iguales}. La nube tenía uno más nuevo (no se tocó): ${s.nubeMasNueva}.` +
-        (s.errores ? ` Errores: ${s.errores} (ver /errors).` : '') +
+        (s.errores ? ` Errores: ${s.errores} (en /errors queda el primero de cada tipo).` : '') +
         (s.pendientes ? ` Quedaron ${s.pendientes} sin revisar: se cortó la conexión.` : '')
       if (s.errores || s.pendientes) setError(msg); else setOk(msg)
       setCount(null); setSinceIso(null)
@@ -505,15 +505,17 @@ function CompareResendPanel() {
 
       {count !== null && sinceIso && (
         <p className="muted">
-          Se revisarán {count} documentos desde el {new Date(sinceIso).toLocaleString('es')}. Gasta {count}{' '}
-          lecturas y, como mucho, {count} escrituras de la cuota de Firestore. Solo se escribe lo que la nube
-          tenga más viejo o no tenga.
+          Se revisarán {count} documentos desde el {new Date(sinceIso).toLocaleString('es')}. Gasta al menos{' '}
+          {count} lecturas (más si hay reintentos) y, como mucho, {count} escrituras de la cuota de Firestore;
+          cada documento escrito puede costar además una lectura en cada aparato conectado. Solo se escribe lo
+          que la nube tenga con marca más vieja o no tenga.
+          {count > MAX_PER_RUN && ` Son más de ${MAX_PER_RUN}: acota la fecha para poder reparar.`}
         </p>
       )}
 
       <button
         className="btn btn--primary btn--block"
-        disabled={busy || count === null || count <= 0}
+        disabled={busy || count === null || count <= 0 || count > MAX_PER_RUN}
         onClick={doRun}
       >
         {busy && progress ? `Revisando… ${progress}` : count ? `Reparar ${count} documentos` : 'Reparar documentos'}
@@ -524,8 +526,9 @@ function CompareResendPanel() {
 
       <p className="muted">
         <small>
-          Úsalo en el aparato que tiene los datos buenos. Necesita internet. Lanzarlo en el aparato
-          equivocado no estropea nada: lo que en la nube ya sea más nuevo no se toca.
+          Úsalo en el aparato que tiene los datos buenos. Necesita internet. Nunca escribe algo que la nube
+          tenga con marca más nueva, pero en productos lo que escribe reemplaza la ficha entera por la de este
+          aparato: si este aparato vendió sin haber recibido un cambio de precio, repondría el precio viejo.
         </small>
       </p>
     </section>

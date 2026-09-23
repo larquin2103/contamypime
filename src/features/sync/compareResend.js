@@ -7,7 +7,12 @@ import { syncTs } from './collections.js'
 // El reenvio de resend.js escribe a ciegas y por eso solo admite libros
 // inmutables. Este lee la nube y escribe SOLO si la nube no tiene el documento o
 // lo local es ESTRICTAMENTE mas nuevo por syncTs (el mismo criterio que la bajada),
-// asi que tambien vale para colecciones mutables: no puede hacer retroceder nada.
+// asi que tambien vale para colecciones mutables: no escribe nada que la nube tenga
+// con MARCA mas nueva. Ojo (revision final): la garantia es por marca, no por
+// contenido. En products cada venta sube updatedAt y reescribe la ficha ENTERA, asi
+// que un aparato que vendio sin haber recibido un cambio de precio tiene la marca
+// mas alta con el precio viejo: repararlo desde ahi repone ese precio. Es la misma
+// LWW que ya aplica la sync; por eso se lanza desde el aparato con los datos buenos.
 // Alcance cerrado por el duenio: las tres colecciones de La Patrona.
 // ---------------------------------------------------------------------------
 export const COMPARE_RESENDABLE = ['products', 'counts', 'auditEvents']

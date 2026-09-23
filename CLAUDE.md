@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **24** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.391 aserciones**, medidas el 23-09-2026). Las tres de la
+se corren **uno a uno con node** (**1.393 aserciones**, medidas el 23-09-2026). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -100,10 +100,10 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **26 suites / 1.449 aserciones** en total, medidas el 23-09-2026 tras las
+Con esas dos dentro: **26 suites / 1.451 aserciones** en total, medidas el 23-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
-de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (26), el reenvío que compara
+de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
 antes de escribir.
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
@@ -822,6 +822,11 @@ falta a La Patrona de A hacia B.
     nuevo»; B → A escribe **0**;
   - con `mergeIncoming` + `recomputeStock` reales, B recibe precio y baja de A en 36 de 36, y su
     stock sigue igual a su propio libro.
+- **Límite de la garantía** (revisión final independiente, sin críticos): es **por marca, no por
+  contenido**. En `products`, cada venta sube `updatedAt` y reescribe la ficha entera. Un aparato que
+  vendió sin haber recibido un cambio de precio repondría el precio viejo: por eso **se lanza desde el
+  aparato con los datos buenos**, y el panel lo dice. En La Patrona no ocurre: los 3 precios y 3
+  costos que se escriben son cambios del propio A, comprobado campo a campo.
 - **Lo que no se puede garantizar:**
   - **no se ha ejecutado contra la Firestore real** ni en un teléfono;
   - cada documento escrito puede costar una lectura en cada aparato conectado;

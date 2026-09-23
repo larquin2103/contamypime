@@ -8,13 +8,24 @@ A sí tiene. El reenvío existente (H3-a, `resend.js`) **no los cubre, a propós
 
 ## 1. Objetivo y criterio de éxito
 
-Reparar las versiones que **un** aparato tiene y la nube no, **sin poder hacer retroceder nada**.
+Reparar las versiones que **un** aparato tiene y la nube no, **sin escribir nunca algo con marca no más
+nueva que la de la nube** (ver el límite de la garantía, abajo).
 Se lanza desde el aparato con los datos buenos. Por cada documento: si la nube no lo tiene, o lo
 local es **estrictamente** más nuevo por `syncTs`, se escribe; si no, no se escribe.
 
 **Éxito:** tras lanzarlo en A, B recibe las 36 fichas, los 3 conteos y los 5 eventos por la bajada
-normal, y ningún documento de la nube retrocede. Lanzado desde el aparato equivocado, no escribe
-nada que no sea más nuevo.
+normal, y ningún documento de la nube retrocede **por marca**. Lanzado desde el aparato equivocado,
+no escribe nada con `syncTs` que no sea mayor.
+
+**Límite de la garantía** (revisión final, 23-09-2026): es **por marca, no por contenido**. En
+`products`, cada venta sube `updatedAt` y reescribe la ficha entera. Si un aparato vendió sin haber
+recibido un cambio de precio y esa subida se perdió, repararlo desde ese aparato **repone el precio
+viejo**, días después. Es la misma LWW que ya aplica la sync. En La Patrona no ocurre: los 3 precios
+y 3 costos que se escriben son cambios del propio A. Por eso la herramienta se lanza desde el aparato
+con los datos buenos, y el panel lo dice.
+
+**Commit ambiguo:** si el commit llega al servidor pero se pierde la respuesta, el SDK reintenta, ve
+la marca igual y el resumen lo cuenta como «igual». Es cosmético; el dato queda bien.
 
 **Alcance (decisión del dueño):** solo `products`, `counts` y `auditEvents`. Ampliarlo después es
 añadir un nombre a una lista, previa revisión del `syncTs` de esa colección.
@@ -62,7 +73,8 @@ añadir un nombre a una lista, previa revisión del `syncTs` de esa colección.
   derivados (la caché del stock) que cada aparato recalcula.
 - **Error en un documento:** se cuenta, va a `/errors` (`logSyncEvent('comparar-reenvio', ...)`) y
   se sigue.
-- **`unavailable`:** detiene la tanda y el resultado dice cuántos quedaron pendientes.
+- **`unavailable` o `deadline-exceeded`** (errores de red; el SDK ya reintentó): detiene la tanda y el
+  resultado dice cuántos quedaron pendientes.
 - **Sin sync, sin sesión o sin red:** no empieza y lo dice.
 - **Tope de 1.000 documentos por tanda:** si hay más, se pide acotar la fecha.
 - **En el receptor:** la fusión LWW acepta el documento más nuevo y, siendo `products`,

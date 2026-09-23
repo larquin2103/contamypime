@@ -561,3 +561,47 @@ registro local del aparato (`/errors`, origen «Sincronización»), que el dueñ
 tarde» para `stockMovements` o `products`, eso confirma la hipótesis del §14.5 **con dato**, no por
 inferencia.
 
+### 14.7 Reenvío que compara antes de escribir (23-09-2026, en la rama, sin fusionar)
+
+Es la reparación de A hacia B que el reenvío H3-a no podía hacer. La especificación y el plan están
+en `docs/superpowers/`.
+
+- **La regla:** una `runTransaction` por documento lee del **servidor** y solo escribe si la nube no
+  lo tiene o lo local es estrictamente más nuevo por `syncTs`.
+- **El alcance:** `products`, `counts` y `auditEvents`.
+- **La arquitectura:** ficheros nuevos; `pushEngine.js` sin tocar.
+
+**Validado con los dos respaldos, sin tocar la nube:**
+- **A local → B nube:** `products` 36 escritos, 164 iguales y 0 «nube más nueva»; `counts` 3; `auditEvents` 5.
+- **B local → A nube:** 0 escritos, y 36 «nube más nueva» en `products`.
+- **Con el código real de la bajada** (`mergeIncoming` + `recomputeStock` sobre B en
+  `fake-indexeddb`): las 36 fichas llegan con el precio y la baja de A, y su stock queda **igual al
+  libro de B** (0 diferencias).
+- **La revisión final comparó campo a campo lo que se escribe:** las 36 difieren en marca, 13 en
+  baja, 4 en categoría y 3 en precio y costo. Los precios son **cambios del propio A**, según
+  `priceChanges`. La caché de stock no difiere en ninguna.
+
+**La revisión final independiente, sin críticos, dejó un hallazgo importante y ya corregido.** El
+panel prometía «lanzarlo en el aparato equivocado no estropea nada», y la garantía es **por marca,
+no por contenido**. En `products` cada venta sube `updatedAt` y reescribe la ficha entera, así que un
+aparato que vendió sin haber recibido un cambio de precio repondría el precio viejo. El panel, el
+código y la especificación ahora lo dicen.
+
+**Menores corregidos:**
+- «Reparar» se deshabilita con más de 1.000 documentos;
+- `deadline-exceeded` corta la tanda, con TDD y control negativo;
+- el coste se muestra como mínimo, no como máximo;
+- `/errors` guarda solo el primero de cada tipo.
+
+**Uso para La Patrona, cuando se despliegue:**
+1. En **B**, «Reenviar a la nube» de `stockMovements` desde el 22-09 a las 13:30, hora de Cuba.
+2. En **A**, «Reparar versiones» de `products`, `counts` y `auditEvents` desde una fecha anterior al
+   09-09.
+3. Comprobar con el diagnóstico sobre respaldos nuevos de los dos aparatos.
+4. **Solo después**, contar.
+
+El orden de 1 y 2 es indiferente, porque cada aparato recalcula el stock desde su libro.
+
+**Lo que no se puede garantizar:** no se ha ejecutado contra la Firestore real ni en un teléfono, y
+el coste real en lecturas de los aparatos que reciben no está medido.
+

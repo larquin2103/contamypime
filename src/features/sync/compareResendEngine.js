@@ -56,7 +56,8 @@ export function createCompareResender(deps) {
         } catch (e) {
           results.push({ id, decision: 'error' })
           deps.log('comparar-reenvio', name, e, id)
-          if (e?.code === 'unavailable') {
+          // Errores de RED: seguir solo gastaria tiempo (el SDK ya reintento 5 veces).
+          if (e?.code === 'unavailable' || e?.code === 'deadline-exceeded') {
             if (onProgress) onProgress(i + 1, rows.length)
             return summarize(results, rows.length - (i + 1))
           }
