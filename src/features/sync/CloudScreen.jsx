@@ -406,7 +406,8 @@ function ResendPanel() {
       {count !== null && sinceIso && (
         <p className="muted">
           Se reenviarán {count} filas desde el {new Date(sinceIso).toLocaleString('es')}. Gasta {count}{' '}
-          escrituras de la cuota de Firestore.
+          escrituras de la cuota de Firestore, y puede gastar lecturas en los demás aparatos
+          conectados (no está medido).
         </p>
       )}
 

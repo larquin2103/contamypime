@@ -45,3 +45,18 @@ export function localInputToIso(value) {
   const t = new Date(value)
   return Number.isNaN(t.getTime()) ? null : t.toISOString()
 }
+
+// Revision de la rama (hallazgo 8): el reenvio coincidia a veces con la subida
+// periodica (cada 20 s) y fallaba con "hay una subida en curso". Espera a que
+// `busy()` deje de ser cierto, en pasos de `stepMs`, hasta `timeoutMs`. Devuelve
+// true si quedo libre y false si se agoto el tope. `sleep` se inyecta en las
+// pruebas; doPush no espera al servidor, asi que una subida dura poco.
+const realSleep = (ms) => new Promise((r) => setTimeout(r, ms))
+export async function waitWhile(busy, { timeoutMs = 15000, stepMs = 250, sleep = realSleep } = {}) {
+  for (let waited = 0; busy(); waited += stepMs) {
+    if (waited >= timeoutMs) return false
+    await sleep(stepMs)
+  }
+  return true
+}
+

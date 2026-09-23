@@ -5,7 +5,7 @@
 // nube a ciegas y la regresaria-; (2) que el conteo mostrado al dueno no sea el
 // mismo predicado que usa doPush (x.ts > cursor, estricto); (3) que el cursor
 // se mueva hacia DELANTE por esta via; (4) el desfase hora local / UTC (§9.8).
-import { RESENDABLE, isResendable, countSince, rewindTo, localInputToIso } from './resend.js'
+import { RESENDABLE, isResendable, countSince, rewindTo, localInputToIso, waitWhile } from './resend.js'
 
 let pass = 0
 let fail = 0
@@ -43,6 +43,22 @@ eq(rewindTo('2026-09-22T00:00:00.000Z', 'basura'), null, 'fecha invalida')
 eq(localInputToIso('2026-09-21T16:00'), new Date('2026-09-21T16:00').toISOString(), 'local a ISO')
 eq(localInputToIso(''), null, 'vacio')
 eq(localInputToIso('no-es-fecha'), null, 'invalida')
+
+// (5) Revision de la rama, hallazgo 8: el reenvio ESPERA a que termine la subida
+// en curso (con tope) en vez de fallar. `sleep` inyectado: sin relojes reales.
+{
+  let busy = 3 // la subida en curso termina tras 3 esperas
+  let slept = 0
+  const sleep = async () => { slept++; busy-- }
+  eq(await waitWhile(() => busy > 0, { timeoutMs: 1000, stepMs: 100, sleep }), true, 'wait: libre tras esperar')
+  eq(slept, 3, 'wait: espero exactamente hasta que se libero')
+  slept = 0
+  eq(await waitWhile(() => false, { timeoutMs: 1000, stepMs: 100, sleep }), true, 'wait: libre desde el principio')
+  eq(slept, 0, 'wait: sin esperas si ya estaba libre')
+  slept = 0
+  eq(await waitWhile(() => true, { timeoutMs: 500, stepMs: 100, sleep }), false, 'wait: tope agotado -> false')
+  eq(slept, 5, 'wait: el tope limita las esperas (500/100)')
+}
 
 console.log(`resend: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

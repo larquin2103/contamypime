@@ -4,7 +4,7 @@ import { syncConfig } from './syncService'
 import { SYNC_COLLECTIONS, LOCAL_CONFIG_KEYS, syncTs } from './collections'
 import { logError } from '../../lib/errorLog'
 import { isPermanent, dueIds, markAttempted, onSuccess, onTransient, onPermanent, autoResume } from './retryQueue'
-import { isResendable, countSince, rewindTo } from './resend'
+import { isResendable, countSince, rewindTo, waitWhile } from './resend'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Bloque 23 + Bloque C (diseno B): motor de SUBIDA (push).
@@ -269,7 +269,14 @@ export async function countResend(name, sinceIso) {
 export async function forceResend(name, sinceIso) {
   if (!isResendable(name)) throw new Error('Esa colección no se puede reenviar')
   if (!(await syncConfig.isEnabled())) throw new Error('La sincronización no está activa en este aparato')
-  if (running) throw new Error('Hay una subida en curso: reintenta en unos segundos')
+  // Revision de la rama (hallazgo 8): si coincide con la subida periodica, ESPERA
+  // a que termine (con tope) en vez de fallar. El `while` vuelve a mirar
+  // `running` de forma SINCRONA justo antes de tomarlo: entre el fin de la
+  // espera y esta linea hay saltos de microtarea por los que otro pushChanges
+  // podria haber entrado.
+  while (running) {
+    if (!(await waitWhile(() => running))) throw new Error('Hay una subida en curso: reintenta en unos segundos')
+  }
   running = true
   let rewound = false
   try {
