@@ -6,6 +6,7 @@ import 'fake-indexeddb/auto'
 import { db } from '../db/db'
 import { ordersRepo } from './ordersRepo'
 import { ORDER_STATUS } from '../db/constants'
+import { syncTs } from '../features/sync/collections'
 
 let pass = 0
 let fail = 0
@@ -56,6 +57,30 @@ await seed()
 await db.sales.update('v1', { voided: true })
 await ordersRepo.voidItem({ itemId: 'i1', userId: 'u' })
 ok((await db.orderItems.get('i1')).voided === true, 'venta anulada no bloquea')
+
+// H2-1. open + venta viva -> closed + saleId, SIN tocar updatedAt ni closedAt.
+await seed()
+const antes = await db.orders.get('o1')
+ok((await ordersRepo.reconcileClosed('o1')) === true, 'H2: repara')
+const despues = await db.orders.get('o1')
+ok(despues.status === ORDER_STATUS.CLOSED && despues.saleId === 'v1', 'H2: closed + saleId')
+ok(despues.updatedAt === antes.updatedAt, 'H2: updatedAt intacto')
+ok(despues.closedAt === antes.closedAt, 'H2: closedAt intacto (cuenta en syncTs)')
+ok(despues.closedBy === antes.closedBy, 'H2: closedBy intacto')
+ok(syncTs(despues) === syncTs(antes), 'H2: syncTs intacto -> sin eco de subida')
+// H2-2. Idempotente.
+ok((await ordersRepo.reconcileClosed('o1')) === false, 'H2: segunda llamada no hace nada')
+// H2-3. Sin venta no toca nada.
+await seed({ withSale: false })
+ok((await ordersRepo.reconcileClosed('o1')) === false, 'H2: sin venta no repara')
+ok((await db.orders.get('o1')).status === ORDER_STATUS.OPEN, 'H2: sigue open')
+// H2-4. Anulada con venta: NO se regresa.
+await seed()
+await db.orders.update('o1', { status: ORDER_STATUS.VOIDED })
+ok((await ordersRepo.reconcileClosed('o1')) === false, 'H2: anulada no se toca')
+ok((await db.orders.get('o1')).status === ORDER_STATUS.VOIDED, 'H2: sigue voided')
+// H2-5. Pedido inexistente no lanza.
+ok((await ordersRepo.reconcileClosed('nope')) === false, 'H2: inexistente')
 
 console.log(`ordersRepo: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

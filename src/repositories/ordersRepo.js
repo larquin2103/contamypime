@@ -5,7 +5,7 @@ import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { ratesRepo } from './ratesRepo'
 import { orderTotals, cleanPct, discountFromEvents } from '../lib/orderTotals'
-import { isLiveSaleOf, MSG_MESA_COBRADA } from '../lib/orderSale'
+import { isLiveSaleOf, shouldReconcileClosed, MSG_MESA_COBRADA } from '../lib/orderSale'
 import { MOVEMENT_TYPES, ORDER_STATUS, ORDER_AUDIT_ACTIONS } from '../db/constants'
 
 // ---------------------------------------------------------------------------
@@ -438,6 +438,21 @@ export const ordersRepo = {
       await db.orders.update(orderId, { discountPct: vigente }) // SIN updatedAt: es derivado
     }
     return vigente
+  },
+
+  // H2 - REPARA la cabecera de una mesa que ya se cobro pero sigue "open" (el
+  // cierre no llego por la sync). Mismo patron que reconcileDiscount: derivado de
+  // la VENTA (append-only), idempotente y best-effort. Escribe SOLO status y
+  // saleId: ni updatedAt ni closedAt (los dos cuentan en syncTs y la reparacion
+  // se re-subiria, pisando en la nube la cabecera real), ni closedBy (no hay autor
+  // que poner). Devuelve true si reparo.
+  async reconcileClosed(orderId) {
+    const order = await db.orders.get(orderId)
+    if (!order || order.status !== ORDER_STATUS.OPEN) return false
+    const sale = await this.saleOf(order)
+    if (!shouldReconcileClosed(order, sale)) return false
+    await db.orders.update(orderId, { status: ORDER_STATUS.CLOSED, saleId: sale.id }) // SIN marcas: derivado
+    return true
   },
 
   // Quita el descuento (el mando se lo puede pensar mejor). No borra el rastro: el

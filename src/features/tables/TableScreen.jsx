@@ -129,9 +129,11 @@ export function TableScreen() {
   // borra de la nube. Los eventos no se pueden perder, asi que son la verdad.
   // Best-effort: si falla, la pantalla sigue con la cache y el fallo queda en el
   // registro local de errores. Es idempotente (no escribe si ya cuadra).
+  // H2: y repara la mesa que ya se cobró pero sigue abierta (su venta es la verdad).
   useEffect(() => {
     if (!id) return
     ordersRepo.reconcileDiscount(id).catch((e) => logError('mesas', e))
+    ordersRepo.reconcileClosed(id).catch((e) => logError('mesas', e))
   }, [id])
 
   const live = useMemo(() => items.filter((i) => !i.voided), [items])

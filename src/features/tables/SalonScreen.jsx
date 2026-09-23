@@ -65,10 +65,12 @@ export function SalonScreen() {
   // vez al abrir el salon -no dentro de una consulta viva, para no encadenar
   // escrituras con relecturas- y solo de las ocupadas, que son las que se cobran.
   // Best-effort e idempotente: si falla, el panel sigue mostrando la cache.
+  // H2: y repara la mesa que ya se cobró pero sigue abierta (su venta es la verdad).
   const openIds = active.filter((o) => o.status === ORDER_STATUS.OPEN).map((o) => o.id).join(',')
   useEffect(() => {
     if (!openIds) return
-    Promise.all(openIds.split(',').map((oid) => ordersRepo.reconcileDiscount(oid)))
+    Promise.all(openIds.split(',').map((oid) =>
+      Promise.all([ordersRepo.reconcileDiscount(oid), ordersRepo.reconcileClosed(oid)])))
       .catch((e) => logError('mesas', e))
   }, [openIds])
 
