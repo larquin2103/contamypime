@@ -382,3 +382,81 @@ otro. **El respaldo del segundo dispositivo sigue siendo lo primero que hace fal
   declaraba el acta de la fusión del 19-09, que es lo que debe pasar: no se tocó `src/`.
 - Las **16 suites** node → **1.191 aserciones, 0 fallos**.
 - `git diff` contra `src/`: **vacío**. Lo único que cambia en el repo es este acta y la batería.
+
+---
+
+## 14. Segundo respaldo (B), 23-09-2026 — lo que confirma y lo que abre
+
+**Material.** `respaldo_mypicuadre_2026-09-22ventas.json` y `…22lise.json` son **el mismo
+fichero**: SHA256 `3e1fa72277436187…`, exportado `2026-09-22T23:56:50.709Z` por Lisett, 1.718
+movimientos y 15 conteos. **No es** el del §1, que no está en la máquina donde se hizo esta
+validación, así que todo lo de «A» sale de lo que dejó escrito esta acta.
+
+### 14.1 Confirmado con dato
+
+- **El §13.5 era cierto.** Las 8 ventas del §4 tienen aquí su movimiento de stock, con la hora
+  exacta de la venta (`-1` en `__almacen`). Hay 0 ventas vivas sin movimiento en todo el respaldo.
+- **El ajuste de −3 se calculó en B.** Libro de B antes del ajuste = 18 = `systemStock` del conteo
+  `c4998016`; físico 15.
+- **B es correcto en los 7 productos:** libro = caché = lo contado el 22-09 = la columna «debería»
+  del §5. Hay 0 divergencias caché ↔ libro. La *Silicona barra* vendida es `83ec2739`: vale 0 en B
+  y valía 1 en A.
+- **A = B menos exactamente esos 8 movimientos:** 1.718 − 8 = 1.710.
+- **Control positivo del diagnóstico H3-b, pendiente desde el 23-09:** sobre B da 0 roturas; sobre
+  una copia en memoria de B sin los 8 movimientos da exactamente los 8 `sale-sin-mov`. Son datos
+  derivados de B, no el respaldo A original.
+- **Los 8 perdidos tienen la misma forma que sus 9 vecinos**: mismos campos y tipos, misma
+  usuaria y mismo turno. El dato no explica la pérdida.
+
+### 14.2 Nuevo: B tampoco está completo, y en colecciones MUTABLES
+
+- **28 fichas de producto** tienen una versión más vieja que su último movimiento. Todas se
+  quedaron en versiones anteriores al 15-09 a las 02:37.
+- **3 cambios de precio de Lisett (16 y 17-09) no llegaron a la ficha**: LÁMPARA RECARGABLE (3.800
+  en vez de 4.600), REGULADOR DE GAS (2.500 en vez de 3.000) y Disco corte 180 (1.000 en vez de
+  1.200). Llegaron 39 de 42. `changePrice` escribe el cambio y la ficha en una sola transacción: es
+  la firma del H3, pero en `products`.
+- **Bajas:** con el criterio exacto del §8, B tiene 25 nombres repetidos (igual que A) pero **15**
+  con dos fichas activas, frente a 6 en A.
+- **Faltan 3 conteos** que A sí tiene, entre ellos `be3e2cf0` y `08172bc7`. Sus tandas de ajustes
+  (07-08 y 12-08) sí están en B.
+- **Hay al menos 3 aparatos.** Las ventas de LÁMPARA del 17 y el 19-09 se cobraron a 4.600, que B
+  no tenía; no se hicieron en B.
+
+### 14.3 Lo que NO se puede decidir con B
+
+Si esas versiones **se perdieron al subir** en su aparato de origen o **no bajaron** a B.
+- La bajada no tiene cursor: `initialPull` hace un `getDocs` completo cada 45 s y al arrancar.
+- Pero `docs/SYNC-LECTURAS.md` midió la cuota de lecturas al 120 %: con la cuota agotada, un
+  aparato deja de recibir sin ningún error visible.
+- Dos defectos de la bajada leídos en el código, **sin probar que sean la causa**: el error de
+  `onSnapshot` solo va a `console.warn` (`syncEngine.js:93`), y `handleIncoming` descarta el lote
+  entero si falla la fusión (`:60-66`).
+- Se decide leyendo Firestore (unos 9 documentos) o con los respaldos de los otros aparatos.
+
+### 14.4 Lo programado a raíz de esto (23-09-2026), fuera de la app
+
+- **`src/lib/convergence.js`** (puro), con su suite (15 aserciones y dos controles negativos).
+  Marca `ficha-atrasada` (ficha más vieja que su último movimiento) y `precio-no-recibido` (último
+  cambio de precio más nuevo que la ficha, con precio distinto). Se apoya en dos invariantes
+  **verificadas en el código**:
+  - los doce escritores del libro mayor sellan el producto con el mismo `ts`, y el traspaso de
+    turno trae fichas y movimientos juntos;
+  - `changePrice` sella la ficha después del cambio.
+- **El CLI `diagnostico-atomicidad.mjs`** lo imprime como sección aparte, sin sumarlo a las
+  roturas. Resultados:
+  - **Sobre B:** 28 fichas atrasadas y 3 precios no recibidos, las mismas cifras medidas a mano.
+  - **Sobre los dos aparatos de *De todo un tin* (12-09):** el del vendedor da 21 fichas
+    atrasadas, y el del dueño confirma las **21 de 21**. En esas 21, precio, nombre y baja
+    coinciden entre los dos, así que **«ficha atrasada» no implica daño visible**; el daño lo
+    marca «precio no recibido».
+- **La batería de esta acta comprueba el SHA** al empezar. Con otro fichero dice que sus
+  aserciones no aplican, remite al diagnóstico y sale con 2. Antes reventaba con un `TypeError`.
+  Con el SHA coincidente recorre el camino de siempre; se probó sustituyendo el SHA, porque **el
+  respaldo original no estaba disponible para correrla entera**.
+- **Ninguna pantalla importa el módulo.** El build sale con el mismo nombre con hash
+  (`index-CXNzsm0w.js`, bundle idéntico) y `dist/` no lo menciona. 21 suites / 1.324 aserciones.
+
+**Observación sin tocar:** `handoffService.js:190` hace `bulkPut` de productos sin LWW, como
+`applyBackup`. Puede reescribir una ficha nueva con una vieja.
+

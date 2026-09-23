@@ -59,11 +59,12 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). **19** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.245 aserciones**, medidas el 23-09-2026; las tres últimas en
-llegar son `orderSale` —H1/H2, el candado de venta y la reparación de la mesa cobrada—, `resend`
-—H3-a, el reenvío forzado— y `atomicity` —H3-b, el diagnóstico de roturas de atomicidad—, de la
-corrección Burger Premium del 23-09). Ojo: diez viven en `src/lib/` pero `retryQueue.test.mjs` está
+**Pruebas:** NO hay script `npm test` (ni linter). **20** suites son ficheros `.test.mjs` puros que
+se corren **uno a uno con node** (**1.277 aserciones**, medidas el 23-09-2026). Las tres de la
+corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
+cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
+atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
+no llegó a un aparato; salió del respaldo B de La Patrona. Ojo: diez viven en `src/lib/` pero `retryQueue.test.mjs` está
 en `src/features/sync/`, `fichaReports.test.mjs` en `src/features/reports/` y `helpContent.test.mjs`
 en `src/features/help/`, así que un glob `src/lib/*.test.mjs` **se salta tres**:
 
@@ -80,10 +81,11 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/features/help/helpContent.test.mjs \
          src/lib/orderSale.test.mjs \
          src/features/sync/resend.test.mjs \
-         src/lib/atomicity.test.mjs; do node "$t"; done
+         src/lib/atomicity.test.mjs \
+         src/lib/convergence.test.mjs; do node "$t"; done
 ```
 
-**Una 20ª suite, `src/repositories/ordersRepo.test.mjs` (H1/H2, con base real), NO corre con node
+**Una 21ª suite, `src/repositories/ordersRepo.test.mjs` (H1/H2, con base real), NO corre con node
 directo**: los repos importan sin extensión, así que hace falta empaquetarla con el esbuild que ya
 trae Vite y `fake-indexeddb` (`devDependency` desde el 23-09-2026) antes de ejecutarla. Comando
 exacto (copiado del comentario de cabecera del propio fichero):
@@ -93,8 +95,9 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esta suite dentro: **20 suites / 1.309 aserciones** en total, medidas el 23-09-2026 tras las
-dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28).
+Con esta suite dentro: **21 suites / 1.324 aserciones** en total, medidas el 23-09-2026 tras las
+dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28) y con
+`convergence` (15).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se

@@ -1,9 +1,12 @@
 // Diagnostico de atomicidad sobre un RESPALDO (solo lectura, no toca la app).
 //   node docs/auditoria/diagnostico-atomicidad.mjs <respaldo.json> [<respaldo2.json> ...]
 // Por cada fichero: SHA256, exportedAt, recuento por tipo de rotura y el detalle.
+// Y, aparte, la convergencia del catalogo (src/lib/convergence.js): fichas de
+// producto cuya version este aparato no recibio. No se suma a las roturas.
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { findAtomicityBreaks } from '../../src/lib/atomicity.js'
+import { findStaleCatalog } from '../../src/lib/convergence.js'
 
 const files = process.argv.slice(2)
 if (!files.length) { console.error('Uso: node docs/auditoria/diagnostico-atomicidad.mjs <respaldo.json> ...'); process.exit(2) }
@@ -32,4 +35,10 @@ for (const f of files) {
   console.log(`   exportado ${bk.meta?.exportedAt} · esquema ${bk.meta?.schema} · roturas ${breaks.length}`)
   for (const [k, n] of Object.entries(by)) console.log(`   ${k.padEnd(24)} ${n}`)
   for (const b of breaks) console.log(`     ${b.at}  ${b.kind.padEnd(24)} ${b.id} ${b.detail}`)
+  const stale = findStaleCatalog(bk.tables || {})
+  const sby = {}
+  for (const x of stale) sby[x.kind] = (sby[x.kind] || 0) + 1
+  console.log(`   convergencia del catalogo: ${stale.length} ficha(s) con una version no recibida`)
+  for (const [k, n] of Object.entries(sby)) console.log(`   ${k.padEnd(24)} ${n}`)
+  for (const x of stale) console.log(`     ${x.at}  ${x.kind.padEnd(24)} ${x.id} ${x.detail}`)
 }

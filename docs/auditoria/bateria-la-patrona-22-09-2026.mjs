@@ -22,6 +22,7 @@
 // ---------------------------------------------------------------------------
 
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -46,7 +47,20 @@ function todoSrc() {
   return out.join('\n')
 }
 
-const bk = JSON.parse(fs.readFileSync(fichero, 'utf8'))
+// Esta bateria es el ACTA de un respaldo concreto: sus aserciones de DATO lo
+// describen a el (ids, cifras, fechas). Sobre otro fichero no aplican, y antes
+// del 23-09-2026 reventaban con un TypeError en vez de decirlo. Se comprueba el
+// SHA al empezar, como pedia la cabecera; con el fichero correcto no cambia nada.
+const SHA_ACTA = '683072985d0176507b8604b43f30cca167f5c428a293ee9f6c46c9986526abf5'
+const crudo = fs.readFileSync(fichero)
+const sha = createHash('sha256').update(crudo).digest('hex')
+if (sha !== SHA_ACTA) {
+  console.error('Esta bateria certifica el respaldo del acta (SHA256 ' + SHA_ACTA.slice(0, 16) + '...).')
+  console.error('Este fichero es otro (SHA256 ' + sha.slice(0, 16) + '...): sus aserciones de DATO no aplican.')
+  console.error('Para cualquier respaldo: node docs/auditoria/diagnostico-atomicidad.mjs <respaldo.json>')
+  process.exit(2)
+}
+const bk = JSON.parse(crudo.toString('utf8'))
 const t = bk.tables
 const W = '__almacen'
 const TURNO = '2a732ab9-6fa3-4733-b3a0-6a88dab75a10' // turno de Claudia del 22-09
