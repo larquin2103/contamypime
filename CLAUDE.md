@@ -59,13 +59,13 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). Las **16** suites son ficheros `.test.mjs` puros
-que se corren **uno a uno con node** (**1.171 aserciones** en total, medidas el 16-09-2026; las tres
-últimas en llegar son `stockLocation` —F1/H5—, `modalClose` —el cierre de los modales— y
-`navSections` —las puertas de la barra lateral de escritorio, 277 aserciones—). Ojo:
-diez viven en `src/lib/` pero `retryQueue.test.mjs` está en `src/features/sync/`,
-`fichaReports.test.mjs` en `src/features/reports/` y `helpContent.test.mjs` en
-`src/features/help/`, así que un glob `src/lib/*.test.mjs` **se salta tres**:
+**Pruebas:** NO hay script `npm test` (ni linter). **19** suites son ficheros `.test.mjs` puros que
+se corren **uno a uno con node** (**1.245 aserciones**, medidas el 23-09-2026; las tres últimas en
+llegar son `orderSale` —H1/H2, el candado de venta y la reparación de la mesa cobrada—, `resend`
+—H3-a, el reenvío forzado— y `atomicity` —H3-b, el diagnóstico de roturas de atomicidad—, de la
+corrección Burger Premium del 23-09). Ojo: diez viven en `src/lib/` pero `retryQueue.test.mjs` está
+en `src/features/sync/`, `fichaReports.test.mjs` en `src/features/reports/` y `helpContent.test.mjs`
+en `src/features/help/`, así que un glob `src/lib/*.test.mjs` **se salta tres**:
 
 ```bash
 for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
@@ -77,8 +77,23 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/navSections.test.mjs \
          src/features/sync/retryQueue.test.mjs \
          src/features/reports/fichaReports.test.mjs \
-         src/features/help/helpContent.test.mjs; do node "$t"; done
+         src/features/help/helpContent.test.mjs \
+         src/lib/orderSale.test.mjs \
+         src/features/sync/resend.test.mjs \
+         src/lib/atomicity.test.mjs; do node "$t"; done
 ```
+
+**Una 20ª suite, `src/repositories/ordersRepo.test.mjs` (H1/H2, con base real), NO corre con node
+directo**: los repos importan sin extensión, así que hace falta empaquetarla con el esbuild que ya
+trae Vite y `fake-indexeddb` (`devDependency` desde el 23-09-2026) antes de ejecutarla. Comando
+exacto (copiado del comentario de cabecera del propio fichero):
+
+```bash
+npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
+  --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
+```
+
+Con esta suite dentro: **20 suites / 1.268 aserciones** en total, medidas el 23-09-2026.
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -777,43 +792,77 @@ colecciones de sync nuevas.**
   la suma; aquí el inventario ya está en el libro mayor y no se descuadra nada). **No queda ningún
   rol huérfano.**
 
-## Estado del trabajo en curso (22-09-2026)
+## Estado del trabajo en curso (23-09-2026)
 
-**LO QUE HAY ABIERTO AHORA MISMO ES LA CORRECCIÓN DE LOS HALLAZGOS DE *BURGER PREMIUM*.** El dueño
-autorizó el **22-09-2026** empezar por los puntos **1, 2 y 3** del plan y dejar el **4 y el 5** para
-decidirlos con lo que mida el 3. **Cuando se escribe esto no hay una sola línea tocada en `src/`.**
-El plan completo, con veredicto de riesgo por punto, está en
-**`docs/AUDITORIA-BURGER-PREMIUM-21-09-2026.md` §10 — LEERLO ANTES DE PROGRAMAR NADA.**
+**LOS PUNTOS 1, 2, 3 Y 4 DE LA CORRECCIÓN *BURGER PREMIUM* ESTÁN PROGRAMADOS, PROBADOS Y
+COMMITEADOS en `claude/awesome-dirac-484azm`. NADA se fusionó a `main`, nada se desplegó.** El
+plan ejecutado está en `docs/superpowers/plans/2026-09-23-correccion-burger-premium.md`; el acta
+completa de esta ronda —los cinco hallazgos de contrastar el §10 con el código, las decisiones
+D1–D4, los resultados del control positivo y el hallazgo nuevo del pedido `180a7687`— está en
+**`docs/AUDITORIA-BURGER-PREMIUM-21-09-2026.md` §11 (23-09-2026)**.
 
-- **1 — H1 (autorizado, riesgo bajo):** candado de venta en **`ordersRepo.voidItem`** (no en
-  `voidOrder`: `voidItem` es el cuello por el que pasan también `removeProduct` y el botón «−»).
-  Entrar por el índice **`shiftId`**, porque `sales` **no tiene índice por `orderId`** y un
-  `where('orderId')` lanzaría. Borde obligatorio: `order.shiftId` puede ser `null` en una mesa
-  reservada — **nunca lanzar por sorpresa**. ~15 líneas, un fichero, sin esquema ni sync.
-- **2 — H3-a (autorizado, riesgo bajo salvo cuota):** poder **forzar la resubida** de una colección
-  desde `/cloud` poniendo `push:<colección>` hacia atrás. Es **lo único que repara el daño ya
-  existente**. Reenviar filas idénticas es idempotente; el riesgo real es la **cuota de Firestore**,
-  ya al 120 % del tope, así que debe pedir **una fecha** y decir cuántas filas subirá.
-- **3 — H3-b (autorizado, riesgo nulo):** diagnóstico **de solo lectura** de roturas de atomicidad.
-  Hoy no se sabe si son 8 casos o 800, y sin esa cifra el 5 no se puede decidir.
-- **4 (H2) y 5 (H3-c): EN ESPERA.** El 4 repara la cabecera al leerla (patrón de
-  `reconcileDiscount`, **sin tocar `updatedAt`**); el 5 es cirugía en `pushEngine` y **no se toca sin
-  el 3 delante**.
-- **H4 DESCARTADO a propósito, y no es pereza:** el ajuste del conteo físico es un **delta**, así que
-  propaga el error entre instancias (ver `docs/CORRECCION-EXISTENCIAS.md` §8). Convertirlo en
-  objetivo absoluto cambiaría cómo se deriva el stock del libro mayor en toda la app. **Es un síntoma
-  del transporte; se cierra con el 5.**
+- **1 — H1 (hecho, commits `5375a4b`, `dba835f`):** candado de venta en `ordersRepo.voidItem` **y**
+  en `ordersRepo.voidOrder` (el §10 solo preveía `voidItem`; `voidOrder` necesita el suyo propio
+  porque una mesa sin líneas vivas no pasa por `voidItem` — hallazgo de esta ronda). Entra por el
+  índice `shiftId`, cae a `filter` si es `null` (mesa reservada). La ronda de revisión añadió
+  `catch` por mesa en los dos `releaseEmpties` de `ShiftScreen` (sin él, una mesa que el candado
+  rechaza cortaba en silencio la liberación de las demás) y cerrar el modal de PIN al rechazar en
+  `SalonScreen`.
+- **2 — H2 (hecho, commit `fceba7d`; sube de "en espera" a hecho por D1 = a):** `charge` en
+  `TableScreen` también queda bloqueado si ya hay venta viva (evita un cobro duplicado), y
+  `ordersRepo.reconcileClosed` repara la cabecera `open` → `closed` + `saleId` al abrir el salón o
+  la mesa, con el mismo patrón que `reconcileDiscount`: escribe **solo** `status` y `saleId`, nunca
+  `updatedAt` ni `closedAt` (cuentan en `syncTs`; escribirlos re-subiría la reparación y podría
+  pisar en la nube la cabecera real). **D1 = a:** sin esta salida, el candado del punto 1 dejaba una
+  mesa cobrada pero `open` sin forma de cerrarla ni de liberarla, bloqueando el cierre de turno.
+- **3 — H3-a (hecho, commits `f9e9e39`, `410bc62`):** panel «Reenviar a la nube» en `/cloud`,
+  **solo** para las cuatro colecciones inmutables (`stockMovements`, `productions`, `purchases`,
+  `transfers` — verificado sin `update`/`put`/`delete` en `src/`). Retrocede el cursor local
+  `push:<colección>` y reusa `pushChanges()`, bajo el mismo cerrojo `running`. `doPush` no se tocó
+  ni una línea (verificado con `grep '^-'`, vacío).
+- **4 — H3-b (hecho, commits `c88132a`, `9a9a32b`):** `src/lib/atomicity.js` (puro) +
+  `docs/auditoria/diagnostico-atomicidad.mjs` (CLI sobre un respaldo, fuera del bundle). Corrido
+  contra los respaldos reales A1 y A2 de Burger: cuadra con lo que medía el acta (3
+  `production-sin-mov`, 1 `mov-sin-production`, 1 `purchase-sin-mov`, 3 `transfer-sin-mov`) y
+  encontró un **caso nuevo, no documentado antes**: el pedido `180a7687` ("Mesa 1") tiene un
+  movimiento `order_void` sin su línea anulada, presente en A1 **y** A2 — mismo mecanismo H3, otra
+  instancia. El backup **B** (Burger) y el de **La Patrona** no estaban en la máquina: su control
+  positivo **no se ejecutó**.
+- **5 (H3-c): SIGUE EN ESPERA.** Que nada dependa solo del cursor de `pushEngine` es cirugía en el
+  motor de sync y el dueño lo decide aparte, con la cifra del punto 4 ya en la mano (9 roturas en
+  A1, 13 en A2, de las cuales la mayoría son huérfanos append-only ya conocidos, no crecimiento sin
+  control).
+- **D1 = a, D2 = sí, D3 = script, D4 = sí** (resueltas 23-09-2026, tabla completa en el plan): el
+  punto 4 (H2) sube inmediatamente detrás del 1 como su salida; se instala `fake-indexeddb` como
+  `devDependency` para probar los repos con base real; el diagnóstico queda como script de node
+  (no entra al bundle); el reenvío se limita a las cuatro colecciones inmutables.
+- **H4 sigue DESCARTADO**, sin cambios respecto al 22-09 (es síntoma del transporte, se cierra con
+  el 5, no antes).
 
-**Los tres hallazgos están VALIDADOS con tres respaldos reales y 37 aserciones** (§9 del acta), y la
-batería es reproducible: `node docs/auditoria/bateria-burger-premium.mjs <A1> <B> <A2>` — **no entra
-en el build** (lee `src/` como texto, no escribe nada). Dos correcciones al acta original que hay que
-tener presentes: **sus horas son UTC**, no locales (§9.8), y **la prueba del cursor que proponía era
-incapaz de detectar nada** (§9.6). Hay **al menos tres instancias** del negocio y del teléfono del
-dueño **no existe ningún respaldo**.
+**Lo que esta ronda NO puede garantizar:**
+- **Nadie ha ejecutado la app.** Ni un candado disparado en un teléfono, ni una mesa cobrada dos
+  veces evitada de verdad, ni un cobro cortado a medias reparándose solo al abrir el salón.
+- **El reenvío nunca corrió contra Firestore real.** La Task 3 se probó hasta el retroceso del
+  cursor local; `writeBatch`/`setDoc` son los de siempre y no se ejecutan en node.
+- **El control positivo del diagnóstico (punto 4) solo corrió sobre A1 y A2 de Burger.** Los
+  respaldos **B** (Burger) y el de **La Patrona** no estaban disponibles en esta máquina, así que
+  su control positivo queda **sin ejecutar** — el `kind` `sale-sin-mov` que mediría La Patrona está
+  cubierto por un caso de prueba puro, pero no por datos reales.
+- **El mecanismo exacto** por el que se pierden filas bajo el cursor sigue siendo hipótesis
+  razonada, no observación directa (detalle en `docs/AUDITORIA-BURGER-PREMIUM-21-09-2026.md` §11).
 
-**🛑 Aviso operativo vigente:** no volver a contar el producto que aparece en negativo en el aparato
-que lo muestra — escribiría un delta en sentido contrario que rompería al otro. Primero igualar los
-libros (punto 2), contar después.
+**Orden operativo para el dueño, en este orden y no en otro:**
+1. Correr `node docs/auditoria/diagnostico-atomicidad.mjs <respaldo.json>` sobre el respaldo de
+   **cada** aparato del negocio, para ver qué colección le falta a cada uno.
+2. Elegir, para cada colección con roturas, el aparato que **sí** tiene las filas completas (el
+   diagnóstico lo señala: es el que no tiene `*-sin-mov`).
+3. Desde ESE aparato, usar «Reenviar a la nube» (`/cloud`) para esa colección, desde una fecha
+   anterior a la primera rotura.
+4. **Solo después** de reenviar — nunca antes — volver a contar el producto o la ubicación
+   afectada. Contar antes escribiría un delta en sentido contrario que rompería el otro aparato.
+
+**🛑 Aviso operativo heredado del 22-09, sigue vigente hasta completar el paso 3:** no volver a
+contar el producto que aparece en negativo en el aparato que lo muestra.
 
 **Lo de abajo es el registro de las fusiones anteriores y se deja tal cual.**
 

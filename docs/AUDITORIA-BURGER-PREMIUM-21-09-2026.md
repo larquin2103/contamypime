@@ -902,3 +902,202 @@ dependencias, se valida solo con build y lectura de código, **y se dirá así**
   correcciones de defecto. El dueño autorizó el 1 el 22-09-2026; el 4 sigue esperando.
 - El **2 gasta cuota** en un proyecto que ya está por encima del tope.
 - El **5** sigue **sin mecanismo probado** (§9.6).
+
+## 11. Ejecución del plan §10 — puntos 1, 2, 3 y 4 (23-09-2026)
+
+Los puntos **1 (H1), 4 (H2), 2 (H3-a) y 3 (H3-b)** del §10 están **programados, probados con node y
+commiteados** en `claude/awesome-dirac-484azm`. El punto **5 (H3-c) sigue EN ESPERA**. **NADA se
+fusionó a `main`, nada se desplegó.** Plan detallado ejecutado:
+`docs/superpowers/plans/2026-09-23-correccion-burger-premium.md`; ledger con cada decisión:
+`.superpowers/sdd/2026-09-23-correccion-burger-premium/progress.md`.
+
+### 11.1 Qué se implementó, con commits
+
+| Punto | Hallazgo | Commits | Qué hace |
+|---|---|---|---|
+| 1 | H1 | `5375a4b`, `dba835f` | Candado de solo lectura en `ordersRepo.voidItem` **y** `voidOrder`; candado en `TableScreen.charge` (D1 = a); `catch` por mesa en `ShiftScreen.releaseEmpties`; el modal de PIN se cierra al rechazar en `SalonScreen`. |
+| 4 | H2 | `fceba7d` | `ordersRepo.reconcileClosed`: repara `open` → `closed` + `saleId` al abrir el salón o la mesa, si ya existe la venta viva. Escribe SOLO esos dos campos. |
+| 2 | H3-a | `f9e9e39`, `410bc62` | Panel «Reenviar a la nube» en `/cloud`: retrocede `push:<colección>` para las cuatro colecciones inmutables y reusa `pushChanges()`. |
+| 3 | H3-b | `c88132a`, `9a9a32b` | `src/lib/atomicity.js` (puro) + `docs/auditoria/diagnostico-atomicidad.mjs` (CLI de solo lectura sobre un respaldo). |
+
+Base de la rama al empezar esta ronda: `ebd957f`. Commit del plan aprobado: `25207ab`.
+
+### 11.2 Los cinco hallazgos de contrastar el §10 con el código (22→23-09-2026)
+
+Antes de programar, el §10 se releyó contra el árbol real (`ebd957f`) y aparecieron cinco cosas que
+el plan aprobado no recogía tal cual, ninguna silenciada:
+
+1. **`voidOrder` no comprobaba el estado en absoluto.** Si la mesa no tenía líneas vivas, no pasaba
+   por `voidItem` y el candado del §10.2 no se ejecutaba: la cabecera pasaba a `voided` igual. Se
+   añadió el candado también al principio de `voidOrder`.
+2. **El candado solo, sin salida, dejaba la mesa en un callejón.** Con la cabecera `open` + venta
+   viva: ya no se podía anular (bien), pero seguía pudiendo **cobrarse otra vez** (segunda venta,
+   dinero contado dos veces) y **bloqueaba el cierre de turno** (exige cero mesas abiertas). →
+   **decisión D1**, resuelta como (a): bloquear también el cobro y subir el punto 4 (H2) justo
+   detrás del 1.
+3. **`SalonScreen` se tragaba los errores:** `releaseEmpty` y `voidWithConsumo` usaban
+   `try/finally` **sin `catch`**, así que el mensaje del candado no se habría visto justo en la
+   pantalla donde se anuló la mesa del 21-09 (iría mudo al `errorLog`). Se añadió el `catch` y el
+   párrafo de error.
+4. **Reenviar una colección MUTABLE puede REGRESAR la nube.** `pushEngine` sube con `batch.set`:
+   sobrescribe el documento de Firestore sin comparar marcas. En filas **inmutables** esto es
+   imposible (no hay versión vieja que regresar). Verificado con `grep`: `stockMovements`,
+   `productions`, `purchases` y `transfers` no tienen ni un `update/put/modify/delete` en `src/`
+   (solo el `bulkPut` de importación de traspaso, que reescribe filas idénticas). → **decisión D4**:
+   el reenvío se limita a esas cuatro, que además es todo lo que necesitan los dos incidentes.
+5. **Carrera con el cursor.** `setCursorForward` relee el cursor y escribe el máximo del lote; si el
+   retroceso cae **mientras** corre un `doPush` de esa colección, el push lo deshace en silencio.
+   `forceResend` toma el **mismo cerrojo `running`** que `pushChanges`.
+
+Y una del acta de La Patrona que el plan del 22-09 no recogía: el diagnóstico (punto 3) incluye
+**venta sin su movimiento de stock**, excluyendo las ventas de mesa (nacen con `skipStock: true` y
+mueven stock con `refType:'order'`, no `'sale'`).
+
+### 11.3 Decisiones D1–D4 (resueltas 23-09-2026)
+
+| # | Pregunta | Resuelto | Por qué |
+|---|---|---|---|
+| **D1** | Con el candado puesto, ¿qué hace una mesa que ya se cobró pero aparece abierta? | **(a)** Bloquear también el **cobro** en `charge` **y** subir el punto 4 (H2) justo detrás del 1. | Sin (a) quedaba abierto un daño peor que el que se cerraba (venta duplicada); sin el 4, la mesa bloqueaba el cierre de turno hasta reparación manual. |
+| **D2** | ¿Se añade `fake-indexeddb` como `devDependency`? | **Sí.** Solo en `devDependencies`, fuera del bundle. | Única forma de probar `voidItem`/`voidOrder`/`reconcileClosed` con base real en node. |
+| **D3** | ¿El diagnóstico entra en la app o se queda como script? | **Script**, con la lógica en un módulo puro que una futura tarjeta podría reusar. | Da la cifra que pide el punto 5 sin tocar el bundle. |
+| **D4** | ¿El reenvío se limita a las 4 colecciones inmutables? | **Sí.** | Hallazgo 4 de §11.2: ampliarlo a colecciones mutables exigiría leer la nube antes de escribir o aceptar riesgo de regresión. |
+
+### 11.4 Control positivo del diagnóstico (punto 3/H3-b) sobre A1 y A2
+
+Corrido con `docs/auditoria/diagnostico-atomicidad.mjs` sobre los dos respaldos reales de Burger,
+SHA256 verificado antes de correr:
+
+- **A1** (`56d3ab42…`, exportado `2026-09-21T20:22:18.640Z`, esquema 19): **9 roturas** —
+  `transfer-sin-mov` 3, `purchase-sin-mov` 1, `mov-anulacion-sin-linea` 1, `production-sin-mov` 3,
+  `mov-sin-production` 1.
+- **A2** (`70e0933e…`, exportado `2026-09-22T19:57:24.021Z`, esquema 19): **13 roturas** —
+  `transfer-sin-mov` 3, `purchase-sin-mov` 1, `mov-anulacion-sin-linea` 5, `production-sin-mov` 3,
+  `mov-sin-production` 1.
+
+**Los cuatro conteos que el §9 de esta acta ya medía cuadran exactamente** (`production-sin-mov` 3,
+`mov-sin-production` 1, `purchase-sin-mov` 1, `transfer-sin-mov` 3), con los mismos ids y las mismas
+horas. El `kind` `mov-anulacion-sin-linea` (no exigido por esa reconciliación) se investigó fila por
+fila: ver §11.5 y §11.6.
+
+**El backup B (Burger, `6f206d5f…`) y el respaldo de La Patrona (`68307298…`) NO estaban en la
+máquina** donde se ejecutó esta ronda. Su control positivo **queda sin ejecutar**: para La Patrona,
+el `kind` `sale-sin-mov` está cubierto por un caso de prueba puro (`'venta sin movimiento (La
+Patrona)'`) pero no se corrió contra su dato real.
+
+### 11.5 Hallazgo NUEVO: pedido `180a7687` (Mesa 1)
+
+El diagnóstico, al barrer **todas** las órdenes (no solo la `143f3098` que esta acta ya
+documentaba), encontró un movimiento `order_void` sin su línea anulada pareja, **presente en A1 y
+en A2** (o sea: no es un artefacto de un solo respaldo):
+
+```
+2026-09-21T18:56:19.960Z  mov-anulacion-sin-linea  79e584ba-ca21-4ea8-833f-43c9ca6ab73e  180a7687-af72-4c2b-8a90-9a2d1a89e869
+```
+
+Movimiento `order_void` del pedido `180a7687-af72-4c2b-8a90-9a2d1a89e869` ("Mesa 1"), producto
+`5ea84413…`. Se extrajeron todos los movimientos `order_void` de esa orden para ese producto (17) y
+todas sus líneas `voided` con `voidedAt` (16): los 16 `voidedAt` casan uno a uno con 16 de los 17
+movimientos; el único sin pareja es `79e584ba…`. Se descartó un doble-tap de la UI (`voidItem` tiene
+guarda `if (item.voided) return` **antes** de abrir la transacción: un segundo toque sobre una línea
+ya anulada no escribe nada). La explicación que cuadra con los datos es el mismo mecanismo H3 de
+esta acta: el movimiento llegó a esta base por sync y la actualización de la línea
+(`orderItems.voidedAt`) no, porque son colecciones distintas con cursores distintos. **Es
+información nueva para el dueño**, no una órden ya conocida; no se investigó por qué esta orden en
+particular sufrió la partición (a diferencia de `143f3098`, con narrativa completa abajo).
+
+### 11.6 Corrección al mecanismo del doble-void de `143f3098`
+
+Una versión anterior de esta investigación (informe de la Task 4) describió las 4 apariciones
+adicionales de `mov-anulacion-sin-linea` en A2, ligadas a la orden `143f3098`, así: la línea fue
+"vuelta a anular" a las `00:25` y su `voidedAt` se sobrescribió. **Esa frase describe un mecanismo
+imposible en un solo dispositivo**: `ordersRepo.voidItem` corta con `if (item.voided) return`
+**antes** de abrir la transacción, así que una segunda llamada sobre una línea ya `voided` en ESE
+aparato no escribe nada — ni actualiza `voidedAt` ni genera un movimiento nuevo.
+
+**El mecanismo real, consistente con los datos y con el resto de esta acta:** **dos dispositivos
+distintos** anularon la **misma** línea, cada uno viéndola todavía `voided:false` en su copia local
+(sin contradecir la guarda de `voidItem`, porque cada uno decide sobre su propio estado, no sobre el
+del otro). Cada anulación escribió, en su transacción local, la línea con SU `voidedAt` y un
+movimiento `order_void` con el mismo `ts` — 19:54–19:55 en un aparato, 00:25 en el otro (los dos
+horarios ya estaban en el §9.5 original, sin el mecanismo explicado). Al fusionar `orderItems` por
+LWW de documento entero (la regla de siempre para líneas fusionadas por `updatedAt`), la escritura
+**más tardía** (00:25) sobrevive en la línea; la más temprana (19:54–19:55) se pierde de la línea,
+pero su movimiento en `stockMovements` **no se pierde** (append-only) y queda huérfano. El resultado
+observable —4 `voidedAt` en 00:25 y 4 movimientos huérfanos en 19:54/19:55— es idéntico bajo las dos
+explicaciones; la diferencia es que la correcta no exige que un dispositivo se contradiga a sí
+mismo, y encaja exactamente con el mecanismo H3 general: colecciones distintas, cursores distintos,
+la misma transacción lógica partida en dos — aquí entre **dos transacciones de dos dispositivos**
+que apuntaban al mismo objetivo, no dentro de una sola.
+
+### 11.7 Matiz del punto 4 (H2): el cobro cortado a medias
+
+`TableScreen.charge` hace, en el camino normal, primero `salesRepo.create(...)` y luego
+`ordersRepo.markClosed(...)` como dos pasos separados (no una única transacción Dexie que cubra
+ambas tablas). **Si el proceso se corta entre esos dos pasos** (la app se cierra, el teléfono se
+queda sin batería, un error no capturado) — la venta queda creada y viva, pero la cabecera del
+pedido sigue `open`. Con la sync, esa cabecera `open` puede llegar así a la nube y de ahí a otros
+aparatos, y **se queda `open` para siempre en la nube**: nadie vuelve a llamar `markClosed` sobre
+ese pedido.
+
+`reconcileClosed` no "arregla la nube": arregla **cada aparato, localmente**, cuando abre el salón
+o esa mesa y encuentra `open` + venta viva. Es exactamente lo que evita el callejón sin salida del
+punto 1 (D1). Pero como la reparación deliberadamente no toca `updatedAt` (para no generar eco de
+subida ni competir por LWW con una cabecera real), **la cabecera de la nube nunca se corrige** por
+esta vía; cada dispositivo simplemente deja de mostrarla como un problema. Es el trade-off aceptado
+y ya declarado en el §10.5: "una cabecera reparada queda `closed` sin `closedAt` en ese aparato
+hasta que le llegue la cabecera real por la sync" — con la precisión de que, en el caso del cobro
+cortado a medias, **esa cabecera real nunca llega**, porque nunca se escribió.
+
+### 11.8 Menores diferidos (sin bloquear, con dueño de la decisión)
+
+- El error de `SalonScreen` no se limpia solo al cerrar el menú de la mesa (queda hasta la próxima
+  acción que lo pise).
+- `voidOrder` llama a `saleOf` 1+N veces cuando `order.shiftId` es `null` (N barridos completos de
+  `sales` en el caso raro de mesa reservada que otro aparato ocupó).
+- Los cambios de UI (mensajes de error, textos del panel de reenvío) no tienen prueba automatizada:
+  es la convención ya existente del repo (sin arnés para pantallas React).
+- El ticket reimpreso de una mesa reparada por `reconcileClosed` muestra la hora de la
+  **reimpresión** (`closedAt || Date.now()`, y `closedAt` nunca se escribe en la reparación), no la
+  hora real del cobro. Arreglo posible sin tocar sync: caer a `sale.createdAt`. No se tocó en esta
+  ronda.
+- `RESEND_SKIP_REASONS` (panel de reenvío) cubre los tres motivos de `skipped` que `doPush` produce
+  hoy (sync desactivada, sin negocio, sin sesión); un cuarto motivo futuro caería al mensaje
+  genérico "No se pudo completar la subida: …".
+
+### 11.9 Verificación global (Task 5, ejecutada)
+
+- `npm run build` **exit 0**. CSS **87,66 kB** (gzip 27,10 kB) — idéntico al peso de referencia. Chunk
+  principal `index-DIy6cqwz.js` **1.007,01 kB** (gzip **293,40 kB**) contra la referencia
+  87,66 kB / 1.002,35 kB (gzip 291,95 kB): **+4,66 kB crudos (+0,46 %), +1,45 kB gzip (+0,50 %)** —
+  lo paga el panel de reenvío en `CloudScreen.jsx` (única pantalla nueva de esta ronda; el resto son
+  módulos `lib`/`repositories` que no van al chunk de UI salvo lo que ya usan).
+- **20 suites en verde, 1.268 aserciones**: las 16 preexistentes + `orderSale` (18), `resend` (22),
+  `atomicity` (14) — todas con `node` directo — más `ordersRepo.test.mjs` (23, con `fake-indexeddb`
+  y el bundle de esbuild).
+- `git diff --stat ebd957f -- src/db/db.js src/features/sync/collections.js
+  src/features/sync/pullEngine.js src/features/sync/syncEngine.js src/features/sync/retryQueue.js
+  firestore.rules firestore.indexes.json` → **vacío**. Dexie sigue en v19, `SYNC_COLLECTIONS` sigue
+  en 34, no hay que redesplegar reglas.
+- **Escrituras nuevas a la base**, contadas en `git diff ebd957f -- src` filtrando
+  `.add(`/`.put(`/`.update(`/`.delete(`/`transaction`: exactamente las dos esperadas en código de
+  producción —`db.syncState.put` en `forceResend` (tabla local, fuera de `SYNC_COLLECTIONS`) y
+  `db.orders.update` en `reconcileClosed` (solo `status`+`saleId`)— más un `seen.add(...)` que es un
+  `Set` en memoria dentro del módulo puro `atomicity.js` (no toca Dexie) y cinco `.put`/`.update`
+  que viven **solo** en `ordersRepo.test.mjs` (la función `seed()` y los casos de prueba, que
+  escriben en `fake-indexeddb`, nunca en producción).
+- `git diff ebd957f -- src/features/sync/pushEngine.js | grep '^-' | grep -v '^---'` → **vacío**:
+  el fichero sigue siendo estrictamente aditivo frente a la base de esta ronda.
+
+### 11.10 Lo que esta ronda NO puede garantizar
+
+- **Nadie ha ejecutado la app.** Ni un candado disparado en un teléfono real, ni una mesa cobrada
+  dos veces evitada de verdad, ni una reparación de cabecera vista en pantalla.
+- **El reenvío (H3-a) nunca corrió contra Firestore real.** Se probó hasta el retroceso del cursor
+  local; la llamada a Firestore es la de siempre y no se ejecuta en node.
+- **El control positivo del diagnóstico (H3-b) solo corrió sobre A1 y A2.** Los respaldos B y el de
+  La Patrona no estaban disponibles; su magnitud queda sin medir con datos reales.
+- **Que el candado H1 hubiera evitado el caso del 21-09** sigue sin poder determinarse (depende de
+  si la venta ya había llegado al aparato que anuló — §9.10).
+- **El mecanismo exacto** por el que se pierden filas bajo el cursor de `pushEngine` sigue siendo
+  hipótesis razonada (§9.6), no observación directa; es justamente lo que motiva el punto 5,
+  todavía en espera.
