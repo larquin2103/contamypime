@@ -16,7 +16,7 @@ import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
 import { orderTotals, isCourtesy, isCourtesyPct } from '../../lib/orderTotals'
-import { MSG_MESA_COBRADA, createGate, ticketTime } from '../../lib/orderSale'
+import { MSG_MESA_YA_COBRADA, MSG_QUEDA_CERRADA, createGate, ticketTime } from '../../lib/orderSale'
 import { logError } from '../../lib/errorLog'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
@@ -348,9 +348,10 @@ export function TableScreen() {
     // H1: si ya existe una venta viva de esta mesa, cobrar crearia OTRA venta
     // (dinero contado dos veces). La cabecera puede ir atrasada; la venta no.
     if (await ordersRepo.saleOf(order)) {
-      // Y se repara en el acto (H2): sin esto la mesa seguia abierta hasta salir y volver.
-      ordersRepo.reconcileClosed(order.id).catch((e) => logError('mesas', e))
-      return setError(MSG_MESA_COBRADA)
+      // Y se repara en el acto (H2): sin esto la mesa seguia abierta hasta salir y
+      // volver. Se espera para no prometer en el mensaje un cierre que fallo.
+      const repaired = await ordersRepo.reconcileClosed(order.id).catch((e) => { logError('mesas', e); return false })
+      return setError(MSG_MESA_YA_COBRADA + (repaired ? MSG_QUEDA_CERRADA : ''))
     }
     // C5 - EL PUNTO CRITICO: antes de mover dinero, el descuento se toma de los
     // EVENTOS (append-only, no se pierden) y no de la cabecera (cache que el LWW

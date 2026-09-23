@@ -5,7 +5,7 @@ import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { ratesRepo } from './ratesRepo'
 import { orderTotals, cleanPct, discountFromEvents } from '../lib/orderTotals'
-import { isLiveSaleOf, shouldReconcileClosed, MSG_MESA_COBRADA } from '../lib/orderSale'
+import { isLiveSaleOf, shouldReconcileClosed, MSG_MESA_COBRADA, MSG_QUEDA_CERRADA } from '../lib/orderSale'
 import { MOVEMENT_TYPES, ORDER_STATUS, ORDER_AUDIT_ACTIONS } from '../db/constants'
 
 // ---------------------------------------------------------------------------
@@ -41,7 +41,8 @@ const stampItem = (i) => tsAfter(i?.updatedAt, i?.createdAt)
 // Error del candado de venta (H1), marcado con `code` para distinguirlo sin
 // comparar textos (el mismo recurso que el `code:'short'` de kitchenRepo).
 const CHARGED = 'charged'
-const chargedError = () => Object.assign(new Error(MSG_MESA_COBRADA), { code: CHARGED })
+const chargedError = (repaired = false) =>
+  Object.assign(new Error(MSG_MESA_COBRADA + (repaired ? MSG_QUEDA_CERRADA : '')), { code: CHARGED })
 
 // Existencia de un producto en una ubicacion (derivada del libro mayor, que es
 // la fuente de verdad; la cache de products puede ir por detras tras una sync).
@@ -198,8 +199,9 @@ export const ordersRepo = {
     if (order.status !== ORDER_STATUS.OPEN) throw new Error('El pedido ya no esta abierto')
     // Candado de venta (revision de la rama, hallazgo 2): en una mesa ya cobrada
     // cuya cabecera sigue "open", una linea nueva rebajaria stock y nunca se
-    // cobraria. Mismo patron que voidItem: fuera y DENTRO de la transaccion.
-    if (await this.saleOf(order)) return this.rejectCharged(order.id)
+    // cobraria. SOLO dentro de la transaccion (revision 2, menor 1): este es el
+    // toque mas usado del servicio y una comprobacion previa leeria las ventas
+    // del turno dos veces por toque; la de dentro es la que da la garantia.
     const loc = order.area // una mesa SIEMPRE consume del area de su turno
 
     const available = await stockAtLoc(product.id, loc)
@@ -338,8 +340,9 @@ export const ordersRepo = {
   // FUERA de toda transaccion: lanzar dentro de una la desharia. Best-effort: si
   // la reparacion falla, el rechazo se mantiene igual.
   async rejectCharged(orderId) {
-    try { await this.reconcileClosed(orderId) } catch { /* el rechazo manda */ }
-    throw chargedError()
+    let repaired = false
+    try { repaired = await this.reconcileClosed(orderId) } catch { /* el rechazo manda */ }
+    throw chargedError(repaired)
   },
 
   // Quita UNA unidad de un producto (boton "-" de la cuenta). Append-only: anula

@@ -12,8 +12,13 @@ export function isLiveSaleOf(sale, orderId) {
 // Revision de la rama (hallazgo 4): antes mandaba a "revisar la venta en el
 // turno", pero la salida real es la reparacion (H2), que ahora corre en el acto
 // al rechazar: la mesa se cierra con su venta y sale del salon y del turno.
+// Revision 2 (menor 4): la coletilla solo se anade si la reparacion OCURRIO; si
+// fallo, el mensaje no promete un cierre que no paso.
 export const MSG_MESA_COBRADA =
-  'Esta mesa ya se cobró: no se puede agregar, anular ni quitar consumo. Queda cerrada con su venta.'
+  'Esta mesa ya se cobró: no se puede agregar, anular ni quitar consumo.'
+export const MSG_QUEDA_CERRADA = ' Queda cerrada con su venta.'
+// Y al COBRAR se nombra la accion que el usuario intento.
+export const MSG_MESA_YA_COBRADA = 'Esta mesa ya se cobró: no se puede cobrar otra vez.'
 
 // H2 (auditoria Burger Premium): la cabecera dice "open" pero la venta viva ya
 // existe -> el cierre no llego por la sync (o el cobro se corto entre las dos

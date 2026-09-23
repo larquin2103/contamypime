@@ -274,8 +274,14 @@ export async function forceResend(name, sinceIso) {
   // `running` de forma SINCRONA justo antes de tomarlo: entre el fin de la
   // espera y esta linea hay saltos de microtarea por los que otro pushChanges
   // podria haber entrado.
+  // Revision 2 (menor 3): el tope es un PLAZO ABSOLUTO para toda la espera, no
+  // 15 s nuevos en cada vuelta del `while`.
+  const deadline = Date.now() + 15000
   while (running) {
-    if (!(await waitWhile(() => running))) throw new Error('Hay una subida en curso: reintenta en unos segundos')
+    const left = deadline - Date.now()
+    if (left <= 0 || !(await waitWhile(() => running, { timeoutMs: left }))) {
+      throw new Error('Hay una subida en curso: reintenta en unos segundos')
+    }
   }
   running = true
   let rewound = false

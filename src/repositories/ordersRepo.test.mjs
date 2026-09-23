@@ -139,13 +139,10 @@ await throws(() => ordersRepo.addItem({ orderId: 'o1', product: prod, qty: 1, us
 ok((await db.orderItems.count()) === 1, 'R2: sin linea nueva')
 ok((await db.stockMovements.count()) === 1, 'R2: sin salida de stock')
 ok((await db.orders.get('o1')).status === ORDER_STATUS.CLOSED, 'R2: la mesa queda cerrada con su venta')
-// R2-carrera: la venta llega entre la comprobacion y la transaccion.
-await seed({ withSale: false })
-await conStock()
-ventaTardia()
-await throws(() => ordersRepo.addItem({ orderId: 'o1', product: prod, qty: 1, userId: 'u' }), /ya se cobró/, 'R2: carrera en addItem')
-ok((await db.orderItems.count()) === 1, 'R2: carrera, sin linea nueva')
-ok((await db.stockMovements.count()) === 1, 'R2: carrera, sin salida de stock')
+// R2-carrera: retirada en la revision 2. addItem ya no comprueba ANTES de la
+// transaccion (menor 1), asi que no queda ventana entre las dos que simular: la
+// unica comprobacion va dentro, y IndexedDB serializa el bulkPut de la sync con
+// ella. Lo cubre R2 (arriba): sin la comprobacion de dentro, R2 falla.
 // R2-no regresion: sin venta, addItem agrega y rebaja como siempre.
 await seed({ withSale: false })
 await conStock()
@@ -156,6 +153,34 @@ ok((await db.products.get('p1')).stockByLocation.Salon === 4, 'R2: sin venta, st
 // R4b. El mensaje nombra tambien el "agregar".
 await seed()
 await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /agregar/, 'R4b: el mensaje cubre agregar')
+
+// Revision 2, menor 1: addItem es el toque MAS usado del servicio. Sin venta
+// debe consultar las ventas UNA sola vez (la de dentro de la transaccion).
+{
+  await seed({ withSale: false })
+  await conStock()
+  const orig = ordersRepo.saleOf
+  let n = 0
+  ordersRepo.saleOf = async function (o) { n++; return orig.call(this, o) }
+  try { await ordersRepo.addItem({ orderId: 'o1', product: prod, qty: 1, userId: 'u' }) }
+  finally { ordersRepo.saleOf = orig }
+  ok(n === 1, `M1: addItem sin venta consulta la venta 1 vez (fueron ${n})`)
+}
+// Revision 2, menor 4: si la reparacion FALLA, el mensaje no promete que la
+// mesa quedo cerrada.
+{
+  await seed()
+  const orig = ordersRepo.reconcileClosed
+  ordersRepo.reconcileClosed = async () => { throw new Error('disco lleno') }
+  let msg = ''
+  try { await ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }) } catch (e) { msg = e.message }
+  finally { ordersRepo.reconcileClosed = orig }
+  ok(/ya se cobró/.test(msg) && !/Queda cerrada/.test(msg), `M4: sin reparacion no promete cierre: ${msg}`)
+  let code = ''
+  await seed()
+  try { await ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }) } catch (e) { code = e.code }
+  ok(code === 'charged', 'M4: el rechazo sigue marcado con code charged')
+}
 
 console.log(`ordersRepo: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)
