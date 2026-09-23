@@ -6,6 +6,11 @@ import { logError } from '../../lib/errorLog'
 import { logSyncEvent } from '../../lib/syncLog'
 import { isPermanent, dueIds, markAttempted, onSuccess, onTransient, onPermanent, autoResume } from './retryQueue'
 import { isResendable, countSince, rewindTo, waitWhile } from './resend'
+import { createCommitWatch } from './commitWatch'
+
+// La Patrona §14.5 (commit 2): avisa en /errors de un lote que no se confirma
+// estando en linea. Solo observa; no cambia que se sube ni el cursor.
+const watchCommit = createCommitWatch({ log: logSyncEvent })
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Bloque 23 + Bloque C (diseno B): motor de SUBIDA (push).
@@ -166,8 +171,7 @@ async function doPush() {
       const slice = nuevos.slice(i, i + step)
       const batch = writeBatch(fs)
       for (const { r, id } of slice) batch.set(ref(col.name, id), toCloud(r))
-      batch
-        .commit()
+      watchCommit(col.name, slice, batch.commit()) // devuelve LA MISMA promesa (commitWatch.js)
         .then(() => withRetry(col.name, (list) => slice.reduce((l, { id }) => onSuccess(l, id), list)))
         .catch((e) => onBatchError(col, slice, e, { ...ctx, now: Date.now() }))
       queuedCount += slice.length
