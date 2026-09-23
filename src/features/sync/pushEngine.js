@@ -3,6 +3,7 @@ import { db } from '../../db/db'
 import { syncConfig } from './syncService'
 import { SYNC_COLLECTIONS, LOCAL_CONFIG_KEYS, syncTs } from './collections'
 import { logError } from '../../lib/errorLog'
+import { logSyncEvent } from '../../lib/syncLog'
 import { isPermanent, dueIds, markAttempted, onSuccess, onTransient, onPermanent, autoResume } from './retryQueue'
 import { isResendable, countSince, rewindTo, waitWhile } from './resend'
 
@@ -76,7 +77,10 @@ function withRetry(name, fn) {
   }
   const next = (retryChains[name] || Promise.resolve())
     .then(run, run) // corre aunque el paso anterior fallara
-    .catch((e) => console.warn('[sync] retry', name, e?.code || e?.message))
+    .catch((e) => {
+      console.warn('[sync] retry', name, e?.code || e?.message)
+      logSyncEvent('cola-reintentos', name, e)
+    })
   retryChains[name] = next
   return next
 }
@@ -192,6 +196,8 @@ async function doPush() {
 async function onBatchError(col, slice, e, ctx) {
   const code = e?.code || ''
   console.warn('[sync] push', col.name, code || e?.message)
+  logSyncEvent('subida-lote-rechazado', col.name, e,
+    `${slice.length} fila(s) ${slice[0]?.ts || ''}..${slice[slice.length - 1]?.ts || ''}`)
   if (!isPermanent(code)) {
     await withRetry(col.name, (list) => {
       let l = list
@@ -235,6 +241,7 @@ async function onBatchError(col, slice, e, ctx) {
 async function onOneError(col, id, e, now) {
   const code = e?.code || ''
   console.warn('[sync] retry', col.name, code || e?.message)
+  logSyncEvent('subida-reintento-fallido', col.name, e, id)
   if (isPermanent(code)) {
     logSync(col.name, id, code, 'PAUSED-permanente')
     await withRetry(col.name, (list) => onPermanent(list, id, code, now))

@@ -3,6 +3,7 @@ import { syncConfig } from './syncService'
 import { SYNC_COLLECTIONS } from './collections'
 import { pushChanges } from './pushEngine'
 import { mergeIncoming, recomputeStock } from './pullEngine'
+import { logSyncEvent } from '../../lib/syncLog'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Orquestador de sincronizacion.
@@ -63,6 +64,8 @@ async function handleIncoming(col, docs) {
     if (affected.size) await recomputeStock(affected)
   } catch (e) {
     console.warn('[sync] merge', col.name, e?.message)
+    // El lote se pierde aqui: onSnapshot no lo vuelve a entregar salvo que cambie.
+    logSyncEvent('bajada-fusion-descartada', col.name, e, `${docs.length} doc(s)`)
   }
 }
 
@@ -90,7 +93,12 @@ export async function startRealtime() {
             .map((c) => c.doc.data())
           if (docs.length) handleIncoming(col, docs)
         },
-        (err) => console.warn('[sync] onSnapshot', col.name, err?.code || err?.message)
+        (err) => {
+          console.warn('[sync] onSnapshot', col.name, err?.code || err?.message)
+          // Firestore da el oyente por MUERTO tras este callback: la coleccion deja
+          // de bajar en vivo hasta que algo llame a restartRealtime.
+          logSyncEvent('bajada-oyente-caido', col.name, err)
+        }
       )
       listeners.push(unsub)
     }

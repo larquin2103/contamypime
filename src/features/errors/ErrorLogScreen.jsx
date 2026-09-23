@@ -9,7 +9,8 @@ import { formatDateTime } from '../../lib/dates'
 const SOURCE_LABEL = {
   window: 'Error de la app',
   promise: 'Operación fallida',
-  react: 'Error de pantalla'
+  react: 'Error de pantalla',
+  sync: 'Sincronización'
 }
 
 // Bloque 33.3 - Registro de errores (solo dueño/admin). Convierte "se me

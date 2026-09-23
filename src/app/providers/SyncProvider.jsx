@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { observeAuth, syncConfig, refreshSession } from '../../features/sync/syncService'
 import { syncNow, startRealtime, stopRealtime, initialPull, restartRealtime } from '../../features/sync/syncEngine'
 import { touchThisDevice } from '../../features/sync/deviceRegistry'
+import { logSyncEvent } from '../../lib/syncLog'
 
 const SyncContext = createContext(null)
 
@@ -111,6 +112,7 @@ export function SyncProvider({ children }) {
       setLastSyncAt(new Date().toISOString())
     } catch (e) {
       console.warn('[sync] push periodico', e?.message)
+      logSyncEvent('subida-periodica', null, e)
     } finally {
       busyRef.current = false
       setSyncing(false)
@@ -149,6 +151,8 @@ export function SyncProvider({ children }) {
         setPullError('')
       } else if (res?.ok && !res.fromServer) {
         setPullError('El servidor no respondió; se leyó de la caché local.')
+        // Huella de la cuota de lecturas agotada (docs/SYNC-LECTURAS.md §1).
+        logSyncEvent('bajada-sin-servidor', null, { code: 'fromCache' })
         recoverSession() // FASE 2: en red pero sin respuesta -> intenta recuperar
       } else if (res?.reason) {
         setPullError(res.reason)
@@ -156,6 +160,7 @@ export function SyncProvider({ children }) {
     } catch (e) {
       setPullError(e?.message || 'error de red')
       console.warn('[sync] pull periodico', e?.message)
+      logSyncEvent('bajada-periodica', null, e)
       recoverSession() // FASE 2: probablemente token caducado -> renovar y reabrir
     } finally {
       pullBusyRef.current = false
@@ -177,6 +182,7 @@ export function SyncProvider({ children }) {
       const ok = await refreshSession() // getIdToken(true): token nuevo del servidor
       if (!ok) {
         setPullError('No se pudo renovar la sesión de nube. Revisa tu conexión; si persiste, vuelve a vincular el dispositivo.')
+        logSyncEvent('recuperacion-sesion', null, { code: 'token-no-renovado' })
         return
       }
       await restartRealtime() // re-arma listeners que pudieran haber muerto por auth
@@ -184,6 +190,7 @@ export function SyncProvider({ children }) {
       runPush()               // empuja lo local pendiente (no bloqueante)
     } catch (e) {
       console.warn('[sync] recover', e?.message)
+      logSyncEvent('recuperacion-sesion', null, e)
     }
   }
 

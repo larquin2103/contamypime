@@ -1,6 +1,7 @@
 import { getFirebase } from '../../lib/firebase'
 import { configRepo } from '../../repositories/configRepo'
 import { newId } from '../../lib/ids'
+import { logSyncEvent } from '../../lib/syncLog'
 
 // ---------------------------------------------------------------------------
 // Fase 5 - Bloque 31: registro de dispositivos por negocio y limite de la
@@ -128,5 +129,6 @@ export async function touchThisDevice() {
     await registerThisDevice(fs, auth.currentUser.uid, { enforce: false })
   } catch (e) {
     console.warn('[devices] touch', e?.code || e?.message)
+    logSyncEvent('registro-aparato', null, e)
   }
 }
