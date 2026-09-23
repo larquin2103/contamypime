@@ -258,16 +258,29 @@ export async function countResend(name, sinceIso) {
 // MISMO cerrojo que pushChanges: si el retroceso cayera en medio de un doPush,
 // su setCursorForward lo desharia en silencio. Reenviar es idempotente
 // (batch.set por id de filas que no cambian); lo que cuesta es cuota.
+//
+// Ronda 1 (hallazgo B): si `rewindTo` no encuentra nada que retroceder (cursor
+// vacio, o la fecha pedida ya esta cubierta), esta funcion IGUAL dispara una
+// subida normal (el dueno pudo pedir un reenvio que no hacia falta, y esa
+// subida de todos modos recoge lo pendiente). Pero el resultado debe decir la
+// verdad: `rewound` distingue "de verdad retrocedi el cursor" de "no hizo
+// falta, fue una subida normal", para que la pantalla no anuncie un reenvio
+// que no ocurrio.
 export async function forceResend(name, sinceIso) {
   if (!isResendable(name)) throw new Error('Esa colección no se puede reenviar')
   if (!(await syncConfig.isEnabled())) throw new Error('La sincronización no está activa en este aparato')
   if (running) throw new Error('Hay una subida en curso: reintenta en unos segundos')
   running = true
+  let rewound = false
   try {
     const next = rewindTo(await getCursor(name), sinceIso)
-    if (next) await db.syncState.put({ key: cursorKey(name), value: next })
+    if (next) {
+      await db.syncState.put({ key: cursorKey(name), value: next })
+      rewound = true
+    }
   } finally {
     running = false
   }
-  return pushChanges()
+  const res = await pushChanges()
+  return { ...res, rewound }
 }

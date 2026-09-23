@@ -18,7 +18,10 @@ import { RESENDABLE, localInputToIso } from './resend'
 
 export function CloudScreen() {
   const { isOwner } = useAuth()
-  const { refresh } = useSync()
+  // `enabled` ya es el valor VIVO que SyncProvider deriva de syncConfig.isEnabled()
+  // (Ronda 1, hallazgo C): reusarlo evita una segunda lectura y un segundo estado
+  // que pudiera desincronizarse del que ya muestra el resto de la pantalla.
+  const { refresh, enabled: syncEnabled } = useSync()
   const license = useLicense()
   const maxDevices = Number(license.payload?.maxDispositivos || 0)
   const [cloudUser, setCloudUser] = useState(undefined) // undefined = cargando
@@ -146,7 +149,7 @@ export function CloudScreen() {
 
       {cloudUser && <DevicesPanel maxDevices={maxDevices} />}
 
-      {cloudUser && <ResendPanel />}
+      {cloudUser && syncEnabled && <ResendPanel />}
 
       {cloudUser === null && (
         <>
@@ -295,6 +298,16 @@ const RESEND_LABELS = {
   transfers: 'Salidas del almacén'
 }
 
+// Ronda 1 (hallazgo A): `forceResend` reusa `pushChanges`, que puede terminar
+// SIN subir nada por una razon ajena al reenvio (no confundir con "0 filas
+// desde esa fecha", que ya se ve al Contar). Traduce el `skipped` de `doPush`
+// a una frase honesta en español; nunca se pinta como si hubiera funcionado.
+const RESEND_SKIP_REASONS = {
+  disabled: 'La sincronización está desactivada en este aparato.',
+  'no-business': 'Este aparato no tiene un negocio vinculado a la nube.',
+  'no-auth': 'No hay sesión abierta con la nube en este aparato.'
+}
+
 // Panel «Reenviar a la nube»: repara el dano ya hecho por el cursor que nunca
 // retrocede (H3-a). Solo reparacion manual, con el dueno confirmando cuanto
 // va a gastar de la cuota antes de disparar el reenvio.
@@ -341,7 +354,26 @@ function ResendPanel() {
     setBusy(true)
     try {
       const res = await forceResend(col, sinceIso)
-      setOk(`Reenviadas ${res.queued} fila(s) de "${RESEND_LABELS[col] || col}".`)
+      // Ronda 1 (hallazgo A): `res.skipped` significa que doPush NO subio nada
+      // (sync apagada / sin negocio / sin sesion) — eso NO es un reenvio exitoso,
+      // aunque el retroceso del cursor sí se haya guardado.
+      if (res.skipped) {
+        setError(RESEND_SKIP_REASONS[res.skipped] || `No se pudo completar la subida: ${res.skipped}.`)
+        return
+      }
+      // Ronda 1 (hallazgo A): `res.queued` es el total de ESTA pasada de subida
+      // en las 34 colecciones (no solo la elegida aquí), y las filas quedan
+      // ENCOLADAS (los commits son fire-and-forget: no hay confirmación del
+      // servidor todavía). No se puede decir "reenviadas" sin mentir.
+      let msg = `Encoladas para subir: ${res.queued} fila(s) en esta pasada (todas las colecciones). ` +
+        'Se entregan a la nube cuando haya conexión.'
+      // Ronda 1 (hallazgo B): si no hizo falta retroceder el cursor (ya cubría
+      // la fecha pedida), decirlo: lo que corrió fue una subida normal, no un
+      // reenvio de verdad.
+      if (!res.rewound) {
+        msg += ' No hizo falta retroceder: la subida ya cubría esa fecha. Se lanzó una subida normal.'
+      }
+      setOk(msg)
       setCount(null)
       setSinceIso(null)
     } catch (e) {
