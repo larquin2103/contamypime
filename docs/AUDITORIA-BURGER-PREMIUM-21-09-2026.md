@@ -1101,3 +1101,39 @@ cortado a medias, **esa cabecera real nunca llega**, porque nunca se escribió.
 - **El mecanismo exacto** por el que se pierden filas bajo el cursor de `pushEngine` sigue siendo
   hipótesis razonada (§9.6), no observación directa; es justamente lo que motiva el punto 5,
   todavía en espera.
+
+### 11.11 Revisión de toda la rama y arreglos 1, 3 y 4 (23-09-2026, commit `d7998d2`)
+
+Revisión independiente de `ebd957f..3655c5c`. Veredicto: **fusionable con arreglos menores**, sin
+críticos ni importantes. Confirmó, leyendo el código, que el candado y la reparación usan el
+**mismo predicado** (ninguna mesa bloqueada queda sin poder cerrarse), que la reparación no hace
+eco (la bajada compara `syncTs` con `>` estricto), que `doPush` no cambió y que el reenvío no
+puede tocar colecciones mutables ni correr a la vez que una subida normal.
+
+**Arreglado por decisión del dueño:**
+- **(1)** El candado se leía **fuera** de la transacción. Ahora `voidItem` y el cierre final de
+  `voidOrder` **revalidan dentro**, con `db.sales` en el alcance, como `salesRepo`.
+- **(3)** Al rechazar, la mesa seguía abierta hasta salir y volver. Ahora el repo la **repara en el
+  acto** (`rejectCharged` → `reconcileClosed`, **fuera** de la transacción, porque lanzar dentro
+  desharía la reparación), y `charge` hace lo mismo al bloquear.
+- **(4)** El mensaje mandaba a «revisar la venta en el turno»; ahora dice que la mesa queda cerrada
+  con su venta.
+
+Pruebas: `ordersRepo` pasa de 23 a **36** aserciones. La carrera se simula escribiendo la venta
+justo después de la primera lectura, como haría el `bulkPut` del `pullEngine`. **Control
+negativo:** sin la revalidación de `voidItem` fallan 5, y sin la de `voidOrder` fallan 2. La prueba
+2 anterior exigía que la mesa rechazada siguiera `open`; se reescribió con su intención («no se
+anula»), porque ahora queda `closed`. Ningún llamador envuelve `voidItem`/`voidOrder` en otra
+transacción. Build exit 0; **20 suites / 1.281 aserciones**; chunk 1.007,52 kB (gzip 293,61).
+
+**Quedan abiertos** (decisión del dueño): **(2)** `addItem` sin candado: en una mesa cobrada que
+aún figura `open` se puede agregar una línea antes de que la reparación la cierre; esa línea rebaja
+stock y no se cobra. **(5)** El ticket reimpreso de una mesa reparada sale con la hora de ahora y
+las líneas vivas, no las de la venta. **(6)** El aviso del reenvío no menciona las posibles lecturas
+en los demás aparatos. **(7)** Doble toque en *Cobrar*: `setBusy(true)` va después de dos `await`
+(**preexistente en `main`**; la rama amplía la ventana en una consulta). **(8)** Si el reenvío
+coincide con la subida periódica, falla y hay que reintentar a mano. **(9)** Los errores de
+pantalla no se limpian solos.
+
+**Lo que no se puede garantizar:** nadie ha ejecutado la app, y la carrera se probó sobre
+`fake-indexeddb`, no en el IndexedDB de un teléfono.

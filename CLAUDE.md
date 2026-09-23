@@ -93,7 +93,8 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esta suite dentro: **20 suites / 1.268 aserciones** en total, medidas el 23-09-2026.
+Con esta suite dentro: **20 suites / 1.281 aserciones** en total, medidas el 23-09-2026 tras la
+revisión de la rama (`ordersRepo` pasó de 23 a 36).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -828,6 +829,15 @@ D1–D4, los resultados del control positivo y el hallazgo nuevo del pedido `180
   movimiento `order_void` sin su línea anulada, presente en A1 **y** A2 — mismo mecanismo H3, otra
   instancia. El backup **B** (Burger) y el de **La Patrona** no estaban en la máquina: su control
   positivo **no se ejecutó**.
+- **Revisión de toda la rama (23-09-2026, commit `d7998d2`):** revisor independiente, veredicto
+  *fusionable con arreglos menores*, **sin críticos ni importantes**. El dueño eligió arreglar los
+  hallazgos **1, 3 y 4**: el candado de `voidItem` y el cierre de `voidOrder` **revalidan la venta
+  dentro de su transacción**; al rechazar por venta viva la mesa **se repara en el acto**
+  (`rejectCharged` → `reconcileClosed`, fuera de la transacción), también desde `charge`; y el
+  mensaje dice que la mesa *queda cerrada con su venta*. **Quedan abiertos, por decisión del
+  dueño:** `addItem` sin candado (2), el ticket reimpreso de una mesa reparada con la hora de ahora
+  y las líneas vivas (5), el aviso de lecturas del reenvío (6), el **doble toque en *Cobrar***
+  (7, **preexistente en `main`**) y dos cosméticos (8, 9). Acta en el §11.11 de la auditoría.
 - **5 (H3-c): SIGUE EN ESPERA.** Que nada dependa solo del cursor de `pushEngine` es cirugía en el
   motor de sync y el dueño lo decide aparte, con la cifra del punto 4 ya en la mano (9 roturas en
   A1, 13 en A2, de las cuales la mayoría son huérfanos append-only ya conocidos, no crecimiento sin
