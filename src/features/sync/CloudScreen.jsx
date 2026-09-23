@@ -13,6 +13,8 @@ import {
 } from './syncService'
 import { syncNow, initialPull } from './syncEngine'
 import { listDevices, removeDevice, getDeviceId } from './deviceRegistry'
+import { countResend, forceResend } from './pushEngine'
+import { RESENDABLE, localInputToIso } from './resend'
 
 export function CloudScreen() {
   const { isOwner } = useAuth()
@@ -143,6 +145,8 @@ export function CloudScreen() {
       )}
 
       {cloudUser && <DevicesPanel maxDevices={maxDevices} />}
+
+      {cloudUser && <ResendPanel />}
 
       {cloudUser === null && (
         <>
@@ -278,6 +282,119 @@ function DevicesPanel({ maxDevices }) {
 
       {error && <p className="error">{error}</p>}
       <button className="btn btn--block" disabled={busy} onClick={load}>Actualizar lista</button>
+    </section>
+  )
+}
+
+// Etiquetas de las cuatro colecciones inmutables reenviables (auditoria Burger
+// Premium, H3-a). El orden sigue el de RESENDABLE.
+const RESEND_LABELS = {
+  stockMovements: 'Libro de existencias',
+  productions: 'Producciones',
+  purchases: 'Entradas',
+  transfers: 'Salidas del almacén'
+}
+
+// Panel «Reenviar a la nube»: repara el dano ya hecho por el cursor que nunca
+// retrocede (H3-a). Solo reparacion manual, con el dueno confirmando cuanto
+// va a gastar de la cuota antes de disparar el reenvio.
+function ResendPanel() {
+  const [col, setCol] = useState(RESENDABLE[0])
+  const [when, setWhen] = useState('')
+  const [sinceIso, setSinceIso] = useState(null)
+  const [count, setCount] = useState(null) // null = aun no contado
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [ok, setOk] = useState('')
+
+  const resetCount = () => {
+    setCount(null)
+    setSinceIso(null)
+    setOk('')
+  }
+
+  const changeCol = (e) => { setCol(e.target.value); resetCount(); setError('') }
+  const changeWhen = (e) => { setWhen(e.target.value); resetCount(); setError('') }
+
+  const doCount = async () => {
+    setError('')
+    setOk('')
+    setBusy(true)
+    try {
+      const iso = localInputToIso(when)
+      if (!iso) throw new Error('Escribe una fecha válida.')
+      const n = await countResend(col, iso)
+      setSinceIso(iso)
+      setCount(n)
+    } catch (e) {
+      setError(e.message)
+      setCount(null)
+      setSinceIso(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const doResend = async () => {
+    setError('')
+    setOk('')
+    setBusy(true)
+    try {
+      const res = await forceResend(col, sinceIso)
+      setOk(`Reenviadas ${res.queued} fila(s) de "${RESEND_LABELS[col] || col}".`)
+      setCount(null)
+      setSinceIso(null)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="card">
+      <h3>Reenviar a la nube</h3>
+      <label className="field">
+        <span>Colección</span>
+        <select value={col} onChange={changeCol}>
+          {RESENDABLE.map((name) => (
+            <option key={name} value={name}>{RESEND_LABELS[name] || name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Desde</span>
+        <input type="datetime-local" value={when} onChange={changeWhen} />
+      </label>
+
+      <button className="btn btn--block" disabled={busy} onClick={doCount}>
+        Contar
+      </button>
+
+      {count !== null && sinceIso && (
+        <p className="muted">
+          Se reenviarán {count} filas desde el {new Date(sinceIso).toLocaleString('es')}. Gasta {count}{' '}
+          escrituras de la cuota de Firestore.
+        </p>
+      )}
+
+      <button
+        className="btn btn--primary btn--block"
+        disabled={busy || count === null || count <= 0}
+        onClick={doResend}
+      >
+        {count ? `Reenviar ${count} filas` : 'Reenviar filas'}
+      </button>
+
+      {error && <p className="error">{error}</p>}
+      {ok && <p className="ok-text">{ok}</p>}
+
+      <p className="muted">
+        <small>
+          Úsalo solo en el aparato que tiene las filas que faltan en los demás. Reenviar lo mismo dos
+          veces no duplica nada.
+        </small>
+      </p>
     </section>
   )
 }

@@ -4,6 +4,7 @@ import { syncConfig } from './syncService'
 import { SYNC_COLLECTIONS, LOCAL_CONFIG_KEYS, syncTs } from './collections'
 import { logError } from '../../lib/errorLog'
 import { isPermanent, dueIds, markAttempted, onSuccess, onTransient, onPermanent, autoResume } from './retryQueue'
+import { isResendable, countSince, rewindTo } from './resend'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Bloque 23 + Bloque C (diseno B): motor de SUBIDA (push).
@@ -244,4 +245,29 @@ async function onOneError(col, id, e, now) {
       return nl
     })
   }
+}
+
+// --- REENVIO FORZADO (auditoria Burger Premium, H3-a) ------------------------
+// Solo lectura: cuantas filas de `name` subiria un reenvio desde `sinceIso`.
+export async function countResend(name, sinceIso) {
+  if (!isResendable(name)) throw new Error('Esa colección no se puede reenviar')
+  return countSince(await db[name].toArray(), sinceIso)
+}
+
+// Retrocede `push:<name>` a `sinceIso` y dispara la subida de siempre. Toma el
+// MISMO cerrojo que pushChanges: si el retroceso cayera en medio de un doPush,
+// su setCursorForward lo desharia en silencio. Reenviar es idempotente
+// (batch.set por id de filas que no cambian); lo que cuesta es cuota.
+export async function forceResend(name, sinceIso) {
+  if (!isResendable(name)) throw new Error('Esa colección no se puede reenviar')
+  if (!(await syncConfig.isEnabled())) throw new Error('La sincronización no está activa en este aparato')
+  if (running) throw new Error('Hay una subida en curso: reintenta en unos segundos')
+  running = true
+  try {
+    const next = rewindTo(await getCursor(name), sinceIso)
+    if (next) await db.syncState.put({ key: cursorKey(name), value: next })
+  } finally {
+    running = false
+  }
+  return pushChanges()
 }
