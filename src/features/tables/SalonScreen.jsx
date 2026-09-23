@@ -156,6 +156,11 @@ export function SalonScreen() {
       setVoidAsk(null)
       setMenu(null)
     } catch (e) {
+      // H1 (fix round 1): el rechazo del candado es FINAL, no algo que se
+      // arregle reintentando con otro PIN. Si el modal se queda abierto, el
+      // mensaje de error queda tapado detras de el y el usuario ve "no pasa
+      // nada". Se cierra aqui tambien para que el error sea visible.
+      setVoidAsk(null)
       setError(e.message)
     } finally { setBusy('') }
   }

@@ -115,6 +115,7 @@ function ForcedCloseGuard({ shift, onCancel, onClosed }) {
     []
   )
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('') // H1 (fix round 1): candado de venta al liberar en masa
 
   // Sin el módulo 'mesas' no hay salón: al cuadre de cierre DIRECTO, sin esperar
   // ninguna consulta (idéntico a producción, sin el parpadeo de "comprobando").
@@ -139,11 +140,23 @@ function ForcedCloseGuard({ shift, onCancel, onClosed }) {
   // Libera de una vez las mesas EN ESPERA (sin consumo). Las que tienen consumo
   // se cobran o anulan en el salón (con su PIN); nunca en masa aquí.
   const releaseEmpties = async () => {
+    setError('')
     setBusy(true)
     try {
+      // H1 (fix round 1): candado por MESA, no por la operacion completa. Sin
+      // esto, una mesa cuya venta ya existe (cabecera atrasada por la sync)
+      // hacia que voidOrder lanzara y el bucle se detenia ahi: las demas mesas
+      // en espera se quedaban SIN liberar, en silencio. Cada mesa se intenta
+      // por su cuenta y se sigue con las demas; los mensajes se acumulan.
+      const fails = []
       for (const o of emptyTables) {
-        await ordersRepo.voidOrder({ orderId: o.id, userId: user.id, note: 'Liberada al forzar cierre' })
+        try {
+          await ordersRepo.voidOrder({ orderId: o.id, userId: user.id, note: 'Liberada al forzar cierre' })
+        } catch (e) {
+          fails.push(`Mesa ${o.table}: ${e.message}`)
+        }
       }
+      if (fails.length) setError(fails.join(' · '))
     } finally { setBusy(false) }
   }
 
@@ -161,6 +174,7 @@ function ForcedCloseGuard({ shift, onCancel, onClosed }) {
         <button className="btn btn--primary btn--block" onClick={() => navigate('/salon')}>
           Ir al salón a cobrarlas
         </button>
+        {error && <p className="error">{error}</p>}
         {emptyTables.length > 0 && (
           <button className="btn btn--ghost btn--block" disabled={busy} onClick={releaseEmpties}>
             {busy ? 'Liberando…' : `Liberar ${emptyTables.length} mesa(s) en espera (sin consumo)`}
@@ -271,6 +285,7 @@ function ActiveShiftPanel({ shift, onClosed }) {
   const [closing, setClosing] = useState(() => sessionStorage.getItem('closeFlowShift') === shift.id)
   const [showSales, setShowSales] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('') // H1 (fix round 1): candado de venta al liberar en masa
 
   // Modulo 'mesas': un turno con mesas abiertas/reservadas en su area NO se puede
   // cerrar (esas cuentas quedarian colgadas de un turno cerrado). Se bloquea el
@@ -302,11 +317,23 @@ function ActiveShiftPanel({ shift, onClosed }) {
   // Libera de una vez las mesas en espera (sin consumo). Las que tienen consumo
   // hay que cobrarlas o anularlas en el salon (con su PIN), nunca en masa aqui.
   const releaseEmpties = async () => {
+    setError('')
     setBusy(true)
     try {
+      // H1 (fix round 1): candado por MESA, no por la operacion completa. Sin
+      // esto, una mesa cuya venta ya existe (cabecera atrasada por la sync)
+      // hacia que voidOrder lanzara y el bucle se detenia ahi: las demas mesas
+      // en espera se quedaban SIN liberar, en silencio. Cada mesa se intenta
+      // por su cuenta y se sigue con las demas; los mensajes se acumulan.
+      const fails = []
       for (const o of emptyTables) {
-        await ordersRepo.voidOrder({ orderId: o.id, userId: user.id, note: 'Liberada al cerrar turno' })
+        try {
+          await ordersRepo.voidOrder({ orderId: o.id, userId: user.id, note: 'Liberada al cerrar turno' })
+        } catch (e) {
+          fails.push(`Mesa ${o.table}: ${e.message}`)
+        }
       }
+      if (fails.length) setError(fails.join(' · '))
     } finally { setBusy(false) }
   }
 
@@ -408,6 +435,7 @@ function ActiveShiftPanel({ shift, onClosed }) {
           <button className="btn btn--primary btn--block" onClick={() => navigate('/salon')}>
             Ir al salón
           </button>
+          {error && <p className="error">{error}</p>}
           {emptyTables.length > 0 && (
             <button className="btn btn--ghost btn--block" disabled={busy} onClick={releaseEmpties}>
               {busy ? 'Liberando…' : `Liberar ${emptyTables.length} mesa(s) en espera (sin consumo)`}
