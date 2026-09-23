@@ -48,6 +48,7 @@ export function SalonScreen() {
   const [busy, setBusy] = useState('')
   const [menu, setMenu] = useState(null) // { area, table, order } al tocar una mesa
   const [voidAsk, setVoidAsk] = useState(null) // pedido CON consumo a anular (pide mando)
+  const [error, setError] = useState('') // H1: candado de venta al liberar/anular
 
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const tablesMap = useLiveQuery(() => configRepo.getTables(), [], {})
@@ -133,10 +134,13 @@ export function SalonScreen() {
   // Liberar una mesa EN ESPERA (abierta sin consumo, p.ej. abierta por error):
   // la mesa vuelve a libre. No requiere mando porque no hay nada que descartar.
   const releaseEmpty = async (order) => {
+    setError('')
     setBusy(`${order.area}|${order.table}`)
     try {
       await ordersRepo.voidOrder({ orderId: order.id, userId: user.id, note: 'Mesa liberada sin consumo' })
       setMenu(null)
+    } catch (e) {
+      setError(e.message)
     } finally { setBusy('') }
   }
 
@@ -145,11 +149,14 @@ export function SalonScreen() {
   const voidWithConsumo = async () => {
     const order = voidAsk
     if (!order) return
+    setError('')
     setBusy(`${order.area}|${order.table}`)
     try {
       await ordersRepo.voidOrder({ orderId: order.id, userId: user.id, note: 'Pedido anulado' })
       setVoidAsk(null)
       setMenu(null)
+    } catch (e) {
+      setError(e.message)
     } finally { setBusy('') }
   }
 
@@ -166,6 +173,8 @@ export function SalonScreen() {
   return (
     <div className="screen">
       <h2>🍽️ Salón</h2>
+
+      {error && <p className="error">{error}</p>}
 
       {visibleAreas.length === 0 && (
         <div className="card">

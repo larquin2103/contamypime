@@ -5,6 +5,7 @@ import { round2, foreignToBase, isForeignPriced } from '../lib/currency'
 import { cleanQty } from '../lib/qty'
 import { ratesRepo } from './ratesRepo'
 import { orderTotals, cleanPct, discountFromEvents } from '../lib/orderTotals'
+import { isLiveSaleOf, MSG_MESA_COBRADA } from '../lib/orderSale'
 import { MOVEMENT_TYPES, ORDER_STATUS, ORDER_AUDIT_ACTIONS } from '../db/constants'
 
 // ---------------------------------------------------------------------------
@@ -57,6 +58,18 @@ export const ordersRepo = {
 
   async get(id) {
     return db.orders.get(id)
+  },
+
+  // Venta viva de este pedido, o null. SOLO LEE. `sales` no tiene indice por
+  // orderId (db.js:27): se entra por shiftId, que la venta de mesa hereda de
+  // order.shiftId (TableScreen). Si la cabecera local no lo trae -mesa reservada
+  // que otra instancia ocupo- se barre la tabla: es raro y nunca debe lanzar.
+  async saleOf(order) {
+    if (!order?.id) return null
+    const rows = order.shiftId
+      ? await db.sales.where('shiftId').equals(order.shiftId).toArray()
+      : await db.sales.filter((s) => isLiveSaleOf(s, order.id)).toArray()
+    return rows.find((s) => isLiveSaleOf(s, order.id)) || null
   },
 
   // Pedido abierto de una mesa concreta (o null si la mesa esta libre).
@@ -265,6 +278,9 @@ export const ordersRepo = {
     const order = await db.orders.get(item.orderId)
     if (!order) throw new Error('El pedido no existe')
     if (order.status !== ORDER_STATUS.OPEN) throw new Error('El pedido ya no esta abierto')
+    // Candado de ultima instancia (auditoria Burger Premium, H1): la cabecera
+    // puede decir "open" porque el cierre no llego por la sync; la venta no miente.
+    if (await this.saleOf(order)) throw new Error(MSG_MESA_COBRADA)
     const ts = now()
     const loc = item.area
     await db.transaction('rw', db.orderItems, db.orders, db.stockMovements, db.products, async () => {
@@ -473,6 +489,9 @@ export const ordersRepo = {
   // Anula la mesa completa SIN cobrar (el cliente se fue, cortesia): devuelve
   // el stock de todas las lineas vivas y deja el pedido marcado con su motivo.
   async voidOrder({ orderId, userId, note = '' }) {
+    // Sin lineas vivas este metodo no pasa por voidItem: el candado va aqui tambien.
+    const cur = await db.orders.get(orderId)
+    if (cur && await this.saleOf(cur)) throw new Error(MSG_MESA_COBRADA)
     const live = await this.liveItems(orderId)
     for (const it of live) {
       await this.voidItem({ itemId: it.id, userId, note: 'Pedido anulado' })

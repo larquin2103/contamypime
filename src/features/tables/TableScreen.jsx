@@ -16,6 +16,7 @@ import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
 import { orderTotals, isCourtesy, isCourtesyPct } from '../../lib/orderTotals'
+import { MSG_MESA_COBRADA } from '../../lib/orderSale'
 import { logError } from '../../lib/errorLog'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
@@ -337,6 +338,9 @@ export function TableScreen() {
   const charge = async () => {
     setError('')
     if (!live.length) return setError('La cuenta está vacía')
+    // H1: si ya existe una venta viva de esta mesa, cobrar crearia OTRA venta
+    // (dinero contado dos veces). La cabecera puede ir atrasada; la venta no.
+    if (await ordersRepo.saleOf(order)) return setError(MSG_MESA_COBRADA)
     // C5 - EL PUNTO CRITICO: antes de mover dinero, el descuento se toma de los
     // EVENTOS (append-only, no se pierden) y no de la cabecera (cache que el LWW
     // puede haber pisado). Si no coincide con lo que hay pintado, NO se cobra: se
