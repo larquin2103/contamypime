@@ -805,7 +805,11 @@ colecciones de sync nuevas.**
 
 ## Estado del trabajo en curso (23-09-2026)
 
-**EN LA RAMA, SIN FUSIONAR: el reenvío que compara antes de escribir** (spec
+**FUSIONADO A `main` EL 23-09-2026** (fast-forward `732f4ec` → **`dd49df4`**, autorizado por el
+dueño, tras una auditoría previa ejecutada: build exit 0, CSS idéntico byte a byte, chunk
++5,6 kB (gzip +1,9 kB), 26 suites / 1.451 aserciones, 0 líneas borradas en `src`, sync y esquema
+sin cambios, SDK de Firebase fuera del chunk principal, dos revisiones independientes sin críticos).
+**Sin desplegar.** El **reenvío que compara antes de escribir** (spec
 `docs/superpowers/specs/2026-09-23-reenvio-comparando-design.md`, plan
 `docs/superpowers/plans/2026-09-23-reenvio-comparando.md`). Sirve para reparar desde `/cloud` las
 versiones de `products`, `counts` y `auditEvents` que un aparato tiene y la nube no. Es lo que le
