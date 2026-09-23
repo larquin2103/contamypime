@@ -3,7 +3,7 @@
 //
 // QUE CAZA: el candado de la auditoria Burger Premium (H1). La verdad de "esta
 // mesa ya se cobro" vive en la VENTA (append-only), no en order.status (LWW).
-import { isLiveSaleOf, shouldReconcileClosed } from './orderSale.js'
+import { isLiveSaleOf, shouldReconcileClosed, createGate } from './orderSale.js'
 
 let pass = 0
 let fail = 0
@@ -36,6 +36,29 @@ eq(shouldReconcileClosed({ id: 'o1', status: 'voided' }, V), false, 'anulada: no
 eq(shouldReconcileClosed({ id: 'o1', status: 'reserved' }, V), false, 'reservada -> no')
 eq(shouldReconcileClosed({ id: 'o1', status: 'open' }, { ...V, orderId: 'o2' }), false, 'venta de otro pedido')
 eq(shouldReconcileClosed(null, V), false, 'pedido nulo')
+
+// Revision de la rama, hallazgo 7: doble toque en "Cobrar". setBusy de React
+// se aplica en el SIGUIENTE render, asi que dos toques seguidos pasaban los dos;
+// el cerrojo es sincrono y descarta el segundo mientras el primero sigue en vuelo.
+{
+  const gate = createGate()
+  let calls = 0
+  let release
+  const slow = () => { calls++; return new Promise((r) => { release = r }) }
+  const a = gate.run(slow)
+  const b = gate.run(slow) // segundo toque, con el primero en vuelo
+  eq(calls, 1, 'gate: el segundo toque no ejecuta')
+  eq(await b, undefined, 'gate: el segundo toque vuelve sin hacer nada')
+  release('ok')
+  eq(await a, 'ok', 'gate: el primero devuelve su resultado')
+  await gate.run(async () => { calls++ })
+  eq(calls, 2, 'gate: terminado el primero, se puede volver a cobrar')
+  let threw = false
+  try { await gate.run(async () => { throw new Error('x') }) } catch { threw = true }
+  eq(threw, true, 'gate: el error del cobro se propaga')
+  await gate.run(async () => { calls++ })
+  eq(calls, 3, 'gate: un cobro fallido libera el cerrojo')
+}
 
 console.log(`orderSale: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

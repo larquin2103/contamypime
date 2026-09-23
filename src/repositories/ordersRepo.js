@@ -196,6 +196,10 @@ export const ordersRepo = {
     const order = await db.orders.get(orderId)
     if (!order) throw new Error('El pedido no existe')
     if (order.status !== ORDER_STATUS.OPEN) throw new Error('El pedido ya no esta abierto')
+    // Candado de venta (revision de la rama, hallazgo 2): en una mesa ya cobrada
+    // cuya cabecera sigue "open", una linea nueva rebajaria stock y nunca se
+    // cobraria. Mismo patron que voidItem: fuera y DENTRO de la transaccion.
+    if (await this.saleOf(order)) return this.rejectCharged(order.id)
     const loc = order.area // una mesa SIEMPRE consume del area de su turno
 
     const available = await stockAtLoc(product.id, loc)
@@ -222,7 +226,8 @@ export const ordersRepo = {
     const ts = now()
     const unitPrice = toMN(product.price)
     const unitCost = toMN(product.cost)
-    await db.transaction('rw', db.orderItems, db.orders, db.stockMovements, db.products, async () => {
+    await db.transaction('rw', db.orderItems, db.orders, db.stockMovements, db.products, db.sales, async () => {
+      if (await this.saleOf(order)) throw chargedError()
       await db.orderItems.add({
         id,
         orderId,
@@ -270,7 +275,7 @@ export const ordersRepo = {
         })
       }
       await db.orders.update(orderId, { updatedAt: stampOrder(order) })
-    })
+    }).catch((e) => (e?.code === CHARGED ? this.rejectCharged(order.id) : Promise.reject(e)))
     return id
   },
 

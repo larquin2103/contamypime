@@ -127,5 +127,35 @@ ok((await db.orders.get('o1')).status === ORDER_STATUS.CLOSED, 'R3: tras la carr
 await seed()
 await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /Queda cerrada con su venta/, 'R4: mensaje nuevo')
 
+// R2 (hallazgo 2): addItem en una mesa cobrada que sigue "open" -> rechaza, no
+// rebaja stock ni deja linea huerfana, y repara la mesa en el acto.
+const prod = { id: 'p1', name: 'Jugo', unit: 'u', price: 10, cost: 4 }
+const conStock = async () => {
+  await db.stockMovements.put({ id: 'm0', productId: 'p1', location: 'Salon', qty: 5, type: 'purchase_in', createdAt: T })
+}
+await seed()
+await conStock()
+await throws(() => ordersRepo.addItem({ orderId: 'o1', product: prod, qty: 1, userId: 'u' }), /ya se cobró/, 'R2: addItem con venta')
+ok((await db.orderItems.count()) === 1, 'R2: sin linea nueva')
+ok((await db.stockMovements.count()) === 1, 'R2: sin salida de stock')
+ok((await db.orders.get('o1')).status === ORDER_STATUS.CLOSED, 'R2: la mesa queda cerrada con su venta')
+// R2-carrera: la venta llega entre la comprobacion y la transaccion.
+await seed({ withSale: false })
+await conStock()
+ventaTardia()
+await throws(() => ordersRepo.addItem({ orderId: 'o1', product: prod, qty: 1, userId: 'u' }), /ya se cobró/, 'R2: carrera en addItem')
+ok((await db.orderItems.count()) === 1, 'R2: carrera, sin linea nueva')
+ok((await db.stockMovements.count()) === 1, 'R2: carrera, sin salida de stock')
+// R2-no regresion: sin venta, addItem agrega y rebaja como siempre.
+await seed({ withSale: false })
+await conStock()
+await ordersRepo.addItem({ orderId: 'o1', product: prod, qty: 1, userId: 'u' })
+ok((await db.orderItems.count()) === 2, 'R2: sin venta, linea agregada')
+ok((await db.stockMovements.count()) === 2, 'R2: sin venta, salida de stock')
+ok((await db.products.get('p1')).stockByLocation.Salon === 4, 'R2: sin venta, stock rebajado')
+// R4b. El mensaje nombra tambien el "agregar".
+await seed()
+await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /agregar/, 'R4b: el mensaje cubre agregar')
+
 console.log(`ordersRepo: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

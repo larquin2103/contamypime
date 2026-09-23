@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../../db/db'
@@ -16,7 +16,7 @@ import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
 import { orderTotals, isCourtesy, isCourtesyPct } from '../../lib/orderTotals'
-import { MSG_MESA_COBRADA } from '../../lib/orderSale'
+import { MSG_MESA_COBRADA, createGate } from '../../lib/orderSale'
 import { logError } from '../../lib/errorLog'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
@@ -78,6 +78,10 @@ export function TableScreen() {
   const [cat, setCat] = useState('') // filtro de categoria (vacio = todas)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // Hallazgo 7: cerrojo sincrono del cobro. `busy` deshabilita el boton, pero
+  // llega en el siguiente render: dos toques seguidos entraban los dos a cobrar.
+  const chargeGate = useRef(null)
+  if (!chargeGate.current) chargeGate.current = createGate()
   const [paying, setPaying] = useState(false)
   const [waived, setWaived] = useState(false) // servicio eximido (requiere mando)
   const [askWaive, setAskWaive] = useState(false)
@@ -337,7 +341,8 @@ export function TableScreen() {
     requestDiscount({ action: 'set', pct })
   }
 
-  const charge = async () => {
+  const charge = () => chargeGate.current.run(chargeOnce)
+  const chargeOnce = async () => {
     setError('')
     if (!live.length) return setError('La cuenta está vacía')
     // H1: si ya existe una venta viva de esta mesa, cobrar crearia OTRA venta
