@@ -31,10 +31,10 @@ await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /ya se co
 ok((await db.stockMovements.count()) === 0, 'sin movimiento de devolucion')
 ok((await db.orderItems.get('i1')).voided === false, 'linea intacta')
 
-// 2. voidOrder con lineas vivas y venta -> rechaza, cabecera intacta.
+// 2. voidOrder con lineas vivas y venta -> rechaza y NO la anula (se repara, R3).
 await seed()
 await throws(() => ordersRepo.voidOrder({ orderId: 'o1', userId: 'u' }), /ya se cobró/, 'voidOrder con venta')
-ok((await db.orders.get('o1')).status === ORDER_STATUS.OPEN, 'cabecera sigue open')
+ok((await db.orders.get('o1')).status === ORDER_STATUS.CLOSED, 'no se anula: queda cerrada con su venta (R3)')
 
 // 3. voidOrder SIN lineas vivas y con venta -> tambien rechaza (hallazgo 1).
 await seed()
@@ -81,6 +81,51 @@ ok((await ordersRepo.reconcileClosed('o1')) === false, 'H2: anulada no se toca')
 ok((await db.orders.get('o1')).status === ORDER_STATUS.VOIDED, 'H2: sigue voided')
 // H2-5. Pedido inexistente no lanza.
 ok((await ordersRepo.reconcileClosed('nope')) === false, 'H2: inexistente')
+
+// R1 (revision de la rama, hallazgos 1, 3 y 4). Carrera: la venta llega por la
+// sync JUSTO despues de la comprobacion previa y antes de la transaccion. Se
+// simula dejando que la primera lectura de saleOf devuelva lo que habia (nada) y
+// escribiendo la venta acto seguido, como haria el bulkPut del pullEngine.
+const ventaTardia = () => {
+  const orig = ordersRepo.saleOf
+  ordersRepo.saleOf = async function (o) {
+    const r = await orig.call(this, o)
+    ordersRepo.saleOf = orig
+    await db.sales.put({ id: 'v1', orderId: 'o1', shiftId: 's1', voided: false, createdAt: T })
+    return r
+  }
+}
+// R1-1. voidItem revalida DENTRO de la transaccion.
+await seed({ withSale: false })
+ventaTardia()
+await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /ya se cobró/, 'R1: venta tardia en voidItem')
+ok((await db.stockMovements.count()) === 0, 'R1: venta tardia, sin movimiento')
+ok((await db.orderItems.get('i1')).voided === false, 'R1: venta tardia, linea intacta')
+// R1-2. El cierre final de voidOrder (mesa sin lineas vivas) tambien.
+await seed({ withSale: false })
+await db.orderItems.update('i1', { voided: true })
+ventaTardia()
+await throws(() => ordersRepo.voidOrder({ orderId: 'o1', userId: 'u' }), /ya se cobró/, 'R1: venta tardia en voidOrder')
+ok((await db.orders.get('o1')).status !== ORDER_STATUS.VOIDED, 'R1: voidOrder no anula una mesa cobrada')
+// R3-1. Al rechazar, la mesa se REPARA en el acto (closed + saleId), sin marcas.
+await seed()
+await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /ya se cobró/, 'R3: rechazo voidItem')
+const rep = await db.orders.get('o1')
+ok(rep.status === ORDER_STATUS.CLOSED && rep.saleId === 'v1', 'R3: voidItem rechazado deja la mesa cerrada')
+ok(rep.updatedAt === T && rep.closedAt === undefined, 'R3: la reparacion no sella marcas')
+// R3-2. Igual desde voidOrder (el camino de liberar en masa del turno).
+await seed()
+await db.orderItems.update('i1', { voided: true })
+await throws(() => ordersRepo.voidOrder({ orderId: 'o1', userId: 'u' }), /ya se cobró/, 'R3: rechazo voidOrder')
+ok((await db.orders.get('o1')).status === ORDER_STATUS.CLOSED, 'R3: voidOrder rechazado deja la mesa cerrada')
+// R3-3. Tras la carrera, tambien queda reparada.
+await seed({ withSale: false })
+ventaTardia()
+await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /ya se cobró/, 'R3: carrera')
+ok((await db.orders.get('o1')).status === ORDER_STATUS.CLOSED, 'R3: tras la carrera la mesa queda cerrada')
+// R4. El mensaje ya no manda a "revisar la venta en el turno".
+await seed()
+await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /Queda cerrada con su venta/, 'R4: mensaje nuevo')
 
 console.log(`ordersRepo: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

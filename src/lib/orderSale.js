@@ -9,8 +9,11 @@ export function isLiveSaleOf(sale, orderId) {
   return sale.orderId === orderId && !sale.voided
 }
 
+// Revision de la rama (hallazgo 4): antes mandaba a "revisar la venta en el
+// turno", pero la salida real es la reparacion (H2), que ahora corre en el acto
+// al rechazar: la mesa se cierra con su venta y sale del salon y del turno.
 export const MSG_MESA_COBRADA =
-  'Esta mesa ya se cobró: no se puede anular ni quitar consumo. Revisa la venta en el turno.'
+  'Esta mesa ya se cobró: no se puede anular ni quitar consumo. Queda cerrada con su venta.'
 
 // H2 (auditoria Burger Premium): la cabecera dice "open" pero la venta viva ya
 // existe -> el cierre no llego por la sync (o el cobro se corto entre las dos

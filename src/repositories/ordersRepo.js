@@ -38,6 +38,11 @@ import { MOVEMENT_TYPES, ORDER_STATUS, ORDER_AUDIT_ACTIONS } from '../db/constan
 const stampOrder = (o) => tsAfter(o?.updatedAt, o?.closedAt, o?.openedAt)
 const stampItem = (i) => tsAfter(i?.updatedAt, i?.createdAt)
 
+// Error del candado de venta (H1), marcado con `code` para distinguirlo sin
+// comparar textos (el mismo recurso que el `code:'short'` de kitchenRepo).
+const CHARGED = 'charged'
+const chargedError = () => Object.assign(new Error(MSG_MESA_COBRADA), { code: CHARGED })
+
 // Existencia de un producto en una ubicacion (derivada del libro mayor, que es
 // la fuente de verdad; la cache de products puede ir por detras tras una sync).
 async function stockAtLoc(productId, location) {
@@ -280,10 +285,13 @@ export const ordersRepo = {
     if (order.status !== ORDER_STATUS.OPEN) throw new Error('El pedido ya no esta abierto')
     // Candado de ultima instancia (auditoria Burger Premium, H1): la cabecera
     // puede decir "open" porque el cierre no llego por la sync; la venta no miente.
-    if (await this.saleOf(order)) throw new Error(MSG_MESA_COBRADA)
+    if (await this.saleOf(order)) return this.rejectCharged(order.id)
     const ts = now()
     const loc = item.area
-    await db.transaction('rw', db.orderItems, db.orders, db.stockMovements, db.products, async () => {
+    await db.transaction('rw', db.orderItems, db.orders, db.stockMovements, db.products, db.sales, async () => {
+      // Y se REVALIDA dentro, como salesRepo: una venta que la sync escriba entre
+      // la comprobacion de arriba y esta transaccion no se puede colar.
+      if (await this.saleOf(order)) throw chargedError()
       await db.orderItems.update(itemId, {
         voided: true,
         voidedBy: userId,
@@ -318,7 +326,15 @@ export const ordersRepo = {
         })
       }
       await db.orders.update(item.orderId, { updatedAt: stampOrder(order) })
-    })
+    }).catch((e) => (e?.code === CHARGED ? this.rejectCharged(order.id) : Promise.reject(e)))
+  },
+
+  // Rechazo por venta viva (H1) + reparacion en el acto (H2). La reparacion va
+  // FUERA de toda transaccion: lanzar dentro de una la desharia. Best-effort: si
+  // la reparacion falla, el rechazo se mantiene igual.
+  async rejectCharged(orderId) {
+    try { await this.reconcileClosed(orderId) } catch { /* el rechazo manda */ }
+    throw chargedError()
   },
 
   // Quita UNA unidad de un producto (boton "-" de la cuenta). Append-only: anula
@@ -506,21 +522,25 @@ export const ordersRepo = {
   async voidOrder({ orderId, userId, note = '' }) {
     // Sin lineas vivas este metodo no pasa por voidItem: el candado va aqui tambien.
     const cur = await db.orders.get(orderId)
-    if (cur && await this.saleOf(cur)) throw new Error(MSG_MESA_COBRADA)
+    if (cur && await this.saleOf(cur)) return this.rejectCharged(orderId)
     const live = await this.liveItems(orderId)
     for (const it of live) {
       await this.voidItem({ itemId: it.id, userId, note: 'Pedido anulado' })
     }
     const ts = now()
-    // El get va DESPUES del bucle: cada voidItem ya avanzo el updatedAt del pedido.
-    const o = await db.orders.get(orderId)
-    await db.orders.update(orderId, {
-      status: ORDER_STATUS.VOIDED,
-      closedBy: userId,
-      closedAt: ts,
-      voidNote: String(note || '').trim(),
-      updatedAt: stampOrder(o)
-    })
+    await db.transaction('rw', db.orders, db.sales, async () => {
+      // El get va DESPUES del bucle: cada voidItem ya avanzo el updatedAt del pedido.
+      const o = await db.orders.get(orderId)
+      // Revalidacion dentro de la transaccion (misma razon que en voidItem).
+      if (o && await this.saleOf(o)) throw chargedError()
+      await db.orders.update(orderId, {
+        status: ORDER_STATUS.VOIDED,
+        closedBy: userId,
+        closedAt: ts,
+        voidNote: String(note || '').trim(),
+        updatedAt: stampOrder(o)
+      })
+    }).catch((e) => (e?.code === CHARGED ? this.rejectCharged(orderId) : Promise.reject(e)))
   },
 
   // Pedidos de un turno (para el cuadre y los reportes de cierre).

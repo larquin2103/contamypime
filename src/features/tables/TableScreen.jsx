@@ -342,7 +342,11 @@ export function TableScreen() {
     if (!live.length) return setError('La cuenta está vacía')
     // H1: si ya existe una venta viva de esta mesa, cobrar crearia OTRA venta
     // (dinero contado dos veces). La cabecera puede ir atrasada; la venta no.
-    if (await ordersRepo.saleOf(order)) return setError(MSG_MESA_COBRADA)
+    if (await ordersRepo.saleOf(order)) {
+      // Y se repara en el acto (H2): sin esto la mesa seguia abierta hasta salir y volver.
+      ordersRepo.reconcileClosed(order.id).catch((e) => logError('mesas', e))
+      return setError(MSG_MESA_COBRADA)
+    }
     // C5 - EL PUNTO CRITICO: antes de mover dinero, el descuento se toma de los
     // EVENTOS (append-only, no se pierden) y no de la cabecera (cache que el LWW
     // puede haber pisado). Si no coincide con lo que hay pintado, NO se cobra: se
