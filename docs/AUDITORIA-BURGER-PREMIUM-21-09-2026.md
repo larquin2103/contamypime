@@ -1137,3 +1137,27 @@ pantalla no se limpian solos.
 
 **Lo que no se puede garantizar:** nadie ha ejecutado la app, y la carrera se probó sobre
 `fake-indexeddb`, no en el IndexedDB de un teléfono.
+
+### 11.12 Arreglos 2 y 7 (23-09-2026)
+
+El dueño pidió cerrar también estos dos, porque tocan dinero y stock.
+
+- **(2)** `addItem` gana el **mismo candado** que `voidItem`: comprobación previa, **revalidación
+  dentro** de la transacción y reparación en el acto al rechazar. El mensaje pasa a decir que
+  tampoco se puede *agregar* consumo.
+- **(7)** El cobro pasa por `createGate` (`lib/orderSale.js`, puro), un **cerrojo síncrono** que
+  `TableScreen` guarda en un `useRef`. `setBusy` no bastaba, porque llega en el siguiente render.
+  Mientras un cobro está en vuelo, el segundo toque vuelve sin hacer nada. El cerrojo se libera al
+  terminar, **también si el cobro falla**. Este defecto **ya existía en `main`**.
+
+Pruebas: `orderSale` pasa de 18 a **24** y `ordersRepo` de 36 a **47**. **Control negativo:** sin la
+revalidación de `addItem` fallan 3; con el cerrojo anulado falla «el segundo toque no ejecuta» (y
+la suite se queda esperando al segundo toque, sin imprimir el resumen). Build exit 0;
+**20 suites / 1.298 aserciones**; chunk 1.007,88 kB (gzip 293,78).
+
+**Lo que no se puede garantizar:** el **cableado** del cerrojo en `TableScreen` (el `useRef` y que
+el botón llame a `charge`) no tiene prueba automatizada, porque no hay arnés de pantallas; se
+validó leyendo el código y con el build. El cerrojo protege **un** aparato: dos teléfonos que cobren
+la misma mesa a la vez siguen pudiendo crear dos ventas; eso solo lo delata el candado H1 **después**
+de que la venta llegue por la sync. Nadie ha ejecutado la app.
+
