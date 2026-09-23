@@ -460,3 +460,43 @@ Si esas versiones **se perdieron al subir** en su aparato de origen o **no bajar
 **Observación sin tocar:** `handoffService.js:190` hace `bulkPut` de productos sin LWW, como
 `applyBackup`. Puede reescribir una ficha nueva con una vieja.
 
+### 14.5 Con los DOS respaldos (A = `68307298…`, B = `3e1fa722…`), 23-09-2026
+
+**La batería de esta acta, sobre su respaldo real: 44/44, exit 0**, ya con la guarda del SHA. Así
+queda validado sobre el fichero de verdad que la guarda no altera su rama.
+
+**Comparación id por id** (con `syncTs` de `collections.js`, el mismo criterio que la bajada):
+
+| Colección | Diferencia | Sentido que falló |
+|---|---|---|
+| `stockMovements` | 8 solo en B | B → A |
+| `products` | 36 con versión más nueva en A, 0 al revés | A → B |
+| `auditEvents` | 5 solo en A (bajas del 22-09 a las 22:16) | A → B |
+| `counts` | 3 solo en A (`be3e2cf0`, `08172bc7`, `6760a5ed`, rechazados) | A → B |
+| `config` | `inheritedOpeningCash`, más nueva en B | — |
+| todas las demás | **idénticas** (ventas, tesorería, `priceChanges`, compras…) | — |
+
+**La firma es por COLECCIÓN, en los dos sentidos:**
+- De cada una de las 8 ventas de B, A recibió la venta, su movimiento de tesorería **y la ficha
+  del producto con el `updatedAt` exacto de la venta**; solo le faltó el movimiento de stock.
+- De las transacciones de A, B recibió `priceChanges` (`changePrice`), `auditEvents` (las bajas
+  del 19-09, que `remove` escribe junto a la ficha) y `purchases`; no recibió la ficha.
+- Las 36 fichas de A que no llegaron a B van del 09-09 al 22-09 22:30. Llevan **3 precios y 3
+  costos** distintos (LÁMPARA, REGULADOR DE GAS, Disco corte 180, Salida tanque ¾) y **12 bajas**
+  que B no tiene. El resto es solo la marca y la caché de stock.
+
+**Inferencia (no medición): la pérdida es de SUBIDA.**
+- La bajada no tiene cursor, y el receptor recibía esa misma colección en esos días: A recibió los
+  ajustes de B de las 20:43 por `stockMovements`, y B recibió `priceChanges` y `auditEvents`.
+- En los dos casos el emisor tiene el cursor por encima de las filas y las colas vacías.
+- **Descartado un documento envenenado:** `toCloud` es un `JSON.parse(JSON.stringify())`, ningún
+  producto de A tiene undefined, NaN ni arrays anidados, y el mayor pesa 477 bytes.
+- El mecanismo exacto sigue sin determinarse. Lo cierra leer en Firestore dos documentos: la ficha
+  `8c8b4fe9` y el movimiento `d6f06edc`.
+
+**Reparación que dicta el dato:**
+- **B → A:** los 8 movimientos, con el reenvío H3-a desde B (inmutables; programado y sin
+  desplegar).
+- **A → B:** 36 fichas (mutables), 5 eventos y 3 conteos. **H3-a no lo cubre**, a propósito:
+  reenviar una colección mutable a ciegas puede pisar una versión más nueva en la nube.
+
