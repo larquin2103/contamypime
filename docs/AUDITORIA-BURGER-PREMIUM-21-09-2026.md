@@ -1161,3 +1161,56 @@ validó leyendo el código y con el build. El cerrojo protege **un** aparato: do
 la misma mesa a la vez siguen pudiendo crear dos ventas; eso solo lo delata el candado H1 **después**
 de que la venta llegue por la sync. Nadie ha ejecutado la app.
 
+### 11.13 Hallazgos 5, 6, 8 y 9, y la segunda revisión (23-09-2026)
+
+**Arreglado** (commits `0b59a6e`, `e5cc6df` y el de la segunda revisión):
+
+- **(5)** El ticket de una mesa reparada salía con la hora de **ahora**. `ticketTime` (puro) cae a
+  la hora de la **venta** cuando no hay `closedAt`; con `closedAt`, la de siempre. **La otra mitad
+  del hallazgo no era cierta:** el ticket ya tomaba las líneas de `sale.items` cuando la venta está
+  cargada, y la reparación escribe `saleId`, así que las carga.
+- **(6)** El aviso de coste del reenvío añade que *puede* gastar lecturas en los demás aparatos y
+  que **no está medido**. Según la documentación de Firestore, una escritura sin cambios conserva
+  el `update_time` anterior, así que probablemente no despierta a los oyentes; no se comprobó.
+- **(8)** `forceResend` ya no falla si coincide con la subida periódica: **espera** a que se libere
+  el cerrojo (`waitWhile`, puro) con un **plazo absoluto de 15 s**. El `while (running)` vuelve a
+  mirar de forma **síncrona** justo antes de `running = true`, sin ningún `await` delante.
+- **(9)** El error del salón se limpia al abrir el menú de una mesa. Además, algo que **la
+  revisión no había visto**: `releaseEmpty` dejaba el menú abierto al rechazar, tapando el error
+  (y, tras la reparación en el acto, mostrando una mesa ya cerrada). Ahora lo cierra, como
+  `voidWithConsumo` desde la ronda 1.
+
+**Segunda revisión independiente** de `3655c5c..e5cc6df`. Veredicto: **sí**, sin críticos ni
+importantes. Comprobó con las pruebas que el `code:'charged'` sobrevive al rechazo de Dexie
+4.4.4, que no hay interbloqueo al añadir `db.sales` al alcance (IndexedDB encola, no interbloquea),
+y que `pushChanges`/`doPush` son idénticos a `main`. **Se corrigieron sus menores 1, 3 y 4:**
+`addItem` hace **una** lectura de ventas por toque (antes dos), comprobando solo dentro de la
+transacción; el plazo del reenvío es absoluto; y el mensaje solo promete «queda cerrada» si la
+reparación ocurrió, y al cobrar habla de cobrar.
+
+**Verificación, ejecutada:** build exit 0; **20 suites / 1.309 aserciones**; chunk 1.008,34 kB
+(gzip 294,04), CSS sin cambios. Contra `origin/main`: `db.js`, `collections`, `pullEngine`,
+`syncEngine`, `retryQueue`, `syncService`, `firestore.rules` e índices **sin cambios**;
+`pushEngine.js` **sin una sola línea borrada** y el bloque `pushChanges`+`doPush` con el **mismo
+md5** en los dos árboles; `package.json` solo gana `fake-indexeddb` en `devDependencies` (D2),
+que no importa ningún fichero de la app. **0 identificadores sin definir** en los 8 ficheros
+tocados (esbuild + acorn, ámbito plano, con control negativo). Controles negativos de cada prueba
+nueva: todos detectan su fallo.
+
+**Quedan abiertos, a decisión del dueño:**
+- El cerrojo del cobro es **por pantalla**: salir y volver a entrar durante un cobro en vuelo
+  crea otro cerrojo. Cerrarlo del todo exige revalidar dentro de `salesRepo.create`, el camino de
+  **todas** las ventas.
+- `voidOrder` y `decrementOne` encadenan varias transacciones: si la venta llega a mitad del
+  bucle, las líneas ya anuladas devuelven stock de algo vendido. **Preexistente**; la ventana es
+  más estrecha, no cerrada.
+- `saleOf` con `shiftId` nulo barre `sales` entera (mesa reservada que otro aparato ocupó). Es
+  raro y correcto; solo cuesta. Arreglarlo de verdad pide un índice `orderId` en `sales`, es decir,
+  **esquema**, y no se toca.
+- **El punto 5 (H3-c)** no se tocó.
+
+**Lo que no se puede garantizar:** nadie ha ejecutado la app. El plazo del reenvío, el cerrojo en
+`TableScreen` y los cambios de `SalonScreen` no tienen prueba automatizada (no hay arnés de
+pantallas y `pushEngine` importa Firebase); se validaron leyendo el código y con el build. Las
+transacciones se probaron sobre `fake-indexeddb`, no en el IndexedDB del WebView de Android.
+

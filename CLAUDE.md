@@ -93,8 +93,8 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esta suite dentro: **20 suites / 1.298 aserciones** en total, medidas el 23-09-2026 tras la
-revisión de la rama (`ordersRepo` pasó de 23 a 47 y `orderSale` de 18 a 24).
+Con esta suite dentro: **20 suites / 1.309 aserciones** en total, medidas el 23-09-2026 tras las
+dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -838,9 +838,13 @@ D1–D4, los resultados del control positivo y el hallazgo nuevo del pedido `180
   gana el mismo candado (una línea nueva en una mesa cobrada rebajaba stock y no se cobraba) y el
   cobro pasa por un **cerrojo síncrono** (`createGate`, en un `useRef`) contra el **doble toque**
   en *Cobrar*, que podía crear dos ventas (**preexistente en `main`**). **Quedan abiertos, por
-  decisión del dueño:** el ticket reimpreso de una mesa reparada con la hora de ahora y las líneas
-  vivas (5), el aviso de lecturas del reenvío (6) y dos cosméticos (8, 9). Acta en el §11.11 y el
-  §11.12 de la auditoría.
+  decisión del dueño:** ~~el ticket reimpreso (5), el aviso de lecturas (6) y dos cosméticos
+  (8, 9)~~ — **también hechos** el 23-09, con una **segunda revisión independiente** (veredicto
+  *sí*, sin críticos) cuyos menores 1, 3 y 4 se corrigieron (§11.13). **Quedan abiertos a decisión
+  del dueño:** el cerrojo del cobro es **por pantalla** (cerrarlo del todo exige tocar
+  `salesRepo.create`, el camino de todas las ventas), `voidOrder`/`decrementOne` hacen varias
+  transacciones seguidas (**preexistente**; la ventana es más estrecha, no cerrada) y el **punto 5
+  (H3-c)**, que no se tocó. Acta en los §11.11 a §11.13 de la auditoría.
 - **5 (H3-c): SIGUE EN ESPERA.** Que nada dependa solo del cursor de `pushEngine` es cirugía en el
   motor de sync y el dueño lo decide aparte, con la cifra del punto 4 ya en la mano (9 roturas en
   A1, 13 en A2, de las cuales la mayoría son huérfanos append-only ya conocidos, no crecimiento sin
