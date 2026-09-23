@@ -96,6 +96,9 @@ export function SalonScreen() {
       .reduce((a, i) => a + Number(i.qty || 0), 0)
 
   const canOperate = (area) => !!myShift && myShift.area === area
+  // Revision de la rama (hallazgo 9): el error de una accion anterior se limpia
+  // al abrir el menu de una mesa, en vez de quedarse pintado indefinidamente.
+  const showMenu = (m) => { setError(''); setMenu(m) }
 
   const openTable = async (area, table) => {
     if (!canOperate(area)) return
@@ -142,6 +145,10 @@ export function SalonScreen() {
       await ordersRepo.voidOrder({ orderId: order.id, userId: user.id, note: 'Mesa liberada sin consumo' })
       setMenu(null)
     } catch (e) {
+      // Revision de la rama: igual que voidWithConsumo, el menu se cierra al
+      // rechazar; si no, tapa el error (y tras la reparacion H2 mostraria una
+      // mesa que ya esta cerrada).
+      setMenu(null)
       setError(e.message)
     } finally { setBusy('') }
   }
@@ -278,14 +285,14 @@ export function SalonScreen() {
                 // "..." deja a mano reservar o cancelar sin estorbar.
                 const primary = () => {
                   if (occupied) return navigate(`/mesa/${order.id}`)
-                  if (reserved) return mine ? occupyReserved(order) : setMenu({ area, table: t, order })
-                  return mine ? openTable(area, t) : setMenu({ area, table: t, order })
+                  if (reserved) return mine ? occupyReserved(order) : showMenu({ area, table: t, order })
+                  return mine ? openTable(area, t) : showMenu({ area, table: t, order })
                 }
                 return (
                   <div key={t} className={`table-card table-card--${state}`}>
                     <button
                       className="table-card__more"
-                      onClick={() => setMenu({ area, table: t, order })}
+                      onClick={() => showMenu({ area, table: t, order })}
                       aria-label="Más acciones"
                     >⋯</button>
                     <button

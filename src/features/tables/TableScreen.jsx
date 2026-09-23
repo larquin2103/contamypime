@@ -16,7 +16,7 @@ import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
 import { orderTotals, isCourtesy, isCourtesyPct } from '../../lib/orderTotals'
-import { MSG_MESA_COBRADA, createGate } from '../../lib/orderSale'
+import { MSG_MESA_COBRADA, createGate, ticketTime } from '../../lib/orderSale'
 import { logError } from '../../lib/errorLog'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
@@ -565,7 +565,8 @@ export function TableScreen() {
             : <div className="thermal__head">COMPROBANTE</div>}
           <div className="thermal__meta">
             {order.area} · {order.table}<br />
-            {new Date(order.closedAt || Date.now()).toLocaleString()}<br />
+            {/* Hallazgo 5: la mesa reparada no tiene closedAt; su hora es la de la venta. */}
+            {new Date(ticketTime(order, sale, Date.now())).toLocaleString()}<br />
             Atendió: {userName(order.openedBy)}<br />
             Folio: {folio}
           </div>

@@ -3,7 +3,7 @@
 //
 // QUE CAZA: el candado de la auditoria Burger Premium (H1). La verdad de "esta
 // mesa ya se cobro" vive en la VENTA (append-only), no en order.status (LWW).
-import { isLiveSaleOf, shouldReconcileClosed, createGate } from './orderSale.js'
+import { isLiveSaleOf, shouldReconcileClosed, createGate, ticketTime } from './orderSale.js'
 
 let pass = 0
 let fail = 0
@@ -59,6 +59,15 @@ eq(shouldReconcileClosed(null, V), false, 'pedido nulo')
   await gate.run(async () => { calls++ })
   eq(calls, 3, 'gate: un cobro fallido libera el cerrojo')
 }
+
+// Revision de la rama, hallazgo 5: hora del ticket. La mesa reparada por
+// reconcileClosed no tiene closedAt (a proposito: cuenta en syncTs), asi que el
+// ticket reimpreso salia con la hora de AHORA. La hora real del cobro es la de la venta.
+eq(ticketTime({ closedAt: 'C' }, { createdAt: 'V' }, 'N'), 'C', 'ticket: con closedAt, el de siempre')
+eq(ticketTime({ closedAt: 'C' }, null, 'N'), 'C', 'ticket: con closedAt y sin venta cargada')
+eq(ticketTime({}, { createdAt: 'V' }, 'N'), 'V', 'ticket: mesa reparada -> hora de la venta')
+eq(ticketTime({}, null, 'N'), 'N', 'ticket: sin nada -> ahora (cobro recien hecho)')
+eq(ticketTime(null, undefined, 'N'), 'N', 'ticket: sin pedido no lanza')
 
 console.log(`orderSale: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

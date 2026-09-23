@@ -40,3 +40,13 @@ export function createGate() {
     }
   }
 }
+
+// Revision de la rama (hallazgo 5): hora que imprime el ticket de una mesa. La
+// de siempre es closedAt; una mesa REPARADA por reconcileClosed no lo tiene (no
+// se escribe a proposito: cuenta en syncTs), y entonces la hora real del cobro
+// es la de su venta. Solo si no hay ninguna de las dos (cobro recien hecho, la
+// venta aun cargando) se cae a `fallback` (ahora), como antes.
+export function ticketTime(order, sale, fallback) {
+  return order?.closedAt || sale?.createdAt || fallback
+}
+
