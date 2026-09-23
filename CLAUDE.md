@@ -802,8 +802,27 @@ colecciones de sync nuevas.**
 
 ## Estado del trabajo en curso (23-09-2026)
 
-**LOS PUNTOS 1, 2, 3 Y 4 DE LA CORRECCIÓN *BURGER PREMIUM* ESTÁN PROGRAMADOS, PROBADOS Y
-COMMITEADOS en `claude/awesome-dirac-484azm`. NADA se fusionó a `main`, nada se desplegó.** El
+**FUSIONADO A `main` EL 23-09-2026**, con autorización explícita del dueño: fast-forward de 27
+commits, `0711357` → **`732f4ec`** (ese es el árbol de código validado; comprobar `main` de hoy con
+`git fetch` + `git rev-parse origin/main`, porque las actas posteriores lo adelantan). Entraron
+Burger Premium 1–4 con sus dos revisiones, el diagnóstico de convergencia, el registro de la sync
+en `/errors` y el vigilante de lotes. **Auditoría previa (ejecutada):**
+- build exit 0 en los dos árboles; 24 suites / 1.400 aserciones;
+- Dexie sigue en v19 y la sync sin cambios, salvo una línea de `doPush` verificada con `diff`;
+- solo `fake-indexeddb` como dependencia de desarrollo;
+- gzip +3,4 kB (+1,17 %);
+- cinco revisiones independientes, ninguna con fallos críticos.
+
+**Fusionar no es desplegar:** el despliegue lo hace el dueño. **Aviso al desplegar:** el candado
+contra el doble cobro solo protege del todo cuando **todos** los teléfonos del negocio se han
+actualizado.
+
+**Sigue SIN resolver:** H3, la causa raíz, que solo tiene herramientas; La Patrona de A hacia B
+(36 fichas con precios y bajas, que el reenvío actual no cubre a propósito); los conteos de La
+Patrona §6/§7; y `applyBackup` sin LWW. Detalle en `docs/AUDITORIA-LA-PATRONA-22-09-2026.md` §14.
+
+**Lo de abajo describe los puntos 1–4 tal como se programaron, antes de fusionar:** estaban
+PROGRAMADOS, PROBADOS Y COMMITEADOS en `claude/awesome-dirac-484azm`. El
 plan ejecutado está en `docs/superpowers/plans/2026-09-23-correccion-burger-premium.md`; el acta
 completa de esta ronda —los cinco hallazgos de contrastar el §10 con el código, las decisiones
 D1–D4, los resultados del control positivo y el hallazgo nuevo del pedido `180a7687`— está en
