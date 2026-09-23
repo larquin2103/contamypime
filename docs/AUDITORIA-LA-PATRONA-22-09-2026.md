@@ -24,7 +24,7 @@ Todo se **derivó del libro mayor**, nunca de la caché. Reproducible:
 node docs/auditoria/bateria-la-patrona-22-09-2026.mjs <respaldo.json>
 ```
 
-**31/31 aserciones en verde**, con dos controles negativos dentro (un detector que no detecta nada
+**44/44 aserciones en verde**, con tres controles negativos y un control positivo dentro (un detector que no detecta nada
 pasaría en silencio; sin ellos la batería no mediría nada).
 
 **Un solo respaldo.** La auditoría de Burger Premium tuvo tres y pudo comparar instancias. Aquí no:
@@ -200,12 +200,18 @@ fuente de incoherencia permanente, independiente de todo lo anterior.
 
 El negocio tiene `areas: ["Ferretería"]` pero **0 traspasos**: en la práctica todo vive en
 `__almacen`, y **los 18 conteos son del almacén**. Aun así hay **3 movimientos en «Ferretería»**,
-todos accidentales, y uno produjo el **único negativo del catálogo**:
+todos accidentales, y **solo uno de los tres deja residuo**: el par de *HERRAJE PALANCA (3000)*
+(entrada el 20-08, merma el 21-08) **se netea a cero** en el área. El que queda produjo el **único
+negativo del catálogo**:
 
 ```
-Flotante ½    25-08 19:36   +1 purchase_in   loc=Ferretería   (Glenni, vendedor)
-Flotante ½    25-08 19:36   -1 sale_out      loc=__almacen    (Glenni, 27 segundos después)
+Flotante ½    25-08 19:36:13   +1 purchase_in   loc=Ferretería   (Glenni, vendedor)
+Flotante ½    25-08 19:36:24   -1 sale_out      loc=__almacen    (Glenni, 11,43 s después)
 ```
+
+> **Corrección a la primera versión de este acta:** decía *«27 segundos después»*. Son **11,43 s**,
+> medidos sobre las marcas exactas (aserción 43). El hecho no cambia; la cifra sí, y una cifra
+> inventada en un acta es exactamente lo que no puede pasar.
 
 El vendedor tiene **`sellerEntries`** (entra mercancía a **su área**) y a la vez
 **`sellerWarehouseSale`** (vende del **almacén central**). La entrada fue al área y la venta salió del
@@ -216,14 +222,17 @@ es anecdótico; como mecanismo, no lo es.
 
 Esto es lo que esta auditoría **no** puede afirmar, y ninguna de las cinco es menor:
 
-1. **No se sabe de qué lado se perdieron los movimientos.** Con un solo respaldo no se distingue si
-   el dispositivo de Claudia nunca los subió o si el de Lisett no los bajó. **Hace falta el respaldo
-   del otro dispositivo**, y hace falta pronto.
-2. **No se sabe qué build está desplegado.** Dos hipótesis explican los datos **igual de bien**: (a)
-   el build es anterior a F3 y `approve` calculó el delta contra la foto del conteo; (b) el build
-   tiene F3 y `approve` se ejecutó en el **otro** dispositivo, contra **su** libro. Para *Goma de
-   uñas* y para *Teipe* las dos dan exactamente los números observados. **No se puede decidir sin
-   saber qué versión corre cada teléfono.**
+1. **No se sabe si la rotura fue de subida o de bajada.** ~~Con un solo respaldo no se distingue si
+   el dispositivo de Claudia nunca los subió o si el de Lisett no los bajó.~~ **Esto se estrechó en
+   el §13:** los movimientos **no están perdidos** — existían en el libro contra el que se aprobó el
+   conteo. Lo que sigue sin saberse es en qué tramo se quedaron (nunca subieron, o subieron y no
+   bajaron). **El respaldo del otro dispositivo sigue haciendo falta**, ahora para elegir desde cuál
+   se fuerza la resubida, no para saber si las filas existen.
+2. ~~**No se sabe qué build está desplegado.**~~ **RESUELTO en el §13, y la pregunta era otra.** Las
+   dos hipótesis **no** explicaban los datos igual de bien: la (a) era falsa de raíz, porque el
+   `approve` **pre-F3 tampoco usaba la foto del conteo** — leía la caché en vivo. Ningún build de la
+   app calculó nunca el delta contra `it.systemStock`. Con eso, la versión del teléfono deja de
+   importar para este caso.
 3. **El registro de errores no viaja en el respaldo.** `buildBackup` excluye `errorLog` a propósito, y
    es justo donde `pushEngine` deja constancia de los rechazos de subida. **Hay que mirarlo en
    `/errors` en cada dispositivo**: si hubo rechazo, ahí está; si no hay nada, refuerza la hipótesis
@@ -259,3 +268,117 @@ sincronizarse, dejaría al otro dispositivo en **14**. Es el mismo mecanismo que
 negocio. **Primero se igualan los libros, después se cuenta.**
 
 Los seis: **Goma de uñas, Teipe, CUCHILLA HOJA, PLASTILOKA, Union 1, CODO 1.**
+
+---
+
+## 13. Cierre del diagnóstico (segunda sesión, 22-09-2026)
+
+Esta sección se añade **después** de la primera versión del acta y **cierra dos de sus cinco
+incógnitas**. Sigue sin tocarse una línea de `src/`. Todo lo de aquí sale de las aserciones **32 a
+39** de la batería, que se ejecutan sobre el mismo respaldo (SHA verificado antes de correrlas).
+
+### 13.1 La pregunta: ¿contra qué libro se escribió el ajuste de −3?
+
+El §5 dejó el hecho: el conteo guardó `systemStock = 18` para *Goma de uñas*, el libro de **esta**
+base daba **19**, y el ajuste escrito fue **−3** (= 15 − 18). El acta ofrecía dos explicaciones y
+decía que las dos encajaban «igual de bien». **No era cierto**, y se vio mirando el código de
+entonces en vez de razonar sobre él.
+
+### 13.2 La hipótesis (a) era falsa de raíz
+
+Decía: *el build es anterior a F3 y `approve` calculó el delta contra la foto del conteo*. Se fue a
+buscar ese código a la historia (`git show 743e66d~1:src/repositories/countsRepo.js`, el commit
+anterior a F3) y lo que hay es:
+
+```js
+const delta = round2(Number(it.physicalQty) - stockAtLocation(p, loc))
+```
+
+**El `approve` pre-F3 no leía la foto del conteo: leía la caché EN VIVO del aparato que aprueba.**
+Ningún build de esta app calculó nunca el delta contra `it.systemStock`. La hipótesis (a) no era
+una alternativa peor: **no existía**. Y con ella se cae la pregunta *«¿qué versión corre cada
+teléfono?»*, que para este caso resulta ser irrelevante.
+
+*(La aserción 33 estuvo un rato **en verde mirando el fichero equivocado**: en Windows `execSync`
+lanza por `cmd.exe`, donde `^` es el carácter de escape, así que `743e66d^` se resolvía al **propio**
+commit. Se descubrió porque la aserción **falló**, no por releerla. Va anotado en el código.)*
+
+### 13.3 Quedaba una salida, y la cierra la aritmética
+
+Si el `approve` pre-F3 lee la caché, cabía que **la caché de este aparato valiera 18 aunque su libro
+diera 19**. No hace falta suponer: `stockRepo.record` **incrementa** la caché dentro de la misma
+transacción (`byLoc[loc] = byLoc[loc] + delta`), **no la recalcula**. Hoy la caché de *Goma de uñas*
+vale **16** y el ajuste es **el último movimiento** del producto. Luego, si el ajuste se hubiera
+escrito aquí, la caché previa era **16 + 3 = 19**. Y con 19, **los dos builds escriben −4**.
+
+| | libro AQUÍ antes | físico | delta que ESTE aparato habría escrito | delta realmente escrito |
+|---|---|---|---|---|
+| Goma de uñas | 19 | 15 | **−4** | **−3** ❌ |
+| Disco corte chico 125 | 13 | 11 | −2 | −2 ✔ |
+
+El segundo producto es el **control positivo**: es el otro ajuste del mismo conteo, no le falta
+ninguna venta, y ahí sí coincide. O sea que no es un desajuste general del método: es **exactamente**
+el producto al que le falta la venta.
+
+### 13.4 Y el remache: 127 de 127
+
+Para los **127** productos contados se comprobó que
+
+```
+libro_de_ESTA_base  −  unidades_de_las_ventas_ausentes  ==  systemStock_guardado_en_el_conteo
+```
+
+casa en **127/127**, sin una sola excepción. **Control negativo:** sin restar las unidades ausentes
+casan **121** — los 6 que discrepan son justo los afectados. Sin ese control, «casan 127/127» podría
+ser una comparación que siempre da verdadero.
+
+### 13.5 Conclusión
+
+**El conteo se envió y se aprobó contra un libro que SÍ tenía los ocho movimientos, y ese libro no
+es el de este respaldo.** De donde:
+
+1. **Los movimientos no están perdidos.** Existen —o existían el 22-09 a las 20:43— en otro
+   dispositivo. Esto convierte el punto 2 del plan de Burger Premium (forzar la resubida de
+   `stockMovements` poniendo `push:<colección>` hacia atrás) de «probablemente sirva» a **la
+   reparación correcta**: hay filas que reenviar.
+2. **El aparato que aprobó no es el que exportó este respaldo**, aunque el `approvedBy` diga
+   *Lisett*. El usuario identifica a la persona, **no al dispositivo**. Merece la pena preguntarle
+   al dueño desde qué teléfono se aprobó ese conteo: la respuesta dice **cuál** es el aparato que
+   guarda las filas buenas.
+3. **La sincronización entre los dos aparatos funcionaba en esa misma ventana**: las 8 ventas y sus
+   8 movimientos de tesorería sí llegaron. Lo que falló fue **una sola colección**. Eso refuerza el
+   mecanismo del §4 (cursor por colección) y descarta «se cayó internet».
+
+### 13.6 §6 y §7 tienen UNA sola raíz, no dos
+
+Comprobado en el código (aserciones 40 y 41): `getPending` filtra por `status`, así que
+`CountReview` —la pantalla que ofrece *Aprobar* y *Rechazar*— **solo se monta con un conteo cuyo
+estado LOCAL es `pending`**. Por tanto el defecto del §6 **no** es «se puede rechazar un conteo ya
+aprobado en el mismo aparato»: es que **la copia local va desfasada**. Y el candado que sí tiene
+`approve` (`status !== PENDING → return`) mira **esa misma copia local**, así que tampoco impide la
+doble aprobación del §7.
+
+**Las dos cosas son el mismo defecto:** la máquina de estados del conteo se valida contra la copia
+local y se resuelve por LWW de `updatedAt`, sin transacción ni candado compartido. Añadir el guard
+que le falta a `reject` **cierra el caso de un solo aparato y nada más**; el cruzado necesita otra
+cosa. Conviene saberlo antes de pedir «la línea que falta», porque esa línea no arregla lo que se
+observó en el §6.
+
+### 13.7 Lo que SIGUE sin poder garantizarse
+
+Los puntos **3, 4 y 5** del §10 quedan **intactos**: el `errorLog` no viaja en el respaldo y hay que
+mirarlo en `/errors` en cada aparato antes de que se pode; **nadie ha ejecutado la app**; y el
+*mecanismo* concreto del §4 (commit colgado, caché desalojada) sigue siendo la explicación que mejor
+encaja, no un hecho medido. Se añade una cautela nueva: todo el §13 se apoya en **un solo respaldo**
+— lo que se demuestra es que **este** libro no pudo producir ese ajuste, y de ahí se **infiere** el
+otro. **El respaldo del segundo dispositivo sigue siendo lo primero que hace falta.**
+
+### 13.8 Validación de esta sesión (ejecutada, no citada)
+
+- `node docs/auditoria/bateria-la-patrona-22-09-2026.mjs <respaldo>` → **44/44**, exit 0.
+- SHA256 del respaldo **verificado** antes de correrla: coincide con el del §1.
+- `npm run build` → **exit 0**. Peso del artefacto de ESTA corrida, leído de `dist/`: CSS
+  **87.657 B (87,66 kB)** y chunk principal **1.002,35 kB** (gzip **291,95**) — idéntico a lo que
+  declaraba el acta de la fusión del 19-09, que es lo que debe pasar: no se tocó `src/`.
+- Las **16 suites** node → **1.191 aserciones, 0 fallos**.
+- `git diff` contra `src/`: **vacío**. Lo único que cambia en el repo es este acta y la batería.

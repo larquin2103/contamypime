@@ -6,6 +6,11 @@
 // no importa nada de `src/` en tiempo de ejecucion (lo LEE como texto), no
 // escribe en ningun sitio y no toca la base de datos.
 //
+// Una sola asercion (la 33) invoca `git show` para leer el approve ANTERIOR a F3:
+// la hipotesis que descarta habla de un build viejo, y ese codigo solo existe en la
+// historia. Si git no esta disponible, esa asercion FALLA -no pasa en silencio-, que
+// es el lado seguro. Las otras 43 solo necesitan el respaldo y `src/`.
+//
 // Uso:
 //   node docs/auditoria/bateria-la-patrona-22-09-2026.mjs <respaldo.json> [raizSrc]
 //
@@ -18,6 +23,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { execSync } from 'node:child_process'
 
 const [fichero, raiz = 'src'] = process.argv.slice(2)
 if (!fichero) {
@@ -307,6 +313,119 @@ const dupVivos = dup.filter((a) => a.filter((p) => p.active && !p.deletedAt).len
 A('DATO: 25 nombres repetidos en el catalogo, 6 de ellos con dos fichas ACTIVAS a la vez',
   dup.length === 25 && dupVivos.length === 6,
   dupVivos.map((a) => a[0].name).join(' | '))
+
+
+console.log('\n====== CIERRE DEL DIAGNOSTICO - desde QUE libro se escribio el ajuste ======\n')
+
+// El acta original dejaba abiertas DOS hipotesis que "explicaban los datos igual de
+// bien": (a) el build es anterior a F3 y approve calculo el delta contra la FOTO del
+// conteo, o (b) el build tiene F3 y approve corrio en el OTRO dispositivo. Las
+// aserciones siguientes descartan (a) por CODIGO y miden (b) por DATO.
+
+const countsRepoSrc = src('repositories/countsRepo.js')
+A('CODIGO: el approve de HOY deriva el delta del LIBRO MAYOR, no de la foto del conteo',
+  /const sysNow = await stockFromLedger\(it\.productId, loc\)[\s\S]{0,200}?const delta = round2\(Number\(it\.physicalQty\) - sysNow\)/.test(countsRepoSrc),
+  'post-F3: el delta sale del libro del dispositivo que aprueba')
+
+// Esta se apoya en git a proposito: la hipotesis (a) habla de un build ANTERIOR, y
+// el unico sitio donde ese codigo existe es la historia. Si git no esta disponible
+// la asercion FALLA (no pasa en silencio), que es el lado seguro.
+let preF3 = ''
+try {
+  // `743e66d~1` y no `743e66d^`: en Windows execSync lanza por cmd.exe, donde `^` es
+  // el caracter de escape y `743e66d^` acaba resolviendo al PROPIO commit. La asercion
+  // estaba mirando el fichero equivocado, y se vio porque FALLO, no por leerla.
+  preF3 = execSync('git show 743e66d~1:src/repositories/countsRepo.js', { encoding: 'utf8' })
+} catch { preF3 = '' }
+A('CODIGO: el approve PRE-F3 TAMPOCO usaba la foto: leia la cache EN VIVO',
+  preF3.includes('const delta = round2(Number(it.physicalQty) - stockAtLocation(p, loc))') &&
+  !/const delta = round2\(Number\(it\.physicalQty\) - Number\(it\.systemStock\)/.test(preF3),
+  'ningun build de la app calculo nunca el delta contra it.systemStock: la hipotesis (a) es falsa')
+
+const APR = '2026-09-22T20:43:28.977Z'          // instante del primer ajuste de ese conteo
+const conteo = t.counts.find((c) => c.id.startsWith(CONTEO))
+const contados = conteo.items.filter((i) => i.counted)
+const faltaPorProd = new Map()
+for (const s of sinMov) {
+  for (const it of s.items || []) faltaPorProd.set(it.productId, (faltaPorProd.get(it.productId) || 0) + Number(it.qty))
+}
+const ajuste22 = (pid) => cq((byPid.get(pid) || [])
+  .filter((m) => String(m.note || '').startsWith('Ajuste por conteo') && m.createdAt >= '2026-09-22')
+  .reduce((a, m) => a + Number(m.qty || 0), 0))
+
+const goma = contados.find((i) => i.productId === GOMA)
+A('DATO: en Goma de unas ESTE dispositivo habria escrito -4, y lo escrito fue -3',
+  led(GOMA, W, APR) === 19 && cq(goma.physicalQty) === 15 && ajuste22(GOMA) === -3 &&
+  cq(goma.physicalQty) - led(GOMA, W, APR) === -4,
+  'libro AQUI=19 fisico=15 -> -4 | foto del conteo=18 -> -3 | escrito=-3')
+
+const otros = contados.filter((i) => cq(i.diff) !== 0 && i.productId !== GOMA)
+A('CONTROL: el OTRO producto ajustado del mismo conteo SI cuadra con este libro',
+  otros.length === 1 && cq(otros[0].physicalQty) - led(otros[0].productId, W, APR) === ajuste22(otros[0].productId),
+  otros[0].name + ': libro AQUI=' + led(otros[0].productId, W, APR) + ' fisico=' + otros[0].physicalQty +
+  ' -> ' + ajuste22(otros[0].productId) + ' (no le falta ninguna venta)')
+
+const casanCon = contados.filter((i) => led(i.productId, W, APR) - (faltaPorProd.get(i.productId) || 0) === cq(i.systemStock)).length
+A('DATO: los 127 items contados casan EXACTAMENTE con libro_AQUI menos las unidades ausentes',
+  casanCon === contados.length && contados.length === 127,
+  'el libro del dispositivo que ENVIO el conteo = este libro + los movimientos que faltan, sin ninguna otra divergencia')
+
+const casanSin = contados.filter((i) => led(i.productId, W, APR) === cq(i.systemStock)).length
+A('CONTROL NEGATIVO: sin restar las unidades ausentes solo casan 121 de 127',
+  casanSin === 121,
+  'sin esto, "casan 127/127" podria ser una comparacion que siempre da true')
+
+// Quedaba UNA salida viva para la hipotesis (a): que la CACHE de este aparato
+// valiera 18 aunque su libro diera 19 (el approve pre-F3 lee la cache, no el libro).
+// La cierra la aritmetica, no el razonamiento: `stockRepo.record` INCREMENTA la
+// cache dentro de la misma transaccion, no la recalcula. Si el ajuste se hubiera
+// escrito AQUI, la cache de hoy seria cache_previa - 3; como hoy vale 16, la previa
+// era 19, y con 19 los dos builds escriben -4. O sea: el ajuste no se escribio aqui.
+const stockRepoSrc = src('repositories/stockRepo.js')
+A('CODIGO: stockRepo.record INCREMENTA la cache (no la recalcula desde el libro)',
+  stockRepoSrc.includes('byLoc[loc] = cleanQty(Number(byLoc[loc] || 0) + delta)') &&
+  stockRepoSrc.includes('stock: cleanQty(Number(p.stock || 0) + delta)'),
+  'por eso la cache de hoy permite deducir cuanto valia antes del ajuste')
+
+const prodGoma = t.products.find((p) => p.id === GOMA)
+const ultimoMovGoma = (byPid.get(GOMA) || []).map((m) => m.createdAt).sort().pop()
+A('DATO: cierra la salida de "cache desfasada": la cache previa AQUI era 19, no 18',
+  cq(prodGoma.stockByLocation[W]) === 16 && led(GOMA, W) === 16 && ultimoMovGoma === APR &&
+  cq(prodGoma.stockByLocation[W]) + 3 === 19,
+  'cache hoy=16 y el ajuste es el ultimo movimiento -> previa=19 -> los dos builds habrian escrito -4 aqui')
+
+console.log('\n====== §6 y §7 - la raiz es UNA: el estado se valida contra la copia LOCAL ======\n')
+
+A('CODIGO: getPending filtra por status, asi que CountReview solo se monta con un PENDING local',
+  /getPending[\s\S]{0,200}?db\.counts\.where\('status'\)\.equals\(COUNT_STATUS\.PENDING\)/.test(countsRepoSrc) &&
+  /if \(pending\) \{[\s\S]{0,200}?<CountReview count=\{pending\}/.test(src('features/inventory/CountScreen.jsx')),
+  'el defecto de reject NO es "rechazar un aprobado en el mismo aparato": es que la copia local va desfasada')
+
+A('CODIGO: approve comprueba el estado LOCAL, asi que tampoco frena la doble aprobacion',
+  countsRepoSrc.includes('if (!c || c.status !== COUNT_STATUS.PENDING) return') &&
+  !/counts[\s\S]{0,400}?transaction\(/.test(countsRepoSrc),
+  'misma raiz que §6: local + LWW por updatedAt, sin transaccion ni candado compartido')
+
+console.log('\n====== §9 - la mercancia en un area que ningun conteo mira ======\n')
+
+const fer = t.stockMovements.filter((m) => m.location && m.location !== W)
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+A('DATO: solo hay 3 movimientos fuera del almacen, y los 18 conteos son del almacen',
+  fer.length === 3 && t.counts.every((c) => (c.location || W) === W),
+  'Ferreteria existe como area pero no se cuenta nunca')
+
+const flot = fer.find((m) => m.type === 'purchase_in' && m.createdAt.startsWith('2026-08-25'))
+const ventaFlot = (byPid.get(flot.productId) || []).find((m) => m.type === 'sale_out')
+A('DATO: la entrada al area y la venta del almacen son del MISMO vendedor, con 11,4 s de diferencia',
+  flot.userId === ventaFlot.userId &&
+  Math.abs((new Date(ventaFlot.createdAt) - new Date(flot.createdAt)) / 1000 - 11.43) < 0.01,
+  'el acta decia 27 s: son 11,43 s (' + flot.createdAt.slice(11, 19) + ' -> ' + ventaFlot.createdAt.slice(11, 19) + ')')
+
+const residuo = [...new Set(fer.map((m) => m.productId))].map((pid) => [pid, led(pid, 'Ferretería')])
+A('DATO: de los 3 movimientos solo UNO deja residuo; el par de HERRAJE PALANCA se netea a cero',
+  residuo.filter(([, q]) => q !== 0).length === 1 &&
+  residuo.filter(([, q]) => q === 0).length === 1,
+  residuo.map(([pid, q]) => (t.products.find((p) => p.id === pid) || {}).name + '=' + q).join(' | '))
 
 console.log('\n====== ' + ok + '/' + n + ' aserciones OK' +
   (mal.length ? ' - FALLAN: ' + mal.join(', ') : '') + ' ======\n')
