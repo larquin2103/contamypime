@@ -42,19 +42,43 @@ export function findAtomicityBreaks(tables = {}) {
   ]
   // Anulacion de linea de mesa: voidItem sella la linea (voidedAt) y su
   // devolucion (createdAt) con el MISMO ts. Esa igualdad es la firma.
+  //
+  // Emparejar por CONTEO (multiset), no por pertenencia a un Set: quitar dos
+  // unidades del mismo producto de golpe (removeProduct/voidOrder) sella dos
+  // lineas y dos movimientos con la MISMA clave orderId+ts. Con un Set, un
+  // huerfano real se escondia detras de un hermano con esa misma clave (falso
+  // negativo, exactamente lo que este diagnostico existe para cazar).
   const voids = movs.filter((m) => m.refType === 'order_void')
   const voidKey = (orderId, ts) => `${orderId}|${ts}`
-  const movKeys = new Set(voids.map((m) => voidKey(m.refId, m.createdAt)))
-  const lineKeys = new Set()
-  for (const it of arr(tables.orderItems)) {
-    if (!it.voided || !it.voidedAt) continue
-    const k = voidKey(it.orderId, it.voidedAt)
-    lineKeys.add(k)
-    if (!movKeys.has(k)) out.push({ kind: 'anulacion-sin-mov', id: it.id, at: it.voidedAt, detail: it.orderId })
+  const byKeyId = (rows) => rows.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  const groupBy = (rows, keyOf) => {
+    const g = new Map()
+    for (const r of rows) {
+      const k = keyOf(r)
+      if (!g.has(k)) g.set(k, [])
+      g.get(k).push(r)
+    }
+    return g
   }
-  for (const m of voids) {
-    if (!lineKeys.has(voidKey(m.refId, m.createdAt)))
-      out.push({ kind: 'mov-anulacion-sin-linea', id: m.id, at: m.createdAt, detail: m.refId })
+  const movsByKey = groupBy(voids, (m) => voidKey(m.refId, m.createdAt))
+  const linesByKey = groupBy(
+    arr(tables.orderItems).filter((it) => it.voided && it.voidedAt),
+    (it) => voidKey(it.orderId, it.voidedAt)
+  )
+  const keys = new Set([...movsByKey.keys(), ...linesByKey.keys()])
+  for (const k of keys) {
+    const lines = byKeyId(linesByKey.get(k) || [])
+    const kmovs = byKeyId(movsByKey.get(k) || [])
+    const lineSurplus = lines.length - kmovs.length
+    if (lineSurplus > 0) {
+      for (const it of lines.slice(lines.length - lineSurplus))
+        out.push({ kind: 'anulacion-sin-mov', id: it.id, at: it.voidedAt, detail: it.orderId })
+    }
+    const movSurplus = kmovs.length - lines.length
+    if (movSurplus > 0) {
+      for (const m of kmovs.slice(kmovs.length - movSurplus))
+        out.push({ kind: 'mov-anulacion-sin-linea', id: m.id, at: m.createdAt, detail: m.refId })
+    }
   }
   return out.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
 }

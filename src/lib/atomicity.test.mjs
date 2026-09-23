@@ -58,5 +58,37 @@ eq(kinds({ ...sana, sales: [{ ...sana.sales[0], voided: true }], stockMovements:
   '', 'venta anulada sin movimiento no cuenta')
 // La venta de mesa (v2) no tiene movimiento 'sale' y NO debe salir: ya cubierto en la base sana.
 
+// Multiset (fix round 1): quitar VARIAS unidades del mismo producto de golpe
+// (removeProduct/voidOrder) sella varias lineas y varios movimientos con la
+// MISMA clave orderId+ts. Emparejar por pertenencia a un Set (en vez de por
+// CONTEO) esconde un huerfano real detras de un hermano con esa misma clave:
+// es un falso negativo, justo lo que este diagnostico existe para cazar.
+eq(kinds({
+  orderItems: [
+    { id: 'iA', orderId: 'o1', voided: true, voidedAt: T },
+    { id: 'iB', orderId: 'o1', voided: true, voidedAt: T }
+  ],
+  stockMovements: [{ id: 'm1', refType: 'order_void', refId: 'o1', createdAt: T }]
+}), 'anulacion-sin-mov', 'multiset: 2 lineas y 1 movimiento con la misma clave -> 1 huerfano')
+
+eq(kinds({
+  orderItems: [{ id: 'iA', orderId: 'o1', voided: true, voidedAt: T }],
+  stockMovements: [
+    { id: 'm1', refType: 'order_void', refId: 'o1', createdAt: T },
+    { id: 'm2', refType: 'order_void', refId: 'o1', createdAt: T }
+  ]
+}), 'mov-anulacion-sin-linea', 'multiset: 2 movimientos y 1 linea con la misma clave -> 1 huerfano')
+
+eq(kinds({
+  orderItems: [
+    { id: 'iA', orderId: 'o1', voided: true, voidedAt: T },
+    { id: 'iB', orderId: 'o1', voided: true, voidedAt: T }
+  ],
+  stockMovements: [
+    { id: 'm1', refType: 'order_void', refId: 'o1', createdAt: T },
+    { id: 'm2', refType: 'order_void', refId: 'o1', createdAt: T }
+  ]
+}), '', 'multiset: 2 lineas y 2 movimientos con la misma clave -> sin roturas')
+
 console.log(`atomicity: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

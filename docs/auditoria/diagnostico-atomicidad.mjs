@@ -8,8 +8,22 @@ import { findAtomicityBreaks } from '../../src/lib/atomicity.js'
 const files = process.argv.slice(2)
 if (!files.length) { console.error('Uso: node docs/auditoria/diagnostico-atomicidad.mjs <respaldo.json> ...'); process.exit(2) }
 for (const f of files) {
-  const raw = readFileSync(f)
-  const bk = JSON.parse(raw.toString('utf8'))
+  let raw
+  try {
+    raw = readFileSync(f)
+  } catch (e) {
+    console.error(`No se pudo leer ${f}: ${e.message}`)
+    process.exitCode = 1
+    continue
+  }
+  let bk
+  try {
+    bk = JSON.parse(raw.toString('utf8'))
+  } catch (e) {
+    console.error(`JSON invalido en ${f}: ${e.message}`)
+    process.exitCode = 1
+    continue
+  }
   const breaks = findAtomicityBreaks(bk.tables || {})
   const by = {}
   for (const b of breaks) by[b.kind] = (by[b.kind] || 0) + 1
