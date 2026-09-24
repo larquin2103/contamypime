@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { configRepo } from '../../repositories/configRepo'
 import { remittancesRepo } from '../../repositories/remittancesRepo'
+import { categoriesRepo } from '../../repositories/categoriesRepo'
 import { logError } from '../../lib/errorLog'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
@@ -28,6 +29,8 @@ import {
   buildTransferReconReport,
   buildTransferDuplicatesReport,
   buildShiftPaymentReport,
+  buildDailySalesControl,
+  dailyControlLocations,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -161,6 +164,7 @@ export function ReportsScreen() {
     ] },
     { id: 'ventas', label: 'Ventas', items: [
       { key: 'sales', title: 'Ventas', desc: 'Detalle de ventas por fecha, vendedor, área y metodo', builder: buildSalesReport, range: true },
+      { key: 'dailyctl', title: 'Control de Ventas Diarias', desc: 'Por día y ubicación: saldo inicio, entradas, salidas, mermas, ventas, ajustes por conteo, precio, importe y saldo final — todo del libro mayor, con controles de dinero, caché e integridad', render: true },
       { key: 'seller', title: 'Ventas por vendedor', desc: 'Productos, cantidades y fechas de lo vendido por cada vendedor', builder: buildSellerSalesReport, range: true },
       { key: 'area', title: 'Ventas por área', desc: 'Ingreso y ganancia por área y vendedor', builder: buildAreaReport, range: true, show: areas.length > 0 },
       { key: 'tables', title: 'Ventas por mesa', desc: 'Cuentas cobradas por mesa: consumo, servicio, total y ticket promedio', builder: buildTablesReport, range: true, show: hasModule(LICENSE_MODULES.TABLES) },
@@ -207,11 +211,56 @@ export function ReportsScreen() {
       <Accordion storageKey="reports">
         {visibles.map((c) => (
           <Section key={c.id} id={c.id} label={c.label} layout="acc-stack">
-            {c.items.map((i) => card(i.key, i.title, i.desc, i.builder, i.range))}
+            {c.items.map((i) => i.render
+              ? <DailyControlCard key={i.key} title={i.title} desc={i.desc} run={run} busy={busy} />
+              : card(i.key, i.title, i.desc, i.builder, i.range))}
           </Section>
         ))}
       </Accordion>
 
     </div>
+  )
+}
+
+// Ficha del Control de Ventas Diarias (spec 2026-09-24): usa el rango de fechas de
+// arriba y añade UBICACION y CATEGORIA. Las ubicaciones se cargan UNA vez al montar
+// (no en una consulta viva: seria barrer el libro entero en cada venta).
+function DailyControlCard({ title, desc, run, busy }) {
+  const [locs, setLocs] = useState([])
+  const [location, setLocation] = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const categories = useLiveQuery(() => categoriesRepo.list(), [], [])
+  useEffect(() => {
+    let alive = true
+    dailyControlLocations()
+      .then((l) => { if (alive) { setLocs(l); setLocation((cur) => cur || l[0]?.value || '') } })
+      .catch((e) => logError('reportes', e))
+    return () => { alive = false }
+  }, [])
+  const builder = (args) => buildDailySalesControl({ ...args, location, categoryId })
+  return (
+    <section className="card">
+      <h3>{title}</h3>
+      <p className="muted">{desc} (usa el rango de fechas; «Hasta» vacío = un solo día).</p>
+      <label className="field"><span>Ubicación</span>
+        <select value={location} onChange={(e) => setLocation(e.target.value)}>
+          {locs.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+        </select>
+      </label>
+      <label className="field"><span>Categoría</span>
+        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <option value="">Todas</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </label>
+      <div className="report-actions">
+        <button className="btn" disabled={!!busy || !location} onClick={() => run('dailyctl', builder, 'excel')}>
+          {busy === 'dailyctl-excel' ? '...' : '⬇ Excel'}
+        </button>
+        <button className="btn" disabled={!!busy || !location} onClick={() => run('dailyctl', builder, 'pdf')}>
+          {busy === 'dailyctl-pdf' ? '...' : '⬇ PDF'}
+        </button>
+      </div>
+    </section>
   )
 }

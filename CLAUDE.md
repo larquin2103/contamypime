@@ -59,8 +59,8 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). **24** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.393 aserciones**, medidas el 23-09-2026). Las tres de la
+**Pruebas:** NO hay script `npm test` (ni linter). **25** suites son ficheros `.test.mjs` puros que
+se corren **uno a uno con node** (**1.445 aserciones**, medidas el 24-09-2026). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -87,7 +87,8 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/syncLogPolicy.test.mjs \
          src/features/sync/commitWatch.test.mjs \
          src/features/sync/compareResend.test.mjs \
-         src/features/sync/compareResendEngine.test.mjs; do node "$t"; done
+         src/features/sync/compareResendEngine.test.mjs \
+         src/lib/dailySalesControl.test.mjs; do node "$t"; done
 ```
 
 **Dos suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2) y `src/lib/syncLog.test.mjs` (el
@@ -100,11 +101,11 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **26 suites / 1.451 aserciones** en total, medidas el 23-09-2026 tras las
+Con esas dos dentro: **27 suites / 1.503 aserciones** en total, medidas el 24-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
-antes de escribir.
+antes de escribir, y `dailySalesControl` (52), el Control de Ventas Diarias.
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -924,7 +925,36 @@ de Mermas no se filtró por licencia.
 **Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que el
 dueño corra `npm run deploy`.
 
-## Estado del trabajo en curso (23-09-2026)
+## Estado del trabajo en curso (24-09-2026)
+
+**EN LA RAMA, SIN FUSIONAR: «Control de Ventas Diarias»** (Reportes → Ventas), que pide Burger
+Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y plan en
+`docs/superpowers/specs|plans/2026-09-24-control-ventas-diarias*.md`.
+
+- **Qué muestra:** por día y ubicación, en orden alfabético, las columnas saldo inicio, entrada,
+  salida, merma, venta, **ajuste**, precio, importe y saldo final.
+- **De dónde sale:** todo del **libro mayor**, con el `ledgerKey` existente inyectado. **Ninguna
+  cifra sale de la caché.** Las cantidades usan `cleanQty` (sin perder gramos).
+- **Qué comprueba el propio reporte, y lo imprime:**
+  - el dinero: consumo cobrado contra los importes, con servicio, descuentos y causas;
+  - que la caché coincide con el libro;
+  - la integridad del libro (`atomicity.js`).
+- **Dónde vive:** lógica pura en `src/lib/dailySalesControl.js`. En `reportsService.js`, tres
+  funciones de solo lectura **al final** (+40 / −0; el byte NUL preexistente, intacto). Una ficha
+  en *Ventas* con selectores de ubicación y categoría.
+- **Validado con los 4 respaldos reales**
+  (`docs/auditoria/validar-control-ventas.mjs`, con `TZ=America/Havana`):
+  - **16.485 filas** contra un recálculo independiente del libro, y **1.828 cotejos** con el
+    submayor consolidado: todo cuadra;
+  - La Patrona A avisa de las 8 ventas sin movimiento, y B de ninguna;
+  - control negativo de la validación completa: **6.775 fallos**.
+- **Lo que no se puede garantizar:**
+  - cómo se ve el PDF en el teléfono del cliente;
+  - si el aparato tiene el libro incompleto (H3), el reporte **lo avisa** pero no inventa las
+    filas;
+  - «Tres leches» y «Javas», del papel, **no existen** con ese nombre en el sistema.
+
+## Estado anterior (23-09-2026)
 
 **FUSIONADO A `main` EL 23-09-2026** (fast-forward `732f4ec` → **`dd49df4`**, autorizado por el
 dueño, tras una auditoría previa ejecutada: build exit 0, CSS idéntico byte a byte, chunk
