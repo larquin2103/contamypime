@@ -230,6 +230,67 @@ eq(buildDailyControl(base({ products: [P('i', 'Viejo', { active: false })], move
   eq(d2.causasDet.find((c) => c.key === 'lineaSinMov')?.amount, -50, 'mixto, lo cobrado de mas: -50')
   eq(d1.sinExplicar + d2.sinExplicar, 0, 'nada sin explicar')
 }
+// 8d. Auditoria pre-main (24-09-2026): tres causas falsas reproducidas por el revisor.
+{
+  // I1. Pesadas: cada linea se cobra redondeada al centavo y el Importe no; los restos de
+  // menos de medio centavo por venta se acumulan. Antes: "NO CUADRA, Sin explicar 0.01".
+  const carne = P('k', 'Carne', { unit: 'kg', price: 13.37 })
+  const movs = [M('k', D0, 'traspIn', 10)]
+  const sales = []
+  for (let i = 0; i < 3; i++) {
+    const id = 'kw' + i
+    movs.push(M('k', D1, 'ventas', -0.333, { h: '1' + i, type: 'sale_out', refType: 'sale', refId: id }))
+    sales.push({ id, createdAt: at(D1, '1' + i), sourceLocation: SAL, voided: false, items: [{ productId: 'k', qty: 0.333, lineTotal: 4.45 }], totalBase: 4.45 })
+  }
+  const w = buildDailyControl(base({ products: [carne], movements: movs, sales })).days[0].money
+  eq(w.sinExplicar, 0, `pesadas: nada sin explicar (${w.causas.join(' | ')})`)
+  eq(w.causasDet.find((c) => c.key === 'redondeo')?.amount, w.diferencia, 'la diferencia de las pesadas es redondeo, con su importe')
+  eq(w.causasDet.some((c) => c.key === 'precio' || c.key === 'sinMov'), false, 'no se inventa un precio distinto ni un movimiento faltante')
+  // Las causas IMPRESAS suman la diferencia impresa, al centavo.
+  eq(Math.round(w.causasDet.reduce((a, c) => a + c.amount, 0) * 100) / 100, w.diferencia, 'causas impresas = diferencia')
+  // Caso hallado por fuerza bruta: la causa "precio" se imprime redondeada (-0.10) y ese
+  // redondeo deja 0.01 suelto. Es redondeo de los totales, no algo sin explicar.
+  const fz = buildDailyControl(base({
+    products: [P('f', 'F1', { unit: 'kg', price: 11.32 }), P('g', 'F2', { unit: 'kg', price: 5.97 })],
+    movements: [M('f', D0, 'traspIn', 10), M('g', D0, 'traspIn', 10),
+      M('f', D1, 'ventas', -1.329, { h: '10', type: 'sale_out', refType: 'sale', refId: 'fz1' }),
+      M('g', D1, 'ventas', -0.811, { h: '11', type: 'sale_out', refType: 'sale', refId: 'fz2' })],
+    sales: [
+      { id: 'fz1', createdAt: at(D1, '10'), sourceLocation: SAL, voided: false, items: [{ productId: 'f', qty: 1.329, unitPrice: 11.39, lineTotal: 15.14 }], totalBase: 15.14 },
+      { id: 'fz2', createdAt: at(D1, '11'), sourceLocation: SAL, voided: false, items: [{ productId: 'g', qty: 0.811, unitPrice: 5.97, lineTotal: 4.84 }], totalBase: 4.84 }]
+  })).days[0].money
+  eq(fz.sinExplicar, 0, `redondeo de las causas impresas: nada sin explicar (${fz.causas.join(' | ')})`)
+  eq(fz.causasDet.find((c) => c.key === 'precio')?.amount, -0.1, 'el precio sigue con su importe')
+
+  // I2. Doble cobro de una mesa (dos ventas vivas del mismo pedido): es "cobro duplicado"
+  // por el importe de la venta sobrante, no "falta un movimiento de consumo".
+  const orders = [{ id: 'O9', area: SAL, status: 'closed', openedAt: at(D1, '10'), closedAt: at(D1, '13'), saleId: 'A9' }]
+  const dmov = [M('a', D0, 'traspIn', 10), M('a', D1, 'ventas', -2, { h: '11', type: 'sale_out', refType: 'order', refId: 'O9' })]
+  const sv = (id, h) => ({ id, orderId: 'O9', createdAt: at(D1, h), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 2, lineTotal: 100 }], totalBase: 100 })
+  const d = buildDailyControl(base({ products: [P('a', 'Agua')], movements: dmov, sales: [sv('A9', '13'), sv('B9', '14')], orders })).days[0].money
+  eq(d.causasDet.find((c) => c.key === 'cobroDuplicado')?.amount, -100, `cobro duplicado: -100 (${d.causas.join(' | ')})`)
+  eq(d.causasDet.some((c) => c.key === 'lineaSinMov'), false, 'no manda a buscar un movimiento perdido')
+  eq(d.sinExplicar, 0, 'doble cobro: nada sin explicar')
+
+  // I4. Consumo de otro dia: solo cuenta el de ESTA categoria y ubicacion, y explica solo SU
+  // parte; el resto sigue el arbol normal. Mesa: pizza (COM) el dia 0 a las 23 h, cerveza
+  // (BEB) el dia 1 a la 1 h, cobrada el dia 1: pizza a 200 (ficha 100), cerveza a 90 (100).
+  const prods = [P('z', 'Pizza', { categoryId: 'COM', price: 100 }), P('c', 'Cerveza', { categoryId: 'BEB', price: 100 })]
+  const o2 = [{ id: 'O8', area: SAL, status: 'closed', openedAt: at(D0, '22'), closedAt: at(D1, '02'), saleId: 'X8' }]
+  const m2 = [
+    M('z', D0, 'traspIn', 5), M('c', D0, 'traspIn', 5),
+    M('z', D0, 'ventas', -1, { h: '23', type: 'sale_out', refType: 'order', refId: 'O8' }),
+    M('c', D1, 'ventas', -1, { h: '01', type: 'sale_out', refType: 'order', refId: 'O8' })
+  ]
+  const s2 = [{ id: 'X8', orderId: 'O8', createdAt: at(D1, '02'), sourceLocation: SAL, voided: false, items: [{ productId: 'z', qty: 1, lineTotal: 200 }, { productId: 'c', qty: 1, lineTotal: 90 }], totalBase: 290 }]
+  const beb = buildDailyControl(base({ categoryId: 'BEB', products: prods, movements: m2, sales: s2, orders: o2 })).days[0].money
+  eq(beb.causasDet.find((c) => c.key === 'precio')?.amount, 10, `filtro Bebidas: solo el precio de la cerveza, +10 (${beb.causas.join(' | ')})`)
+  eq(beb.causasDet.some((c) => c.key === 'consumoOtroDia'), false, 'la pizza de otra categoria no cuenta')
+  const todo = buildDailyControl(base({ products: prods, movements: m2, sales: s2, orders: o2 })).days[0].money
+  eq(todo.causasDet.find((c) => c.key === 'consumoOtroDia')?.amount, -100, `sin filtro: la pizza del dia anterior, -100 (${todo.causas.join(' | ')})`)
+  eq(todo.causasDet.find((c) => c.key === 'precio')?.amount, -90, 'y el resto es precio: pizza -100 + cerveza +10 = -90')
+  eq(todo.sinExplicar + beb.sinExplicar, 0, 'nada sin explicar')
+}
 // 9. Cache: la que difiere se lista.
 {
   const r = buildDailyControl(base({ products: [P('a', 'Agua', { stockByLocation: { [SAL]: 7 } })], movements: [M('a', D1, 'traspIn', 9)] }))

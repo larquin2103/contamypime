@@ -99,6 +99,23 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
      libro registra consumido»; cero → precio. Se juzga el instante del cobro y no la marca
      de «huérfana», porque el detector empareja por instante y una anulación legítima sale
      huérfana si su línea quedó sellada con una hora posterior (mesa `143f3098`, 22-09 tarde).
+   - **Auditoría previa a `main` (24-09-2026): tres causas falsas más, corregidas.**
+     - **Redondeo (pesadas):** cada línea se cobra redondeada al centavo y el Importe no; los
+       restos de menos de medio centavo por venta se descartaban y, acumulados, salían como
+       «Sin explicar». Ahora ningún importe se descarta: esos restos son la causa **«redondeo al
+       centavo»**, que además absorbe el redondeo de las causas impresas, así que **las causas
+       impresas suman la diferencia impresa**. «Sin explicar» queda para lo que supere medio
+       centavo sin asignar. Con fuerza bruta (20.000 días con pesadas): 0 «Sin explicar» ahora,
+       5.439 antes.
+     - **Cobro duplicado:** por pedido vale la **primera** venta viva; cualquier otra viva del
+       mismo pedido es «cobro duplicado» por su importe, y el resto del grupo se juzga sin ella
+       (antes salía «falta un movimiento de consumo» y mandaba a buscar filas perdidas).
+     - **Consumo de otro día:** se busca solo en esta ubicación y categoría, y explica **su**
+       parte (unidades × precio); el resto sigue el árbol normal (antes todo el resto iba a esa
+       causa, y con filtro de categoría contaba la de otra categoría).
+     - **Sin corregir, anotado:** una venta anterior al almacén con ubicaciones (sin
+       `sourceLocation`) puede salir como «venta sin movimiento» en el almacén y en su área. En
+       los 6 respaldos reales no hay ninguna.
    - **La Venta de un día puede salir NEGATIVA**: una mesa anulada sin cobrar devuelve su consumo
      al stock el día de la anulación (Burger: +37.920 el 09-09 y −37.920 el 20-09). Es el libro
      tal cual; el control de dinero lo nombra.

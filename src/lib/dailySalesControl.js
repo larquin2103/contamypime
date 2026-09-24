@@ -61,7 +61,9 @@ export const CAUSE_LABELS = {
   consumoNoCobrado: 'consumo registrado en el libro que no entró en el cobro de su mesa',
   precio: 'precio cobrado distinto del de la ficha',
   sinMov: 'venta sin movimiento de stock (libro incompleto en este aparato)',
-  otros: 'movimiento de venta sin referencia'
+  otros: 'movimiento de venta sin referencia',
+  cobroDuplicado: 'cobro duplicado: la misma mesa cobrada más de una vez',
+  redondeo: 'redondeo al centavo (líneas cobradas redondeadas, p. ej. pesadas)'
 }
 
 export function buildDailyControl({
@@ -115,8 +117,19 @@ export function buildDailyControl({
   for (const b of breaks) counts[b.kind] = (counts[b.kind] || 0) + 1
   const saleById = new Map(sales.map((s) => [s.id, s]))
   const orphanIds = new Set(breaks.filter((b) => b.kind === 'mov-anulacion-sin-linea').map((b) => b.id))
+  // Por pedido, la venta VALIDA es la primera viva (por instante, y por id si empatan);
+  // cualquier otra viva del mismo pedido es un cobro duplicado (auditoria pre-main, I2).
+  const liveSalesByOrder = new Map()
+  for (const s of sales) {
+    if (!s.orderId || s.voided) continue
+    if (!liveSalesByOrder.has(s.orderId)) liveSalesByOrder.set(s.orderId, [])
+    liveSalesByOrder.get(s.orderId).push(s)
+  }
   const liveSaleByOrder = new Map()
-  for (const s of sales) if (s.orderId && !s.voided) liveSaleByOrder.set(s.orderId, s)
+  for (const [oid, l] of liveSalesByOrder) {
+    l.sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1))
+    liveSaleByOrder.set(oid, l[0])
+  }
 
   const userName = new Map(users.map((u) => [u.id, u.name]))
   const orderById = new Map(orders.map((o) => [o.id, o]))
@@ -165,13 +178,22 @@ export function buildDailyControl({
     // importe, y lo que no se pueda asignar queda como "sin explicar".
     const groups = new Map()
     const G = (k) => {
-      if (!groups.has(k)) groups.set(k, { k, ledger: 0, sale: 0, ledgerUnits: 0, saleUnits: 0, orphan: 0, voidAfter: 0, postVoid: 0, consUnits: 0, preVoidUnits: 0, preOrphan: 0, preOrphanUnits: 0 })
+      if (!groups.has(k)) groups.set(k, { k, ledger: 0, sale: 0, ledgerUnits: 0, saleUnits: 0, orphan: 0, voidAfter: 0, postVoid: 0, consUnits: 0, preVoidUnits: 0, preOrphan: 0, preOrphanUnits: 0, dupSale: 0, dupUnits: 0 })
       return groups.get(k)
     }
+    const prior = new Map() // pedido -> { units, money } de dias anteriores (neto de anulaciones)
     for (const pid of pids) {
       const precio = byId.get(pid) ? round2(priceOf(byId.get(pid))) : 0
       for (const m of byProd.get(pid)) {
-        if (dayOf(m.createdAt) !== day || classify(m) !== 'ventas') continue
+        if (classify(m) !== 'ventas') continue
+        const dm = dayOf(m.createdAt)
+        if (dm < day && (m.refType === 'order' || m.refType === 'order_void')) {
+          const x = prior.get(m.refId) || { units: 0, money: 0 }
+          x.units -= Number(m.qty || 0)
+          x.money -= Number(m.qty || 0) * precio
+          prior.set(m.refId, x)
+        }
+        if (dm !== day) continue
         const q = -Number(m.qty || 0) // unidades vendidas (positivo); una anulacion resta
         const k = m.refType === 'order' || m.refType === 'order_void' ? 'O:' + m.refId : m.refType === 'sale' ? 'S:' + m.refId : 'X:' + m.id
         const g = G(k)
@@ -199,10 +221,13 @@ export function buildDailyControl({
     }
     for (const s of daySales) {
       const g = G(s.orderId ? 'O:' + s.orderId : 'S:' + s.id)
+      const dup = s.orderId && liveSaleByOrder.get(s.orderId)?.id !== s.id
       for (const it of s.items || []) {
         if (!inCat(it.productId)) continue
-        g.sale += Number(it.lineTotal ?? (Number(it.unitPrice || 0) * Number(it.qty || 0)))
+        const amt = Number(it.lineTotal ?? (Number(it.unitPrice || 0) * Number(it.qty || 0)))
+        g.sale += amt
         g.saleUnits += Number(it.qty || 0)
+        if (dup) { g.dupSale += amt; g.dupUnits += Number(it.qty || 0) }
       }
     }
     let consumo = 0
@@ -210,16 +235,23 @@ export function buildDailyControl({
     consumo = round2(consumo)
     const diferencia = round2(totals.importe - consumo)
     const det = new Map()
+    // Ningun importe se descarta (auditoria pre-main, I1): antes, los restos de menos de
+    // medio centavo por grupo -pesadas cobradas redondeadas linea a linea- se perdian y
+    // acumulados salian como "Sin explicar". Ahora se suman a su causa; el contador solo
+    // cuenta los casos de al menos medio centavo.
     const add = (key, amount) => {
-      if (Math.abs(amount) < 0.005) return
+      if (!amount) return
       const x = det.get(key) || { key, label: CAUSE_LABELS[key], amount: 0, n: 0 }
       x.amount += amount
-      x.n += 1
+      if (Math.abs(amount) >= 0.005) x.n += 1
       det.set(key, x)
     }
     for (const g of groups.values()) {
-      const gap = g.ledger - g.sale
-      if (Math.abs(gap) < 0.005) continue
+      let gap = g.ledger - g.sale
+      // I2: lo cobrado de mas por una venta duplicada del mismo pedido es su propia causa;
+      // el resto del grupo se juzga como si solo existiera la venta valida.
+      if (g.dupSale) { add('cobroDuplicado', -g.dupSale); gap += g.dupSale; g.saleUnits -= g.dupUnits }
+      if (Math.abs(gap) < 0.005) { add('redondeo', gap); continue }
       const tipo = g.k.slice(0, 1)
       const id = g.k.slice(2)
       if (tipo === 'O') {
@@ -230,10 +262,15 @@ export function buildDailyControl({
           // en UNIDADES -consumo menos anulaciones previas al cobro, frente a lo cobrado- y
           // el SIGNO dice cual de las dos cosas paso.
           add('anulTrasCobro', g.postVoid)
-          const rest = gap - g.postVoid
-          const antes = movements.some((m) => m.refType === 'order' && m.refId === id && dayOf(m.createdAt) < day)
-          const du = g.consUnits - g.preVoidUnits - g.saleUnits
-          if (antes) add('consumoOtroDia', rest)
+          // I4: el consumo de dias anteriores (de ESTA ubicacion y categoria) explica SU
+          // parte, unidades x precio; el resto sigue el arbol normal.
+          const pr = prior.get(id)
+          const pu = pr && pr.units > 0.0005 ? pr.units : 0
+          const pm = pu ? pr.money : 0
+          add('consumoOtroDia', -pm)
+          const rest = gap - g.postVoid + pm
+          const du = g.consUnits - g.preVoidUnits + pu - g.saleUnits
+          if (Math.abs(rest) < 0.005) add('redondeo', rest)
           else if (du >= 0.0005) add('consumoNoCobrado', rest)
           else if (du <= -0.0005) {
             // El libro registra MENOS consumo neto que lo cobrado. Dos causas posibles: una
@@ -248,7 +285,7 @@ export function buildDailyControl({
         add('anulSinLinea', g.orphan)
         add('anulTrasCobro', g.voidAfter)
         const rest = gap - g.orphan - g.voidAfter
-        if (Math.abs(rest) < 0.005) continue
+        if (Math.abs(rest) < 0.005) { add('redondeo', rest); continue }
         if (!sl) {
           const st = o?.status
           add(st === ORDER_STATUS.OPEN || st === ORDER_STATUS.RESERVED ? 'abierta' : st === ORDER_STATUS.VOIDED ? 'anuladaSinCobro' : 'sinVentaViva', rest)
@@ -267,10 +304,24 @@ export function buildDailyControl({
         add('otros', gap)
       }
     }
-    const causasDet = [...det.values()].map((x) => ({ ...x, amount: round2(x.amount) }))
+    // La diferencia impresa se redondea al centavo y las causas tambien: si lo que queda sin
+    // asignar no llega a medio centavo es redondeo de los propios totales, y el redondeo
+    // absorbe ese resto para que las causas IMPRESAS sumen la diferencia impresa. Lo que
+    // supere medio centavo sin asignar sigue saliendo como "Sin explicar": es un fallo.
+    let crudo = 0
+    for (const x of det.values()) crudo += x.amount
+    const resto = diferencia - crudo
+    const causasDet = [...det.values()].filter((x) => x.key !== 'redondeo')
+      .map((x) => ({ ...x, amount: round2(x.amount) })).filter((x) => x.amount !== 0)
+    if (Math.abs(resto) <= 0.005 + 1e-9) {
+      const red = round2(diferencia - causasDet.reduce((a, x) => a + x.amount, 0))
+      if (red !== 0) causasDet.push({ key: 'redondeo', label: CAUSE_LABELS.redondeo, amount: red, n: det.get('redondeo')?.n || 0 })
+    } else if (det.has('redondeo') && round2(det.get('redondeo').amount) !== 0) {
+      causasDet.push({ ...det.get('redondeo'), amount: round2(det.get('redondeo').amount) })
+    }
     const explicado = causasDet.reduce((a, x) => a + x.amount, 0)
     const sinExplicar = round2(diferencia - explicado)
-    const causas = causasDet.map((x) => x.label + ': ' + x.n + ' caso(s), ' + formatMoney(x.amount))
+    const causas = causasDet.map((x) => x.key === 'redondeo' ? x.label + ': ' + formatMoney(x.amount) : x.label + ': ' + x.n + ' caso(s), ' + formatMoney(x.amount))
     if (Math.abs(sinExplicar) >= 0.01) causas.push('Sin explicar: ' + formatMoney(sinExplicar))
     outDays.push({
       day, folios, sellers, rows, totals,
