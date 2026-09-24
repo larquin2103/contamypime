@@ -98,6 +98,17 @@ export function buildDailyControl({
   for (const b of breaks) counts[b.kind] = (counts[b.kind] || 0) + 1
   const saleById = new Map(sales.map((s) => [s.id, s]))
   const saleSinMovByDay = new Map()
+  const movById = new Map(movements.map((m) => [m.id, m]))
+  const orphanVoidByDay = new Map()
+  for (const b of breaks) {
+    if (b.kind !== 'mov-anulacion-sin-linea') continue
+    const m = movById.get(b.id)
+    if (!m || locOf(m) !== location || !inCat(m.productId)) continue
+    const d = dayOf(m.createdAt)
+    orphanVoidByDay.set(d, (orphanVoidByDay.get(d) || 0) + Number(m.qty || 0))
+  }
+  const liveSaleByOrder = new Map()
+  for (const s of sales) if (s.orderId && !s.voided) liveSaleByOrder.set(s.orderId, s)
   for (const b of breaks) {
     if (b.kind !== 'sale-sin-mov') continue
     const s = saleById.get(b.id)
@@ -148,9 +159,31 @@ export function buildDailyControl({
     const diferencia = round2(totals.importe - consumo)
     const causas = []
     if (diferencia !== 0) {
-      const listed = new Set(rows.map((r) => r.productId))
-      const pcs = priceChanges.filter((x) => listed.has(x.productId) && dayOf(x.createdAt) >= day)
-      if (pcs.length) causas.push(`precio cambiado ese día o después en ${new Set(pcs.map((x) => x.productId)).size} producto(s): el Importe usa el precio de la ficha de hoy`)
+      // Precio: SOLO si alguna linea se cobro a un precio unitario distinto del de la
+      // ficha (revision con el dato real de Burger: un cambio de precio que no produce
+      // diferencia no se nombra, porque la explicacion seria enganosa).
+      const priceDiff = new Set()
+      for (const s of daySales) for (const it of s.items || []) {
+        const p = byId.get(it.productId)
+        if (!p || !inCat(it.productId) || !(Number(it.qty) > 0)) continue
+        if (round2(Number(it.lineTotal || 0) / Number(it.qty)) !== round2(priceOf(p))) priceDiff.add(it.productId)
+      }
+      if (priceDiff.size) causas.push(`precio cobrado distinto del de la ficha en ${priceDiff.size} producto(s): el Importe usa el precio de la ficha de hoy`)
+      // Lineas de mesa anuladas DESPUES de cobrar (el H1 de Burger): el libro devolvio
+      // esas unidades al stock pero la venta sigue cobrada. Se cuentan el dia de la anulacion.
+      let tras = 0
+      const mesasTras = new Set()
+      for (const it of orderItems) {
+        if (!it.voided || !it.voidedAt || dayOf(it.voidedAt) !== day || !inCat(it.productId)) continue
+        const o = orderById.get(it.orderId)
+        if (!o || (o.area || WAREHOUSE) !== location) continue
+        const sale = liveSaleByOrder.get(it.orderId)
+        if (sale && sale.createdAt < it.voidedAt) { tras += Number(it.qty || 0); mesasTras.add(it.orderId) }
+      }
+      if (tras) causas.push(`${cleanQty(tras)} unidad(es) anulada(s) después de cobrar en ${mesasTras.size} mesa(s): el libro las devolvió al stock y la venta sigue cobrada`)
+      // Movimientos de anulacion sin su linea anulada (atomicity.js), de este dia y ubicacion.
+      const huerf = orphanVoidByDay.get(day) || 0
+      if (huerf) causas.push(`movimiento de anulación sin línea: ${cleanQty(huerf)} unidad(es) devueltas al stock sin su línea anulada`)
       const cruzadas = daySales.filter((s) => s.orderId && orderById.get(s.orderId) && dayOf(orderById.get(s.orderId).openedAt) !== day).length
       const pendientes = orders.filter((o) => (o.area || WAREHOUSE) === location && dayOf(o.openedAt) === day && o.closedAt && dayOf(o.closedAt) > day).length
       if (cruzadas) causas.push(`${cruzadas} mesa(s) cobrada(s) este día con consumo de otro día`)
@@ -187,7 +220,8 @@ export function buildDailyControl({
 // Formato para exportExcel/exportPdf: una sola tabla con un separador por dia,
 // el total del dia y las lineas de control. 10 celdas por fila siempre.
 export function dailyControlReport(result, { locationName = '', categoryName = '', from = '', to = '' } = {}) {
-  const pad = (first) => [first, '', '', '', '', '', '', '', '', '']
+  // Lineas de texto A LO ANCHO (colSpan): no ensanchan la columna Producto del PDF.
+  const pad = (text) => [{ content: text, colSpan: HEAD.length }]
   const fm = (n) => formatMoney(n)
   const rows = []
   for (const d of result.days) {

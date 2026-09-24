@@ -12,6 +12,7 @@ import { configRepo } from '../../repositories/configRepo'
 import { accountsRepo, ACCOUNT_REF_LABELS, conceptLabel } from '../../repositories/accountsRepo'
 import { ratesRepo } from '../../repositories/ratesRepo'
 import { buildDailyControl, dailyControlReport } from '../../lib/dailySalesControl'
+import { plainRows } from '../../lib/reportCells'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
@@ -1618,7 +1619,7 @@ export async function exportExcel(report) {
   const ws = XLSX.utils.aoa_to_sheet([
     ...extraLines(report.header),
     report.head,
-    ...report.rows,
+    ...plainRows(report.rows), // celdas a lo ancho -> su texto; lo demas, identico (lib/reportCells)
     ...extraLines(report.footer)
   ])
   const wb = XLSX.utils.book_new()

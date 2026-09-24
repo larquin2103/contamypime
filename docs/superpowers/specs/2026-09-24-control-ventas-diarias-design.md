@@ -54,7 +54,8 @@ en el módulo puro: una sola fuente de verdad, y su código no se toca.
 | Saldo final | Saldo inicio + neto del día |
 
 Entrada, Salida, Merma y Venta se muestran positivas, como en el papel. La suma usa el signo real.
-Las cantidades se redondean con `round2`, igual que el submayor.
+Las cantidades se redondean con `cleanQty` (3 decimales, para no perder gramos en los productos por
+peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tolera 0,011.
 
 **Qué productos salen:**
 - activos o no, los que en esa ubicación tengan saldo inicio ≠ 0, algún movimiento en el día o
@@ -72,15 +73,21 @@ Las cantidades se redondean con `round2`, igual que el submayor.
    - se compara con la suma de Importes del bloque y se imprime la diferencia;
    - aparte se imprime `cobrado total (totalBase) = consumo − descuentos (discountAmount) +
      servicio (serviceChargeAmount)`.
-   - Causas detectables que se listan si hay diferencia:
-     - **cambios de precio** del día en productos listados (`priceChanges`);
-     - **mesas abiertas** en esa ubicación, que consumen pero todavía no se cobraron;
+   - Causas detectables que se listan si hay diferencia. **Corregidas el 24-09-2026 tras generar el
+     reporte real de Burger**, donde la heurística de «cambio de precio» daba una explicación
+     engañosa y no nombraba las causas verdaderas:
+     - **precio cobrado distinto del de la ficha**: alguna línea se cobró a un precio unitario
+       distinto (antes bastaba cualquier cambio de precio, aunque no explicara nada);
+     - **unidades anuladas después de cobrar** la mesa (el H1 de Burger: el libro las devolvió al
+       stock y la venta sigue cobrada);
+     - **movimiento de anulación sin su línea** (`atomicity.js`), en ese día y esa ubicación;
+     - **mesas de medianoche** (consumo un día, cobro otro) y **mesas abiertas** hoy;
      - **ventas sin movimiento de stock** (control 4).
-   - Sin diferencia: «✔ cuadra».
+   - Sin diferencia: «CUADRA». (Las fuentes estándar de jsPDF no tienen el carácter «✔».)
 3. **Control de la caché**, al final del reporte. Para cada producto listado se compara la
    existencia actual según el libro (todo el historial, en esa ubicación) con
-   `stockByLocation[location]`. Se listan las diferencias; sin ellas, «✔ la caché coincide con el
-   libro». **No altera ninguna cifra del reporte.**
+   `stockByLocation[location]`. Se listan las diferencias; sin ellas, «CUADRA (la caché coincide con
+   el libro)». **No altera ninguna cifra del reporte.**
 4. **Control de integridad del libro.** Se reutiliza `findAtomicityBreaks` de `src/lib/atomicity.js`:
    si en el rango hay ventas sin su movimiento (`sale-sin-mov`) o anulaciones sin movimiento, se
    avisa con el número exacto. En ese aparato la Venta del libro sale corta, y el control de dinero
@@ -98,6 +105,12 @@ Las cantidades se redondean con `round2`, igual que el submayor.
    - llama a `buildDailyControl` con `classify: ledgerKey` y `priceOf: (await baseValuer()).price`;
    - devuelve `{ title, subtitle, head, rows, filename, orientation: 'landscape' }` para
      `exportExcel` / `exportPdf`, con filas separadoras por día y las líneas de control.
+   - **Las líneas de texto van A LO ANCHO** (`{ content, colSpan: 10 }`, que autoTable admite sin
+     tocar `exportPdf`). Medido con las opciones reales: la columna Producto pasa de 136 mm a 60 mm
+     y las celdas partidas en dos líneas, de 50 a 0. Para el Excel, `exportExcel` pasa las filas por
+     `plainRows` (`src/lib/reportCells.js`), que convierte esa celda en su texto y deja **todo lo
+     demás idéntico**: 12 reportes existentes salen byte a byte iguales (decisión del dueño, con
+     control negativo).
 
    Ningún otro builder cambia.
 3. **`ReportsScreen.jsx`**: una ficha en la categoría *Ventas* con **dos selectores** (ubicación y

@@ -102,20 +102,42 @@ eq(buildDailyControl(base({ products: [P('i', 'Viejo', { active: false })], move
 {
   const products = [P('a', 'Agua')]
   const movements = [M('a', D1, 'traspIn', 10), M('a', D1, 'ventas', -2, { type: 'sale_out', refType: 'sale', refId: 'S1' })]
-  const sale = { id: 'S1', createdAt: at(D1), sourceLocation: SAL, voided: false, items: [{ productId: 'a', lineTotal: 100 }], serviceChargeAmount: 10, discountAmount: 0, totalBase: 110 }
+  const sale = { id: 'S1', createdAt: at(D1), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 2, lineTotal: 100 }], serviceChargeAmount: 10, discountAmount: 0, totalBase: 110 }
   const ok = buildDailyControl(base({ products, movements, sales: [sale] })).days[0].money
   eq(ok.cuadra, true, 'importe 100 = consumo 100: cuadra')
   eq(ok.cobrado, 110, 'cobrado total con servicio')
   eq(ok.servicio, 10, 'servicio aparte')
-  const pc = buildDailyControl(base({ products, movements, sales: [{ ...sale, items: [{ productId: 'a', lineTotal: 90 }] }], priceChanges: [{ productId: 'a', createdAt: at(D2) }] })).days[0].money
+  const pc = buildDailyControl(base({ products, movements, sales: [{ ...sale, items: [{ productId: 'a', qty: 2, lineTotal: 90 }] }] })).days[0].money
   eq(pc.cuadra, false, 'importe 100 vs consumo 90: no cuadra')
   eq(pc.diferencia, 10, 'diferencia 10')
-  eq(pc.causas.some((c) => /precio/.test(c)), true, 'causa: cambio de precio')
+  eq(pc.causas.some((c) => /precio cobrado distinto/.test(c)), true, `causa precisa: cobrado a 45 y la ficha dice 50 (${pc.causas.join(' | ')})`)
+  // Revision (dato real de Burger): un cambio de precio que NO produjo diferencia no se nombra como causa.
+  const noPrecio = buildDailyControl(base({ products, movements: [...movements, M('a', D1, 'ventas', 1, { h: '15', type: 'sale_out', refType: 'order_void', refId: 'OX' })], sales: [sale], priceChanges: [{ productId: 'a', createdAt: at(D2) }] })).days[0].money
+  eq(noPrecio.causas.some((c) => /precio/.test(c)), false, `un cambio de precio que no explica nada no sale (${noPrecio.causas.join(' | ')})`)
+  eq(noPrecio.causas.some((c) => /anulaci[oó]n sin l[ií]nea/.test(c)), true, `causa: movimiento de anulacion sin su linea (${noPrecio.causas.join(' | ')})`)
   const orders = [{ id: 'O1', area: SAL, status: 'closed', openedAt: at(D1, '23'), closedAt: at(D2, '01') }]
   const late = buildDailyControl(base({ products, movements, sales: [{ ...sale, createdAt: at(D2, '01'), orderId: 'O1' }], orders })).days[0].money
   eq(late.causas.some((c) => /otro d[ií]a/.test(c)), true, `causa: mesa de medianoche (${late.causas.join(' | ')})`)
   const abiertas = buildDailyControl(base({ products, movements, orders: [{ id: 'O2', area: SAL, status: 'open', openedAt: at(D1) }], today: D1 })).days[0].money
   eq(abiertas.causas.some((c) => /abierta/.test(c)), true, 'causa: mesa abierta hoy')
+}
+// 8b. Revision (dato real de Burger): lineas anuladas DESPUES de cobrar la mesa.
+{
+  const products = [P('a', 'Agua')]
+  const movements = [
+    M('a', D1, 'traspIn', 10),
+    M('a', D1, 'ventas', -3, { type: 'sale_out', refType: 'order', refId: 'O1' }),
+    M('a', D1, 'ventas', 1, { h: '14', type: 'sale_out', refType: 'order_void', refId: 'O1' })
+  ]
+  const sale = { id: 'S1', orderId: 'O1', createdAt: at(D1, '13'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 3, lineTotal: 150 }], totalBase: 150 }
+  const orderItems = [
+    { id: 'i1', orderId: 'O1', productId: 'a', qty: 2, voided: false, createdAt: at(D1, '12') },
+    { id: 'i2', orderId: 'O1', productId: 'a', qty: 1, voided: true, createdAt: at(D1, '12'), voidedAt: at(D1, '14') }
+  ]
+  const orders = [{ id: 'O1', area: SAL, status: 'closed', openedAt: at(D1, '11'), closedAt: at(D1, '13') }]
+  const m = buildDailyControl(base({ products, movements, sales: [sale], orderItems, orders })).days[0].money
+  eq(m.diferencia, -50, 'libro 2 x 50 = 100 vs cobrado 150')
+  eq(m.causas.some((c) => /1 unidad\(es\) anulada\(s\) despu[eé]s de cobrar/.test(c)), true, `causa: anulada despues de cobrar (${m.causas.join(' | ')})`)
 }
 // 9. Cache: la que difiere se lista.
 {
@@ -150,10 +172,13 @@ throws(() => buildDailyControl(base({ location: '' })), /ubicaci/, 'sin ubicacio
   const rep = dailyControlReport(res, { locationName: 'Salones', categoryName: '', from: D1, to: D2 })
   eq(rep.head.join('|'), HEAD.join('|'), 'cabecera de 10 columnas')
   eq(rep.title, 'Control de Ventas Diarias', 'titulo')
-  eq(rep.rows.every((r) => r.length === 10), true, 'todas las filas con 10 celdas')
-  eq(rep.rows.some((r) => String(r[0]).includes(D1) && String(r[0]).includes('Entregado por')), true, 'separador de dia con cabecera')
+  const texto = rep.rows.filter((r) => r.length === 1)
+  eq(rep.rows.every((r) => r.length === 10 || (r.length === 1 && r[0].colSpan === 10 && typeof r[0].content === 'string')), true, 'filas de 10 celdas, o de texto a lo ancho (colSpan 10)')
+  eq(texto.length > 0, true, 'las lineas de texto van a lo ancho')
+  const txt = (r) => (typeof r[0] === 'object' ? r[0].content : String(r[0]))
+  eq(rep.rows.some((r) => txt(r).includes(D1) && txt(r).includes('Entregado por')), true, 'separador de dia con cabecera')
   eq(JSON.stringify(rep.rows).includes('✔'), false, 'sin el caracter ✔ (jsPDF no lo tiene)')
-  eq(rep.rows.some((r) => /CUADRA/.test(String(r[0]))), true, 'el control de dinero dice CUADRA o NO CUADRA')
+  eq(rep.rows.some((r) => /CUADRA/.test(txt(r))), true, 'el control de dinero dice CUADRA o NO CUADRA')
 }
 
 console.log(`dailySalesControl: ${pass} OK, ${fail} fallos`)
