@@ -83,6 +83,25 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
      - **movimiento de anulación sin su línea** (`atomicity.js`), en ese día y esa ubicación;
      - **mesas de medianoche** (consumo un día, cobro otro) y **mesas abiertas** hoy;
      - **ventas sin movimiento de stock** (control 4).
+   - **Revisión final (24-09-2026): conciliación POR GRUPO, con importe.** Las causas de arriba
+     se detectaban por presencia y podían nombrar una que no explicaba nada (C1: una mesa anulada
+     días después sin cobrar salía como «cobrada otro día», y el −37.920 del día de su anulación
+     quedaba sin causa). Ahora la diferencia se descompone en grupos —cada mesa y cada venta
+     directa—: `(Venta del libro × precio de ficha) − cobrado` por grupo, cuya suma **es** la
+     diferencia por construcción (el Importe total se acumula sin redondeo intermedio). A cada
+     grupo se le asigna la causa de su **estado real**, con su importe; lo que no se pueda
+     asignar sale como **«Sin explicar»**, que en los 4 respaldos reales vale **0 en todos** los
+     días-ubicación. Para una **mesa cobrada el mismo día**: lo devuelto al stock después del
+     cobro es «anulado después de cobrar»; el resto se juzga en **unidades** (consumo −
+     anulaciones previas al cobro, frente a lo cobrado) y el **signo** decide: sobra consumo →
+     «consumo registrado sin cobrar»; falta → primero las anulaciones huérfanas previas
+     (anulación duplicada, mesa `180a7687`) y solo lo que no cubren, «cobrado más de lo que el
+     libro registra consumido»; cero → precio. Se juzga el instante del cobro y no la marca
+     de «huérfana», porque el detector empareja por instante y una anulación legítima sale
+     huérfana si su línea quedó sellada con una hora posterior (mesa `143f3098`, 22-09 tarde).
+   - **La Venta de un día puede salir NEGATIVA**: una mesa anulada sin cobrar devuelve su consumo
+     al stock el día de la anulación (Burger: +37.920 el 09-09 y −37.920 el 20-09). Es el libro
+     tal cual; el control de dinero lo nombra.
    - Sin diferencia: «CUADRA». (Las fuentes estándar de jsPDF no tienen el carácter «✔».)
 3. **Control de la caché**, al final del reporte. Para cada producto listado se compara la
    existencia actual según el libro (todo el historial, en esa ubicación) con
@@ -130,7 +149,7 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
    - orden alfabético con ñ y tildes; filtro de categoría; los productos en cero no aparecen;
    - la cabecera sale de los turnos;
    - control de dinero: consumo, servicio, descuento, diferencia y causas;
-   - la caché que difiere se lista, y la que coincide da «✔»;
+   - la caché que difiere se lista, y la que coincide da «CUADRA»;
    - la integridad avisa.
    - Controles negativos en la regla de ubicación, en el signo de la venta y en el encadenado.
 2. **Validación con respaldos reales** (`docs/auditoria/validar-control-ventas.mjs`, fuera del

@@ -47,6 +47,23 @@ function columnsOf(g) {
 }
 const ZERO = { entrada: 0, salida: 0, merma: 0, venta: 0, ajuste: 0 }
 
+// Causas del control de dinero (conciliacion por grupo). El importe de cada una es
+// (Venta del libro x precio de la ficha) - (lo cobrado), del grupo que la origina.
+export const CAUSE_LABELS = {
+  anulSinLinea: 'anulación sin línea: movimiento de anulación sin su línea anulada',
+  anulTrasCobro: 'anulado después de cobrar: el libro lo devolvió al stock y la venta sigue cobrada',
+  abierta: 'mesa abierta: consumo aún sin cobrar',
+  anuladaSinCobro: 'mesa anulada sin cobrar: su consumo salió del libro un día y volvió otro',
+  sinVentaViva: 'venta del libro sin su venta viva (anulada o no recibida en este aparato)',
+  cobradaOtroDia: 'consumo de este día cobrado otro día',
+  consumoOtroDia: 'cobrada este día con consumo de otro día',
+  lineaSinMov: 'cobrado más de lo que el libro registra consumido (falta un movimiento de consumo en este aparato)',
+  consumoNoCobrado: 'consumo registrado en el libro que no entró en el cobro de su mesa',
+  precio: 'precio cobrado distinto del de la ficha',
+  sinMov: 'venta sin movimiento de stock (libro incompleto en este aparato)',
+  otros: 'movimiento de venta sin referencia'
+}
+
 export function buildDailyControl({
   products = [], movements = [], sales = [], shifts = [], users = [], orders = [], priceChanges = [],
   productions = [], purchases = [], transfers = [], orderItems = [],
@@ -97,25 +114,9 @@ export function buildDailyControl({
   const counts = {}
   for (const b of breaks) counts[b.kind] = (counts[b.kind] || 0) + 1
   const saleById = new Map(sales.map((s) => [s.id, s]))
-  const saleSinMovByDay = new Map()
-  const movById = new Map(movements.map((m) => [m.id, m]))
-  const orphanVoidByDay = new Map()
-  for (const b of breaks) {
-    if (b.kind !== 'mov-anulacion-sin-linea') continue
-    const m = movById.get(b.id)
-    if (!m || locOf(m) !== location || !inCat(m.productId)) continue
-    const d = dayOf(m.createdAt)
-    orphanVoidByDay.set(d, (orphanVoidByDay.get(d) || 0) + Number(m.qty || 0))
-  }
+  const orphanIds = new Set(breaks.filter((b) => b.kind === 'mov-anulacion-sin-linea').map((b) => b.id))
   const liveSaleByOrder = new Map()
   for (const s of sales) if (s.orderId && !s.voided) liveSaleByOrder.set(s.orderId, s)
-  for (const b of breaks) {
-    if (b.kind !== 'sale-sin-mov') continue
-    const s = saleById.get(b.id)
-    if (!s || saleLocOf(s) !== location) continue
-    const d = dayOf(s.createdAt)
-    saleSinMovByDay.set(d, (saleSinMovByDay.get(d) || 0) + 1)
-  }
 
   const userName = new Map(users.map((u) => [u.id, u.name]))
   const orderById = new Map(orders.map((o) => [o.id, o]))
@@ -123,6 +124,7 @@ export function buildDailyControl({
   for (const day of days) {
     const rows = []
     const totals = { entrada: 0, salida: 0, merma: 0, venta: 0, ajuste: 0, importe: 0 }
+    let importeRaw = 0
     for (const pid of pids) {
       const st = state.get(pid)
       const g = st.perDay.get(day)
@@ -136,8 +138,10 @@ export function buildDailyControl({
       const importe = round2(c.venta * precio)
       rows.push({ productId: pid, name: nameOf(pid), unit: p?.unit || '', inicio, ...c, precio, importe, final })
       for (const k of ['entrada', 'salida', 'merma', 'venta', 'ajuste']) totals[k] = cleanQty(totals[k] + c[k])
-      totals.importe = round2(totals.importe + importe)
+      importeRaw += c.venta * precio
     }
+
+    totals.importe = round2(importeRaw)
 
     // Cabecera: turnos de ESTA ubicacion que tocan el dia.
     const dayShifts = shifts
@@ -148,56 +152,129 @@ export function buildDailyControl({
 
     // Control de dinero: consumo COBRADO (lineas a precio congelado) vs suma de Importes.
     const daySales = sales.filter((s) => !s.voided && dayOf(s.createdAt) === day && saleLocOf(s) === location)
-    let consumo = 0, servicio = 0, descuento = 0, cobrado = 0
+    let servicio = 0, descuento = 0, cobrado = 0
     for (const s of daySales) {
-      for (const it of s.items || []) if (inCat(it.productId)) consumo += Number(it.lineTotal || 0)
       servicio += Number(s.serviceChargeAmount || 0)
       descuento += Number(s.discountAmount || 0)
       cobrado += Number(s.totalBase || 0)
     }
+    // CONCILIACION POR GRUPO (revision final, C1/I1-I3). La diferencia del dia se
+    // descompone en grupos -cada mesa (pedido) y cada venta directa- con sus movimientos
+    // de VENTA del libro y sus ventas cobradas: la suma de los grupos ES la diferencia,
+    // por construccion. A cada grupo se le asigna su causa por su ESTADO real, con su
+    // importe, y lo que no se pueda asignar queda como "sin explicar".
+    const groups = new Map()
+    const G = (k) => {
+      if (!groups.has(k)) groups.set(k, { k, ledger: 0, sale: 0, ledgerUnits: 0, saleUnits: 0, orphan: 0, voidAfter: 0, postVoid: 0, consUnits: 0, preVoidUnits: 0, preOrphan: 0, preOrphanUnits: 0 })
+      return groups.get(k)
+    }
+    for (const pid of pids) {
+      const precio = byId.get(pid) ? round2(priceOf(byId.get(pid))) : 0
+      for (const m of byProd.get(pid)) {
+        if (dayOf(m.createdAt) !== day || classify(m) !== 'ventas') continue
+        const q = -Number(m.qty || 0) // unidades vendidas (positivo); una anulacion resta
+        const k = m.refType === 'order' || m.refType === 'order_void' ? 'O:' + m.refId : m.refType === 'sale' ? 'S:' + m.refId : 'X:' + m.id
+        const g = G(k)
+        g.ledger += q * precio
+        g.ledgerUnits += q
+        if (m.refType === 'order') g.consUnits += q
+        if (orphanIds.has(m.id)) g.orphan += q * precio
+        else if (m.refType === 'order_void') {
+          const sl = liveSaleByOrder.get(m.refId)
+          if (sl && sl.createdAt < m.createdAt) g.voidAfter += q * precio
+        }
+        // Para la mesa cobrada: TODA anulacion (huerfana o no) partida por el instante del
+        // cobro. El detector de atomicidad empareja por instante, y una anulacion legitima
+        // anterior al cobro sale "huerfana" si su linea quedo sellada con una hora posterior
+        // (dato real de Burger, mesa 143f3098): lo que decide es si la venta la refleja.
+        if (m.refType === 'order_void') {
+          const sl = liveSaleByOrder.get(m.refId)
+          if (sl && sl.createdAt < m.createdAt) g.postVoid += q * precio
+          else {
+            g.preVoidUnits -= q
+            if (orphanIds.has(m.id)) { g.preOrphan += q * precio; g.preOrphanUnits -= q }
+          }
+        }
+      }
+    }
+    for (const s of daySales) {
+      const g = G(s.orderId ? 'O:' + s.orderId : 'S:' + s.id)
+      for (const it of s.items || []) {
+        if (!inCat(it.productId)) continue
+        g.sale += Number(it.lineTotal ?? (Number(it.unitPrice || 0) * Number(it.qty || 0)))
+        g.saleUnits += Number(it.qty || 0)
+      }
+    }
+    let consumo = 0
+    for (const g of groups.values()) consumo += g.sale
     consumo = round2(consumo)
     const diferencia = round2(totals.importe - consumo)
-    const causas = []
-    if (diferencia !== 0) {
-      // Precio: SOLO si alguna linea se cobro a un precio unitario distinto del de la
-      // ficha (revision con el dato real de Burger: un cambio de precio que no produce
-      // diferencia no se nombra, porque la explicacion seria enganosa).
-      const priceDiff = new Set()
-      for (const s of daySales) for (const it of s.items || []) {
-        const p = byId.get(it.productId)
-        if (!p || !inCat(it.productId) || !(Number(it.qty) > 0)) continue
-        if (round2(Number(it.lineTotal || 0) / Number(it.qty)) !== round2(priceOf(p))) priceDiff.add(it.productId)
-      }
-      if (priceDiff.size) causas.push(`precio cobrado distinto del de la ficha en ${priceDiff.size} producto(s): el Importe usa el precio de la ficha de hoy`)
-      // Lineas de mesa anuladas DESPUES de cobrar (el H1 de Burger): el libro devolvio
-      // esas unidades al stock pero la venta sigue cobrada. Se cuentan el dia de la anulacion.
-      let tras = 0
-      const mesasTras = new Set()
-      for (const it of orderItems) {
-        if (!it.voided || !it.voidedAt || dayOf(it.voidedAt) !== day || !inCat(it.productId)) continue
-        const o = orderById.get(it.orderId)
-        if (!o || (o.area || WAREHOUSE) !== location) continue
-        const sale = liveSaleByOrder.get(it.orderId)
-        if (sale && sale.createdAt < it.voidedAt) { tras += Number(it.qty || 0); mesasTras.add(it.orderId) }
-      }
-      if (tras) causas.push(`${cleanQty(tras)} unidad(es) anulada(s) después de cobrar en ${mesasTras.size} mesa(s): el libro las devolvió al stock y la venta sigue cobrada`)
-      // Movimientos de anulacion sin su linea anulada (atomicity.js), de este dia y ubicacion.
-      const huerf = orphanVoidByDay.get(day) || 0
-      if (huerf) causas.push(`movimiento de anulación sin línea: ${cleanQty(huerf)} unidad(es) devueltas al stock sin su línea anulada`)
-      const cruzadas = daySales.filter((s) => s.orderId && orderById.get(s.orderId) && dayOf(orderById.get(s.orderId).openedAt) !== day).length
-      const pendientes = orders.filter((o) => (o.area || WAREHOUSE) === location && dayOf(o.openedAt) === day && o.closedAt && dayOf(o.closedAt) > day).length
-      if (cruzadas) causas.push(`${cruzadas} mesa(s) cobrada(s) este día con consumo de otro día`)
-      if (pendientes) causas.push(`${pendientes} mesa(s) con consumo de este día cobrada(s) otro día`)
-      if (day === today) {
-        const abiertas = orders.filter((o) => o.status === ORDER_STATUS.OPEN && (o.area || WAREHOUSE) === location).length
-        if (abiertas) causas.push(`${abiertas} mesa(s) abierta(s) ahora: consumo aún sin cobrar`)
-      }
-      const sm = saleSinMovByDay.get(day) || 0
-      if (sm) causas.push(`${sm} venta(s) sin movimiento de stock en este aparato: la Venta del libro sale corta`)
+    const det = new Map()
+    const add = (key, amount) => {
+      if (Math.abs(amount) < 0.005) return
+      const x = det.get(key) || { key, label: CAUSE_LABELS[key], amount: 0, n: 0 }
+      x.amount += amount
+      x.n += 1
+      det.set(key, x)
     }
+    for (const g of groups.values()) {
+      const gap = g.ledger - g.sale
+      if (Math.abs(gap) < 0.005) continue
+      const tipo = g.k.slice(0, 1)
+      const id = g.k.slice(2)
+      if (tipo === 'O') {
+        const o = orderById.get(id)
+        const sl = liveSaleByOrder.get(id)
+        if (sl && dayOf(sl.createdAt) === day) {
+          // Cobrada ESTE dia: lo devuelto tras cobrar es su propia causa; el resto se juzga
+          // en UNIDADES -consumo menos anulaciones previas al cobro, frente a lo cobrado- y
+          // el SIGNO dice cual de las dos cosas paso.
+          add('anulTrasCobro', g.postVoid)
+          const rest = gap - g.postVoid
+          const antes = movements.some((m) => m.refType === 'order' && m.refId === id && dayOf(m.createdAt) < day)
+          const du = g.consUnits - g.preVoidUnits - g.saleUnits
+          if (antes) add('consumoOtroDia', rest)
+          else if (du >= 0.0005) add('consumoNoCobrado', rest)
+          else if (du <= -0.0005) {
+            // El libro registra MENOS consumo neto que lo cobrado. Dos causas posibles: una
+            // anulacion duplicada (la delata el detector: huerfana previa al cobro, dato real
+            // de la mesa 180a7687) o un consumo sin su movimiento. La huerfana explica
+            // primero -todo el resto si sus unidades lo cubren, si no su propio importe-.
+            if (g.preOrphanUnits >= -du - 0.0005) add('anulSinLinea', rest)
+            else { add('anulSinLinea', g.preOrphan); add('lineaSinMov', rest - g.preOrphan) }
+          } else add('precio', rest)
+          continue
+        }
+        add('anulSinLinea', g.orphan)
+        add('anulTrasCobro', g.voidAfter)
+        const rest = gap - g.orphan - g.voidAfter
+        if (Math.abs(rest) < 0.005) continue
+        if (!sl) {
+          const st = o?.status
+          add(st === ORDER_STATUS.OPEN || st === ORDER_STATUS.RESERVED ? 'abierta' : st === ORDER_STATUS.VOIDED ? 'anuladaSinCobro' : 'sinVentaViva', rest)
+        } else {
+          add('cobradaOtroDia', rest)
+        }
+      } else if (tipo === 'S') {
+        const sl = saleById.get(id)
+        if (!sl || sl.voided) add('sinVentaViva', gap)
+        else if (dayOf(sl.createdAt) !== day) add('cobradaOtroDia', gap)
+        // Sin NINGUN movimiento de venta en el libro, la causa es la falta de movimiento
+        // aunque las unidades "coincidan" (una linea sin qty daria 0 = 0).
+        else if (Math.abs(g.ledgerUnits) < 0.0005 || Math.abs(g.ledgerUnits - g.saleUnits) >= 0.0005) add('sinMov', gap)
+        else add('precio', gap)
+      } else {
+        add('otros', gap)
+      }
+    }
+    const causasDet = [...det.values()].map((x) => ({ ...x, amount: round2(x.amount) }))
+    const explicado = causasDet.reduce((a, x) => a + x.amount, 0)
+    const sinExplicar = round2(diferencia - explicado)
+    const causas = causasDet.map((x) => x.label + ': ' + x.n + ' caso(s), ' + formatMoney(x.amount))
+    if (Math.abs(sinExplicar) >= 0.01) causas.push('Sin explicar: ' + formatMoney(sinExplicar))
     outDays.push({
       day, folios, sellers, rows, totals,
-      money: { importe: totals.importe, consumo, diferencia, cuadra: diferencia === 0, servicio: round2(servicio), descuento: round2(descuento), cobrado: round2(cobrado), causas }
+      money: { importe: totals.importe, consumo, diferencia, cuadra: diferencia === 0, servicio: round2(servicio), descuento: round2(descuento), cobrado: round2(cobrado), causas, causasDet, sinExplicar }
     })
   }
 
@@ -239,7 +316,7 @@ export function dailyControlReport(result, { locationName = '', categoryName = '
   rows.push(pad(cc.ok ? 'Control de la caché: CUADRA (la caché coincide con el libro)' : `Control de la caché: ${cc.diffs.length} producto(s) con la caché distinta del libro (el reporte usa el libro)`))
   for (const x of cc.diffs) rows.push(pad(`  ${x.name}: libro ${x.libro} · caché ${x.cache}`))
   const it = result.integrity
-  rows.push(pad(it.ok ? 'Integridad del libro: CUADRA' : `Integridad del libro: NO CUADRA — ${Object.entries(it.counts).map(([k, n]) => `${k} ${n}`).join(', ')}`))
+  rows.push(pad(it.ok ? 'Integridad del libro (todo el aparato): CUADRA' : `Integridad del libro (todo el aparato): NO CUADRA — ${Object.entries(it.counts).map(([k, n]) => `${k} ${n}`).join(', ')}`))
   if (result.unclassified) rows.push(pad(`Movimientos sin clasificar (sumados en Ajuste): ${result.unclassified}`))
   const range = to && to !== from ? `${from} a ${to}` : from
   return {

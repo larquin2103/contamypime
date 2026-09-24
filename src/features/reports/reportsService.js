@@ -1716,7 +1716,7 @@ export async function loadDailyControl({ from = '', to = '', location = '', cate
   const mnv = await baseValuer() // precio en MN (divisa a la tasa vigente), como el resto de reportes
   return buildDailyControl({
     products, movements, sales, shifts, users, orders, priceChanges, productions, purchases, transfers, orderItems,
-    location, categoryId, from, to, classify: ledgerKey, priceOf: mnv.price, dayOf: localDay, today: localDay()
+    location, categoryId, from, to, classify: ledgerKey, priceOf: mnv.price, dayOf: (x) => (x ? localDay(x) : ''), today: localDay()
   })
 }
 
@@ -1734,10 +1734,16 @@ export async function dailyControlLocations() {
   const seen = new Set()
   const out = []
   const add = (v) => { if (v && !seen.has(v)) { seen.add(v); out.push({ value: v, label: locationLabel(v) }) } }
+  const distinguish = () => {
+    const n = new Map()
+    for (const o of out) n.set(o.label, (n.get(o.label) || 0) + 1)
+    for (const o of out) if (n.get(o.label) > 1) o.label = `${o.label} (${o.value})`
+  }
   for (const a of areas) add(a)
   add(WAREHOUSE)
   const locs = new Set()
   for (const m of await db.stockMovements.toArray()) locs.add(m.location || WAREHOUSE)
   for (const l of [...locs].sort()) add(l)
+  distinguish()
   return out
 }

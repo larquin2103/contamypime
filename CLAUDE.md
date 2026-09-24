@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **26** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.460 aserciones**, medidas el 24-09-2026). Las tres de la
+se corren **uno a uno con node** (**1.490 aserciones**, medidas el 24-09-2026). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -102,11 +102,11 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **28 suites / 1.518 aserciones** en total, medidas el 24-09-2026 tras las
+Con esas dos dentro: **28 suites / 1.548 aserciones** en total, medidas el 24-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
-antes de escribir, `dailySalesControl` (57), el Control de Ventas Diarias, y `reportCells` (10).
+antes de escribir, `dailySalesControl` (87), el Control de Ventas Diarias, y `reportCells` (10).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -940,9 +940,19 @@ Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y pl
   - el dinero: consumo cobrado contra los importes, con servicio, descuentos y causas;
   - que la caché coincide con el libro;
   - la integridad del libro (`atomicity.js`).
-- **Dónde vive:** lógica pura en `src/lib/dailySalesControl.js`. En `reportsService.js`, tres
-  funciones de solo lectura **al final** (+40 / −0; el byte NUL preexistente, intacto). Una ficha
-  en *Ventas* con selectores de ubicación y categoría.
+- **Dónde vive:** lógica pura en `src/lib/dailySalesControl.js`. En `reportsService.js`
+  (+48 / −1), tres funciones de solo lectura **al final** y **una** línea sustituida en
+  `exportExcel` (`plainRows`, para las líneas de texto a lo ancho del PDF): los 12 reportes
+  existentes salen **idénticos byte a byte**, con control negativo. El byte NUL preexistente sigue
+  intacto. Una ficha en *Ventas* con selectores de ubicación y categoría.
+- **El control de dinero es una CONCILIACIÓN POR GRUPO** (revisión final): cada mesa y cada venta
+  directa aportan `(Venta del libro × precio de ficha) − cobrado`, y la suma **es** la diferencia
+  del día. Cada grupo lleva la causa de su **estado real** y su importe, y lo no asignable sale
+  como **«Sin explicar»**. En los 4 respaldos vale **0 en los 324 días-ubicación**. Las causas de
+  Burger se comprobaron **mesa por mesa** contra el dato: `143f3098` anulada después de cobrar,
+  `180a7687` con anulación duplicada, una mesa anulada sin cobrar (09 → 20-09) y una abierta.
+  **La Venta de un día puede salir negativa** (la devolución de una mesa anulada otro día): es
+  el libro tal cual.
 - **Validado con los 4 respaldos reales**
   (`docs/auditoria/validar-control-ventas.mjs`, con `TZ=America/Havana`):
   - **16.485 filas** contra un recálculo independiente del libro, y **1.828 cotejos** con el
@@ -951,6 +961,8 @@ Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y pl
   - control negativo de la validación completa: **6.775 fallos**.
 - **Lo que no se puede garantizar:**
   - cómo se ve el PDF en el teléfono del cliente;
+  - el **Precio** es el de la ficha **de hoy**, también para días pasados; si cambió, la diferencia
+    sale en el control de dinero como «precio», pero el Importe no es el de aquel día;
   - si el aparato tiene el libro incompleto (H3), el reporte **lo avisa** pero no inventa las
     filas;
   - «Tres leches» y «Javas», del papel, **no existen** con ese nombre en el sistema.

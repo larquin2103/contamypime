@@ -30,7 +30,8 @@ for (const file of process.argv.slice(2)) {
   for (let t = Date.parse(movDays[0] + 'T00:00:00Z'); t <= Date.parse(movDays[movDays.length - 1] + 'T00:00:00Z'); t += 86400000) days.push(new Date(t).toISOString().slice(0, 10))
   const locs = (await dailyControlLocations()).map((l) => l.value)
   console.log(`\n== ${file}\n   ${movs.length} movimientos · ${days.length} días · ubicaciones: ${locs.join(', ')}`)
-  let filas = 0, ventanas = 0, cotejos = 0
+  let filas = 0, ventanas = 0, cotejos = 0, dias = 0
+  const causas = {}
   for (const location of locs) {
     const inLoc = movs.filter((m) => (m.location || WAREHOUSE) === location)
     if (!inLoc.length) continue
@@ -53,6 +54,15 @@ for (const file of process.argv.slice(2)) {
           const got = row ? row.final : 0
           if (!near(got, s)) bad(`${location} ${d.day} ${pid}: final ${got} vs libro ${s}`)
         }
+      }
+      // Control de dinero (revision final, C1): en TODO dia la suma de las causas tiene que
+      // explicar la diferencia entera. Un resto 'sin explicar' es un fallo de la conciliacion.
+      for (const d of r.days) {
+        dias++
+        if (Math.abs(d.money.sinExplicar) >= 0.01) bad(`${location} ${d.day}: diferencia ${d.money.diferencia} con ${d.money.sinExplicar} SIN EXPLICAR`)
+        for (const c of d.money.causasDet) causas[c.key] = (causas[c.key] || 0) + 1
+        // DETALLE=1 imprime cada dia-ubicacion con diferencia y sus causas, para auditarlas una a una.
+        if (process.env.DETALLE && d.money.causasDet.length) console.log(`   ${location} ${d.day} dif ${d.money.diferencia}: ${d.money.causas.join(' | ')}`)
       }
       for (let k = 1; k < r.days.length; k++) {
         const prev = new Map(r.days[k - 1].rows.map((x) => [x.productId, x.final]))
@@ -85,7 +95,7 @@ for (const file of process.argv.slice(2)) {
   }
   const all = await loadDailyControl({ from: days[Math.max(0, days.length - MAX_DAYS)], to: days[days.length - 1], location: WAREHOUSE })
   if (!ventanas || !filas || !cotejos) bad('no se comprobo nada: la validacion no puede decir que cuadra')
-  console.log(`   dias ${days.length} · ventanas ${ventanas} · filas comprobadas ${filas} · cotejos con el submayor ${cotejos} · integridad (últimos días, todo el aparato): ${JSON.stringify(all.integrity.counts)} · caché distinta en almacén: ${all.cacheCheck.diffs.length}`)
+  console.log(`   dias ${days.length} · ventanas ${ventanas} · filas comprobadas ${filas} · cotejos con el submayor ${cotejos} · dias-ubicacion con control de dinero ${dias} · causas ${JSON.stringify(causas)} · integridad (últimos días, todo el aparato): ${JSON.stringify(all.integrity.counts)} · caché distinta en almacén: ${all.cacheCheck.diffs.length}`)
 }
 console.log(`\n${fallos ? 'FALLOS: ' + fallos : 'TODO CUADRA'}`)
 if (fallos) process.exit(1)

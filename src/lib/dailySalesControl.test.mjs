@@ -115,11 +115,18 @@ eq(buildDailyControl(base({ products: [P('i', 'Viejo', { active: false })], move
   const noPrecio = buildDailyControl(base({ products, movements: [...movements, M('a', D1, 'ventas', 1, { h: '15', type: 'sale_out', refType: 'order_void', refId: 'OX' })], sales: [sale], priceChanges: [{ productId: 'a', createdAt: at(D2) }] })).days[0].money
   eq(noPrecio.causas.some((c) => /precio/.test(c)), false, `un cambio de precio que no explica nada no sale (${noPrecio.causas.join(' | ')})`)
   eq(noPrecio.causas.some((c) => /anulaci[oó]n sin l[ií]nea/.test(c)), true, `causa: movimiento de anulacion sin su linea (${noPrecio.causas.join(' | ')})`)
-  const orders = [{ id: 'O1', area: SAL, status: 'closed', openedAt: at(D1, '23'), closedAt: at(D2, '01') }]
-  const late = buildDailyControl(base({ products, movements, sales: [{ ...sale, createdAt: at(D2, '01'), orderId: 'O1' }], orders })).days[0].money
-  eq(late.causas.some((c) => /otro d[ií]a/.test(c)), true, `causa: mesa de medianoche (${late.causas.join(' | ')})`)
-  const abiertas = buildDailyControl(base({ products, movements, orders: [{ id: 'O2', area: SAL, status: 'open', openedAt: at(D1) }], today: D1 })).days[0].money
-  eq(abiertas.causas.some((c) => /abierta/.test(c)), true, 'causa: mesa abierta hoy')
+  const orders = [{ id: 'O1', area: SAL, status: 'closed', openedAt: at(D1, '23'), closedAt: at(D2, '01'), saleId: 'S1' }]
+  const mesaMov = [M('a', D1, 'traspIn', 10), M('a', D1, 'ventas', -2, { h: '23', type: 'sale_out', refType: 'order', refId: 'O1' })]
+  const lateR = buildDailyControl(base({ products, movements: mesaMov, sales: [{ ...sale, createdAt: at(D2, '01'), orderId: 'O1' }], orders }))
+  const late = lateR.days[0].money
+  eq(late.causas.some((c) => /cobrado otro d[ií]a/.test(c)), true, `causa: consumo de este dia cobrado otro dia (${late.causas.join(' | ')})`)
+  eq(late.sinExplicar, 0, 'medianoche dia 1: nada sin explicar')
+  eq(lateR.days[1].money.causas.some((c) => /consumo de otro d[ií]a/.test(c)), true, `dia 2: cobrada con consumo de otro dia (${lateR.days[1].money.causas.join(' | ')})`)
+  eq(lateR.days[1].money.sinExplicar, 0, 'medianoche dia 2: nada sin explicar')
+  // I1 (revision final): una mesa ABIERTA explica la diferencia en CUALQUIER dia, no solo hoy.
+  const abiertas = buildDailyControl(base({ products, movements: [M('a', D1, 'traspIn', 10), M('a', D1, 'ventas', -2, { type: 'sale_out', refType: 'order', refId: 'O2' })], orders: [{ id: 'O2', area: SAL, status: 'open', openedAt: at(D1) }], today: '' })).days[0].money
+  eq(abiertas.causas.some((c) => /mesa abierta/.test(c)), true, `causa: mesa abierta, aunque no sea hoy (${abiertas.causas.join(' | ')})`)
+  eq(abiertas.sinExplicar, 0, 'mesa abierta: nada sin explicar')
 }
 // 8b. Revision (dato real de Burger): lineas anuladas DESPUES de cobrar la mesa.
 {
@@ -137,7 +144,91 @@ eq(buildDailyControl(base({ products: [P('i', 'Viejo', { active: false })], move
   const orders = [{ id: 'O1', area: SAL, status: 'closed', openedAt: at(D1, '11'), closedAt: at(D1, '13') }]
   const m = buildDailyControl(base({ products, movements, sales: [sale], orderItems, orders })).days[0].money
   eq(m.diferencia, -50, 'libro 2 x 50 = 100 vs cobrado 150')
-  eq(m.causas.some((c) => /1 unidad\(es\) anulada\(s\) despu[eé]s de cobrar/.test(c)), true, `causa: anulada despues de cobrar (${m.causas.join(' | ')})`)
+  eq(m.causas.some((c) => /anulado despu[eé]s de cobrar/.test(c)), true, `causa: anulado despues de cobrar (${m.causas.join(' | ')})`)
+  eq(m.causasDet.find((c) => c.key === 'anulTrasCobro')?.amount, -50, 'con su importe: -50')
+  eq(m.sinExplicar, 0, 'y nada queda sin explicar')
+}
+// C1 (revision final, dato real de Burger: mesa a4f37f9b). Mesa abierta un dia, NUNCA cobrada,
+// anulada dias despues: la causa NO puede ser "cobrada otro dia", y el dia de la anulacion
+// (Venta negativa) tiene que explicarse.
+{
+  const products = [P('a', 'Agua')]
+  const movements = [
+    M('a', D0, 'traspIn', 10),
+    M('a', D1, 'ventas', -2, { type: 'sale_out', refType: 'order', refId: 'O3' }),
+    M('a', D2, 'ventas', 2, { type: 'sale_out', refType: 'order_void', refId: 'O3' })
+  ]
+  const orders = [{ id: 'O3', area: SAL, status: 'voided', openedAt: at(D1), closedAt: at(D2), saleId: null }]
+  const orderItems = [{ id: 'i3', orderId: 'O3', productId: 'a', qty: 2, voided: true, createdAt: at(D1), voidedAt: at(D2) }]
+  const r = buildDailyControl(base({ products, movements, orders, orderItems }))
+  const d1 = r.days[0].money, d2 = r.days[1].money
+  eq(d1.causas.some((c) => /cobrad/.test(c)), false, `dia 1: no dice que se cobro (${d1.causas.join(' | ')})`)
+  eq(d1.causas.some((c) => /mesa anulada sin cobrar/.test(c)), true, `dia 1: mesa anulada sin cobrar (${d1.causas.join(' | ')})`)
+  eq(d1.causasDet.find((c) => c.key === 'anuladaSinCobro')?.amount, 100, 'dia 1: +100')
+  eq(d2.causas.some((c) => /mesa anulada sin cobrar/.test(c)), true, `dia 2: la devolucion tambien se explica (${d2.causas.join(' | ')})`)
+  eq(d2.causasDet.find((c) => c.key === 'anuladaSinCobro')?.amount, -100, 'dia 2: -100')
+  eq(d1.sinExplicar + d2.sinExplicar, 0, 'nada sin explicar')
+  eq(r.days[1].rows[0].venta, -2, 'la Venta negativa del libro se conserva (es el dato), pero ya explicada')
+}
+// 8c. Revision (dato real de Burger 22-09 tarde, mesa 143f3098). Consumo 3 u; una
+// anulacion ANTES del cobro que el detector marca huerfana (su linea quedo sellada con la
+// hora de la anulacion posterior); se cobran 2 u; DESPUES del cobro se anulan las 3 lineas.
+// Lo anterior al cobro cuadra en unidades (3 - 1 = 2): TODA la diferencia es lo devuelto
+// al stock tras cobrar. Antes se partia en "anulacion sin linea" -50 + un resto +50 que se
+// llamaba "linea cobrada sin su movimiento": el total estaba bien y el reparto era falso.
+{
+  const products = [P('a', 'Agua')]
+  const orders = [{ id: 'O5', area: SAL, status: 'closed', openedAt: at(D1, '10'), closedAt: at(D1, '13'), saleId: 'S5' }]
+  const V = (h, n) => M('a', D1, 'ventas', 1, { h, type: 'sale_out', refType: 'order_void', refId: 'O5', id: `v-${h}-${n}` })
+  const movs = [
+    M('a', D0, 'traspIn', 10),
+    M('a', D1, 'ventas', -3, { h: '11', type: 'sale_out', refType: 'order', refId: 'O5' }),
+    V('12', 1), V('16', 1), V('16', 2), V('16', 3)
+  ]
+  const lines = [1, 2, 3].map((n) => ({ id: `i${n}`, orderId: 'O5', productId: 'a', qty: 1, voided: true, voidedAt: at(D1, '16'), createdAt: at(D1, '11') }))
+  const sale = { id: 'S5', orderId: 'O5', createdAt: at(D1, '13'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 2, lineTotal: 100 }], totalBase: 100 }
+  const m = buildDailyControl(base({ products, movements: movs, sales: [sale], orders, orderItems: lines })).days[0].money
+  eq(m.diferencia, -150, 'libro -1 u x 50 - cobrado 100 = -150')
+  eq(m.causasDet.find((c) => c.key === 'anulTrasCobro')?.amount, -150, `todo es lo devuelto tras cobrar: -150 (${m.causas.join(' | ')})`)
+  eq(m.causasDet.some((c) => c.key === 'lineaSinMov'), false, 'sin un falso "cobrado sin movimiento"')
+  eq(m.causasDet.some((c) => c.key === 'anulSinLinea'), false, 'la anulacion previa al cobro YA esta reflejada en lo cobrado')
+  eq(m.sinExplicar, 0, 'nada sin explicar')
+  // El signo del resto, en los dos sentidos (mesa cobrada el mismo dia, sin anulaciones):
+  const cons = (u, cob) => buildDailyControl(base({ products, orders, movements: [M('a', D0, 'traspIn', 10), M('a', D1, 'ventas', -u, { h: '11', type: 'sale_out', refType: 'order', refId: 'O5' })], sales: [{ ...sale, items: [{ productId: 'a', qty: cob, lineTotal: cob * 50 }] }] })).days[0].money
+  const mas = cons(2, 1)
+  eq(mas.causasDet.find((c) => c.key === 'consumoNoCobrado')?.amount, 50, `consumo del libro que no entro en la venta: +50 (${mas.causas.join(' | ')})`)
+  eq(mas.causasDet.some((c) => c.key === 'lineaSinMov'), false, 'NO se le llama "cobrado sin movimiento" a lo contrario')
+  const menos = cons(1, 2)
+  eq(menos.causasDet.find((c) => c.key === 'lineaSinMov')?.amount, -50, `cobrado mas de lo consumido en el libro: -50 (${menos.causas.join(' | ')})`)
+  eq(mas.sinExplicar + menos.sinExplicar, 0, 'nada sin explicar')
+  // Las unidades que deciden son las de ANTES del cobro, no las netas: consumo 3, 1 anulada
+  // antes, 2 cobradas a 40 (no a 50), 1 anulada despues. En neto el libro dice 1 u y la
+  // venta 2 (pareceria "cobrado sin movimiento"); lo verdadero es precio +20 y -50 devuelto.
+  const mix = buildDailyControl(base({ products, orders, sales: [{ ...sale, items: [{ productId: 'a', qty: 2, lineTotal: 80 }] }], movements: [
+    M('a', D0, 'traspIn', 10),
+    M('a', D1, 'ventas', -3, { h: '11', type: 'sale_out', refType: 'order', refId: 'O5' }),
+    V('12', 1), V('16', 1)
+  ], orderItems: [{ id: 'i1', orderId: 'O5', productId: 'a', qty: 1, voided: true, voidedAt: at(D1, '12'), createdAt: at(D1, '11') }, { id: 'i2', orderId: 'O5', productId: 'a', qty: 1, voided: true, voidedAt: at(D1, '16'), createdAt: at(D1, '11') }] })).days[0].money
+  eq(mix.causasDet.find((c) => c.key === 'precio')?.amount, 20, `precio: 2 u x (50 - 40) = +20 (${mix.causas.join(' | ')})`)
+  eq(mix.causasDet.find((c) => c.key === 'anulTrasCobro')?.amount, -50, 'devuelto tras cobrar: -50')
+  eq(mix.sinExplicar, 0, 'nada sin explicar')
+  // Patron real de la mesa 180a7687 (A1 y A2 de Burger): una anulacion DUPLICADA antes del
+  // cobro -el libro devolvio mas de lo consumido-. Ahi el detector acierta: es "anulacion
+  // sin linea", no "falta un movimiento de consumo". Consumo 2; linea i1 anulada con su
+  // movimiento + un movimiento de anulacion extra sin linea; se cobra 1 u.
+  const dup = (cob, extra = []) => buildDailyControl(base({ products, orders, sales: [{ ...sale, items: [{ productId: 'a', qty: cob, lineTotal: cob * 50 }] }], movements: [
+    M('a', D0, 'traspIn', 10),
+    M('a', D1, 'ventas', -2, { h: '11', type: 'sale_out', refType: 'order', refId: 'O5' }),
+    V('12', 1), V('12', 2), ...extra
+  ], orderItems: [{ id: 'i1', orderId: 'O5', productId: 'a', qty: 1, voided: true, voidedAt: at(D1, '12'), createdAt: at(D1, '11') }, { id: 'i2', orderId: 'O5', productId: 'a', qty: 1, voided: false, createdAt: at(D1, '11') }] })).days[0].money
+  const d1 = dup(1)
+  eq(d1.causasDet.find((c) => c.key === 'anulSinLinea')?.amount, -50, `anulacion duplicada: -50 (${d1.causas.join(' | ')})`)
+  eq(d1.causasDet.some((c) => c.key === 'lineaSinMov'), false, 'no se inventa un movimiento de consumo faltante')
+  // Mixto: ademas se cobra 1 u de mas -> la huerfana explica SU importe y solo el resto es lineaSinMov.
+  const d2 = dup(2)
+  eq(d2.causasDet.find((c) => c.key === 'anulSinLinea')?.amount, -50, `mixto, la huerfana: -50 (${d2.causas.join(' | ')})`)
+  eq(d2.causasDet.find((c) => c.key === 'lineaSinMov')?.amount, -50, 'mixto, lo cobrado de mas: -50')
+  eq(d1.sinExplicar + d2.sinExplicar, 0, 'nada sin explicar')
 }
 // 9. Cache: la que difiere se lista.
 {
