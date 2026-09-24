@@ -7,7 +7,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
-import { WAREHOUSE, ELABORATION, locationLabel } from '../../db/constants'
+import { WAREHOUSE, ELABORATION, COCINA, locationLabel } from '../../db/constants'
 import { buildProductLedger, buildProductsLedgerSummary, exportExcel, exportPdf } from './reportsService'
 
 // Submayor por producto (kardex). Solo el dueño. Dos alcances:
@@ -18,6 +18,11 @@ export function ProductLedgerScreen() {
   const { isOwner } = useAuth()
   const { hasModule } = useLicense()
   const divisas = hasModule(LICENSE_MODULES.MULTICURRENCY)
+  // Modulo 'cocina': el submayor ya derivaba los movimientos de '__cocina' (el
+  // consumo de insumos y el traspaso del elaborado al area ya los clasifica
+  // ledgerKey); lo que faltaba era poder FILTRAR por ella. Sin el modulo no se
+  // ofrece y el selector queda identico.
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
   const products = useLiveQuery(() => productsRepo.list(), [], [])
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const elab = useLiveQuery(() => configRepo.getElaboration(), [], { enabled: false, name: 'Elaboración' })
@@ -165,6 +170,7 @@ export function ProductLedgerScreen() {
             <option value="">Todas las ubicaciones</option>
             <option value={WAREHOUSE}>{locationLabel(WAREHOUSE)}</option>
             {elab.enabled && <option value={ELABORATION}>{elab.name}</option>}
+            {canKitchen && <option value={COCINA}>{locationLabel(COCINA)}</option>}
             {areas.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>

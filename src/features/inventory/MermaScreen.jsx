@@ -6,11 +6,13 @@ import { mermasRepo } from '../../repositories/mermasRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { usersRepo } from '../../repositories/usersRepo'
 import { useAuth } from '../../app/providers/AuthProvider'
+import { useLicense } from '../../app/providers/LicenseProvider'
 import { useCurrency } from '../../app/providers/CurrencyProvider'
+import { LICENSE_MODULES } from '../../lib/license'
 import { matchesQuery } from '../../lib/search'
 import { round2, formatMoney, isForeignPriced, foreignToBase } from '../../lib/currency'
 import { formatDateTime } from '../../lib/dates'
-import { WAREHOUSE, WAREHOUSE_LABEL, locationLabel } from '../../db/constants'
+import { WAREHOUSE, WAREHOUSE_LABEL, COCINA, locationLabel } from '../../db/constants'
 import { stockAtLocation } from '../../lib/stockLocation'
 
 // Mermas (deterioro/perdida): rebaja de inventario que NO es venta. Solo el
@@ -19,11 +21,19 @@ import { stockAtLocation } from '../../lib/stockLocation'
 // y la afectacion total se ven en Reportes -> "Mermas".
 export function MermaScreen() {
   const { user, isManager } = useAuth()
+  const { hasModule } = useLicense()
   const { baseCurrency, rateOf } = useCurrency()
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const products = useLiveQuery(() => productsRepo.listActive(), [], [])
   const users = useLiveQuery(() => usersRepo.list(), [], [])
   const recent = useLiveQuery(() => mermasRepo.listAll(), [], [])
+
+  // Modulo 'cocina': la cocina es una ubicacion mas del inventario (centinela
+  // reservado, como el almacen), asi que se puede mermar en ella igual que en un
+  // area: el insumo que se echa a perder ahi tambien es una perdida al costo. El
+  // repo ya era generico por ubicacion; lo unico que faltaba era ofrecerla. Sin el
+  // modulo la opcion no existe y la pantalla queda IDENTICA a la clasica.
+  const canKitchen = hasModule(LICENSE_MODULES.KITCHEN)
 
   const [location, setLocation] = useState(WAREHOUSE)
   const [query, setQuery] = useState('')
@@ -101,6 +111,7 @@ export function MermaScreen() {
           <span>Ubicación</span>
           <select value={location} onChange={(e) => { setLocation(e.target.value); setProduct(null); setQuery('') }}>
             <option value={WAREHOUSE}>🏬 {WAREHOUSE_LABEL}</option>
+            {canKitchen && <option value={COCINA}>{locationLabel(COCINA)}</option>}
             {areas.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </label>
