@@ -50,7 +50,7 @@ const ZERO = { entrada: 0, salida: 0, merma: 0, venta: 0, ajuste: 0 }
 export function buildDailyControl({
   products = [], movements = [], sales = [], shifts = [], users = [], orders = [], priceChanges = [],
   productions = [], purchases = [], transfers = [], orderItems = [],
-  location, categoryId = '', from, to, classify, priceOf, dayOf, today = '', locLabel = (l) => l
+  location, categoryId = '', from, to, classify, priceOf, dayOf, today = '', locLabel = (l) => l, isForeign = () => false
 } = {}) {
   if (!location) throw new Error('Elige la ubicación.')
   if (typeof classify !== 'function' || typeof priceOf !== 'function' || typeof dayOf !== 'function') {
@@ -221,48 +221,50 @@ export function buildDailyControl({
         }
       }
     }
-    // Cada linea: lineTotal = qty x ficha - qty x (ficha - precio) - (qty x precio - lineTotal).
-    // El REDONDEO solo recoge restos acotados -medio centavo como mucho por linea o partida-;
-    // todo lo demas va a una parte con nombre y con sus lineas (cuarta revision, I1).
-    let precioAmt = 0, lineaAmt = 0, sinFichaAmt = 0, redondeoAmt = 0
-    const precioDet = new Map(), lineaDet = [], sinFichaDet = new Map()
+    // Cada linea se parte SIN resto contra la ficha (quinta revision). Con F = ficha tal cual
+    // (priceOf) y P = la ficha a 2 decimales que usa el Importe:
+    //   qty x P - lineTotal = qty x (P - F)          ficha con mas de 2 decimales
+    //                       + qty x (F - precio)     PRECIO distinto de la ficha (sin umbral)
+    //                       + (qty x precio - lineTotal)   redondeo de la linea, o importe de
+    //                                                      linea distinto si pasa de medio centavo
+    let precioAmt = 0, lineaAmt = 0, sinFichaAmt = 0, fichaDecAmt = 0, redondeoAmt = 0, redN = 0
+    const addRed = (a) => { if (Math.abs(a) > 1e-9) { redondeoAmt += a; redN += 1 } }
+    const precioDet = new Map(), lineaDet = [], sinFichaDet = new Map(), fichaDecDet = new Map()
     for (const s of daySales) {
       const g = G(s.orderId ? 'O:' + s.orderId : 'S:' + s.id)
       for (const it of s.items || []) {
         if (!inCat(it.productId)) continue
         const x = GP(g, it.productId)
         const pr = byId.get(it.productId)
+        const F = pr ? Number(priceOf(pr)) || 0 : 0
         const P = priceP(it.productId)
-        const sinFicha = !pr ? 'no-catalogo' : P === 0 && Number(pr.price || 0) > 0 ? 'sin-tasa' : ''
+        // Sin ficha: fuera del catalogo del aparato, o precio en DIVISA sin tasa vigente.
+        const sinFicha = !pr ? 'no-catalogo' : isForeign(pr) && F === 0 ? 'sin-tasa' : ''
         const qty = Number(it.qty || 0)
         const lt = Number(it.lineTotal ?? (Number(it.unitPrice || 0) * qty))
         if (!qty) { x.sinCantidad += lt; continue } // cobrado sin cantidad: un hecho de la venta
         x.cobrado += qty
         // Sin precio unitario (en los respaldos reales no falta nunca): si el cobro es el de la
         // ficha redondeado al centavo, el precio es el de la ficha; si no, el efectivo.
-        const up = it.unitPrice != null ? Number(it.unitPrice) : Math.abs(lt - round2(qty * P)) <= 0.005 + 1e-9 ? P : lt / qty
+        const up = it.unitPrice != null ? Number(it.unitPrice) : Math.abs(lt - round2(qty * F)) <= 0.005 + 1e-9 ? F : lt / qty
         const e = qty * up - lt
-        if (Math.abs(e) <= 0.005 + 1e-9) redondeoAmt += e
+        if (Math.abs(e) <= 0.005 + 1e-9) addRed(e)
         else {
           lineaAmt += e
           lineaDet.push({ productId: it.productId, name: nameOf(it.productId), qty: cleanQty(qty), unitPrice: up, lineTotal: round2(lt), amount: round2(e) })
         }
-        const dp = qty * (P - up)
-        if (sinFicha) {
-          sinFichaAmt += dp
-          const dk = it.productId + '|' + up
-          const d = sinFichaDet.get(dk) || { productId: it.productId, name: nameOf(it.productId), motivo: sinFicha, unitPrice: up, qty: 0, lineas: 0, amount: 0 }
-          d.qty = cleanQty(d.qty + qty); d.lineas += 1; d.amount += dp
-          sinFichaDet.set(dk, d)
-        } else if (Math.abs(dp) >= 0.005) {
-          precioAmt += dp
-          const dk = it.productId + '|' + up
-          const d = precioDet.get(dk) || { productId: it.productId, name: nameOf(it.productId), unitPrice: up, ficha: P, qty: 0, lineas: 0, amount: 0 }
-          d.qty = cleanQty(d.qty + qty); d.lineas += 1; d.amount += dp
-          precioDet.set(dk, d)
-        } else redondeoAmt += dp // diferencia de precio de menos de medio centavo en la linea
+        const bump = (map, key, base, amt) => {
+          const d = map.get(key) || { productId: it.productId, name: nameOf(it.productId), ...base, qty: 0, lineas: 0, amount: 0 }
+          d.qty = cleanQty(d.qty + qty); d.lineas += 1; d.amount += amt
+          map.set(key, d)
+        }
+        if (sinFicha) { sinFichaAmt += qty * (P - up); bump(sinFichaDet, it.productId + '|' + up, { motivo: sinFicha, unitPrice: up }, qty * (P - up)); continue }
+        if (Math.abs(P - F) > 1e-9) { fichaDecAmt += qty * (P - F); bump(fichaDecDet, it.productId, { ficha: F, fichaImporte: P }, qty * (P - F)) }
+        if (Math.abs(F - up) > 1e-9) { precioAmt += qty * (F - up); bump(precioDet, it.productId + '|' + up, { unitPrice: up, ficha: F }, qty * (F - up)) }
       }
     }
+    // Una ficha con mas de 2 decimales cuyo efecto en el dia no llega a medio centavo es redondeo.
+    for (const [k, d] of fichaDecDet) if (Math.abs(d.amount) < 0.005) { fichaDecAmt -= d.amount; addRed(d.amount); fichaDecDet.delete(k) }
     // La columna Venta va a la milesima (cleanQty) y el Importe con ella; si el libro trae mas
     // decimales, esa diferencia es su propia parte, con el libro en crudo y la columna.
     let cantidadAmt = 0
@@ -271,7 +273,7 @@ export function buildDailyControl({
       const col = ventaClean.get(pid) || 0
       const a = (col - v) * priceP(pid)
       if (Math.abs(col - v) < 1e-9) continue
-      if (Math.abs(a) < 0.005) { redondeoAmt += a; continue }
+      if (Math.abs(a) < 0.005) { addRed(a); continue }
       cantidadAmt += a
       cantidadDet.push({ productId: pid, name: nameOf(pid), libro: Math.round(v * 1e6) / 1e6, columna: col, amount: round2(a) })
     }
@@ -285,7 +287,7 @@ export function buildDailyControl({
       for (const [pid, x] of g.prods) {
         const a = (x.libro - x.cobrado) * priceP(pid) - x.sinCantidad
         // Solo es ruido lo que no llega ni a media milesima de unidad ni a medio centavo.
-        if (Math.abs(x.libro - x.cobrado) < 0.0005 && Math.abs(a) < 0.005 && !x.sinCantidad) { redondeoAmt += a; continue }
+        if (Math.abs(x.libro - x.cobrado) < 0.0005 && Math.abs(a) < 0.005 && !x.sinCantidad) { addRed(a); continue }
         amount += a
         // En crudo (hasta la millonesima): con la milesima, 0,2504 se leeria 0,25 y el hecho se perderia.
         const q6 = (n) => Math.round(n * 1e6) / 1e6
@@ -333,27 +335,28 @@ export function buildDailyControl({
     // Salvaguarda ARITMETICA (coma flotante): las partes se definen de modo que sumen la
     // diferencia, asi que esto solo salta ante un fallo de esta logica. La veracidad de cada
     // parte la prueban las pruebas y el fuzz con generador independiente, no esta linea.
-    const descuadre = (importeRaw - consumoRaw) - (precioAmt + lineaAmt + cantidadAmt + sinFichaAmt + redondeoAmt + unidadesAmt)
+    const descuadre = (importeRaw - consumoRaw) - (precioAmt + lineaAmt + cantidadAmt + sinFichaAmt + fichaDecAmt + redondeoAmt + unidadesAmt)
     const byName = (d1, d2) => d1.name.localeCompare(d2.name, 'es')
-    const precioR = round2(precioAmt), lineaR = round2(lineaAmt), cantidadR = round2(cantidadAmt), sinFichaR = round2(sinFichaAmt)
+    const precioR = round2(precioAmt), lineaR = round2(lineaAmt), cantidadR = round2(cantidadAmt), sinFichaR = round2(sinFichaAmt), fichaDecR = round2(fichaDecAmt)
     const unidadesR = round2(unidadesAmt)
     const sinExplicar = Math.abs(descuadre) >= 0.005 ? round2(descuadre) : 0
     // El redondeo impreso absorbe el de los totales y el de las partes impresas: asi las partes
     // IMPRESAS suman la diferencia impresa. Todo lo que recoge esta acotado (medio centavo por
     // linea o partida, mas los totales).
-    const redondeoR = round2(diferencia - sinExplicar - precioR - lineaR - cantidadR - sinFichaR - unidadesR)
+    const redondeoR = round2(diferencia - sinExplicar - precioR - lineaR - cantidadR - sinFichaR - fichaDecR - unidadesR)
     const listOf = (m) => [...m.values()].map((d) => ({ ...d, amount: round2(d.amount) })).sort(byName)
     const precio = { n: [...precioDet.values()].reduce((a, d) => a + d.lineas, 0), amount: precioR, detalle: listOf(precioDet) }
     const lineaImporte = { n: lineaDet.length, amount: lineaR, detalle: lineaDet.sort(byName) }
     const cantidad = { amount: cantidadR, detalle: cantidadDet.sort(byName) }
     const sinFicha = { n: [...sinFichaDet.values()].reduce((a, d) => a + d.lineas, 0), amount: sinFichaR, detalle: listOf(sinFichaDet) }
+    const fichaDecimales = { amount: fichaDecR, detalle: listOf(fichaDecDet) }
     outDays.push({
       day, folios, sellers, rows, totals,
       money: {
         importe: totals.importe, consumo, diferencia, cuadra: diferencia === 0,
-        soloRedondeo: diferencia !== 0 && !precio.n && !lineaImporte.n && !cantidad.detalle.length && !sinFicha.n && !grupos.length && sinExplicar === 0,
+        soloRedondeo: diferencia !== 0 && !precio.n && !lineaImporte.n && !cantidad.detalle.length && !sinFicha.n && !fichaDecimales.detalle.length && !grupos.length && sinExplicar === 0,
         servicio: round2(servicio), descuento: round2(descuento), cobrado: round2(cobrado), cobradoTodasCategorias: !!categoryId,
-        precio, lineaImporte, cantidad, sinFicha, redondeo: redondeoR, unidades: { amount: unidadesR, grupos }, sinExplicar
+        precio, lineaImporte, cantidad, sinFicha, fichaDecimales, redondeo: redondeoR, redondeoPartidas: redN, unidades: { amount: unidadesR, grupos }, sinExplicar
       }
     })
   }
@@ -393,12 +396,16 @@ export function moneyLines(m, day) {
   out.push(`Control de dinero: Importe ${fm(m.importe)} · consumo cobrado ${fm(m.consumo)} · ${estado}`)
   out.push(`Cobrado total ${fm(m.cobrado)} (incluye servicio ${fm(m.servicio)} y descuentos ${fm(m.descuento)})${m.cobradoTodasCategorias ? ' · de las ventas completas, todas las categorías' : ''}`)
   const fx = (n) => (Math.abs(n - round2(n)) > 1e-9 ? `${fm(n)} (exacto ${Number(n.toFixed(6))})` : fm(n))
-  const hay = m.precio.n || m.lineaImporte.n || m.cantidad.detalle.length || m.sinFicha.n || m.unidades.grupos.length || m.redondeo !== 0 || m.sinExplicar !== 0
+  const hay = m.precio.n || m.lineaImporte.n || m.cantidad.detalle.length || m.sinFicha.n || m.fichaDecimales.detalle.length || m.unidades.grupos.length || m.redondeo !== 0 || m.sinExplicar !== 0
   if (!hay) return out
   out.push('  Desglose exacto de la diferencia (hechos del libro y del cobro, sin interpretar):')
   if (m.precio.n) {
     out.push(`  · Precio distinto de la ficha: ${m.precio.n} línea(s), ${fm(m.precio.amount)}`)
-    for (const d of m.precio.detalle) out.push(`      ${d.name}: ${u(d.qty)} cobradas a ${fx(d.unitPrice)} (ficha ${fm(d.ficha)}) → ${fm(d.amount)}`)
+    for (const d of m.precio.detalle) out.push(`      ${d.name}: ${u(d.qty)} cobradas a ${fx(d.unitPrice)} (ficha ${fx(d.ficha)}) → ${fm(d.amount)}`)
+  }
+  if (m.fichaDecimales.detalle.length) {
+    out.push(`  · Precio de ficha con más de 2 decimales (el Importe usa la ficha redondeada): ${fm(m.fichaDecimales.amount)}`)
+    for (const d of m.fichaDecimales.detalle) out.push(`      ${d.name}: ficha ${fx(d.ficha)}, en el Importe ${fm(d.fichaImporte)}, ${u(d.qty)} cobradas → ${fm(d.amount)}`)
   }
   if (m.lineaImporte.n) {
     out.push(`  · Importe de línea distinto de cantidad × precio: ${m.lineaImporte.n} línea(s), ${fm(m.lineaImporte.amount)}`)
@@ -412,7 +419,7 @@ export function moneyLines(m, day) {
     out.push(`  · Cobrado de productos sin precio de ficha en este aparato: ${m.sinFicha.n} línea(s), ${fm(m.sinFicha.amount)}`)
     for (const d of m.sinFicha.detalle) out.push(`      ${d.name}: ${u(d.qty)} cobradas a ${fx(d.unitPrice)} (${d.motivo === 'sin-tasa' ? 'precio en divisa sin tasa vigente' : 'no está en el catálogo de este aparato'}) → ${fm(d.amount)}`)
   }
-  if (m.redondeo !== 0) out.push(`  · Redondeo al centavo (de cada línea y de los totales): ${fm(m.redondeo)}`)
+  if (m.redondeo !== 0) out.push(`  · Redondeo al centavo: ${fm(m.redondeo)} (${m.redondeoPartidas} partida(s) de menos de medio centavo cada una, más el de los totales)`)
   if (m.unidades.grupos.length) {
     out.push(`  · Unidades del libro distintas de las cobradas este día (× precio de ficha): ${m.unidades.grupos.length} mesa(s)/venta(s), ${fm(m.unidades.amount)}`)
     for (const g of m.unidades.grupos) {

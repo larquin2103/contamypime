@@ -97,6 +97,15 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
      El libro de un grupo se imprime en crudo, hasta la millonésima. Los hechos dicen «ventas netas
      de esta mesa en otros días», incluidos los días con neto 0, y dónde está el movimiento de una
      venta de otra ubicación.
+   - **Quinta revisión: la línea se parte EXACTAMENTE contra la ficha sin redondear, sin
+     umbral.** Con F = ficha tal cual (`priceOf`) y P = la ficha a 2 decimales que usa el Importe:
+     `cantidad × P − importe de línea = cantidad × (P − F)` (ficha con más de 2 decimales)
+     `+ cantidad × (F − precio cobrado)` (**precio**) `+ (cantidad × precio − importe)` (redondeo
+     de la línea, o importe de línea distinto si pasa de medio centavo).
+
+     Así 300 líneas pequeñas a unos centavos de la ficha son **precio**, no redondeo, y una ficha
+     de 3 decimales cobrada exacta no es un «precio distinto». El redondeo imprime de cuántas
+     partidas sale. «Sin tasa» exige precio en divisa: se inyecta `isForeignPriced`.
    - **«Sin explicar»** es una salvaguarda **aritmética**: las partes se definen de modo que sumen
      la diferencia, así que solo saltaría ante un fallo de coma flotante o de la propia lógica.
      **La veracidad de cada parte no la prueba esa línea**, sino las pruebas y el fuzz con generador

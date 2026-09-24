@@ -59,8 +59,9 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). **26** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.554 aserciones**, medidas el 24-09-2026). Las tres de la
+**Pruebas:** NO hay script `npm test` (ni linter). **27** suites son ficheros `.test.mjs` puros que
+se corren **uno a uno con node** (**3.370 aserciones**, medidas el 24-09-2026; 1.810 son del fuzz
+determinista del Control de Ventas Diarias). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -89,11 +90,14 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/features/sync/compareResend.test.mjs \
          src/features/sync/compareResendEngine.test.mjs \
          src/lib/dailySalesControl.test.mjs \
+         src/lib/dailySalesControl.fuzz.test.mjs \
          src/lib/reportCells.test.mjs; do node "$t"; done
 ```
 
-**Dos suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2) y `src/lib/syncLog.test.mjs` (el
-escritor del registro de la sync), usan base real y NO corren con node directo**: los repos importan sin extensión, así que hace falta empaquetarla con el esbuild que ya
+**Tres suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/lib/syncLog.test.mjs` (el
+escritor del registro de la sync) y `src/features/reports/dailyControlLocations.test.mjs` (el
+selector de ubicaciones del Control de Ventas Diarias, que lee el índice `location`), usan base real
+y NO corren con node directo**: los repos importan sin extensión, así que hace falta empaquetarla con el esbuild que ya
 trae Vite y `fake-indexeddb` (`devDependency` desde el 23-09-2026) antes de ejecutarla. Comando
 exacto (copiado del comentario de cabecera del propio fichero; para `syncLog` es el mismo con su ruta):
 
@@ -102,11 +106,11 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **28 suites / 1.612 aserciones** en total, medidas el 24-09-2026 tras las
+Con esas tres dentro: **30 suites / 3.434 aserciones** en total, medidas el 24-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
-antes de escribir, `dailySalesControl` (151), el Control de Ventas Diarias, y `reportCells` (10).
+antes de escribir, `dailySalesControl` (157) y su fuzz (1.810), el Control de Ventas Diarias, `dailyControlLocations` (6), y `reportCells` (10).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -1020,7 +1024,24 @@ Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y pl
     misma lista en los 6 respaldos;
   - en los respaldos reales se imprimen las **mismas 647 líneas** que antes.
 
-  **Peso frente a `main`:** JS +20,3 kB (gzip +7,2 kB, +2,4 %); CSS, mismo hash.
+  **Quinta revisión** (segura para producción y sync): 300 líneas pequeñas cobradas a unos
+  centavos de la ficha salían «solo por redondeo», y una ficha de 3 decimales, como «precio
+  distinto». Reproducido. Ahora cada línea se parte **exactamente** contra la ficha sin
+  redondear, sin umbral:
+  - **precio** = cantidad × (ficha − precio cobrado);
+  - **ficha con más de 2 decimales** = cantidad × (ficha del Importe − ficha);
+  - y el redondeo de la línea.
+
+  El redondeo dice de **cuántas partidas** sale. «Sin tasa» exige precio en divisa: se inyecta
+  `isForeignPriced`.
+
+  El fuzz de verdad conocida entra **al repositorio** como suite determinista
+  (`dailySalesControl.fuzz.test.mjs`): sus verdades no copian los umbrales del módulo, exige
+  cobertura de cada rama y caza las 8 mutaciones de las revisiones cuarta y quinta, M1 incluida.
+  M2 lo caza la suite normal. Hay además una prueba con base real del selector de ubicaciones,
+  con control negativo.
+
+  **Peso frente a `main`:** JS +21,0 kB (gzip +7,7 kB, +2,6 %); CSS, mismo hash.
 - **Validado con los 4 respaldos reales**
   (`docs/auditoria/validar-control-ventas.mjs`, con `TZ=America/Havana`):
   - **16.485 filas** contra un recálculo independiente del libro, y **1.828 cotejos** con el

@@ -61,15 +61,16 @@ for (const file of process.argv.slice(2)) {
         dias++
         const m = d.money
         if (Math.abs(m.sinExplicar) >= 0.01) bad(`${location} ${d.day}: diferencia ${m.diferencia} con ${m.sinExplicar} SIN EXPLICAR`)
-        if (Math.round((m.precio.amount + m.lineaImporte.amount + m.cantidad.amount + m.sinFicha.amount + m.redondeo + m.unidades.amount) * 100) / 100 !== m.diferencia) bad(`${location} ${d.day}: las partes no suman la diferencia`)
+        if (Math.round((m.precio.amount + m.lineaImporte.amount + m.cantidad.amount + m.sinFicha.amount + m.fichaDecimales.amount + m.redondeo + m.unidades.amount) * 100) / 100 !== m.diferencia) bad(`${location} ${d.day}: las partes no suman la diferencia`)
         if (m.lineaImporte.n) causas.lineaImporte = (causas.lineaImporte || 0) + 1
         if (m.cantidad.detalle.length) causas.cantidad = (causas.cantidad || 0) + 1
         if (m.sinFicha.n) causas.sinFicha = (causas.sinFicha || 0) + 1
+        if (m.fichaDecimales.detalle.length) causas.fichaDecimales = (causas.fichaDecimales || 0) + 1
         if (m.precio.n) causas.precio = (causas.precio || 0) + 1
         if (m.redondeo) causas.redondeo = (causas.redondeo || 0) + 1
         for (const g of m.unidades.grupos) causas[g.kind] = (causas[g.kind] || 0) + 1
         // DETALLE=1 imprime cada dia-ubicacion con desglose, tal cual sale en el reporte.
-        if (process.env.DETALLE && (m.precio.n || m.lineaImporte.n || m.cantidad.detalle.length || m.sinFicha.n || m.unidades.grupos.length || m.redondeo)) for (const l of moneyLines(m, d.day)) console.log(`   ${location} ${d.day} | ${l}`)
+        if (process.env.DETALLE && (m.precio.n || m.lineaImporte.n || m.cantidad.detalle.length || m.sinFicha.n || m.fichaDecimales.detalle.length || m.unidades.grupos.length || m.redondeo)) for (const l of moneyLines(m, d.day)) console.log(`   ${location} ${d.day} | ${l}`)
       }
       for (let k = 1; k < r.days.length; k++) {
         const prev = new Map(r.days[k - 1].rows.map((x) => [x.productId, x.final]))
