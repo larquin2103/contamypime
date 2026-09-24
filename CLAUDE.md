@@ -248,7 +248,12 @@ Rebaja de inventario que **NO es venta** (no entra dinero): solo baja la existen
 constancia de la afectación al **costo**. Pantalla `features/inventory/MermaScreen.jsx` (`/mermas`),
 repo `mermasRepo`. Es una **función base** (no gateada por licencia); solo la usa el **mando**
 (dueño/administrativo, que ve costos).
-- **Por ubicación:** el mando elige almacén central o un área; se valida la existencia en ella.
+- **Por ubicación:** el mando elige almacén central, un área o —con el módulo `cocina`— la
+  **Cocina**; se valida la existencia en ella. La opción de Cocina va gateada con
+  `hasModule('cocina')`: sin el módulo no existe y la pantalla queda **idéntica a la clásica**
+  (comprobado renderizando la pantalla real con y sin licencia; ver el acta del 23-09-2026).
+  **`mermasRepo` no se tocó**: ya recibía `location`, validaba la existencia en ella y escribía
+  el `MERMA_OUT` con esa ubicación. Lo único que faltaba era **ofrecerla**.
 - **Snapshot append-only:** cada merma congela precio de venta y costo (pueden cambiar después) y
   genera un `MERMA_OUT` en `stockMovements` que rebaja el stock real. Nunca se edita/borra.
 - **Reporte "Mermas"** (Reportes, Excel/PDF): fecha, producto, ubicación, cantidad, precio de
@@ -259,6 +264,14 @@ repo `mermasRepo`. Es una **función base** (no gateada por licencia); solo la u
   revalida contra el ledger como *candado de última instancia*). Es seguro porque las mermas solo
   las hace el **mando** (sin ventas en paralelo compitiendo por ese stock); si en el futuro se
   abriera a actores concurrentes, convendría revalidar contra el ledger.
+  **Matiz añadido el 23-09-2026, con la Cocina dentro:** la premisa de esa nota («sin nadie
+  compitiendo») ya era **discutible antes** —un vendedor vende de su área mientras el mando merma
+  en esa misma área— y con `__cocina` el competidor es el **cocinero**, que consume por
+  `kitchenRepo.produce`. Ese camino **sí** revalida contra el libro mayor, así que el que puede
+  quedarse corto es el de las mermas. **Decisión explícita del dueño (23-09-2026): NO se tocó**
+  `mermasRepo`, para no cambiar lógica de producción que funciona (regla 2). El hueco es el mismo
+  que ya existía con las áreas, ni mayor ni menor. **Queda ABIERTO**: cerrarlo es derivar la
+  existencia del libro dentro de la transacción, y afectaría a **todas** las ubicaciones.
 
 ## Permisos del vendedor (independientes de módulos)
 
@@ -802,6 +815,114 @@ colecciones de sync nuevas.**
   cuentas, que sí se conservan a la vista: allí había dinero de tesorería y ocultarlo descuadraba
   la suma; aquí el inventario ya está en el libro mayor y no se descuadra nada). **No queda ningún
   rol huérfano.**
+
+## Fusión del 23-09-2026 — Cocina en Mermas y en el Submayor por producto
+
+**FUSIONADO A `main` EL 23-09-2026**, con autorización explícita del dueño. Fast-forward de los
+**dos** commits de `claude/awesome-dirac-484azm`: `origin/main` pasó de `dd49df4` a **`e4ac3ab`**, y
+rama y `main` quedaron **idénticas** (`git rev-list --left-right --count origin/main...HEAD` = `0 0`
+y `git diff HEAD origin/main` **vacío**). Se hizo con `git push origin HEAD:main`, **sin `--force`**
+y sin checkout de `main`: si no hubiera sido fast-forward, el servidor lo habría rechazado en vez de
+reescribir historia; comprobado **después** que `dd49df4` sigue siendo **ancestro** de `origin/main`.
+De los dos commits, **uno es solo `CLAUDE.md`** (`8484f5c`, el acta de la fusión anterior, +5/−1):
+el diff de **código** contra `main` es **únicamente** este cambio. **Comprobar el commit real con
+`git rev-parse origin/main` tras un `git fetch`: esta acta se autoinvalida en cuanto ella misma se
+suba, así que no dar por bueno ningún hash escrito aquí salvo el del código (`e4ac3ab`).**
+
+**Qué hace.** La cocina (`__cocina`) es una ubicación más del inventario, pero no se ofrecía ni para
+registrar **mermas** ni para filtrar el **submayor por producto**. Un insumo que se echaba a perder
+en la cocina no tenía cómo registrarse, y el movimiento de los productos por la cocina no se podía
+consultar aislado.
+
+**El cambio son DOS `<option>` gateadas, y esa es la noticia:** no hizo falta tocar ni el motor ni
+los repos, porque **ya eran genéricos por ubicación** (verificado leyéndolos, no supuesto):
+- `mermasRepo.create` recibe `location`, valida la existencia en ella con `stockAtLocation` y
+  escribe el `MERMA_OUT` con esa ubicación. Con `__cocina` funciona sin cambiar una línea.
+- `buildProductLedger` / `buildProductsLedgerSummary` filtran por
+  `(m.location || WAREHOUSE) === location`, o sea por la cadena que reciban.
+- `ledgerKey` ya clasifica los `CONVERSION_OUT/IN` y `TRANSFER_OUT` que la cocina escribe
+  (`consumo`, `producido`, `traspOut`), así que **ningún movimiento cae en el cajón de sastre**
+  `ajustes`.
+
+Orden y forma copiados **literalmente** de `CountScreen.jsx`, precedente ya fusionado del mismo
+patrón: `{canKitchen && <option value={COCINA}>{locationLabel(COCINA)}</option>}`. **Sin emoji a
+propósito**: no existe ninguno de cocina en todo `src/` (0 coincidencias) y no se inventa vocabulario
+visual nuevo.
+
+**Auditoría previa (ejecutada, no citada), y verificada OTRA VEZ después sobre el árbol que quedó
+en `main`:**
+
+- `npm run build` **exit 0** · **26 suites / 1.451 aserciones** en verde, **0 fallos** (1.393 en las
+  24 de node directo + 47 de `ordersRepo` + 11 de `syncLog`).
+- **La salida de las 24 suites es BYTE A BYTE idéntica** a una línea base capturada **antes de tocar
+  nada** y guardada fichero a fichero (`diff -r` sin diferencias). Es la prueba de que nada existente
+  cambió de conducta, no una inferencia.
+- **CERO cambios en los ficheros sensibles** contra `origin/main`: `src/db/db.js`,
+  `src/features/sync/`, `src/repositories/`, `firestore.rules`, `firestore.indexes.json`,
+  `package.json` y `package-lock.json` — `git diff --stat` **vacío**. Dexie sigue en **v19** y
+  `SYNC_COLLECTIONS` en **34**, leídos del árbol. **No hay que redesplegar reglas de Firestore**
+  (usan el comodín `{document=**}`, `firestore.rules:19`).
+- **CERO escrituras a la base en todo el diff** (`.add/.put/.update/.delete/transaction` = 0) y
+  **2 líneas borradas en todo `src`**, leídas una a una: son los dos `import` de constantes que ganan
+  `COCINA`. El diff completo es **+19 / −2** y cabe en una pantalla.
+- **Sin fugas de licencia, y PROBADO RENDERIZANDO las dos pantallas reales** en node
+  (`react-dom/server`, con los proveedores sustituidos por stubs y las pantallas **sin modificar**):
+  con los **otros nueve** módulos el HTML es **idéntico** al de sin licencia, y quitando **solo** esa
+  `<option>` del HTML con `cocina`, vuelve a ser **byte a byte** el de sin licencia. Con **control
+  negativo** que sí distingue los dos estados — sin él la prueba no mediría nada. Las puertas suben
+  (`MermaScreen` 0→2, `ProductLedgerScreen` 2→3) y **ninguna existente se relajó**: Home 17→17,
+  `Layout` 4→4, Reportes 12→12, Auditoría 5→5, y **0** `hasModule`/`isOwner`/`isManager` borrados.
+- **Prueba de punta a punta con BASE REAL** (`fake-indexeddb`) y código de producción: la merma en
+  cocina rebaja 14 → 10, el `MERMA_OUT` sale de `__cocina` con −4, el candado de existencia sigue
+  rechazando (*«Solo hay 10 u de Queso en Cocina»*, que además demuestra que `locationLabel` etiqueta
+  bien), y el submayor filtrado por Cocina da **Traspasos 20 / Consumo −6 / Mermas −4 / Ajustes 0 /
+  Existencia 10** (cuadra: 20−6−4). **Control negativo:** una venta de −99 en «Cafetería» **no** entra
+  en el submayor de Cocina y **sí** aparece filtrando por Cafetería. *(Ese arnés era temporal y **NO
+  se commiteó**: no protege contra regresiones futuras.)*
+- **Riesgos de CONVIVENCIA de versiones: NINGUNO**, verificado contra el código de `origin/main`, no
+  razonado. El build **viejo** ya tiene `COCINA` en `constants.js:213` y su `locationLabel` devuelve
+  `Cocina` en `:262`, así que un teléfono sin actualizar que reciba una merma de cocina imprime
+  **«Cocina»**, no `__cocina` en crudo; y su `recomputeStock` usa `const loc = m.location ||
+  WAREHOUSE` **sin lista blanca**, así que reconstruye el stock de `__cocina` igual que el nuevo.
+  `mermas` y `stockMovements` **ya estaban** en `SYNC_COLLECTIONS`: no hay formato de dato nuevo.
+- **Peso:** CSS con **hash idéntico** (`index-B34NE6G1.css`, 87.657 bytes) → byte a byte igual. Chunk
+  principal 1.017,18 → **1.017,37 kB** (gzip 297,22 → **297,24**): **+186 bytes crudos, +68 gzip
+  (+0,02 %)**, medido reconstruyendo `main` con el **mismo** comando de gzip, no comparando contra el
+  número que imprime Vite.
+- **Esta fusión NO sube esquema** (v19 en los dos árboles), así que el retroceso a un build del mismo
+  esquema es viable. El respaldo previo al despliegue sigue siendo lo sensato.
+
+**EL DUEÑO LO PROBÓ EN LA APP y funciona correctamente.** Es la validación de runtime que el resto de
+las actas no pudo dar, y por eso se dice aquí explícitamente. **Pero cubre lo que se probó:** no
+consta que se ejercitaran el **submayor filtrado por Cocina**, la app **sin la licencia `cocina`**,
+ni **dos aparatos sincronizando** una merma de cocina. Esas tres siguen sin evidencia de runtime.
+
+**Lo que esta fusión NO puede garantizar:**
+- **Ninguna suite cubre estas dos pantallas, ni puede:** el proyecto no tiene pruebas de pantalla. La
+  prueba de render fue un arnés temporal, fuera del repo.
+- En ese arnés `useLiveQuery` está stubeado, así que la lista de **áreas salió vacía**: el **orden**
+  de la opción respecto a las áreas (Almacén → Cocina → áreas) está verificado **leyendo el diff** y
+  copiado de `CountScreen`, **no** renderizado con áreas pobladas.
+- **`mermasRepo` sigue validando contra la caché**, no contra el libro mayor (decisión del dueño; ver
+  el matiz en la sección «Mermas»).
+
+**Degradación (declarada y aceptada por el dueño):** si se QUITA `cocina`, las mermas ya registradas
+en la cocina **siguen apareciendo** en el reporte *Mermas* y en la lista de recientes, etiquetadas
+«Cocina» — `buildMermasReport` no filtra por ubicación ni por módulo. Es el criterio de las filas de
+`remesas` en Cuentas: un negocio que nunca tuvo el módulo no tiene **ninguna** de esas filas y no ve
+nada, así que **no es una fuga**; ocultarlas, en cambio, descuadraría el total de afectación al
+costo. **No «corregir» esto ocultando las filas.**
+
+**Dato preexistente que conviene no confundir con este cambio:** el submayor con «Todas las
+ubicaciones» **ya sumaba** los movimientos de `__cocina` antes de esto, sin módulo. Lo único nuevo es
+poder **filtrar** por ella.
+
+**Lo que NO se amplió, a propósito:** Mermas sigue **sin** ofrecer Elaboración ni Entregas (nunca las
+ofreció), el rol **no** cambió (`/mermas` sigue siendo `isManager`: el cocinero no entra) y el reporte
+de Mermas no se filtró por licencia.
+
+**Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que el
+dueño corra `npm run deploy`.
 
 ## Estado del trabajo en curso (23-09-2026)
 
