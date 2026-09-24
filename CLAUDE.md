@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **26** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.504 aserciones**, medidas el 24-09-2026). Las tres de la
+se corren **uno a uno con node** (**1.517 aserciones**, medidas el 24-09-2026). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -102,11 +102,11 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **28 suites / 1.562 aserciones** en total, medidas el 24-09-2026 tras las
+Con esas dos dentro: **28 suites / 1.575 aserciones** en total, medidas el 24-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
-antes de escribir, `dailySalesControl` (101), el Control de Ventas Diarias, y `reportCells` (10).
+antes de escribir, `dailySalesControl` (114), el Control de Ventas Diarias, y `reportCells` (10).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -964,6 +964,17 @@ Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y pl
   **consumo de otro día** acotado a la ubicación y categoría. **Queda anotada** la cuarta: ventas
   anteriores al almacén con ubicaciones, 0 casos en los 6 respaldos. Los 6 respaldos dan las
   **mismas causas** que antes del arreglo.
+  
+  Una **segunda revisión** encontró cuatro fallos en esos arreglos, reproducidos los cuatro:
+  - una **regresión**: dos cobros mal hechos que se compensan desaparecían;
+  - varias líneas pesadas daban un «precio» falso;
+  - el cobro duplicado se medía entero;
+  - una mesa con diferencia 0 escondía una unidad sin cobrar.
+  
+  Se rediseñó la conciliación para que sea **exacta por construcción**: cada línea se parte en
+  **precio + redondeo + unidades × ficha**. El cobro duplicado es el **solape** con la venta
+  válida. Un **fuzz de verdad conocida** da 0 errores en 17.000 días, frente a 432 de 3.000
+  antes. Los 6 respaldos dan las **mismas causas día a día** (`diff` vacío).
 - **Validado con los 4 respaldos reales**
   (`docs/auditoria/validar-control-ventas.mjs`, con `TZ=America/Havana`):
   - **16.485 filas** contra un recálculo independiente del libro, y **1.828 cotejos** con el

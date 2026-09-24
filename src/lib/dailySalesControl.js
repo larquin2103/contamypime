@@ -56,7 +56,7 @@ export const CAUSE_LABELS = {
   anuladaSinCobro: 'mesa anulada sin cobrar: su consumo salió del libro un día y volvió otro',
   sinVentaViva: 'venta del libro sin su venta viva (anulada o no recibida en este aparato)',
   cobradaOtroDia: 'consumo de este día cobrado otro día',
-  consumoOtroDia: 'cobrada este día con consumo de otro día',
+  consumoOtroDia: 'consumo de otro día de esta mesa, cobrado o anulado este día',
   lineaSinMov: 'cobrado más de lo que el libro registra consumido (falta un movimiento de consumo en este aparato)',
   consumoNoCobrado: 'consumo registrado en el libro que no entró en el cobro de su mesa',
   precio: 'precio cobrado distinto del de la ficha',
@@ -171,154 +171,175 @@ export function buildDailyControl({
       descuento += Number(s.discountAmount || 0)
       cobrado += Number(s.totalBase || 0)
     }
-    // CONCILIACION POR GRUPO (revision final, C1/I1-I3). La diferencia del dia se
-    // descompone en grupos -cada mesa (pedido) y cada venta directa- con sus movimientos
-    // de VENTA del libro y sus ventas cobradas: la suma de los grupos ES la diferencia,
-    // por construccion. A cada grupo se le asigna su causa por su ESTADO real, con su
-    // importe, y lo que no se pueda asignar queda como "sin explicar".
+    // CONCILIACION EXACTA POR GRUPO Y PRODUCTO (tercera version, tras dos revisiones
+    // independientes). Cada linea cobrada se descompone SIN resto:
+    //   lineTotal = qty x ficha - qty x (ficha - precio cobrado) - (qty x precio cobrado - lineTotal)
+    // asi que, por grupo (mesa 'O:', venta directa 'S:', movimiento suelto 'X:') y producto,
+    //   libro x ficha - cobrado = PRECIO (por linea) + REDONDEO (por linea)
+    //                            + (unidades del libro - unidades cobradas) x ficha.
+    // El precio y el redondeo salen de cada LINEA (no dependen de cuantas tenga la venta);
+    // solo el descuadre de UNIDADES se interpreta segun el estado de la mesa o la venta.
+    const priceP = (pid) => (byId.get(pid) ? round2(priceOf(byId.get(pid))) : 0)
     const groups = new Map()
     const G = (k) => {
-      if (!groups.has(k)) groups.set(k, { k, ledger: 0, sale: 0, ledgerUnits: 0, saleUnits: 0, orphan: 0, voidAfter: 0, postVoid: 0, consUnits: 0, preVoidUnits: 0, preOrphan: 0, preOrphanUnits: 0, dupSale: 0, dupUnits: 0 })
+      if (!groups.has(k)) groups.set(k, { k, prods: new Map(), cases: new Set(), sale: 0, check: 0 })
       return groups.get(k)
     }
-    const prior = new Map() // pedido -> { units, money } de dias anteriores (neto de anulaciones)
+    const GP = (g, pid) => {
+      if (!g.prods.has(pid)) g.prods.set(pid, { P: priceP(pid), ledger: 0, cons: 0, voids: 0, preVoid: 0, postVoid: 0, orphan: 0, preOrphan: 0, sold: 0, dupList: [] })
+      return g.prods.get(pid)
+    }
+    const prior = new Map() // pedido -> Map(producto -> unidades netas de dias ANTERIORES)
     for (const pid of pids) {
-      const precio = byId.get(pid) ? round2(priceOf(byId.get(pid))) : 0
       for (const m of byProd.get(pid)) {
         if (classify(m) !== 'ventas') continue
         const dm = dayOf(m.createdAt)
-        if (dm < day && (m.refType === 'order' || m.refType === 'order_void')) {
-          const x = prior.get(m.refId) || { units: 0, money: 0 }
-          x.units -= Number(m.qty || 0)
-          x.money -= Number(m.qty || 0) * precio
-          prior.set(m.refId, x)
+        const q = -Number(m.qty || 0) // unidades vendidas (positivo); una anulacion resta
+        const isOrder = m.refType === 'order' || m.refType === 'order_void'
+        if (dm < day && isOrder) {
+          const mp = prior.get(m.refId) || new Map()
+          mp.set(pid, (mp.get(pid) || 0) + q)
+          prior.set(m.refId, mp)
+          continue
         }
         if (dm !== day) continue
-        const q = -Number(m.qty || 0) // unidades vendidas (positivo); una anulacion resta
-        const k = m.refType === 'order' || m.refType === 'order_void' ? 'O:' + m.refId : m.refType === 'sale' ? 'S:' + m.refId : 'X:' + m.id
-        const g = G(k)
-        g.ledger += q * precio
-        g.ledgerUnits += q
-        if (m.refType === 'order') g.consUnits += q
-        if (orphanIds.has(m.id)) g.orphan += q * precio
+        const k = isOrder ? 'O:' + m.refId : m.refType === 'sale' ? 'S:' + m.refId : 'X:' + m.id
+        const x = GP(G(k), pid)
+        x.ledger += q
+        if (m.refType === 'order') x.cons += q
         else if (m.refType === 'order_void') {
+          const v = -q
+          const orphan = orphanIds.has(m.id)
+          x.voids += v
+          if (orphan) x.orphan += v
+          // Partidas por el instante del COBRO valido de la mesa: el detector de atomicidad
+          // empareja por instante, y una anulacion legitima previa al cobro sale "huerfana"
+          // si su linea quedo sellada con una hora posterior (mesa 143f3098 de Burger).
           const sl = liveSaleByOrder.get(m.refId)
-          if (sl && sl.createdAt < m.createdAt) g.voidAfter += q * precio
-        }
-        // Para la mesa cobrada: TODA anulacion (huerfana o no) partida por el instante del
-        // cobro. El detector de atomicidad empareja por instante, y una anulacion legitima
-        // anterior al cobro sale "huerfana" si su linea quedo sellada con una hora posterior
-        // (dato real de Burger, mesa 143f3098): lo que decide es si la venta la refleja.
-        if (m.refType === 'order_void') {
-          const sl = liveSaleByOrder.get(m.refId)
-          if (sl && sl.createdAt < m.createdAt) g.postVoid += q * precio
-          else {
-            g.preVoidUnits -= q
-            if (orphanIds.has(m.id)) { g.preOrphan += q * precio; g.preOrphanUnits -= q }
-          }
+          if (sl && sl.createdAt < m.createdAt) x.postVoid += v
+          else { x.preVoid += v; if (orphan) x.preOrphan += v }
         }
       }
     }
+    const det = new Map()
+    const addG = (g, key, amount, isCase) => {
+      if (!amount && !isCase) return
+      const x = det.get(key) || { key, label: CAUSE_LABELS[key], amount: 0, n: 0 }
+      x.amount += amount
+      det.set(key, x)
+      g.check += amount
+      if (isCase) g.cases.add(key)
+    }
     for (const s of daySales) {
       const g = G(s.orderId ? 'O:' + s.orderId : 'S:' + s.id)
-      const dup = s.orderId && liveSaleByOrder.get(s.orderId)?.id !== s.id
+      const dup = !!s.orderId && liveSaleByOrder.get(s.orderId)?.id !== s.id
       for (const it of s.items || []) {
         if (!inCat(it.productId)) continue
-        const amt = Number(it.lineTotal ?? (Number(it.unitPrice || 0) * Number(it.qty || 0)))
-        g.sale += amt
-        g.saleUnits += Number(it.qty || 0)
-        if (dup) { g.dupSale += amt; g.dupUnits += Number(it.qty || 0) }
+        const x = GP(g, it.productId)
+        const qty = Number(it.qty || 0)
+        const lt = Number(it.lineTotal ?? (Number(it.unitPrice || 0) * qty))
+        g.sale += lt
+        x.sold += qty
+        if (dup) x.dupList.push(qty)
+        if (!qty) { addG(g, 'sinMov', -lt, true); continue } // linea sin cantidad: nada que casar
+        // Sin precio unitario (en los respaldos reales no falta nunca): si el cobro es el de la
+        // ficha redondeado al centavo, el precio es el de la ficha; si no, el efectivo.
+        const up = it.unitPrice != null ? Number(it.unitPrice) : Math.abs(lt - round2(qty * x.P)) <= 0.005 + 1e-9 ? x.P : lt / qty
+        const dr = qty * up - lt
+        // Si la linea no es qty x precio redondeado al centavo, la diferencia no es redondeo:
+        // se cobro a otro precio efectivo.
+        const redondeo = Math.abs(dr) <= 0.005 + 1e-9
+        const dp = qty * (x.P - up) + (redondeo ? 0 : dr)
+        addG(g, 'precio', dp, Math.abs(up - x.P) >= 0.005 || !redondeo)
+        if (redondeo) addG(g, 'redondeo', dr, false)
       }
+    }
+    for (const g of groups.values()) {
+      const tipo = g.k.slice(0, 1)
+      const id = g.k.slice(2)
+      // Lo cobrado DOS veces es el SOLAPE de cada venta duplicada con la valida, por producto
+      // y cantidad (lo que la duplicada cobre de mas es un cobro valido de lo agregado).
+      const valid = tipo === 'O' ? liveSaleByOrder.get(id) : null
+      const validQty = (pid) => (valid?.items || []).reduce((a, it) => a + (it.productId === pid ? Number(it.qty || 0) : 0), 0)
+      for (const [pid, x] of g.prods) {
+        const u = (key, units) => { if (Math.abs(units) >= 0.0005) addG(g, key, units * x.P, true) }
+        const vq = x.dupList.length ? validQty(pid) : 0
+        const dupU = x.dupList.reduce((a, q) => a + Math.min(q, vq), 0)
+        if (tipo === 'O') {
+          const sl = liveSaleByOrder.get(id)
+          const sd = sl ? dayOf(sl.createdAt) : ''
+          if (sl && sd === day) {
+            // Cobrada ESTE dia. N = lo consumido y no anulado hasta el cobro, contando los
+            // dias anteriores de ESTA ubicacion y categoria; lo cobrado deberia ser N.
+            const pr = prior.get(id)?.get(pid) || 0
+            const priorU = pr > 0.0005 ? pr : 0
+            u('anulTrasCobro', -x.postVoid)
+            u('consumoOtroDia', -priorU)
+            const N = priorU + x.cons - x.preVoid
+            u('cobroDuplicado', -dupU)
+            const r = N - (x.sold - dupU)
+            if (r >= 0.0005) u('consumoNoCobrado', r)
+            else if (r <= -0.0005) {
+              // Menos consumo neto que lo cobrado: una anulacion duplicada (huerfana previa al
+              // cobro, mesa 180a7687) o un consumo sin su movimiento.
+              const o = Math.min(x.preOrphan, -r)
+              u('anulSinLinea', -o)
+              u('lineaSinMov', r + o)
+            }
+          } else if (sl && sd < day) {
+            // Cobrada un dia ANTERIOR: lo de hoy son agregados o anulaciones tras el cobro, y
+            // cualquier venta de hoy es un duplicado.
+            const net = x.cons - x.voids
+            u('cobroDuplicado', -dupU)
+            const r = net - (x.sold - dupU)
+            if (r >= 0.0005) u('consumoNoCobrado', r)
+            else if (r <= -0.0005) {
+              const o = Math.min(x.orphan, -r)
+              u('anulSinLinea', -o)
+              u('anulTrasCobro', r + o)
+            }
+          } else {
+            // Sin cobro todavia (se cobra otro dia) o sin venta viva.
+            u('anulSinLinea', -x.orphan)
+            const rest = x.ledger + x.orphan - x.sold
+            if (sl) u('cobradaOtroDia', rest)
+            else {
+              const st = orderById.get(id)?.status
+              u(st === ORDER_STATUS.OPEN || st === ORDER_STATUS.RESERVED ? 'abierta' : st === ORDER_STATUS.VOIDED ? 'anuladaSinCobro' : 'sinVentaViva', rest)
+            }
+          }
+        } else if (tipo === 'S') {
+          const sl = saleById.get(id)
+          const du = x.ledger - x.sold
+          if (!sl || sl.voided) u('sinVentaViva', du)
+          else if (dayOf(sl.createdAt) !== day) u('cobradaOtroDia', du)
+          else u('sinMov', du)
+        } else {
+          u('otros', x.ledger - x.sold)
+        }
+      }
+    }
+    // Comprobacion de construccion: en cada grupo, la suma de sus partes TIENE que ser su
+    // diferencia. Si no, es un fallo de esta logica y sale como "Sin explicar".
+    let descuadre = 0
+    for (const g of groups.values()) {
+      let gap = -g.sale
+      for (const x of g.prods.values()) gap += x.ledger * x.P
+      descuadre += gap - g.check
+      for (const key of g.cases) det.get(key).n += 1
     }
     let consumo = 0
     for (const g of groups.values()) consumo += g.sale
     consumo = round2(consumo)
     const diferencia = round2(totals.importe - consumo)
-    const det = new Map()
-    // Ningun importe se descarta (auditoria pre-main, I1): antes, los restos de menos de
-    // medio centavo por grupo -pesadas cobradas redondeadas linea a linea- se perdian y
-    // acumulados salian como "Sin explicar". Ahora se suman a su causa; el contador solo
-    // cuenta los casos de al menos medio centavo.
-    const add = (key, amount) => {
-      if (!amount) return
-      const x = det.get(key) || { key, label: CAUSE_LABELS[key], amount: 0, n: 0 }
-      x.amount += amount
-      if (Math.abs(amount) >= 0.005) x.n += 1
-      det.set(key, x)
-    }
-    for (const g of groups.values()) {
-      let gap = g.ledger - g.sale
-      // I2: lo cobrado de mas por una venta duplicada del mismo pedido es su propia causa;
-      // el resto del grupo se juzga como si solo existiera la venta valida.
-      if (g.dupSale) { add('cobroDuplicado', -g.dupSale); gap += g.dupSale; g.saleUnits -= g.dupUnits }
-      if (Math.abs(gap) < 0.005) { add('redondeo', gap); continue }
-      const tipo = g.k.slice(0, 1)
-      const id = g.k.slice(2)
-      if (tipo === 'O') {
-        const o = orderById.get(id)
-        const sl = liveSaleByOrder.get(id)
-        if (sl && dayOf(sl.createdAt) === day) {
-          // Cobrada ESTE dia: lo devuelto tras cobrar es su propia causa; el resto se juzga
-          // en UNIDADES -consumo menos anulaciones previas al cobro, frente a lo cobrado- y
-          // el SIGNO dice cual de las dos cosas paso.
-          add('anulTrasCobro', g.postVoid)
-          // I4: el consumo de dias anteriores (de ESTA ubicacion y categoria) explica SU
-          // parte, unidades x precio; el resto sigue el arbol normal.
-          const pr = prior.get(id)
-          const pu = pr && pr.units > 0.0005 ? pr.units : 0
-          const pm = pu ? pr.money : 0
-          add('consumoOtroDia', -pm)
-          const rest = gap - g.postVoid + pm
-          const du = g.consUnits - g.preVoidUnits + pu - g.saleUnits
-          if (Math.abs(rest) < 0.005) add('redondeo', rest)
-          else if (du >= 0.0005) add('consumoNoCobrado', rest)
-          else if (du <= -0.0005) {
-            // El libro registra MENOS consumo neto que lo cobrado. Dos causas posibles: una
-            // anulacion duplicada (la delata el detector: huerfana previa al cobro, dato real
-            // de la mesa 180a7687) o un consumo sin su movimiento. La huerfana explica
-            // primero -todo el resto si sus unidades lo cubren, si no su propio importe-.
-            if (g.preOrphanUnits >= -du - 0.0005) add('anulSinLinea', rest)
-            else { add('anulSinLinea', g.preOrphan); add('lineaSinMov', rest - g.preOrphan) }
-          } else add('precio', rest)
-          continue
-        }
-        add('anulSinLinea', g.orphan)
-        add('anulTrasCobro', g.voidAfter)
-        const rest = gap - g.orphan - g.voidAfter
-        if (Math.abs(rest) < 0.005) { add('redondeo', rest); continue }
-        if (!sl) {
-          const st = o?.status
-          add(st === ORDER_STATUS.OPEN || st === ORDER_STATUS.RESERVED ? 'abierta' : st === ORDER_STATUS.VOIDED ? 'anuladaSinCobro' : 'sinVentaViva', rest)
-        } else {
-          add('cobradaOtroDia', rest)
-        }
-      } else if (tipo === 'S') {
-        const sl = saleById.get(id)
-        if (!sl || sl.voided) add('sinVentaViva', gap)
-        else if (dayOf(sl.createdAt) !== day) add('cobradaOtroDia', gap)
-        // Sin NINGUN movimiento de venta en el libro, la causa es la falta de movimiento
-        // aunque las unidades "coincidan" (una linea sin qty daria 0 = 0).
-        else if (Math.abs(g.ledgerUnits) < 0.0005 || Math.abs(g.ledgerUnits - g.saleUnits) >= 0.0005) add('sinMov', gap)
-        else add('precio', gap)
-      } else {
-        add('otros', gap)
-      }
-    }
-    // La diferencia impresa se redondea al centavo y las causas tambien: si lo que queda sin
-    // asignar no llega a medio centavo es redondeo de los propios totales, y el redondeo
-    // absorbe ese resto para que las causas IMPRESAS sumen la diferencia impresa. Lo que
-    // supere medio centavo sin asignar sigue saliendo como "Sin explicar": es un fallo.
-    let crudo = 0
-    for (const x of det.values()) crudo += x.amount
-    const resto = diferencia - crudo
+    // Impresion al centavo: toda causa con casos se imprime aunque sume 0 (hallazgo 1 de la
+    // segunda revision). El redondeo absorbe el de los totales y el de las causas impresas,
+    // para que las causas IMPRESAS sumen la diferencia impresa; lo que la comprobacion de
+    // construccion no cuadre queda como "Sin explicar".
     const causasDet = [...det.values()].filter((x) => x.key !== 'redondeo')
-      .map((x) => ({ ...x, amount: round2(x.amount) })).filter((x) => x.amount !== 0)
-    if (Math.abs(resto) <= 0.005 + 1e-9) {
-      const red = round2(diferencia - causasDet.reduce((a, x) => a + x.amount, 0))
-      if (red !== 0) causasDet.push({ key: 'redondeo', label: CAUSE_LABELS.redondeo, amount: red, n: det.get('redondeo')?.n || 0 })
-    } else if (det.has('redondeo') && round2(det.get('redondeo').amount) !== 0) {
-      causasDet.push({ ...det.get('redondeo'), amount: round2(det.get('redondeo').amount) })
-    }
+      .map((x) => ({ ...x, amount: round2(x.amount) })).filter((x) => x.n > 0 || x.amount !== 0)
+    const red = round2(diferencia - descuadre - causasDet.reduce((a, x) => a + x.amount, 0))
+    if (red !== 0) causasDet.push({ key: 'redondeo', label: CAUSE_LABELS.redondeo, amount: red, n: 0 })
     const explicado = causasDet.reduce((a, x) => a + x.amount, 0)
     const sinExplicar = round2(diferencia - explicado)
     const causas = causasDet.map((x) => x.key === 'redondeo' ? x.label + ': ' + formatMoney(x.amount) : x.label + ': ' + x.n + ' caso(s), ' + formatMoney(x.amount))

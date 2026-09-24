@@ -260,7 +260,9 @@ eq(buildDailyControl(base({ products: [P('i', 'Viejo', { active: false })], move
       { id: 'fz2', createdAt: at(D1, '11'), sourceLocation: SAL, voided: false, items: [{ productId: 'g', qty: 0.811, unitPrice: 5.97, lineTotal: 4.84 }], totalBase: 4.84 }]
   })).days[0].money
   eq(fz.sinExplicar, 0, `redondeo de las causas impresas: nada sin explicar (${fz.causas.join(' | ')})`)
-  eq(fz.causasDet.find((c) => c.key === 'precio')?.amount, -0.1, 'el precio sigue con su importe')
+  // Precio EXACTO: 1.329 x (11.32 - 11.39) = -0.093 -> -0.09 (antes salia -0.10 porque
+  // se le sumaba el redondeo de la linea; hallazgo 9 de la segunda revision).
+  eq(fz.causasDet.find((c) => c.key === 'precio')?.amount, -0.09, 'el precio con su importe exacto')
 
   // I2. Doble cobro de una mesa (dos ventas vivas del mismo pedido): es "cobro duplicado"
   // por el importe de la venta sobrante, no "falta un movimiento de consumo".
@@ -290,6 +292,86 @@ eq(buildDailyControl(base({ products: [P('i', 'Viejo', { active: false })], move
   eq(todo.causasDet.find((c) => c.key === 'consumoOtroDia')?.amount, -100, `sin filtro: la pizza del dia anterior, -100 (${todo.causas.join(' | ')})`)
   eq(todo.causasDet.find((c) => c.key === 'precio')?.amount, -90, 'y el resto es precio: pizza -100 + cerveza +10 = -90')
   eq(todo.sinExplicar + beb.sinExplicar, 0, 'nada sin explicar')
+}
+// 8e. Segunda revision independiente (24-09-2026): cuatro fallos de los arreglos I1/I2/I4.
+{
+  const K = (c) => (key) => c.causasDet.find((x) => x.key === key)
+  // H1 (regresion): dos cobros mal hechos que se compensan NO pueden desaparecer.
+  const h1 = buildDailyControl(base({
+    products: [P('a', 'Agua')],
+    movements: [M('a', D0, 'traspIn', 9),
+      M('a', D1, 'ventas', -1, { h: '10', type: 'sale_out', refType: 'sale', refId: 'h1x' }),
+      M('a', D1, 'ventas', -1, { h: '11', type: 'sale_out', refType: 'sale', refId: 'h1y' })],
+    sales: [
+      { id: 'h1x', createdAt: at(D1, '10'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 1, unitPrice: 55, lineTotal: 55 }], totalBase: 55 },
+      { id: 'h1y', createdAt: at(D1, '11'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 1, unitPrice: 45, lineTotal: 45 }], totalBase: 45 }]
+  })).days[0].money
+  eq(K(h1)('precio')?.n, 2, `los dos cobros a otro precio se ven, aunque sumen 0 (${h1.causas.join(' | ')})`)
+
+  // H2: una venta con DOS lineas pesadas a precio de ficha: solo redondeo, ningun "precio".
+  const h2 = buildDailyControl(base({
+    products: [P('k', 'Carne', { unit: 'kg', price: 3.33 }), P('j', 'Cerdo', { unit: 'kg', price: 3.33 })],
+    movements: [M('k', D0, 'traspIn', 9), M('j', D0, 'traspIn', 9),
+      M('k', D1, 'ventas', -0.125, { type: 'sale_out', refType: 'sale', refId: 'h2' }),
+      M('j', D1, 'ventas', -0.125, { type: 'sale_out', refType: 'sale', refId: 'h2' })],
+    sales: [{ id: 'h2', createdAt: at(D1), sourceLocation: SAL, voided: false, items: [{ productId: 'k', qty: 0.125, unitPrice: 3.33, lineTotal: 0.42 }, { productId: 'j', qty: 0.125, unitPrice: 3.33, lineTotal: 0.42 }], totalBase: 0.84 }]
+  })).days[0].money
+  eq(K(h2)('precio'), undefined, `varias pesadas a precio de ficha: ningun precio falso (${h2.causas.join(' | ')})`)
+  eq(K(h2)('redondeo')?.amount, h2.diferencia, 'es redondeo')
+  eq(h2.sinExplicar, 0, 'nada sin explicar')
+
+  // H3: doble cobro con DISTINTO contenido (el caso real: se cobra 1 u, se agrega otra y se
+  // cobra la mesa entera otra vez). Lo cobrado dos veces es 1 u = -50, y nada mas.
+  const o3 = [{ id: 'O3', area: SAL, status: 'closed', openedAt: at(D1, '09'), closedAt: at(D1, '11'), saleId: 'A3' }]
+  const h3 = buildDailyControl(base({
+    products: [P('a', 'Agua')], orders: o3,
+    movements: [M('a', D0, 'traspIn', 9),
+      M('a', D1, 'ventas', -1, { h: '10', type: 'sale_out', refType: 'order', refId: 'O3' }),
+      M('a', D1, 'ventas', -1, { h: '12', type: 'sale_out', refType: 'order', refId: 'O3' })],
+    sales: [
+      { id: 'A3', orderId: 'O3', createdAt: at(D1, '11'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 1, unitPrice: 50, lineTotal: 50 }], totalBase: 50 },
+      { id: 'B3', orderId: 'O3', createdAt: at(D1, '13'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 2, unitPrice: 50, lineTotal: 100 }], totalBase: 100 }]
+  })).days[0].money
+  eq(K(h3)('cobroDuplicado')?.amount, -50, `cobrado dos veces: 1 u, -50 (${h3.causas.join(' | ')})`)
+  eq(h3.causasDet.length, 1, 'y ninguna otra causa')
+  // El mismo caso en DOS dias: primer cobro el dia 0, la unidad agregada y el segundo cobro el dia 1.
+  const h3b = buildDailyControl(base({
+    from: D1, to: D1, products: [P('a', 'Agua')], orders: o3,
+    movements: [M('a', D0, 'traspIn', 9),
+      M('a', D0, 'ventas', -1, { h: '10', type: 'sale_out', refType: 'order', refId: 'O3' }),
+      M('a', D1, 'ventas', -1, { h: '12', type: 'sale_out', refType: 'order', refId: 'O3' })],
+    sales: [
+      { id: 'A3', orderId: 'O3', createdAt: at(D0, '11'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 1, unitPrice: 50, lineTotal: 50 }], totalBase: 50 },
+      { id: 'B3', orderId: 'O3', createdAt: at(D1, '13'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 2, unitPrice: 50, lineTotal: 100 }], totalBase: 100 }]
+  })).days[0].money
+  eq(K(h3b)('cobroDuplicado')?.amount, -50, `en dos dias, cobrado dos veces: -50 (${h3b.causas.join(' | ')})`)
+  eq(h3b.causasDet.length, 1, 'en dos dias: ninguna otra causa')
+  // Hallado por el fuzz con verdad conocida: 3 u consumidas, se cobran 2 (1 sin cobrar) y
+  // la mesa se cobra otra vez IGUAL. Cobrado dos veces = el solape (2 u, -100), y la unidad
+  // sin cobrar sigue sin cobrar (+50). Medir el duplicado "en neto" daba -50 y la escondia.
+  const h3c = buildDailyControl(base({
+    products: [P('a', 'Agua')], orders: o3,
+    movements: [M('a', D0, 'traspIn', 9), M('a', D1, 'ventas', -3, { h: '10', type: 'sale_out', refType: 'order', refId: 'O3' })],
+    sales: [
+      { id: 'A3', orderId: 'O3', createdAt: at(D1, '11'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 2, unitPrice: 50, lineTotal: 100 }], totalBase: 100 },
+      { id: 'B3', orderId: 'O3', createdAt: at(D1, '13'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 2, unitPrice: 50, lineTotal: 100 }], totalBase: 100 }]
+  })).days[0].money
+  eq(K(h3c)('cobroDuplicado')?.amount, -100, `duplicado = solape, -100 (${h3c.causas.join(' | ')})`)
+  eq(K(h3c)('consumoNoCobrado')?.amount, 50, 'y la unidad sin cobrar no se esconde: +50')
+
+  // H4: mesa con A el dia 0 y B el dia 1, cobrada el dia 1 SOLO A. La diferencia del grupo
+  // es 0, pero B se fue sin cobrar: tiene que decirlo.
+  const h4 = buildDailyControl(base({
+    products: [P('a', 'Arroz', { price: 100 }), P('b', 'Batido', { price: 100 })],
+    orders: [{ id: 'O4', area: SAL, status: 'closed', openedAt: at(D0, '21'), closedAt: at(D1, '02'), saleId: 'Z4' }],
+    movements: [M('a', D0, 'traspIn', 9), M('b', D0, 'traspIn', 9),
+      M('a', D0, 'ventas', -1, { h: '22', type: 'sale_out', refType: 'order', refId: 'O4' }),
+      M('b', D1, 'ventas', -1, { h: '01', type: 'sale_out', refType: 'order', refId: 'O4' })],
+    sales: [{ id: 'Z4', orderId: 'O4', createdAt: at(D1, '02'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 1, unitPrice: 100, lineTotal: 100 }], totalBase: 100 }]
+  })).days[0].money
+  eq(K(h4)('consumoNoCobrado')?.amount, 100, `B consumido y no cobrado: +100 (${h4.causas.join(' | ')})`)
+  eq(K(h4)('consumoOtroDia')?.amount, -100, 'A, del dia anterior, cobrado hoy: -100')
+  eq(h4.sinExplicar, 0, 'nada sin explicar')
 }
 // 9. Cache: la que difiere se lista.
 {

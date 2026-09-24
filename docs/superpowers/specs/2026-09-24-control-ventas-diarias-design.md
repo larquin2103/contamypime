@@ -113,6 +113,23 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
      - **Consumo de otro día:** se busca solo en esta ubicación y categoría, y explica **su**
        parte (unidades × precio); el resto sigue el árbol normal (antes todo el resto iba a esa
        causa, y con filtro de categoría contaba la de otra categoría).
+     - **Segunda revisión independiente: cuatro fallos más de esos arreglos, corregidos
+       rediseñando la conciliación para que sea EXACTA por construcción.** Cada línea cobrada se
+       descompone sin resto en **precio** (cantidad × (ficha − precio cobrado)), **redondeo**
+       (cantidad × precio cobrado − importe de la línea) y **unidades** (del libro − cobradas) ×
+       ficha, por grupo y producto. El precio y el redondeo salen de cada línea, así que ya no
+       dependen de cuántas líneas tenga la venta; solo el descuadre de unidades se interpreta por
+       el estado de la mesa. Toda causa con casos se imprime aunque sume 0 (dos cobros mal hechos
+       que se compensan no desaparecen). **Cobro duplicado = el solape** de cada venta duplicada
+       con la válida, por producto y cantidad; lo que la duplicada cobre de más es un cobro válido
+       de lo agregado. Las mesas se examinan **aunque su diferencia sea 0**: una unidad sin cobrar
+       compensada por otra de otro día ya no se esconde. Una comprobación interna exige que las
+       partes de cada grupo sumen su diferencia; si no, sale «Sin explicar».
+     - **Validado con un fuzz de VERDAD CONOCIDA** (escenarios generados a partir de los hechos,
+       exigiendo cada causa con su importe exacto y ninguna falsa): 0 errores en 17.000 días con
+       cuatro semillas, frente a 432 de 3.000 en la versión anterior. **No cubre** anulaciones
+       huérfanas, ventas sin movimiento ni mesas sin cobro: esas ramas las cubren las pruebas y
+       los respaldos reales.
      - **Sin corregir, anotado:** una venta anterior al almacén con ubicaciones (sin
        `sourceLocation`) puede salir como «venta sin movimiento» en el almacén y en su área. En
        los 6 respaldos reales no hay ninguna.
