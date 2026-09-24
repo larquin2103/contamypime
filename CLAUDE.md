@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **26** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.528 aserciones**, medidas el 24-09-2026). Las tres de la
+se corren **uno a uno con node** (**1.554 aserciones**, medidas el 24-09-2026). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -102,11 +102,11 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **28 suites / 1.586 aserciones** en total, medidas el 24-09-2026 tras las
+Con esas dos dentro: **28 suites / 1.612 aserciones** en total, medidas el 24-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
-antes de escribir, `dailySalesControl` (125), el Control de Ventas Diarias, y `reportCells` (10).
+antes de escribir, `dailySalesControl` (151), el Control de Ventas Diarias, y `reportCells` (10).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -1002,6 +1002,25 @@ Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y pl
 
   El control de caché mira también los productos con caché y sin movimientos. Los rótulos de
   integridad y del cobrado total con filtro dicen ahora lo que miden.
+
+  **Cuarta revisión: el redondeo era un saco residual**, reproducido. Una línea incoherente de
+  20 MN, un precio de 49,996 × 5.000 y cantidades de 4 decimales —que la venta admite— salían
+  como «solo por redondeo al centavo». Ahora el redondeo está **acotado** y lo demás tiene
+  nombre propio: importe de línea ≠ cantidad × precio, precio con el umbral sobre el importe de
+  la línea, cantidades con más de 3 decimales y productos sin ficha o sin tasa.
+
+  El fuzz comprueba ya **el valor de cada parte**: 0 errores en 25.500 días, y las 5 mutaciones
+  de esos fallos las caza. «Sin explicar» queda rotulado como lo que es, una salvaguarda
+  aritmética.
+
+  Otros cambios de esta ronda:
+  - los movimientos se agrupan por día una vez: 1,77 s → 0,45 s con 150.000 movimientos y 31
+    días;
+  - las ubicaciones salen del índice `location`, sin barrer el libro al abrir Reportes; la
+    misma lista en los 6 respaldos;
+  - en los respaldos reales se imprimen las **mismas 647 líneas** que antes.
+
+  **Peso frente a `main`:** JS +20,3 kB (gzip +7,2 kB, +2,4 %); CSS, mismo hash.
 - **Validado con los 4 respaldos reales**
   (`docs/auditoria/validar-control-ventas.mjs`, con `TZ=America/Havana`):
   - **16.485 filas** contra un recálculo independiente del libro, y **1.828 cotejos** con el

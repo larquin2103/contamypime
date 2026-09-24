@@ -115,16 +115,36 @@ export function buildDailyControl({
   const userName = new Map(users.map((u) => [u.id, u.name]))
   const orderById = new Map(orders.map((o) => [o.id, o]))
   const priceP = (pid) => (byId.get(pid) ? round2(priceOf(byId.get(pid))) : 0)
-  // Unidades netas de venta por pedido y dia (de ESTA ubicacion y categoria): un hecho.
+  // Movimientos de VENTA de esta ubicacion y categoria, agrupados por dia UNA sola vez (antes
+  // se recorria todo el historial en cada dia del rango).
+  const ventasByDay = new Map()
+  // Ventas netas por pedido y dia (de ESTA ubicacion y categoria), incluidos los dias con neto 0.
   const orderDayUnits = new Map()
   for (const pid of pids) {
     for (const m of byProd.get(pid)) {
-      if ((m.refType !== 'order' && m.refType !== 'order_void') || classify(m) !== 'ventas') continue
-      const mp = orderDayUnits.get(m.refId) || new Map()
+      if (classify(m) !== 'ventas') continue
       const d = dayOf(m.createdAt)
+      if (!ventasByDay.has(d)) ventasByDay.set(d, [])
+      ventasByDay.get(d).push(m)
+      if (m.refType !== 'order' && m.refType !== 'order_void') continue
+      const mp = orderDayUnits.get(m.refId) || new Map()
       mp.set(d, (mp.get(d) || 0) - Number(m.qty || 0))
       orderDayUnits.set(m.refId, mp)
     }
+  }
+  // Donde estan (en cualquier ubicacion) los movimientos de venta de cada venta directa.
+  const saleMovLocs = new Map()
+  for (const m of movements) {
+    if (m.refType !== 'sale' || classify(m) !== 'ventas') continue
+    if (!saleMovLocs.has(m.refId)) saleMovLocs.set(m.refId, new Set())
+    saleMovLocs.get(m.refId).add(locOf(m))
+  }
+  const salesByDay = new Map()
+  for (const s of sales) {
+    if (s.voided || saleLocOf(s) !== location) continue
+    const d = dayOf(s.createdAt)
+    if (!salesByDay.has(d)) salesByDay.set(d, [])
+    salesByDay.get(d).push(s)
   }
   const unitsInCat = (s) => (s.items || []).reduce((a, it) => a + (inCat(it.productId) ? Number(it.qty || 0) : 0), 0)
   const outDays = []
@@ -160,7 +180,7 @@ export function buildDailyControl({
     const sellers = [...new Set(dayShifts.map((s) => userName.get(s.sellerId) || 'Sin nombre'))]
 
     // Control de dinero: consumo COBRADO (lineas a precio congelado) vs suma de Importes.
-    const daySales = sales.filter((s) => !s.voided && dayOf(s.createdAt) === day && saleLocOf(s) === location)
+    const daySales = salesByDay.get(day) || []
     let servicio = 0, descuento = 0, cobrado = 0
     for (const s of daySales) {
       servicio += Number(s.serviceChargeAmount || 0)
@@ -184,9 +204,9 @@ export function buildDailyControl({
       return g.prods.get(pid)
     }
     const rawV = new Map()
-    for (const pid of pids) {
-      for (const m of byProd.get(pid)) {
-        if (dayOf(m.createdAt) !== day || classify(m) !== 'ventas') continue
+    for (const m of ventasByDay.get(day) || []) {
+      {
+        const pid = m.productId
         const q = -Number(m.qty || 0) // unidades vendidas (positivo); una anulacion resta
         rawV.set(pid, (rawV.get(pid) || 0) + q)
         const isOrder = m.refType === 'order' || m.refType === 'order_void'
@@ -201,14 +221,19 @@ export function buildDailyControl({
         }
       }
     }
-    let precioAmt = 0, redondeoAmt = 0
-    const precioDet = new Map()
+    // Cada linea: lineTotal = qty x ficha - qty x (ficha - precio) - (qty x precio - lineTotal).
+    // El REDONDEO solo recoge restos acotados -medio centavo como mucho por linea o partida-;
+    // todo lo demas va a una parte con nombre y con sus lineas (cuarta revision, I1).
+    let precioAmt = 0, lineaAmt = 0, sinFichaAmt = 0, redondeoAmt = 0
+    const precioDet = new Map(), lineaDet = [], sinFichaDet = new Map()
     for (const s of daySales) {
       const g = G(s.orderId ? 'O:' + s.orderId : 'S:' + s.id)
       for (const it of s.items || []) {
         if (!inCat(it.productId)) continue
         const x = GP(g, it.productId)
+        const pr = byId.get(it.productId)
         const P = priceP(it.productId)
+        const sinFicha = !pr ? 'no-catalogo' : P === 0 && Number(pr.price || 0) > 0 ? 'sin-tasa' : ''
         const qty = Number(it.qty || 0)
         const lt = Number(it.lineTotal ?? (Number(it.unitPrice || 0) * qty))
         if (!qty) { x.sinCantidad += lt; continue } // cobrado sin cantidad: un hecho de la venta
@@ -216,19 +241,40 @@ export function buildDailyControl({
         // Sin precio unitario (en los respaldos reales no falta nunca): si el cobro es el de la
         // ficha redondeado al centavo, el precio es el de la ficha; si no, el efectivo.
         const up = it.unitPrice != null ? Number(it.unitPrice) : Math.abs(lt - round2(qty * P)) <= 0.005 + 1e-9 ? P : lt / qty
-        redondeoAmt += qty * up - lt
-        if (Math.abs(up - P) >= 0.005) {
-          precioAmt += qty * (P - up)
+        const e = qty * up - lt
+        if (Math.abs(e) <= 0.005 + 1e-9) redondeoAmt += e
+        else {
+          lineaAmt += e
+          lineaDet.push({ productId: it.productId, name: nameOf(it.productId), qty: cleanQty(qty), unitPrice: up, lineTotal: round2(lt), amount: round2(e) })
+        }
+        const dp = qty * (P - up)
+        if (sinFicha) {
+          sinFichaAmt += dp
+          const dk = it.productId + '|' + up
+          const d = sinFichaDet.get(dk) || { productId: it.productId, name: nameOf(it.productId), motivo: sinFicha, unitPrice: up, qty: 0, lineas: 0, amount: 0 }
+          d.qty = cleanQty(d.qty + qty); d.lineas += 1; d.amount += dp
+          sinFichaDet.set(dk, d)
+        } else if (Math.abs(dp) >= 0.005) {
+          precioAmt += dp
           const dk = it.productId + '|' + up
           const d = precioDet.get(dk) || { productId: it.productId, name: nameOf(it.productId), unitPrice: up, ficha: P, qty: 0, lineas: 0, amount: 0 }
-          d.qty = cleanQty(d.qty + qty); d.lineas += 1; d.amount += qty * (P - up)
+          d.qty = cleanQty(d.qty + qty); d.lineas += 1; d.amount += dp
           precioDet.set(dk, d)
-        } else redondeoAmt += qty * (P - up) // el precio congelado difiere de la ficha en menos de medio centavo
+        } else redondeoAmt += dp // diferencia de precio de menos de medio centavo en la linea
       }
     }
-    // Las cantidades del Importe van a la milesima (cleanQty); su diferencia con el libro en
-    // crudo es redondeo de cantidad.
-    for (const [pid, v] of rawV) redondeoAmt += ((ventaClean.get(pid) || 0) - v) * priceP(pid)
+    // La columna Venta va a la milesima (cleanQty) y el Importe con ella; si el libro trae mas
+    // decimales, esa diferencia es su propia parte, con el libro en crudo y la columna.
+    let cantidadAmt = 0
+    const cantidadDet = []
+    for (const [pid, v] of rawV) {
+      const col = ventaClean.get(pid) || 0
+      const a = (col - v) * priceP(pid)
+      if (Math.abs(col - v) < 1e-9) continue
+      if (Math.abs(a) < 0.005) { redondeoAmt += a; continue }
+      cantidadAmt += a
+      cantidadDet.push({ productId: pid, name: nameOf(pid), libro: Math.round(v * 1e6) / 1e6, columna: col, amount: round2(a) })
+    }
     const grupos = []
     let unidadesAmt = 0
     for (const g of groups.values()) {
@@ -238,9 +284,12 @@ export function buildDailyControl({
       const productos = []
       for (const [pid, x] of g.prods) {
         const a = (x.libro - x.cobrado) * priceP(pid) - x.sinCantidad
-        if (Math.abs(x.libro - x.cobrado) < 0.0005 && !x.sinCantidad) { redondeoAmt += a; continue } // ruido de la milesima
+        // Solo es ruido lo que no llega ni a media milesima de unidad ni a medio centavo.
+        if (Math.abs(x.libro - x.cobrado) < 0.0005 && Math.abs(a) < 0.005 && !x.sinCantidad) { redondeoAmt += a; continue }
         amount += a
-        productos.push({ productId: pid, name: nameOf(pid), libro: cleanQty(x.libro), cobrado: cleanQty(x.cobrado), ...(x.sinCantidad ? { sinCantidad: round2(x.sinCantidad) } : {}) })
+        // En crudo (hasta la millonesima): con la milesima, 0,2504 se leeria 0,25 y el hecho se perderia.
+        const q6 = (n) => Math.round(n * 1e6) / 1e6
+        productos.push({ productId: pid, name: nameOf(pid), libro: q6(x.libro), cobrado: q6(x.cobrado), ...(x.sinCantidad ? { sinCantidad: round2(x.sinCantidad) } : {}) })
       }
       unidadesAmt += amount
       if (!productos.length) continue
@@ -254,7 +303,7 @@ export function buildDailyControl({
           estado: o?.status || null,
           cobros: (liveSalesByOrder.get(id) || []).map((sl) => ({ id: sl.id, day: dayOf(sl.createdAt), units: cleanQty(unitsInCat(sl)) })),
           hoy: { consumo: cleanQty(g.cons), anuladas: cleanQty(g.voids), anuladasTrasCobro: cleanQty(g.voidsAfter), marcadasSinLinea: cleanQty(g.orphans) },
-          otrosDias: [...(orderDayUnits.get(id) || new Map())].filter(([d, u]) => d !== day && Math.abs(u) >= 0.0005).sort((p1, p2) => (p1[0] < p2[0] ? -1 : 1)).map(([d, u]) => ({ day: d, units: cleanQty(u) }))
+          otrosDias: [...(orderDayUnits.get(id) || new Map())].filter(([d]) => d !== day).sort((p1, p2) => (p1[0] < p2[0] ? -1 : 1)).map(([d, u]) => ({ day: d, units: cleanQty(u) }))
         }
       } else if (tipo === 'S') {
         const sl = saleById.get(id)
@@ -263,7 +312,8 @@ export function buildDailyControl({
         hechos = {
           venta: !sl ? 'no-esta' : sl.voided ? 'anulada' : dayOf(sl.createdAt) !== day ? 'otro-dia' : saleLocOf(sl) !== location ? 'otra-ubicacion' : 'ok',
           dia: sl ? dayOf(sl.createdAt) : null,
-          ubicacion: sl ? locLabel(saleLocOf(sl)) : null
+          ubicacion: sl ? locLabel(saleLocOf(sl)) : null,
+          movEn: [...(saleMovLocs.get(id) || [])].filter((l) => l !== location).map(locLabel)
         }
       } else {
         kind = 'suelto'
@@ -280,21 +330,30 @@ export function buildDailyControl({
     const diferencia = round2(totals.importe - consumo)
     // Comprobacion de construccion: las partes en crudo TIENEN que ser la diferencia en crudo.
     // Lo que no cuadre es un fallo de esta logica y sale como "Sin explicar".
-    const descuadre = (importeRaw - consumoRaw) - (precioAmt + redondeoAmt + unidadesAmt)
-    const precioR = round2(precioAmt)
+    // Salvaguarda ARITMETICA (coma flotante): las partes se definen de modo que sumen la
+    // diferencia, asi que esto solo salta ante un fallo de esta logica. La veracidad de cada
+    // parte la prueban las pruebas y el fuzz con generador independiente, no esta linea.
+    const descuadre = (importeRaw - consumoRaw) - (precioAmt + lineaAmt + cantidadAmt + sinFichaAmt + redondeoAmt + unidadesAmt)
+    const byName = (d1, d2) => d1.name.localeCompare(d2.name, 'es')
+    const precioR = round2(precioAmt), lineaR = round2(lineaAmt), cantidadR = round2(cantidadAmt), sinFichaR = round2(sinFichaAmt)
     const unidadesR = round2(unidadesAmt)
     const sinExplicar = Math.abs(descuadre) >= 0.005 ? round2(descuadre) : 0
     // El redondeo impreso absorbe el de los totales y el de las partes impresas: asi las partes
-    // IMPRESAS suman la diferencia impresa.
-    const redondeoR = round2(diferencia - sinExplicar - precioR - unidadesR)
-    const precio = { n: [...precioDet.values()].reduce((a, d) => a + d.lineas, 0), amount: precioR, detalle: [...precioDet.values()].map((d) => ({ ...d, amount: round2(d.amount) })).sort((d1, d2) => d1.name.localeCompare(d2.name, 'es')) }
+    // IMPRESAS suman la diferencia impresa. Todo lo que recoge esta acotado (medio centavo por
+    // linea o partida, mas los totales).
+    const redondeoR = round2(diferencia - sinExplicar - precioR - lineaR - cantidadR - sinFichaR - unidadesR)
+    const listOf = (m) => [...m.values()].map((d) => ({ ...d, amount: round2(d.amount) })).sort(byName)
+    const precio = { n: [...precioDet.values()].reduce((a, d) => a + d.lineas, 0), amount: precioR, detalle: listOf(precioDet) }
+    const lineaImporte = { n: lineaDet.length, amount: lineaR, detalle: lineaDet.sort(byName) }
+    const cantidad = { amount: cantidadR, detalle: cantidadDet.sort(byName) }
+    const sinFicha = { n: [...sinFichaDet.values()].reduce((a, d) => a + d.lineas, 0), amount: sinFichaR, detalle: listOf(sinFichaDet) }
     outDays.push({
       day, folios, sellers, rows, totals,
       money: {
         importe: totals.importe, consumo, diferencia, cuadra: diferencia === 0,
-        soloRedondeo: diferencia !== 0 && precioR === 0 && unidadesR === 0 && !grupos.length && !precio.n && sinExplicar === 0,
+        soloRedondeo: diferencia !== 0 && !precio.n && !lineaImporte.n && !cantidad.detalle.length && !sinFicha.n && !grupos.length && sinExplicar === 0,
         servicio: round2(servicio), descuento: round2(descuento), cobrado: round2(cobrado), cobradoTodasCategorias: !!categoryId,
-        precio, redondeo: redondeoR, unidades: { amount: unidadesR, grupos }, sinExplicar
+        precio, lineaImporte, cantidad, sinFicha, redondeo: redondeoR, unidades: { amount: unidadesR, grupos }, sinExplicar
       }
     })
   }
@@ -333,14 +392,27 @@ export function moneyLines(m, day) {
   const estado = m.cuadra ? 'CUADRA' : m.soloRedondeo ? `NO CUADRA solo por redondeo al centavo, diferencia ${fm(m.diferencia)}` : `NO CUADRA, diferencia ${fm(m.diferencia)}`
   out.push(`Control de dinero: Importe ${fm(m.importe)} · consumo cobrado ${fm(m.consumo)} · ${estado}`)
   out.push(`Cobrado total ${fm(m.cobrado)} (incluye servicio ${fm(m.servicio)} y descuentos ${fm(m.descuento)})${m.cobradoTodasCategorias ? ' · de las ventas completas, todas las categorías' : ''}`)
-  const hay = m.precio.n || m.unidades.grupos.length || m.redondeo !== 0 || m.sinExplicar !== 0
+  const fx = (n) => (Math.abs(n - round2(n)) > 1e-9 ? `${fm(n)} (exacto ${Number(n.toFixed(6))})` : fm(n))
+  const hay = m.precio.n || m.lineaImporte.n || m.cantidad.detalle.length || m.sinFicha.n || m.unidades.grupos.length || m.redondeo !== 0 || m.sinExplicar !== 0
   if (!hay) return out
   out.push('  Desglose exacto de la diferencia (hechos del libro y del cobro, sin interpretar):')
   if (m.precio.n) {
     out.push(`  · Precio distinto de la ficha: ${m.precio.n} línea(s), ${fm(m.precio.amount)}`)
-    for (const d of m.precio.detalle) out.push(`      ${d.name}: ${u(d.qty)} cobradas a ${fm(d.unitPrice)} (ficha ${fm(d.ficha)}) → ${fm(d.amount)}`)
+    for (const d of m.precio.detalle) out.push(`      ${d.name}: ${u(d.qty)} cobradas a ${fx(d.unitPrice)} (ficha ${fm(d.ficha)}) → ${fm(d.amount)}`)
   }
-  if (m.redondeo !== 0) out.push(`  · Redondeo al centavo: ${fm(m.redondeo)}`)
+  if (m.lineaImporte.n) {
+    out.push(`  · Importe de línea distinto de cantidad × precio: ${m.lineaImporte.n} línea(s), ${fm(m.lineaImporte.amount)}`)
+    for (const d of m.lineaImporte.detalle) out.push(`      ${d.name}: ${u(d.qty)} × ${fx(d.unitPrice)}, línea cobrada ${fm(d.lineTotal)} → ${fm(d.amount)}`)
+  }
+  if (m.cantidad.detalle.length) {
+    out.push(`  · Cantidades del libro con más de 3 decimales (la columna Venta va a la milésima): ${fm(m.cantidad.amount)}`)
+    for (const d of m.cantidad.detalle) out.push(`      ${d.name}: libro ${d.libro} · columna ${d.columna} → ${fm(d.amount)}`)
+  }
+  if (m.sinFicha.n) {
+    out.push(`  · Cobrado de productos sin precio de ficha en este aparato: ${m.sinFicha.n} línea(s), ${fm(m.sinFicha.amount)}`)
+    for (const d of m.sinFicha.detalle) out.push(`      ${d.name}: ${u(d.qty)} cobradas a ${fx(d.unitPrice)} (${d.motivo === 'sin-tasa' ? 'precio en divisa sin tasa vigente' : 'no está en el catálogo de este aparato'}) → ${fm(d.amount)}`)
+  }
+  if (m.redondeo !== 0) out.push(`  · Redondeo al centavo (de cada línea y de los totales): ${fm(m.redondeo)}`)
   if (m.unidades.grupos.length) {
     out.push(`  · Unidades del libro distintas de las cobradas este día (× precio de ficha): ${m.unidades.grupos.length} mesa(s)/venta(s), ${fm(m.unidades.amount)}`)
     for (const g of m.unidades.grupos) {
@@ -353,9 +425,10 @@ export function moneyLines(m, day) {
         if (h.hoy.anuladas) hoy.push(`anuladas ${u(h.hoy.anuladas)}${h.hoy.anuladasTrasCobro ? ` (${u(h.hoy.anuladasTrasCobro)} después del primer cobro)` : ''}`)
         if (h.hoy.marcadasSinLinea) hoy.push(`${u(h.hoy.marcadasSinLinea)} anuladas que el control de integridad marca sin su línea`)
         hechos.push(`este día: ${hoy.join(', ')}`)
-        if (h.otrosDias.length) hechos.push(`otros días en el libro: ${h.otrosDias.map((x) => `${x.day} ${x.units > 0 ? '+' : ''}${u(x.units)}`).join(', ')}`)
+        if (h.otrosDias.length) hechos.push(`ventas netas de esta mesa en otros días: ${h.otrosDias.map((x) => `${x.day} ${u(x.units)}`).join(', ')}`)
       } else if (g.kind === 'venta') {
         if (VENTA[h.venta]) hechos.push(VENTA[h.venta] + (h.venta === 'otro-dia' ? ` (${h.dia})` : h.venta === 'otra-ubicacion' ? ` (${h.ubicacion})` : ''))
+        if (h.movEn?.length) hechos.push(`su movimiento de venta está en ${h.movEn.join(', ')}`)
       }
       out.push(`      ${g.label} · ${fm(g.amount)}${hechos.length ? ' · ' + hechos.join(' · ') : ''}`)
       for (const p of g.productos) out.push(`        ${p.name}: libro ${p.libro} · cobrado ${p.cobrado}${p.sinCantidad ? ` · cobrado sin cantidad ${fm(p.sinCantidad)}` : ''}`)
@@ -381,7 +454,7 @@ export function dailyControlReport(result, { locationName = '', categoryName = '
     for (const l of moneyLines(d.money, d.day)) rows.push(pad(l))
   }
   const cc = result.cacheCheck
-  rows.push(pad(cc.ok ? 'Control de la caché: CUADRA (la caché coincide con el libro)' : `Control de la caché: ${cc.diffs.length} producto(s) con la caché distinta del libro (el reporte usa el libro)`))
+  rows.push(pad(cc.ok ? 'Control de la caché (existencia actual): CUADRA (la caché coincide con el libro)' : `Control de la caché (existencia actual): ${cc.diffs.length} producto(s) con la caché distinta del libro (el reporte usa el libro)`))
   for (const x of cc.diffs) rows.push(pad(`  ${x.name}: libro ${x.libro} · caché ${x.cache}`))
   const it = result.integrity
   rows.push(pad(it.ok ? 'Integridad del libro (todas las ubicaciones, en el rango): CUADRA' : `Integridad del libro (todas las ubicaciones, en el rango): NO CUADRA — ${Object.entries(it.counts).map(([k, n]) => `${k} ${n}`).join(', ')}`))

@@ -1742,7 +1742,9 @@ export async function dailyControlLocations() {
   for (const a of areas) add(a)
   add(WAREHOUSE)
   const locs = new Set()
-  for (const m of await db.stockMovements.toArray()) locs.add(m.location || WAREHOUSE)
+  // Claves del indice 'location' (v5), sin leer la tabla entera: abrir Reportes no barre el
+  // libro. Un movimiento sin ubicacion no entra en el indice y cuenta como almacen, que ya esta.
+  for (const l of await db.stockMovements.orderBy('location').uniqueKeys()) locs.add(l || WAREHOUSE)
   for (const l of [...locs].sort()) add(l)
   distinguish()
   return out

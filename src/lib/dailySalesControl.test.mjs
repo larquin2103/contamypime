@@ -108,7 +108,7 @@ const r2t = (x) => Math.round(x * 100) / 100
 const money = (over) => buildDailyControl(base(over)).days
 // Invariante de TODO dia: las partes impresas suman la diferencia impresa y nada queda sin explicar.
 const exacta = (m, label) => {
-  eq(r2t(m.precio.amount + m.redondeo + m.unidades.amount), m.diferencia, `${label}: precio + redondeo + unidades = diferencia`)
+  eq(r2t(m.precio.amount + (m.lineaImporte?.amount || 0) + (m.cantidad?.amount || 0) + (m.sinFicha?.amount || 0) + m.redondeo + m.unidades.amount), m.diferencia, `${label}: las partes = diferencia`)
   eq(m.sinExplicar, 0, `${label}: nada sin explicar`)
 }
 // Ausente = vacio: una prueba que no encuentra la mesa FALLA limpia, no revienta la suite.
@@ -160,7 +160,7 @@ const prod = (g, pid) => g.productos.find((p) => p.productId === pid) || {}
   const m1 = money({ products: [P('a', 'Agua', { price: 33.33 })], orders: [{ id: 'OM', area: SAL, status: 'closed' }],
     movements: [M('a', D0, 'traspIn', 50), M('a', D1, 'ventas', -10, { h: '10', type: 'sale_out', refType: 'order', refId: 'OM' })],
     sales: [{ id: 'VM', orderId: 'OM', createdAt: at(D1, '11'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 10, unitPrice: 33.333, lineTotal: 333.33 }], totalBase: 333.33 }] })[0].money
-  eq(`${m1.precio.n}|${m1.redondeo}|${m1.unidades.grupos.length}`, '0|-0.03|0', 'precio sub-centavo: redondeo')
+  eq(`${m1.precio.n}|${m1.precio.amount}|${m1.unidades.grupos.length}`, '1|-0.03|0', 'precio sub-centavo por unidad: 3 centavos en la linea, es precio (4a revision)')
   exacta(m1, '8.4c')
   // Caso hallado por fuerza bruta: el precio se imprime EXACTO (1.329 x (11.32 - 11.39) = -0.09).
   const fz = money({ products: [P('f', 'F1', { unit: 'kg', price: 11.32 }), P('g', 'F2', { unit: 'kg', price: 5.97 })],
@@ -175,7 +175,10 @@ const prod = (g, pid) => g.productos.find((p) => p.productId === pid) || {}
 {
   const q4 = money({ products: [P('k', 'Carne', { unit: 'kg', price: 3000 })], movements: [M('k', D0, 'traspIn', 9), M('k', D1, 'ventas', -0.2504, { type: 'sale_out', refType: 'sale', refId: 'Q4' })],
     sales: [{ id: 'Q4', createdAt: at(D1), sourceLocation: SAL, voided: false, items: [{ productId: 'k', qty: 0.25, unitPrice: 3000, lineTotal: 750 }], totalBase: 750 }] })[0].money
-  eq(`${q4.diferencia}|${q4.redondeo}|${q4.sinExplicar}|${q4.unidades.grupos.length}`, '0|0|0|0', 'cantidad a la diezmilesima: cuadra, sin nada')
+  // Cuadra, pero el HECHO existe y se muestra (4a revision): salieron del libro 0,0004 kg sin
+  // cobrar (+1,20) y la columna a la milesima lo compensa (-1,20).
+  eq(`${q4.diferencia}|${q4.sinExplicar}|${q4.cantidad.amount}|${q4.unidades.amount}`, '0|0|-1.2|1.2', 'cuadra, con sus dos hechos a la vista')
+  eq(`${prod(grupo(q4, 'Q4'), 'k').libro}|${prod(grupo(q4, 'Q4'), 'k').cobrado}`, '0.2504|0.25', 'el libro en crudo, no a la milesima')
 }
 // 8.5 Mesas: el descuadre de unidades sale como HECHOS, por mesa y producto.
 {
@@ -268,6 +271,68 @@ const prod = (g, pid) => g.productos.find((p) => p.productId === pid) || {}
   const todo = money({ products: prods, movements: mv, sales: s, orders: o })[0].money
   eq(`${todo.precio.amount}|${prod(grupo(todo, 'O9'), 'z').libro}|${prod(grupo(todo, 'O9'), 'z').cobrado}`, '-90|0|1', 'sin filtro: precio -90 y la pizza cobrada hoy sin libro de hoy')
   exacta(todo, '8.7b')
+}
+// 8.8 Cuarta revision independiente: el REDONDEO no puede ser un saco residual. Cada parte que
+// no es redondeo de centavo tiene su nombre y sus lineas, y el redondeo queda ACOTADO.
+{
+  const exacta6 = (m, label) => {
+    eq(r2t(m.precio.amount + m.lineaImporte.amount + m.cantidad.amount + m.sinFicha.amount + m.redondeo + m.unidades.amount), m.diferencia, `${label}: las seis partes = diferencia`)
+    eq(m.sinExplicar, 0, `${label}: nada sin explicar`)
+  }
+  const one = (id, qty, up, lt, pid = 'a') => ({ id, createdAt: at(D1), sourceLocation: SAL, voided: false, items: [{ productId: pid, qty, unitPrice: up, lineTotal: lt }], totalBase: lt })
+  // S1: una linea cuyo importe no es cantidad x precio (2 x 50 cobrado 80).
+  const s1 = money({ products: [P('a', 'Agua')], movements: [M('a', D0, 'traspIn', 9), M('a', D1, 'ventas', -2, { type: 'sale_out', refType: 'sale', refId: 'x1' })], sales: [one('x1', 2, 50, 80)] })[0].money
+  eq(`${s1.lineaImporte.n}|${s1.lineaImporte.amount}|${s1.redondeo}|${s1.soloRedondeo}`, '1|20|0|false', `linea incoherente: su propia parte, +20, y nada de redondeo`)
+  eq(`${s1.lineaImporte.detalle[0].qty}|${s1.lineaImporte.detalle[0].unitPrice}|${s1.lineaImporte.detalle[0].lineTotal}`, '2|50|80', 'con la linea tal cual')
+  exacta6(s1, 'S1')
+  // S2: precio congelado 49.996 frente a 50 por 5000 u: el umbral va sobre el IMPORTE de la linea.
+  const s2 = money({ products: [P('a', 'Agua')], movements: [M('a', D0, 'traspIn', 9999), M('a', D1, 'ventas', -5000, { type: 'sale_out', refType: 'sale', refId: 'x2' })], sales: [one('x2', 5000, 49.996, 249980)] })[0].money
+  eq(`${s2.precio.n}|${s2.precio.amount}|${s2.redondeo}`, '1|20|0', 'precio: 5000 x 0.004 = +20, no redondeo')
+  exacta6(s2, 'S2')
+  // S6 (alcanzable: la venta acepta decimales libres): 3 ventas de 1.2345 kg a 8000. La columna
+  // Venta redondea a la milesima (3.704) y el Importe con ella: eso es su propia parte.
+  const mv = [M('k', D0, 'traspIn', 99)], sl = []
+  for (let i = 0; i < 3; i++) { mv.push(M('k', D1, 'ventas', -1.2345, { h: '1' + i, type: 'sale_out', refType: 'sale', refId: 'q' + i })); sl.push({ ...one('q' + i, 1.2345, 8000, 9876, 'k'), createdAt: at(D1, '1' + i) }) }
+  const s6 = money({ products: [P('k', 'Carne', { unit: 'kg', price: 8000 })], movements: mv, sales: sl })[0].money
+  eq(`${s6.cantidad.amount}|${s6.redondeo}|${s6.soloRedondeo}`, '4|0|false', 'cantidad con mas de 3 decimales: +4, su parte')
+  eq(`${s6.cantidad.detalle[0].name}|${s6.cantidad.detalle[0].libro}|${s6.cantidad.detalle[0].columna}`, 'Carne|3.7035|3.704', 'libro en crudo frente a la columna')
+  exacta6(s6, 'S6')
+  // M1: producto que no esta en el catalogo del aparato: sin ficha, no "ficha 0".
+  const m1 = money({ products: [P('a', 'Agua')], movements: [M('a', D0, 'traspIn', 9), M('zz', D1, 'ventas', -1, { type: 'sale_out', refType: 'sale', refId: 'x3' })], sales: [one('x3', 1, 30, 30, 'zz')] })[0].money
+  eq(`${m1.sinFicha.n}|${m1.sinFicha.amount}|${m1.sinFicha.detalle[0].motivo}|${m1.precio.n}`, '1|-30|no-catalogo|0', 'sin ficha en este aparato: -30, no un precio')
+  exacta6(m1, 'M1')
+  // M3: producto con precio en divisa y sin tasa (priceOf da 0): sin ficha por falta de tasa.
+  const m3 = buildDailyControl(base({ products: [P('u', 'Ron', { price: 10, priceCurrency: 'USD' })], priceOf: (p) => (p.priceCurrency ? 0 : p.price),
+    movements: [M('u', D0, 'traspIn', 9), M('u', D1, 'ventas', -1, { type: 'sale_out', refType: 'sale', refId: 'x4' })], sales: [one('x4', 1, 2500, 2500, 'u')] })).days[0].money
+  eq(`${m3.sinFicha.detalle[0]?.motivo}|${m3.sinFicha.amount}`, 'sin-tasa|-2500', 'sin tasa: su motivo')
+  exacta6(m3, 'M3')
+  // Precio de mesa congelado sin redondear (33.333 frente a 33.33 x 10 u = -0.03): es un precio
+  // cobrado distinto, con su linea exacta.
+  const pm = money({ products: [P('a', 'Agua', { price: 33.33 })], orders: [{ id: 'OQ', area: SAL, status: 'closed' }],
+    movements: [M('a', D0, 'traspIn', 50), M('a', D1, 'ventas', -10, { h: '10', type: 'sale_out', refType: 'order', refId: 'OQ' })],
+    sales: [{ id: 'VQ', orderId: 'OQ', createdAt: at(D1, '11'), sourceLocation: SAL, voided: false, items: [{ productId: 'a', qty: 10, unitPrice: 33.333, lineTotal: 333.33 }], totalBase: 333.33 }] })[0].money
+  eq(`${pm.precio.n}|${pm.precio.amount}|${pm.precio.detalle[0].unitPrice}`, '1|-0.03|33.333', 'precio sub-centavo por unidad pero de 3 centavos en la linea: precio')
+  exacta6(pm, 'PM')
+  // El redondeo que queda es de centavo: pesadas a precio de ficha, 3 lineas -> 0.01.
+  const w = [M('k', D0, 'traspIn', 10)], ws = []
+  for (let i = 0; i < 3; i++) { w.push(M('k', D1, 'ventas', -0.333, { h: '1' + i, type: 'sale_out', refType: 'sale', refId: 'w' + i })); ws.push({ ...one('w' + i, 0.333, 13.37, 4.45, 'k'), createdAt: at(D1, '1' + i) }) }
+  const rw = money({ products: [P('k', 'Carne', { unit: 'kg', price: 13.37 })], movements: w, sales: ws })[0].money
+  eq(`${rw.redondeo}|${rw.soloRedondeo}|${rw.lineaImporte.n + rw.precio.n + rw.cantidad.detalle.length + rw.sinFicha.n}`, '0.01|true|0', 'pesadas: solo redondeo de centavo')
+  exacta6(rw, 'RW')
+}
+// 8.9 Hechos mas precisos (cuarta revision, M2 y M7).
+{
+  const products = [P('a', 'Agua')]
+  // M2: "ventas netas en otros dias", incluidos los dias con neto 0 (consumo y anulacion).
+  const o = [{ id: 'OR', area: SAL, table: 'Mesa 2', status: 'closed' }]
+  const r = money({ from: D1, to: D1, products, orders: o, orderItems: [{ id: 'r1', orderId: 'OR', productId: 'a', qty: 1, voided: true, voidedAt: at(D0, '11'), createdAt: at(D0, '10') }],
+    movements: [M('a', D0, 'traspIn', 9, { h: '01' }), M('a', D0, 'ventas', -1, { h: '10', type: 'sale_out', refType: 'order', refId: 'OR' }), M('a', D0, 'ventas', 1, { h: '11', type: 'sale_out', refType: 'order_void', refId: 'OR' }), M('a', D1, 'ventas', -1, { h: '10', type: 'sale_out', refType: 'order', refId: 'OR' })] })[0].money
+  const g = grupo(r, 'OR')
+  eq(g.hechos.otrosDias.map((x) => `${x.day}:${x.units}`).join(','), `${D0}:0`, 'el dia con consumo y anulacion (neto 0) tambien sale')
+  // M7: venta de esta ubicacion cuyo movimiento esta en otra: se dice donde.
+  const v = money({ products, movements: [M('a', D0, 'traspIn', 9, { location: '__almacen' }), M('a', D1, 'ventas', -1, { type: 'sale_out', refType: 'sale', refId: 'VL', location: '__almacen' })],
+    sales: [{ id: 'VL', createdAt: at(D1), area: SAL, voided: false, items: [{ productId: 'a', qty: 1, unitPrice: 50, lineTotal: 50 }], totalBase: 50 }] })[0].money
+  eq(grupo(v, 'VL').hechos.movEn?.join(','), '__almacen', 'el movimiento de la venta esta en otra ubicacion')
 }
 // 9. Cache: la que difiere se lista.
 {

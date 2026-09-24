@@ -85,7 +85,22 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
      - **venta directa:** si la venta no está en este aparato, está anulada, es de otro día o de otra
        ubicación, y las líneas cobradas sin cantidad.
    - **Una mesa se lista aunque su importe sume 0**, y dos precios que se compensan también.
-   - **«Sin explicar»** solo si la descomposición no cuadra: sería un fallo del propio control.
+   - **Cuarta revisión: el redondeo no puede ser un saco residual.** Solo recoge restos acotados:
+     medio centavo como mucho por línea o partida, más los totales. Todo lo demás tiene nombre y
+     sus líneas:
+     - **importe de línea distinto de cantidad × precio;**
+     - **precio**, con el umbral sobre el importe de la línea y no por unidad;
+     - **cantidades del libro con más de 3 decimales**, porque la columna Venta va a la milésima;
+     - **cobrado de productos sin precio de ficha** en este aparato: no está en el catálogo, o tiene
+       precio en divisa sin tasa vigente.
+
+     El libro de un grupo se imprime en crudo, hasta la millonésima. Los hechos dicen «ventas netas
+     de esta mesa en otros días», incluidos los días con neto 0, y dónde está el movimiento de una
+     venta de otra ubicación.
+   - **«Sin explicar»** es una salvaguarda **aritmética**: las partes se definen de modo que sumen
+     la diferencia, así que solo saltaría ante un fallo de coma flotante o de la propia lógica.
+     **La veracidad de cada parte no la prueba esa línea**, sino las pruebas y el fuzz con generador
+     independiente, que comprueban el valor de cada parte, el redondeo incluido.
    - Un día con solo redondeo dice «NO CUADRA solo por redondeo al centavo».
    - Con filtro de categoría, el cobrado total va rotulado «de las ventas completas, todas las
      categorías».
