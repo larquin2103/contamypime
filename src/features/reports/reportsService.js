@@ -11,6 +11,7 @@ import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
 import { accountsRepo, ACCOUNT_REF_LABELS, conceptLabel } from '../../repositories/accountsRepo'
 import { ratesRepo } from '../../repositories/ratesRepo'
+import { buildDailyControl, dailyControlReport } from '../../lib/dailySalesControl'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
@@ -1699,4 +1700,43 @@ export async function exportPdf(report) {
   }
 
   doc.save(`${report.filename}.pdf`)
+}
+
+// --- Control de Ventas Diarias (Burger Premium; spec 2026-09-24) ------------------
+// Solo LEE. El calculo vive en lib/dailySalesControl.js (puro y probado); aqui se le
+// pasan los datos y la clasificacion REAL (ledgerKey), para que sea la misma que la
+// del submayor. Ninguna cifra sale de la cache.
+export async function loadDailyControl({ from = '', to = '', location = '', categoryId = '' } = {}) {
+  const [products, movements, sales, shifts, users, orders, priceChanges, productions, purchases, transfers, orderItems] = await Promise.all([
+    db.products.toArray(), db.stockMovements.toArray(), db.sales.toArray(), db.shifts.toArray(),
+    db.users.toArray(), db.orders.toArray(), db.priceChanges.toArray(), db.productions.toArray(),
+    db.purchases.toArray(), db.transfers.toArray(), db.orderItems.toArray()
+  ])
+  const mnv = await baseValuer() // precio en MN (divisa a la tasa vigente), como el resto de reportes
+  return buildDailyControl({
+    products, movements, sales, shifts, users, orders, priceChanges, productions, purchases, transfers, orderItems,
+    location, categoryId, from, to, classify: ledgerKey, priceOf: mnv.price, dayOf: localDay, today: localDay()
+  })
+}
+
+export async function buildDailySalesControl({ from = '', to = '', location = '', categoryId = '' } = {}) {
+  const result = await loadDailyControl({ from, to, location, categoryId })
+  const cat = categoryId ? await db.categories.get(categoryId) : null
+  return dailyControlReport(result, { locationName: locationLabel(location), categoryName: cat?.name || '', from, to })
+}
+
+// Ubicaciones que ofrece el selector: las areas configuradas primero, luego el
+// almacen y despues TODA ubicacion con movimientos (para no esconder restos
+// historicos, como el "Cocina" de Burger).
+export async function dailyControlLocations() {
+  const areas = await configRepo.getAreas()
+  const seen = new Set()
+  const out = []
+  const add = (v) => { if (v && !seen.has(v)) { seen.add(v); out.push({ value: v, label: locationLabel(v) }) } }
+  for (const a of areas) add(a)
+  add(WAREHOUSE)
+  const locs = new Set()
+  for (const m of await db.stockMovements.toArray()) locs.add(m.location || WAREHOUSE)
+  for (const l of [...locs].sort()) add(l)
+  return out
 }
