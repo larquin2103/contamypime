@@ -9,7 +9,7 @@ import 'fake-indexeddb/auto'
 import { readFileSync } from 'node:fs'
 import { db } from '../../src/db/db'
 import { loadDailyControl, buildProductsLedgerSummary, dailyControlLocations } from '../../src/features/reports/reportsService'
-import { MAX_DAYS } from '../../src/lib/dailySalesControl'
+import { MAX_DAYS, moneyLines } from '../../src/lib/dailySalesControl'
 import { localDay } from '../../src/lib/dates'
 import { WAREHOUSE } from '../../src/db/constants'
 
@@ -55,14 +55,18 @@ for (const file of process.argv.slice(2)) {
           if (!near(got, s)) bad(`${location} ${d.day} ${pid}: final ${got} vs libro ${s}`)
         }
       }
-      // Control de dinero (revision final, C1): en TODO dia la suma de las causas tiene que
-      // explicar la diferencia entera. Un resto 'sin explicar' es un fallo de la conciliacion.
+      // Control de dinero (descriptivo): en TODO dia las partes impresas -precio, redondeo y
+      // unidades- suman la diferencia impresa, y nada queda "sin explicar".
       for (const d of r.days) {
         dias++
-        if (Math.abs(d.money.sinExplicar) >= 0.01) bad(`${location} ${d.day}: diferencia ${d.money.diferencia} con ${d.money.sinExplicar} SIN EXPLICAR`)
-        for (const c of d.money.causasDet) causas[c.key] = (causas[c.key] || 0) + 1
-        // DETALLE=1 imprime cada dia-ubicacion con diferencia y sus causas, para auditarlas una a una.
-        if (process.env.DETALLE && d.money.causasDet.length) console.log(`   ${location} ${d.day} dif ${d.money.diferencia}: ${d.money.causas.join(' | ')}`)
+        const m = d.money
+        if (Math.abs(m.sinExplicar) >= 0.01) bad(`${location} ${d.day}: diferencia ${m.diferencia} con ${m.sinExplicar} SIN EXPLICAR`)
+        if (Math.round((m.precio.amount + m.redondeo + m.unidades.amount) * 100) / 100 !== m.diferencia) bad(`${location} ${d.day}: las partes no suman la diferencia`)
+        if (m.precio.n) causas.precio = (causas.precio || 0) + 1
+        if (m.redondeo) causas.redondeo = (causas.redondeo || 0) + 1
+        for (const g of m.unidades.grupos) causas[g.kind] = (causas[g.kind] || 0) + 1
+        // DETALLE=1 imprime cada dia-ubicacion con desglose, tal cual sale en el reporte.
+        if (process.env.DETALLE && (m.precio.n || m.unidades.grupos.length || m.redondeo)) for (const l of moneyLines(m, d.day)) console.log(`   ${location} ${d.day} | ${l}`)
       }
       for (let k = 1; k < r.days.length; k++) {
         const prev = new Map(r.days[k - 1].rows.map((x) => [x.productId, x.final]))
@@ -95,7 +99,7 @@ for (const file of process.argv.slice(2)) {
   }
   const all = await loadDailyControl({ from: days[Math.max(0, days.length - MAX_DAYS)], to: days[days.length - 1], location: WAREHOUSE })
   if (!ventanas || !filas || !cotejos) bad('no se comprobo nada: la validacion no puede decir que cuadra')
-  console.log(`   dias ${days.length} · ventanas ${ventanas} · filas comprobadas ${filas} · cotejos con el submayor ${cotejos} · dias-ubicacion con control de dinero ${dias} · causas ${JSON.stringify(causas)} · integridad (últimos días, todo el aparato): ${JSON.stringify(all.integrity.counts)} · caché distinta en almacén: ${all.cacheCheck.diffs.length}`)
+  console.log(`   dias ${days.length} · ventanas ${ventanas} · filas comprobadas ${filas} · cotejos con el submayor ${cotejos} · dias-ubicacion con control de dinero ${dias} · desglose ${JSON.stringify(causas)} · integridad (últimos días, todo el aparato): ${JSON.stringify(all.integrity.counts)} · caché distinta en almacén: ${all.cacheCheck.diffs.length}`)
 }
 console.log(`\n${fallos ? 'FALLOS: ' + fallos : 'TODO CUADRA'}`)
 if (fallos) process.exit(1)

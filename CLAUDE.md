@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **26** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**1.517 aserciones**, medidas el 24-09-2026). Las tres de la
+se corren **uno a uno con node** (**1.528 aserciones**, medidas el 24-09-2026). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -102,11 +102,11 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas dos dentro: **28 suites / 1.575 aserciones** en total, medidas el 24-09-2026 tras las
+Con esas dos dentro: **28 suites / 1.586 aserciones** en total, medidas el 24-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
-antes de escribir, `dailySalesControl` (114), el Control de Ventas Diarias, y `reportCells` (10).
+antes de escribir, `dailySalesControl` (125), el Control de Ventas Diarias, y `reportCells` (10).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -975,6 +975,33 @@ Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y pl
   **precio + redondeo + unidades × ficha**. El cobro duplicado es el **solape** con la venta
   válida. Un **fuzz de verdad conocida** da 0 errores en 17.000 días, frente a 432 de 3.000
   antes. Los 6 respaldos dan las **mismas causas día a día** (`diff` vacío).
+
+  **Una TERCERA revisión halló otras cuatro causas falsas**, reproducidas:
+  - un duplicado con dos líneas del mismo producto;
+  - un agregado tras el cobro y anulado;
+  - lo cobrado otro día sin cotejar;
+  - una anulación sin línea del día anterior.
+
+  **Decisión del dueño: el control de dinero pasa a ser DESCRIPTIVO.** Ya no nombra causas:
+  descompone la diferencia **exactamente** en precio (línea a línea) + redondeo + unidades, y
+  lista cada mesa o venta con descuadre con sus **hechos**:
+  - libro y cobrado por producto;
+  - estado de la mesa y sus cobros;
+  - anuladas del día, cuántas tras el cobro y cuántas marcadas sin su línea;
+  - sus movimientos en otros días.
+
+  Quien lee concluye; cada dato es verdadero por construcción.
+
+  **Validación del modelo descriptivo:**
+  - fuzz de verdad conocida sobre todas las ramas, con y sin filtro de categoría: **0 errores
+    en 28.500 días**;
+  - 6 mutaciones de control: las 5 que tocan lógica viva detectan. La sexta resultó un cambio
+    sin efecto y se deshizo;
+  - los hechos impresos de `143f3098`, `180a7687` y `a4f37f9b` coinciden con los medidos
+    directamente en el respaldo.
+
+  El control de caché mira también los productos con caché y sin movimientos. Los rótulos de
+  integridad y del cobrado total con filtro dicen ahora lo que miden.
 - **Validado con los 4 respaldos reales**
   (`docs/auditoria/validar-control-ventas.mjs`, con `TZ=America/Havana`):
   - **16.485 filas** contra un recálculo independiente del libro, y **1.828 cotejos** con el

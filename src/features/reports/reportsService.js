@@ -1716,7 +1716,7 @@ export async function loadDailyControl({ from = '', to = '', location = '', cate
   const mnv = await baseValuer() // precio en MN (divisa a la tasa vigente), como el resto de reportes
   return buildDailyControl({
     products, movements, sales, shifts, users, orders, priceChanges, productions, purchases, transfers, orderItems,
-    location, categoryId, from, to, classify: ledgerKey, priceOf: mnv.price, dayOf: (x) => (x ? localDay(x) : ''), today: localDay()
+    location, categoryId, from, to, classify: ledgerKey, priceOf: mnv.price, dayOf: (x) => (x ? localDay(x) : ''), today: localDay(), locLabel: locationLabel
   })
 }
 

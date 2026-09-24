@@ -67,8 +67,37 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
 
 1. **Cuadre por fila y encadenado entre días**, por construcción. Las pruebas lo comprueban
    producto a producto.
-2. **Control de dinero, al pie de cada día.** Para las ventas no anuladas de ese día (`localDay`)
-   cuya `sourceLocation` es la ubicación elegida:
+2. **Control de dinero, al pie de cada día — VERSIÓN VIGENTE: DESCRIPTIVA (24-09-2026).**
+   Tres revisiones independientes encontraron causas falsas en cada ronda: inferir *qué pasó*
+   (cobro duplicado, no cobrado, cobrado otro día…) desde los totales del libro es ambiguo por
+   naturaleza. Decisión del dueño: el control **no interpreta**, muestra hechos.
+   - **Descomposición exacta:** `Importe − consumo cobrado = precio + redondeo + unidades`.
+     - **Precio:** línea a línea, `cantidad × (ficha − precio cobrado)`, solo si difieren en medio
+       centavo o más; se lista cada producto con su precio cobrado y el de la ficha.
+     - **Redondeo:** el de cada línea al centavo, los precios congelados que difieren de la ficha en
+       menos de medio centavo, las cantidades del Importe a la milésima frente al libro en crudo y
+       el de los propios totales. Así las partes impresas suman la diferencia impresa.
+     - **Unidades:** por mesa o venta y producto, `(libro del día − cobrado del día) × ficha`.
+   - **Cada mesa o venta con descuadre sale con sus HECHOS, sin causa:**
+     - **mesa:** libro y cobrado por producto, estado actual, cobros (día y unidades), consumo y
+       anuladas del día (cuántas después del primer cobro y cuántas marca el control de integridad
+       sin su línea), y sus movimientos en otros días;
+     - **venta directa:** si la venta no está en este aparato, está anulada, es de otro día o de otra
+       ubicación, y las líneas cobradas sin cantidad.
+   - **Una mesa se lista aunque su importe sume 0**, y dos precios que se compensan también.
+   - **«Sin explicar»** solo si la descomposición no cuadra: sería un fallo del propio control.
+   - Un día con solo redondeo dice «NO CUADRA solo por redondeo al centavo».
+   - Con filtro de categoría, el cobrado total va rotulado «de las ventas completas, todas las
+     categorías».
+   - **Validado:**
+     - fuzz de verdad conocida sobre todas las ramas, con y sin filtro: **0 errores en 28.500
+       días**; los 6 controles negativos de mutación detectan;
+     - los 6 respaldos reales cuadran, y los hechos impresos coinciden con los medidos
+       directamente en el respaldo: `143f3098`, `180a7687` y `a4f37f9b`.
+
+   *Lo que sigue es el historial de las versiones anteriores, con causas interpretadas; queda como
+   registro.* Para las ventas no anuladas de ese día (`localDay`) cuya `sourceLocation` es la
+   ubicación elegida:
    - **consumo cobrado** = suma de `items[].lineTotal`, a su precio congelado;
    - se compara con la suma de Importes del bloque y se imprime la diferencia;
    - aparte se imprime `cobrado total (totalBase) = consumo − descuentos (discountAmount) +
@@ -140,7 +169,9 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
 3. **Control de la caché**, al final del reporte. Para cada producto listado se compara la
    existencia actual según el libro (todo el historial, en esa ubicación) con
    `stockByLocation[location]`. Se listan las diferencias; sin ellas, «CUADRA (la caché coincide con
-   el libro)». **No altera ninguna cifra del reporte.**
+   el libro)». **No altera ninguna cifra del reporte.** Incluye también los productos de la
+   categoría con caché en esa ubicación y **ningún** movimiento en ella: su libro es 0. Antes no se
+   miraban y el control podía decir CUADRA sin haberlos visto.
 4. **Control de integridad del libro.** Se reutiliza `findAtomicityBreaks` de `src/lib/atomicity.js`:
    si en el rango hay ventas sin su movimiento (`sale-sin-mov`) o anulaciones sin movimiento, se
    avisa con el número exacto. En ese aparato la Venta del libro sale corta, y el control de dinero
