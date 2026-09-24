@@ -106,6 +106,12 @@ peso) y el dinero con `round2`. El cotejo con el submayor, que usa `round2`, tol
      Así 300 líneas pequeñas a unos centavos de la ficha son **precio**, no redondeo, y una ficha
      de 3 decimales cobrada exacta no es un «precio distinto». El redondeo imprime de cuántas
      partidas sale. «Sin tasa» exige precio en divisa: se inyecta `isForeignPriced`.
+   - **Sexta revisión** (sin críticos ni importantes). Partes propias:
+     - **líneas cobradas sin precio unitario**, frente a la ficha, sin adivinarles un precio;
+     - **líneas cobradas sin cantidad**, que ya no se mezclan con los descuadres de unidades.
+
+     «Sin tasa» se decide por la **tasa vigente** (`lacksRate`, inyectado), no por una ficha 0. La
+     venta directa dice también **de qué día** es su movimiento, si no es el del reporte.
    - **«Sin explicar»** es una salvaguarda **aritmética**: las partes se definen de modo que sumen
      la diferencia, así que solo saltaría ante un fallo de coma flotante o de la propia lógica.
      **La veracidad de cada parte no la prueba esa línea**, sino las pruebas y el fuzz con generador

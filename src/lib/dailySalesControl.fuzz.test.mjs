@@ -2,10 +2,15 @@
 // `node src/lib/dailySalesControl.fuzz.test.mjs`. Semilla fija: es determinista.
 //
 // El generador crea HECHOS (consumos, anulaciones con y sin linea, cobros, ventas directas,
-// lineas de todo tipo) en 3 dias y calcula POR SU CUENTA lo que el reporte debe imprimir; no
-// reutiliza la logica del modulo. Comprueba el valor de CADA parte del desglose, los grupos con
-// sus hechos y que el redondeo quede acotado. Nacio de cinco revisiones independientes: cubre a
-// proposito los casos que cada una encontro (duplicados, anulaciones tras el cobro, lineas
+// lineas de todo tipo) en 3 dias y calcula POR SU CUENTA lo que el reporte debe imprimir, sin
+// llamar a la logica del modulo. Comprueba el valor de CADA parte del desglose, los grupos con
+// sus hechos y que el redondeo quede acotado.
+// LIMITE, dicho sin adornos (sexta revision): las verdades comparten con el modulo las
+// DEFINICIONES de cada parte y sus umbrales (medio centavo, media milesima, 1e-9), porque son
+// la especificacion del desglose; el fuzz prueba que el modulo las aplica bien sobre miles de
+// combinaciones, no que las definiciones sean las correctas. Eso lo deciden la spec y las
+// pruebas unitarias con casos a mano. Compara con tolerancia de 0,01 por parte y dia.
+// Nacio de seis revisiones independientes: cubre a proposito los casos que cada una encontro (duplicados, anulaciones tras el cobro, lineas
 // incoherentes, pesadas, fichas de 3 decimales, divisa sin tasa, 4 decimales, sin catalogo).
 import { buildDailyControl } from './dailySalesControl.js'
 
@@ -30,9 +35,10 @@ function run(seed0, N, CATF) {
       const id = 'p' + i
       const r = rnd()
       // A veces ficha de 3 decimales; a veces producto en divisa SIN tasa (priceOf -> 0).
-      const usd = r < 0.08
-      F[id] = usd ? 0 : r < 0.2 ? Math.round((1 + rnd() * 60) * 1000) / 1000 : r2(1 + rnd() * 60)
-      products.push({ id, name: 'P' + i, unit: rnd() < 0.4 ? 'kg' : 'u', price: usd ? 10 : F[id], ...(usd ? { priceCurrency: 'USD' } : {}), categoryId: rnd() < 0.5 ? 'C' : 'D', active: true, stockByLocation: {} })
+      const usd = r < 0.08 // en divisa SIN tasa: priceOf -> 0
+      const usdTasa = r >= 0.08 && r < 0.14 // en divisa CON tasa: priceOf -> USD x tasa
+      F[id] = usd ? 0 : usdTasa ? r2(10 * 400) : r < 0.25 ? Math.round((1 + rnd() * 60) * 1000) / 1000 : r2(1 + rnd() * 60)
+      products.push({ id, name: 'P' + i, unit: rnd() < 0.4 ? 'kg' : 'u', price: usd || usdTasa ? 10 : F[id], ...(usd ? { priceCurrency: 'USD', sinTasa: true } : usdTasa ? { priceCurrency: 'USD' } : {}), categoryId: rnd() < 0.5 ? 'C' : 'D', active: true, stockByLocation: {} })
       movements.push({ id: 'in' + i, productId: id, createdAt: `${DAYS[0]}T00:00:00.000Z`, k: 'traspIn', qty: 1000, location: SAL })
     }
     const pids = Object.keys(F)
@@ -40,12 +46,12 @@ function run(seed0, N, CATF) {
     const prod = (pid) => products.find((p) => p.id === pid)
     const inC = (pid) => !CATF || prod(pid)?.categoryId === CATF
     const isKg = (pid) => prod(pid)?.unit === 'kg'
-    const sinFicha = (pid) => !prod(pid) || !!prod(pid).priceCurrency
+    const sinFicha = (pid) => !prod(pid) || !!prod(pid).sinTasa
     const qOf = (pid) => (isKg(pid) ? (rnd() < 0.15 ? Math.max(0.0001, Math.round(rnd() * 20000) / 10000) : Math.max(0.001, q3(rnd() * 2))) : ri(1, 3))
-    const T = DAYS.map(() => ({ precio: 0, precioN: 0, linea: 0, lineaN: 0, sinFicha: 0, sinFichaN: 0, fichaDec: new Map(), raw: new Map(), g: new Map() }))
+    const T = DAYS.map(() => ({ precio: 0, precioN: 0, linea: 0, lineaN: 0, sinFicha: 0, sinFichaN: 0, sinCant: 0, sinCantN: 0, sinPU: 0, sinPUN: 0, fichaDec: new Map(), raw: new Map(), g: new Map() }))
     const RAW = (d, pid, q) => { if (inC(pid)) T[d].raw.set(pid, (T[d].raw.get(pid) || 0) + q) }
     const TG = (d, key) => { if (!T[d].g.has(key)) T[d].g.set(key, { prods: new Map(), hoy: { consumo: 0, anuladas: 0, tras: 0, marcadas: 0 } }); return T[d].g.get(key) }
-    const TP = (gk, pid) => { if (!gk.prods.has(pid)) gk.prods.set(pid, { libro: 0, cobrado: 0, sinCant: 0 }); return gk.prods.get(pid) }
+    const TP = (gk, pid) => { if (!gk.prods.has(pid)) gk.prods.set(pid, { libro: 0, cobrado: 0 }); return gk.prods.get(pid) }
     let mid = 0
     const mov = (d, pid, qty, extra) => { const m = { id: 'm' + (++mid), productId: pid, createdAt: ts(d), k: 'ventas', qty, location: SAL, type: 'sale_out', ...extra }; movements.push(m); return m }
     const lineOf = (d, gk, pid, qty) => {
@@ -55,6 +61,12 @@ function run(seed0, N, CATF) {
       const up = sinFicha(pid) ? r2(1 + rnd() * 40) : r < 0.6 ? F[pid] : r < 0.75 ? r2(F[pid] * (0.6 + rnd() * 0.8)) : r < 0.9 ? r2(F[pid] - 0.04) : F[pid] + 0.003
       const bad = rnd() < 0.06 // linea cuyo importe no es cantidad x precio
       const lt = r2(qty * up) + (bad ? r2(1 + rnd() * 20) : 0)
+      const noUP = !sinFicha(pid) && rnd() < 0.05 // linea sin precio unitario
+      if (noUP) {
+        if (inC(pid)) { T[d].sinPU += qty * r2(F[pid]) - lt; T[d].sinPUN += 1 }
+        TP(gk, pid).cobrado += qty
+        return { productId: pid, qty, lineTotal: lt }
+      }
       if (inC(pid)) {
         const e = qty * up - lt
         if (Math.abs(e) > 0.005 + 1e-9) { T[d].linea += e; T[d].lineaN += 1 }
@@ -81,7 +93,7 @@ function run(seed0, N, CATF) {
         for (let l = 0; l < nl; l++) {
           const pid = pids[ri(0, pids.length - 1)]
           const qty = many ? 0.1 : qOf(pid)
-          if (rnd() < 0.05 && !missingSale) { const lt = r2(rnd() * 30 + 1); items.push({ productId: pid, lineTotal: lt }); TP(gk, pid).sinCant += lt; continue }
+          if (rnd() < 0.05 && !missingSale) { const lt = r2(rnd() * 30 + 1); items.push({ productId: pid, lineTotal: lt, ...(rnd() < 0.5 ? { qty: 0 } : {}) }); if (inC(pid)) { T[d].sinCant -= lt; T[d].sinCantN += 1 } continue }
           if (!missingSale) items.push(lineOf(d, gk, pid, qty))
           if (!noMov) {
             const loc = rnd() < 0.05 ? OTRA : SAL
@@ -93,6 +105,11 @@ function run(seed0, N, CATF) {
         gk.venta = missingSale ? 'no-esta' : 'ok'
         if (!missingSale && items.length) sales.push({ id: sid, createdAt: ts(d), sourceLocation: SAL, voided: false, items, totalBase: 0 })
       }
+    }
+    if (rnd() < 0.1) { // movimiento de venta suelto, sin pedido ni venta
+      const d = ri(0, 2), pid = pids[ri(0, pids.length - 1)], qty = qOf(pid)
+      const m = mov(d, pid, -qty, {})
+      TP(TG(d, 'X:' + m.id), pid).libro += qty; RAW(d, pid, qty)
     }
     for (let o = 0, no = ri(0, 3); o < no; o++) {
       const oid = 'o' + o
@@ -131,14 +148,16 @@ function run(seed0, N, CATF) {
       for (const v of voidsLog) if (firstSaleTs && firstSaleTs < v.at) TG(v.d, 'O:' + oid).hoy.tras += v.qty
     }
     const res = buildDailyControl({ products, movements, sales, orders, orderItems, location: SAL, categoryId: CATF, from: DAYS[0], to: DAYS[2],
-      classify: (m) => m.k, priceOf: (p) => (p.priceCurrency ? 0 : p.price), isForeign: (p) => !!p.priceCurrency, dayOf: (x) => String(x || '').slice(0, 10) })
+      classify: (m) => m.k, priceOf: (p) => (p.sinTasa ? 0 : p.priceCurrency ? r2(p.price * 400) : p.price), lacksRate: (p) => !!p.sinTasa, dayOf: (x) => String(x || '').slice(0, 10) })
     for (let d = 0; d < 3; d++) {
       const m = res.days[d].money
       const errs = []
       const P2 = (pid) => r2(F[pid] || 0)
-      if (m.sinExplicar !== 0) errs.push('sinExplicar ' + m.sinExplicar)
-      if (r2(m.precio.amount + m.lineaImporte.amount + m.cantidad.amount + m.sinFicha.amount + m.fichaDecimales.amount + m.redondeo + m.unidades.amount) !== m.diferencia) errs.push('partes != diferencia')
       const near = (a, b) => Math.abs(a - r2(b)) <= 0.0100001
+      if (m.sinExplicar !== 0) errs.push('sinExplicar ' + m.sinExplicar)
+      if (r2(m.precio.amount + m.lineaImporte.amount + m.cantidad.amount + m.sinFicha.amount + m.fichaDecimales.amount + m.sinCantidad.amount + m.sinPrecioUnitario.amount + m.redondeo + m.unidades.amount) !== m.diferencia) errs.push('partes != diferencia')
+      if (!near(m.sinCantidad.amount, T[d].sinCant) || m.sinCantidad.n !== T[d].sinCantN) errs.push(`sinCantidad ${m.sinCantidad.n}/${m.sinCantidad.amount} vs ${T[d].sinCantN}/${r2(T[d].sinCant)}`)
+      if (!near(m.sinPrecioUnitario.amount, T[d].sinPU) || m.sinPrecioUnitario.n !== T[d].sinPUN) errs.push(`sinPU ${m.sinPrecioUnitario.n}/${m.sinPrecioUnitario.amount} vs ${T[d].sinPUN}/${r2(T[d].sinPU)}`)
       if (!near(m.precio.amount, T[d].precio) || m.precio.n !== T[d].precioN) errs.push(`precio ${m.precio.n}/${m.precio.amount} vs ${T[d].precioN}/${r2(T[d].precio)}`)
       if (!near(m.lineaImporte.amount, T[d].linea) || m.lineaImporte.n !== T[d].lineaN) errs.push(`linea ${m.lineaImporte.n}/${m.lineaImporte.amount} vs ${T[d].lineaN}/${r2(T[d].linea)}`)
       if (!near(m.sinFicha.amount, T[d].sinFicha) || m.sinFicha.n !== T[d].sinFichaN) errs.push(`sinFicha ${m.sinFicha.n}/${m.sinFicha.amount} vs ${T[d].sinFichaN}/${r2(T[d].sinFicha)}`)
@@ -152,7 +171,7 @@ function run(seed0, N, CATF) {
       if (Math.abs(m.redondeo) > 0.005 * m.redondeoPartidas + 0.01 + 0.035 + 1e-9) errs.push(`redondeo ${m.redondeo} fuera de cota (${m.redondeoPartidas} partidas)`)
       const want = new Map()
       for (const [k, gk] of T[d].g) {
-        const listed = [...gk.prods].filter(([pid, x]) => inC(pid) && (Math.abs(x.libro - x.cobrado) >= 0.0005 || Math.abs((x.libro - x.cobrado) * P2(pid)) >= 0.005 || x.sinCant))
+        const listed = [...gk.prods].filter(([pid, x]) => inC(pid) && (Math.abs(x.libro - x.cobrado) >= 0.0005 || Math.abs((x.libro - x.cobrado) * P2(pid)) >= 0.005))
         if (listed.length) want.set(k, { gk, listed })
       }
       const got = new Map(m.unidades.grupos.map((g) => [(g.kind === 'mesa' ? 'O:' : g.kind === 'venta' ? 'S:' : 'X:') + g.id, g]))
@@ -165,8 +184,7 @@ function run(seed0, N, CATF) {
           const p = g.productos.find((y) => y.productId === pid)
           if (!p) { errs.push(`${k} falta producto ${pid}`); continue }
           if (p.libro !== q6(x.libro) || p.cobrado !== q6(x.cobrado)) errs.push(`${k} ${pid} libro/cobrado ${p.libro}/${p.cobrado} vs ${q6(x.libro)}/${q6(x.cobrado)}`)
-          if (x.sinCant && p.sinCantidad !== r2(x.sinCant)) errs.push(`${k} ${pid} sinCantidad`)
-          amt += (x.libro - x.cobrado) * P2(pid) - x.sinCant
+          amt += (x.libro - x.cobrado) * P2(pid)
         }
         if (g.productos.length !== listed.length) errs.push(`${k} productos ${g.productos.length} vs ${listed.length}`)
         if (!near(g.amount, amt)) errs.push(`${k} importe ${g.amount} vs ${r2(amt)}`)
@@ -178,7 +196,7 @@ function run(seed0, N, CATF) {
         } else if (g.kind === 'venta' && g.hechos.venta !== gk.venta) errs.push(`${k} venta ${g.hechos.venta} vs ${gk.venta}`)
         seen[g.kind] = (seen[g.kind] || 0) + 1
       }
-      for (const [key, on] of [['precio', m.precio.n], ['lineaImporte', m.lineaImporte.n], ['cantidad', m.cantidad.detalle.length], ['sinFicha', m.sinFicha.n], ['fichaDecimales', m.fichaDecimales.detalle.length],
+      for (const [key, on] of [['sinCantidad', m.sinCantidad.n], ['sinPrecioUnitario', m.sinPrecioUnitario.n], ['suelto', m.unidades.grupos.some((g) => g.kind === 'suelto')], ['precio', m.precio.n], ['lineaImporte', m.lineaImporte.n], ['cantidad', m.cantidad.detalle.length], ['sinFicha', m.sinFicha.n], ['fichaDecimales', m.fichaDecimales.detalle.length],
         ['marcadas', m.unidades.grupos.some((g) => g.hechos.hoy?.marcadasSinLinea)], ['trasCobro', m.unidades.grupos.some((g) => g.hechos.hoy?.anuladasTrasCobro)], ['variosCobros', m.unidades.grupos.some((g) => g.hechos.cobros?.length > 1)]]) if (on) seen[key] = (seen[key] || 0) + 1
       if (errs.length) { fail++; if (shown++ < 5) console.error(`FAIL semilla ${seed0} caso ${t} ${DAYS[d]} filtro '${CATF}': ${errs.slice(0, 4).join(' ; ')}`) } else pass++
     }
@@ -188,7 +206,7 @@ run(31337, 400, '')
 run(4242, 200, 'C')
 // La cobertura TIENE que tocar cada rama: si un cambio del generador deja alguna sin ejercitar,
 // esta prueba tiene que decirlo en vez de pasar en verde sin medir nada.
-for (const k of ['mesa', 'venta', 'precio', 'lineaImporte', 'cantidad', 'sinFicha', 'fichaDecimales', 'marcadas', 'trasCobro', 'variosCobros']) {
+for (const k of ['suelto', 'sinCantidad', 'sinPrecioUnitario', 'mesa', 'venta', 'precio', 'lineaImporte', 'cantidad', 'sinFicha', 'fichaDecimales', 'marcadas', 'trasCobro', 'variosCobros']) {
   if (seen[k]) pass++
   else { fail++; console.error(`FAIL cobertura: la rama '${k}' no se ejercito`) }
 }

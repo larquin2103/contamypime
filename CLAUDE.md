@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **27** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**3.370 aserciones**, medidas el 24-09-2026; 1.810 son del fuzz
+se corren **uno a uno con node** (**3.379 aserciones**, medidas el 24-09-2026; 1.813 son del fuzz
 determinista del Control de Ventas Diarias). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
@@ -106,11 +106,11 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas tres dentro: **30 suites / 3.434 aserciones** en total, medidas el 24-09-2026 tras las
+Con esas tres dentro: **30 suites / 3.443 aserciones** en total, medidas el 24-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
-antes de escribir, `dailySalesControl` (157) y su fuzz (1.810), el Control de Ventas Diarias, `dailyControlLocations` (6), y `reportCells` (10).
+antes de escribir, `dailySalesControl` (163) y su fuzz (1.813), el Control de Ventas Diarias, `dailyControlLocations` (6), y `reportCells` (10).
 
 Las cifras de suites/aserciones que aparecen más abajo en las **actas de auditoría** son de su
 fecha (8 suites / 462 aserciones el 11-09) y se dejan tal cual: son el registro de lo que se
@@ -1036,12 +1036,27 @@ Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y pl
   `isForeignPriced`.
 
   El fuzz de verdad conocida entra **al repositorio** como suite determinista
-  (`dailySalesControl.fuzz.test.mjs`): sus verdades no copian los umbrales del módulo, exige
-  cobertura de cada rama y caza las 8 mutaciones de las revisiones cuarta y quinta, M1 incluida.
-  M2 lo caza la suite normal. Hay además una prueba con base real del selector de ubicaciones,
-  con control negativo.
+  (`dailySalesControl.fuzz.test.mjs`). Exige cobertura de cada rama y caza las mutaciones de las
+  revisiones cuarta y quinta, M1 incluida; M2 lo caza la suite normal. Hay además una prueba con
+  base real del selector de ubicaciones, con control negativo.
 
-  **Peso frente a `main`:** JS +21,0 kB (gzip +7,7 kB, +2,6 %); CSS, mismo hash.
+  **Límite del fuzz, corregido tras la sexta revisión** (el acta anterior lo exageraba):
+  - sus verdades **comparten** con el módulo las **definiciones** de cada parte y sus umbrales;
+  - prueba que el módulo las aplica bien sobre miles de combinaciones, **no** que las
+    definiciones sean correctas: eso lo deciden la spec y las pruebas a mano.
+
+  **Sexta revisión** (segura para producción y sync; **sin críticos ni importantes**), seis
+  menores reproducidos y corregidos:
+  - una línea **sin precio unitario** tiene su propia parte, en vez de adivinarle un precio;
+  - **«sin tasa»** se decide por la tasa vigente, inyectada desde `ratesRepo`, y no por la
+    ficha 0;
+  - **«cobrado sin cantidad»** es su propia parte y sale de los grupos de unidades;
+  - la venta de **medianoche** dice de qué día es su movimiento;
+  - el rótulo del **redondeo** dice lo que recoge;
+  - el fuzz genera también líneas sin precio unitario, cantidad 0, movimientos sueltos y divisa
+    con tasa.
+
+  **Peso frente a `main`:** JS +22,5 kB (gzip +8,0 kB, +2,7 %); CSS, mismo hash.
 - **Validado con los 4 respaldos reales**
   (`docs/auditoria/validar-control-ventas.mjs`, con `TZ=America/Havana`):
   - **16.485 filas** contra un recálculo independiente del libro, y **1.828 cotejos** con el

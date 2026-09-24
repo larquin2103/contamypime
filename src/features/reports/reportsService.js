@@ -1714,9 +1714,10 @@ export async function loadDailyControl({ from = '', to = '', location = '', cate
     db.purchases.toArray(), db.transfers.toArray(), db.orderItems.toArray()
   ])
   const mnv = await baseValuer() // precio en MN (divisa a la tasa vigente), como el resto de reportes
+  const rates = await ratesRepo.currentRates() // la misma lectura que baseValuer
   return buildDailyControl({
     products, movements, sales, shifts, users, orders, priceChanges, productions, purchases, transfers, orderItems,
-    location, categoryId, from, to, classify: ledgerKey, priceOf: mnv.price, dayOf: (x) => (x ? localDay(x) : ''), today: localDay(), locLabel: locationLabel, isForeign: (p) => isForeignPriced(p)
+    location, categoryId, from, to, classify: ledgerKey, priceOf: mnv.price, dayOf: (x) => (x ? localDay(x) : ''), today: localDay(), locLabel: locationLabel, lacksRate: (p) => isForeignPriced(p) && !(Number(rates?.[p.priceCurrency]?.rate || 0) > 0)
   })
 }
 
