@@ -3,7 +3,7 @@
 //
 // QUE CAZA: el candado de la auditoria Burger Premium (H1). La verdad de "esta
 // mesa ya se cobro" vive en la VENTA (append-only), no en order.status (LWW).
-import { isLiveSaleOf, shouldReconcileClosed, createGate, ticketTime } from './orderSale.js'
+import { isLiveSaleOf, shouldReconcileClosed, createGate, createSerialQueue, ticketTime } from './orderSale.js'
 
 let pass = 0
 let fail = 0
@@ -68,6 +68,35 @@ eq(ticketTime({ closedAt: 'C' }, null, 'N'), 'C', 'ticket: con closedAt y sin ve
 eq(ticketTime({}, { createdAt: 'V' }, 'N'), 'V', 'ticket: mesa reparada -> hora de la venta')
 eq(ticketTime({}, null, 'N'), 'N', 'ticket: sin nada -> ahora (cobro recien hecho)')
 eq(ticketTime(null, undefined, 'N'), 'N', 'ticket: sin pedido no lanza')
+
+// Doble anulacion (respaldo de Burger del 25-09-2026): los toques de la cuenta de la mesa
+// ("+", "-", papelera) van en COLA. Cada toque espera a que termine el anterior, asi que dos
+// toques rapidos en "-" quitan DOS unidades distintas (con solo el candado de ordersRepo, el
+// segundo toque se perderia) y nunca corren a la vez sobre la misma linea.
+{
+  const q = createSerialQueue()
+  const log = []
+  let release
+  const a = q.push(() => { log.push('a:start'); return new Promise((r) => { release = () => { log.push('a:end'); r('A') } }) })
+  const b = q.push(async () => { log.push('b:start'); return 'B' })
+  await Promise.resolve(); await Promise.resolve()
+  eq(log.join(','), 'a:start', 'cola: el segundo toque NO empieza con el primero en vuelo')
+  release()
+  eq(await a, 'A', 'cola: el primero devuelve su resultado')
+  eq(await b, 'B', 'cola: el segundo tambien, despues')
+  eq(log.join(','), 'a:start,a:end,b:start', 'cola: en orden, uno tras otro')
+  // Un toque que falla NO bloquea los siguientes, y su error llega a quien lo pidio.
+  let threw = false
+  const c = q.push(async () => { throw new Error('x') })
+  const d = q.push(async () => 'D')
+  try { await c } catch { threw = true }
+  eq(threw, true, 'cola: el error del toque se propaga a su llamador')
+  eq(await d, 'D', 'cola: un toque fallido no bloquea el siguiente')
+  // Tres toques seguidos: se ejecutan los tres, en el orden en que llegaron.
+  const order = []
+  await Promise.all([1, 2, 3].map((n) => q.push(async () => { await new Promise((r) => setTimeout(r, 5 - n)); order.push(n) })))
+  eq(order.join(','), '1,2,3', 'cola: tres toques, los tres y en orden')
+}
 
 console.log(`orderSale: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

@@ -46,6 +46,22 @@ export function createGate() {
   }
 }
 
+// Doble anulacion (auditoria del respaldo de Burger, 25-09-2026): COLA para los toques de la
+// cuenta de una mesa. A diferencia del cerrojo del cobro, aqui ningun toque se descarta:
+// cada uno espera a que termine el anterior, asi que dos toques rapidos en "-" quitan dos
+// unidades distintas y nunca corren a la vez sobre la misma linea. Un toque que falla no
+// bloquea los siguientes; su error vuelve a quien lo pidio.
+export function createSerialQueue() {
+  let tail = Promise.resolve()
+  return {
+    push(fn) {
+      const run = tail.then(() => fn())
+      tail = run.catch(() => {})
+      return run
+    }
+  }
+}
+
 // Revision de la rama (hallazgo 5): hora que imprime el ticket de una mesa. La
 // de siempre es closedAt; una mesa REPARADA por reconcileClosed no lo tiene (no
 // se escribe a proposito: cuenta en syncTs), y entonces la hora real del cobro

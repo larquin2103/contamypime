@@ -16,7 +16,7 @@ import { useSync } from '../../app/providers/SyncProvider'
 import { LICENSE_MODULES } from '../../lib/license'
 import { formatMoney, round2, isForeignPriced } from '../../lib/currency'
 import { orderTotals, isCourtesy, isCourtesyPct } from '../../lib/orderTotals'
-import { MSG_MESA_YA_COBRADA, MSG_QUEDA_CERRADA, createGate, ticketTime } from '../../lib/orderSale'
+import { MSG_MESA_YA_COBRADA, MSG_QUEDA_CERRADA, createGate, createSerialQueue, ticketTime } from '../../lib/orderSale'
 import { logError } from '../../lib/errorLog'
 import { matchesQuery } from '../../lib/search'
 import { CASH_CURRENCIES, TRANSFER_CURRENCIES, PAYMENT_METHODS, ORDER_STATUS } from '../../db/constants'
@@ -82,6 +82,11 @@ export function TableScreen() {
   // llega en el siguiente render: dos toques seguidos entraban los dos a cobrar.
   const chargeGate = useRef(null)
   if (!chargeGate.current) chargeGate.current = createGate()
+  // Doble anulacion (respaldo de Burger, 25-09-2026): los toques de la cuenta ("+", "-",
+  // papelera) van en COLA, uno tras otro. Dos "-" rapidos quitan dos unidades y nunca corren
+  // a la vez sobre la misma linea; el candado de ordersRepo.voidItem es la ultima instancia.
+  const tapQueue = useRef(null)
+  if (!tapQueue.current) tapQueue.current = createSerialQueue()
   const [paying, setPaying] = useState(false)
   const [waived, setWaived] = useState(false) // servicio eximido (requiere mando)
   const [askWaive, setAskWaive] = useState(false)
@@ -212,7 +217,7 @@ export function TableScreen() {
   const addOne = async (p) => {
     setError('')
     try {
-      await ordersRepo.addItem({ orderId: id, product: p, qty: 1, userId: user.id, shiftId: order.shiftId })
+      await tapQueue.current.push(() => ordersRepo.addItem({ orderId: id, product: p, qty: 1, userId: user.id, shiftId: order.shiftId }))
     } catch (e) {
       setError(e.message)
     }
@@ -221,7 +226,7 @@ export function TableScreen() {
   const removeOne = async (productId) => {
     setError('')
     try {
-      await ordersRepo.decrementOne({ orderId: id, productId, userId: user.id })
+      await tapQueue.current.push(() => ordersRepo.decrementOne({ orderId: id, productId, userId: user.id }))
     } catch (e) {
       setError(e.message)
     }
@@ -233,7 +238,7 @@ export function TableScreen() {
   const removeProduct = async (productId) => {
     setError('')
     try {
-      await ordersRepo.removeProduct({ orderId: id, productId, userId: user.id })
+      await tapQueue.current.push(() => ordersRepo.removeProduct({ orderId: id, productId, userId: user.id }))
     } catch (e) {
       setError(e.message)
     }

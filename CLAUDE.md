@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **27** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**3.379 aserciones**, medidas el 24-09-2026; 1.813 son del fuzz
+se corren **uno a uno con node** (**3.386 aserciones**, medidas el 25-09-2026; 1.813 son del fuzz
 determinista del Control de Ventas Diarias). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
@@ -106,8 +106,8 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas tres dentro: **30 suites / 3.443 aserciones** en total, medidas el 24-09-2026 tras las
-dos revisiones de la rama (`ordersRepo` 23→47, `orderSale` 18→29, `resend` 22→28), con
+Con esas tres dentro: **30 suites / 3.465 aserciones** en total, medidas el 25-09-2026 tras las
+dos revisiones de la rama (`ordersRepo` 23→47→62, `orderSale` 18→29→36, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
 antes de escribir, `dailySalesControl` (163) y su fuzz (1.813), el Control de Ventas Diarias, `dailyControlLocations` (6), y `reportCells` (10).
@@ -929,6 +929,71 @@ de Mermas no se filtró por licencia.
 
 **Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que el
 dueño corra `npm run deploy`.
+
+## Estado del trabajo en curso (25-09-2026, tarde) — doble anulación en mesas
+
+**EN LA RAMA, SIN FUSIONAR.** La auditoría del respaldo de Burger del 25-09 midió
+**devoluciones de stock de más**:
+- **Cuánto:** 10 u en 3 pedidos, 6.290 MN a precio de ficha. Contado producto a producto, sin
+  depender del detector de integridad.
+- **Sentido:** siempre el mismo, **stock de más**; ninguna línea anulada quedó sin su
+  devolución.
+
+**Dos mecanismos, los dos cerrados:**
+1. **Doble toque en un aparato** (`60371403`, `180a7687`): llamadas separadas por 7–10 ms, mismo
+   usuario y turno. `voidItem` comprobaba `item.voided` **fuera** de su transacción, así que las
+   dos llamadas la pasaban antes de que ninguna escribiera.
+2. **Una línea que el aparato veía viva aunque ya estaba anulada** (`143f3098`): su devolución
+   había llegado por la sync y la anulación de la línea no. Se volvió a anular 4,5 h después y se
+   devolvió el stock otra vez.
+
+**El arreglo:**
+- **Candado dentro de la transacción:** se relee la línea y, si ya está anulada, no se escribe
+  nada.
+- **Id DETERMINISTA de la devolución, `order-void:<línea>`.** Es el precedente `delivery-out:` de
+  `stockMovements`.
+  - **Si la devolución ya existe** (llegó por la sync), solo se **repara la línea**, con el
+    instante y el autor del movimiento, sin devolver otra vez. Así el detector de integridad sigue
+    emparejándolos.
+  - **Si dos aparatos la anulan sin haberse visto**, escriben el **mismo documento**, y la fusión
+    LWW por id los deja en uno.
+- **`voidItem` devuelve si anuló**, y `decrementOne` solo recarga el resto en ese caso.
+  - Hallazgo **nuevo** de la prueba, ya **presente en `main`**: dos «−» rápidos sobre una línea
+    de 3 u dejaban la mesa con **4 u vivas** y el libro con 1.
+- **Cola de toques en `TableScreen`** («+», «−», papelera), con `createSerialQueue` puro en
+  `lib/orderSale.js`: dos «−» rápidos quitan **dos** unidades distintas y no se pierde el segundo
+  toque.
+
+**Impacto en la sincronización, evaluado leyendo el código real, no supuesto:**
+- **Cero cambios** en `src/features/sync/`, `src/db/`, reglas y `package.json`.
+- **La fusión** (`pullEngine.mergeIncoming`) es LWW **por id** y después `recomputeStock` deriva
+  el stock del libro: probado con esas **dos funciones reales** en `ordersRepo.test.mjs` (D5).
+- **La subida** (`pushEngine`) escribe con `batch.set` por id, y las reglas permiten `update`: dos
+  subidas del mismo id dejan **un** documento.
+- **Ningún código interpreta el id** de un movimiento.
+
+**Lo que NO cierra, y hay que saberlo:**
+- **Mientras quede un teléfono sin actualizar,** ese teléfono sigue escribiendo devoluciones con id
+  aleatorio, y el duplicado sigue siendo posible. Es el estado de hoy, no peor.
+- **Con dos aparatos anulando a la vez,** la línea y el movimiento pueden quedarse con versiones de
+  aparatos distintos y el detector podría marcar una pareja que no es. El recuento por producto
+  sigue cuadrando.
+- **Si dos camareros quitan la misma unidad a la vez desde dos teléfonos,** se aplica una sola
+  retirada. La mesa sigue mostrando la unidad, así que se ve.
+- **Los datos ya dañados no se tocan** (append-only). Burger tiene **4 Cerveza Holanda Premium de
+  más** en Salones; el remedio es un conteo físico, **después** de sincronizar los aparatos.
+
+**Validación:**
+- **Pruebas con base real**, D1–D6 en `ordersRepo.test.mjs`: doble toque, id y campos, «−» doble,
+  la línea vista viva con la devolución ya en el libro, dos aparatos con la fusión real, y la línea
+  de varias unidades. Estaban **en rojo** con el código de `main`, con el mismo patrón de Burger:
+  2 devoluciones para una línea.
+- **Controles negativos:** los 4 del arreglo los detectan; los 2 de la cola también.
+- **Build y pruebas:** `npm run build` exit 0; **30 suites / 3.465 aserciones**.
+- **Peso:** +554 B crudos, +122 B gzip.
+
+**No hay pruebas de pantalla**: la cola se prueba como lógica pura, no tocando el botón.
+**Nadie lo ha ejecutado en un teléfono.**
 
 ## Estado del trabajo (25-09-2026)
 

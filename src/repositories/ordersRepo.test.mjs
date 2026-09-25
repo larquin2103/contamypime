@@ -7,6 +7,8 @@ import { db } from '../db/db'
 import { ordersRepo } from './ordersRepo'
 import { ORDER_STATUS } from '../db/constants'
 import { syncTs } from '../features/sync/collections'
+import { mergeIncoming, recomputeStock } from '../features/sync/pullEngine'
+import { MOVEMENT_TYPES } from '../db/constants'
 
 let pass = 0
 let fail = 0
@@ -180,6 +182,85 @@ await throws(() => ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), /agregar/
   await seed()
   try { await ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }) } catch (e) { code = e.code }
   ok(code === 'charged', 'M4: el rechazo sigue marcado con code charged')
+}
+
+// DOBLE ANULACION (auditoria del respaldo de Burger del 25-09-2026). Contando producto a
+// producto, el libro devolvio 10 u de mas en 3 pedidos, por DOS mecanismos: (a) doble toque
+// en un aparato -dos llamadas a 7-10 ms que pasaban las dos la comprobacion de FUERA de la
+// transaccion- y (b) una linea que el aparato veia viva aunque ya estaba anulada (su
+// actualizacion no llego por la sync, su movimiento si) y se anulo otra vez horas despues.
+// Libro base: +5 de entrada y -1 del consumo de la linea i1 (asi recomputeStock mide algo).
+async function seedLibro(extraLines = []) {
+  await seed({ withSale: false })
+  await db.stockMovements.bulkPut([
+    { id: 'in0', productId: 'p1', qty: 5, type: 'transfer_in', location: 'Salon', createdAt: T },
+    { id: 'c0', productId: 'p1', qty: -1, type: MOVEMENT_TYPES.SALE_OUT, refType: 'order', refId: 'o1', location: 'Salon', createdAt: T }
+  ])
+  for (const l of extraLines) await db.orderItems.put({ orderId: 'o1', productId: 'p1', qty: 1, area: 'Salon', voided: false, createdAt: T, updatedAt: T, ...l })
+  await db.products.update('p1', { stock: 4, stockByLocation: { Salon: 4 } })
+}
+const voids = async () => (await db.stockMovements.toArray()).filter((m) => m.refType === 'order_void')
+// D1. Dos anulaciones SIMULTANEAS de la misma linea (el doble toque): una sola devolucion.
+await seedLibro()
+await Promise.all([ordersRepo.voidItem({ itemId: 'i1', userId: 'u' }), ordersRepo.voidItem({ itemId: 'i1', userId: 'u' })])
+ok((await voids()).length === 1, `D1 doble toque: una sola devolucion (${(await voids()).length})`)
+ok((await db.products.get('p1')).stockByLocation.Salon === 5, `D1: el stock sube UNA vez (${(await db.products.get('p1')).stockByLocation.Salon})`)
+ok((await db.orderItems.get('i1')).voided === true, 'D1: linea anulada')
+// D2. El id de la devolucion es DETERMINISTA por linea, y la devolucion es la de siempre.
+{
+  const [m] = await voids()
+  const it = await db.orderItems.get('i1')
+  ok(m.id === 'order-void:i1', `D2: id determinista (${m.id})`)
+  ok(m.qty === 1 && m.type === MOVEMENT_TYPES.SALE_OUT && m.refId === 'o1' && m.location === 'Salon' && m.userId === 'u', 'D2: mismos campos que antes')
+  ok(m.createdAt === it.voidedAt, 'D2: su instante es el de la anulacion de la linea (el detector los empareja)')
+}
+// D3. Dos "-" simultaneos sobre dos lineas de una unidad: nunca una devolucion de mas.
+await seedLibro([{ id: 'i2', createdAt: '2026-09-21T19:41:00.000Z' }])
+await db.stockMovements.put({ id: 'c1', productId: 'p1', qty: -1, type: MOVEMENT_TYPES.SALE_OUT, refType: 'order', refId: 'o1', location: 'Salon', createdAt: T })
+await Promise.all([ordersRepo.decrementOne({ orderId: 'o1', productId: 'p1', userId: 'u' }), ordersRepo.decrementOne({ orderId: 'o1', productId: 'p1', userId: 'u' })])
+{
+  const anuladas = (await db.orderItems.toArray()).filter((i) => i.voided).length
+  ok((await voids()).length === anuladas, `D3: devoluciones = lineas anuladas (${(await voids()).length} / ${anuladas})`)
+}
+// D4. La sync trajo la devolucion pero NO la anulacion de la linea (mecanismo b): anularla
+// otra vez NO devuelve el stock de nuevo; solo repara la linea, con el instante y el autor
+// del movimiento que ya existe (asi el detector los empareja).
+await seedLibro()
+await db.stockMovements.put({ id: 'order-void:i1', productId: 'p1', qty: 1, type: MOVEMENT_TYPES.SALE_OUT, refType: 'order_void', refId: 'o1', location: 'Salon', userId: 'otro', createdAt: '2026-09-21T19:50:00.000Z' })
+await recomputeStock(['p1'])
+const stockAntes = (await db.products.get('p1')).stockByLocation.Salon
+await ordersRepo.voidItem({ itemId: 'i1', userId: 'u' })
+{
+  const it = await db.orderItems.get('i1')
+  ok((await voids()).length === 1, `D4: ninguna devolucion nueva (${(await voids()).length})`)
+  ok((await db.products.get('p1')).stockByLocation.Salon === stockAntes, `D4: el stock no se mueve (${stockAntes} -> ${(await db.products.get('p1')).stockByLocation.Salon})`)
+  ok(it.voided === true && it.voidedAt === '2026-09-21T19:50:00.000Z' && it.voidedBy === 'otro', 'D4: la linea queda anulada con el instante y el autor del movimiento')
+  ok(it.updatedAt > T, 'D4: la reparacion SI sella updatedAt (tiene que subir a la nube)')
+}
+// D5. Dos aparatos anulan la misma linea sin haberse visto: tras la fusion real de la sync
+// queda UNA devolucion y el stock derivado del libro es el correcto.
+await seedLibro()
+await ordersRepo.voidItem({ itemId: 'i1', userId: 'u' })
+{
+  const suyo = { id: 'order-void:i1', productId: 'p1', qty: 1, type: MOVEMENT_TYPES.SALE_OUT, refType: 'order_void', refId: 'o1', location: 'Salon', userId: 'otro', createdAt: '2026-09-21T23:59:00.000Z' }
+  const afectados = await mergeIncoming({ name: 'stockMovements', pk: 'id' }, [suyo])
+  await recomputeStock(afectados)
+  ok((await voids()).length === 1, `D5: una sola devolucion tras la fusion (${(await voids()).length})`)
+  ok((await db.products.get('p1')).stockByLocation.Salon === 5, `D5: stock derivado del libro = 5 - 1 + 1 (${(await db.products.get('p1')).stockByLocation.Salon})`)
+}
+
+// D6. "-" doble sobre una linea de VARIAS unidades: decrementOne anula y recarga el resto. Si
+// el segundo toque encuentra la linea ya anulada, NO puede recargar el resto otra vez (eso
+// duplicaria consumo). El libro de la mesa tiene que casar con sus lineas vivas.
+await seedLibro()
+await db.orderItems.update('i1', { qty: 3 })
+await db.stockMovements.update('c0', { qty: -3 })
+await Promise.all([ordersRepo.decrementOne({ orderId: 'o1', productId: 'p1', userId: 'u' }), ordersRepo.decrementOne({ orderId: 'o1', productId: 'p1', userId: 'u' })])
+{
+  const vivas = (await db.orderItems.toArray()).filter((i) => !i.voided).reduce((a, i) => a + i.qty, 0)
+  const neto = (await db.stockMovements.toArray()).filter((m) => m.refId === 'o1').reduce((a, m) => a - m.qty, 0)
+  ok(neto === vivas, `D6: el libro de la mesa casa con sus lineas vivas (neto ${neto}, vivas ${vivas})`)
+  ok(vivas >= 1 && vivas <= 2, `D6: nunca mas consumo que el que habia (${vivas})`)
 }
 
 console.log(`ordersRepo: ${pass} OK, ${fail} fallos`)

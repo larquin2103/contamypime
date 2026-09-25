@@ -283,10 +283,12 @@ export const ordersRepo = {
 
   // Quita una linea ANTES de cobrar: no se borra (append-only), se marca
   // anulada y se DEVUELVE el stock con un movimiento de compensacion.
+  // Devuelve true si ANULO la linea en esta llamada (decrementOne lo necesita para no
+  // recargar el resto de una linea que otra llamada ya anulo).
   async voidItem({ itemId, userId, note = '' }) {
     const item = await db.orderItems.get(itemId)
     if (!item) throw new Error('La linea no existe')
-    if (item.voided) return
+    if (item.voided) return false
     const order = await db.orders.get(item.orderId)
     if (!order) throw new Error('El pedido no existe')
     if (order.status !== ORDER_STATUS.OPEN) throw new Error('El pedido ya no esta abierto')
@@ -295,21 +297,47 @@ export const ordersRepo = {
     if (await this.saleOf(order)) return this.rejectCharged(order.id)
     const ts = now()
     const loc = item.area
+    // Id DETERMINISTA por linea: una linea se devuelve UNA vez, venga la segunda anulacion de
+    // un doble toque o de otro aparato. Dos aparatos que la anulen sin haberse visto escriben
+    // el MISMO documento y la sync (LWW por id) los funde en uno.
+    const movId = `order-void:${itemId}`
+    let voided = false
     await db.transaction('rw', db.orderItems, db.orders, db.stockMovements, db.products, db.sales, async () => {
       // Y se REVALIDA dentro, como salesRepo: una venta que la sync escriba entre
       // la comprobacion de arriba y esta transaccion no se puede colar.
       if (await this.saleOf(order)) throw chargedError()
+      // Candado de la DOBLE ANULACION (auditoria del respaldo de Burger, 25-09-2026): la
+      // comprobacion de fuera no basta, porque dos llamadas casi a la vez la pasan las dos
+      // antes de que ninguna escriba. Dentro de la transaccion, IndexedDB las serializa.
+      const fresh = await db.orderItems.get(itemId)
+      if (!fresh || fresh.voided) return
+      const prev = await db.stockMovements.get(movId)
+      if (prev) {
+        // La devolucion YA esta en el libro (llego por la sync) pero la anulacion de la linea
+        // no: solo se repara la linea, con el instante y el autor de esa devolucion, sin
+        // devolver el stock otra vez.
+        await db.orderItems.update(itemId, {
+          voided: true,
+          voidedBy: prev.userId ?? userId,
+          voidedAt: prev.createdAt,
+          voidNote: String(note || '').trim(),
+          updatedAt: stampItem(fresh)
+        })
+        await db.orders.update(item.orderId, { updatedAt: stampOrder(order) })
+        voided = true
+        return
+      }
       await db.orderItems.update(itemId, {
         voided: true,
         voidedBy: userId,
         voidedAt: ts,
         voidNote: String(note || '').trim(),
-        updatedAt: stampItem(item)
+        updatedAt: stampItem(fresh)
       })
       // Compensacion: SALE_OUT en POSITIVO (devolucion). Al ser el mismo tipo,
       // el neto de "Ventas" del submayor queda exacto sin tocar los reportes.
       await db.stockMovements.add({
-        id: newId(),
+        id: movId,
         productId: item.productId,
         qty: item.qty,
         type: MOVEMENT_TYPES.SALE_OUT,
@@ -333,7 +361,9 @@ export const ordersRepo = {
         })
       }
       await db.orders.update(item.orderId, { updatedAt: stampOrder(order) })
+      voided = true
     }).catch((e) => (e?.code === CHARGED ? this.rejectCharged(order.id) : Promise.reject(e)))
+    return voided
   },
 
   // Rechazo por venta viva (H1) + reparacion en el acto (H2). La reparacion va
@@ -357,8 +387,10 @@ export const ordersRepo = {
     if (!last) return
     const rest = Number(last.qty) - 1
     // Anula la linea completa (devuelve todo su stock)...
-    await this.voidItem({ itemId: last.id, userId, note: 'Ajuste de cantidad' })
-    if (rest > 0) {
+    const anulada = await this.voidItem({ itemId: last.id, userId, note: 'Ajuste de cantidad' })
+    // ...y solo si ESTA llamada la anulo, recarga el resto: si otro toque ya la habia
+    // anulado (y recargado su resto), recargarlo aqui duplicaria el consumo.
+    if (anulada && rest > 0) {
       // ...y vuelve a poner el resto como linea nueva (vuelve a rebajar).
       const p = await db.products.get(productId)
       if (p) await this.addItem({ orderId, product: p, qty: rest, userId })
