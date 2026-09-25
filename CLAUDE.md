@@ -930,9 +930,112 @@ de Mermas no se filtró por licencia.
 **Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que el
 dueño corra `npm run deploy`.
 
-## Estado del trabajo en curso (24-09-2026)
+## Estado del trabajo (25-09-2026)
 
-**EN LA RAMA, SIN FUSIONAR: «Control de Ventas Diarias»** (Reportes → Ventas), que pide Burger
+**FUSIONADO A `main` EL 25-09-2026**, con autorización explícita del dueño. Fast-forward de los
+**15 commits** de `claude/awesome-dirac-484azm`: `origin/main` pasó de `218ac81` a **`4d9cf47`**, y
+rama y `main` quedaron **idénticas** (`git rev-list --left-right --count origin/main...HEAD` = `0 0`
+y `git diff HEAD origin/main` **vacío**). Con `git push origin HEAD:main`, **sin `--force`** y sin
+checkout de `main`: si no hubiera sido fast-forward, el servidor lo habría rechazado en vez de
+reescribir historia; comprobado **después** que `218ac81` sigue siendo **ancestro** de `origin/main`.
+**`4d9cf47` es el hash del CÓDIGO; esta acta se autoinvalida en cuanto ella misma se suba, así que
+para saber dónde está `main` hoy: `git fetch` + `git rev-parse origin/main`. No dar por bueno ningún
+otro hash escrito aquí.**
+
+**De los 15 commits, DOS son solo documentación** (`23481a6` y `4d9cf47`, la spec de la reducción de
+cuota de Firestore: **cero líneas de código de la app**, verificado con `git show --stat`). El
+**código** que entra es únicamente el **«Control de Ventas Diarias»**, y sus ficheros son: dos
+nuevos de producción (`src/lib/dailySalesControl.js` 504 líneas, `src/lib/reportCells.js` 18), cuatro
+suites nuevas, el script de validación fuera del bundle, y **dos** ficheros preexistentes tocados
+(`reportsService.js` **+48 / −1** y `ReportsScreen.jsx` **+53 / −2**).
+
+### Auditoría previa a esta fusión (25-09-2026, EJECUTADA, no citada)
+
+- `npm run build` **exit 0** · **30 suites / 3.443 aserciones** en verde, **0 fallos** (27 con node
+  directo + `ordersRepo` 47, `syncLog` 11 y `dailyControlLocations` 6 con `fake-indexeddb`+esbuild).
+- **Las 24 suites que ya existían dan salida BYTE A BYTE idéntica** a las mismas 24 corridas en un
+  worktree de `origin/main` (`cmp` fichero a fichero, 0 diferencias), **con control negativo** que sí
+  detecta un byte inyectado. Sin ese control la comparación no mediría nada.
+- **CERO cambios en los ficheros sensibles** contra `origin/main`: `src/db/db.js`,
+  `src/features/sync/`, `src/repositories/`, `firestore.rules`, `firestore.indexes.json`,
+  `package.json`, `package-lock.json`, `vite.config.js` e `index.html` — `git diff --stat` **vacío**.
+  Dexie sigue en **v19** y `SYNC_COLLECTIONS` en **34**, leídos del árbol (importando el módulo real,
+  no contando comas). **No hay que redesplegar reglas de Firestore.**
+- **CERO escrituras a la base en el código de producción del diff** (`.add/.put/.update/.delete/
+  .bulkPut/.transaction` = 0). Las dos únicas escrituras del diff están en
+  `dailyControlLocations.test.mjs`, que siembra su base falsa. **3 líneas borradas en todo `src/`**,
+  leídas una a una: el `import` de React que gana `useEffect`, la línea del `map` de Reportes y
+  `...report.rows` de `exportExcel`.
+- **EL PUNTO DE MAYOR RIESGO ERA `exportExcel`**, porque `plainRows` está en el camino de **los 12
+  reportes existentes**. No se razonó: se bundlearon con esbuild las dos versiones del
+  `reportsService.js` (la de `218ac81` y la de la rama), se neutralizó solo la descarga al navegador
+  y se generaron los `.xlsx` **reales** en node con el `xlsx` del proyecto. **9 de 9 casos IDÉNTICOS
+  byte a byte** —acentos, `null`, celda vacía, números extremos (`NaN`, `Infinity`, `1e21`), `Date`,
+  saltos de línea y comillas, filas de distinto largo, 120 filas landscape, reporte sin filas, y un
+  objeto `{content}` **sin** `colSpan`— y el **décimo, el control negativo** (celdas con `colSpan`)
+  **sí difiere**, que es lo que demuestra que la prueba mide algo. Cautela previa: se comprobó que
+  el `.xlsx` es **determinista** (dos corridas del mismo árbol dan el mismo byte); si no lo fuera,
+  «idénticos» no habría significado nada.
+- **`exportPdf` no se tocó** (los tres hunks son: los dos `import`, la línea de `exportExcel`, y 48
+  líneas añadidas **después** del final de `exportPdf`) **y además se comprobó empíricamente**: los
+  cuatro PDF generados con los dos árboles son **idénticos byte a byte**, normalizando `/CreationDate`
+  y `/ID` —y solo eso, porque cambian en cada corrida— y con el determinismo verificado antes.
+- **Ningún builder preexistente produce celdas `colSpan`**: la única aparición de `colSpan` en todo
+  `src/` de `main` es JSX de `ProductLedgerScreen`, no una celda de datos. Y `plainRows` devuelve la
+  **misma referencia de fila** cuando ninguna celda es *span*.
+- **Sin fugas de licencia.** La ficha es **base** (categoría *Ventas*, sin `show`), coherente con que
+  el submayor —que lee el mismo libro mayor— también lo sea. `dailySalesControl.js` no menciona
+  `hasModule` ni `LICENSE_MODULES` **ni una vez** (es data-driven: un negocio sin `mesas` no tiene
+  pedidos y no se pinta nada). Las puertas de los ficheros tocados **no cambian**: `ReportsScreen`
+  14→14 y `reportsService` 1→1. La pantalla sigue tras `if (!isManager)`.
+- **0 identificadores no definidos** en los 4 ficheros JS/JSX de producción (esbuild + acorn), **con
+  control negativo** que sí caza uno inyectado. Es la puerta que el build NO cubre, porque no hay
+  linter.
+- **El índice se verificó antes de usarlo:** `dailyControlLocations` entra por
+  `db.stockMovements.orderBy('location').uniqueKeys()`, y `location` **existe** como índice desde la
+  v5 (`db.js:60`). No barre el libro al abrir Reportes.
+- **Peso, medido construyendo `origin/main` en un worktree aparte y comprimiendo con el MISMO
+  comando en los dos** (no comparando contra el número que imprime Vite): CSS con **SHA256 idéntico**
+  (`index-B34NE6G1.css`, 87,66 kB) → byte a byte igual. Chunk principal 1.017,37 → **1.039,90 kB**;
+  gzip 296.179 → **304.144 bytes**: **+22.531 B crudos, +7.965 B gzip (+2,69 %)**. Como el chunk
+  lleva hash, actualizar cuesta la **descarga completa** (~297 kB gzip por teléfono), no el delta.
+- **Riesgos de CONVIVENCIA de versiones: NINGUNO.** Sin esquema, sin formato de dato nuevo, sin
+  colecciones de sync y **sin una sola escritura**: un teléfono actualizado y otro sin actualizar
+  intercambian exactamente lo mismo que hoy. **Esta fusión no sube esquema** (v19 en los dos
+  árboles), así que el retroceso a un build del mismo esquema es viable; el respaldo previo al
+  despliegue sigue siendo lo sensato.
+
+### Hallazgo propio de esta auditoría (coste, no corrección) — ABIERTO
+
+`loadDailyControl` carga **once tablas enteras** en memoria con `.toArray()` (products,
+stockMovements, sales, shifts, users, orders, priceChanges, productions, purchases, transfers,
+orderItems) antes de calcular. **Medido**, no estimado, sobre el módulo puro con 150.000
+movimientos, 20.000 ventas, 400 productos y 31 días: **1,3 s** de cálculo y **+62 MB** de heap
+*además* de los ~53 MB que ya ocupaban los datos cargados (**RSS 226 MB**). En un teléfono modesto
+con un negocio grande, abrir este reporte es caro. **No es un fallo y no bloquea**: ocurre **solo al
+pulsar el botón** del reporte, no al abrir Reportes ni en el arranque, y ninguna otra pantalla lo
+paga. Se deja anotado para que se decida con el dato delante.
+
+**Lo que esta fusión NO puede garantizar:**
+- **NADIE HA EJECUTADO LA APP.** Ni un reporte descargado desde el teléfono, ni el PDF visto en su
+  pantalla, ni dos aparatos sincronizando. Todo lo de arriba es **código, build, pruebas en node y
+  los ficheros de salida reales generados fuera del navegador**.
+- **Los arneses de esta auditoría eran temporales y NO se commitearon**: no protegen contra
+  regresiones futuras.
+- El **límite del fuzz** sigue siendo el que ya declaraba la sexta revisión: comparte con el módulo
+  las **definiciones** de cada parte y sus umbrales, así que prueba que el módulo las **aplica** bien
+  sobre miles de combinaciones, **no** que las definiciones sean correctas.
+- Las cuatro limitaciones del reporte que ya estaban declaradas siguen en pie (el **Precio** es el de
+  la ficha **de hoy** también para días pasados; con el libro incompleto el reporte **avisa** pero no
+  inventa filas; «Tres leches» y «Javas» del papel no existen con ese nombre en el sistema; y cómo se
+  ve el PDF en el teléfono del cliente).
+
+**Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que el
+dueño corra `npm run deploy`.
+
+**Lo de abajo describe el trabajo tal como se programó, antes de fusionar, y se deja tal cual.**
+
+**«Control de Ventas Diarias»** (Reportes → Ventas), que pide Burger
 Premium para sustituir su hoja de papel. Es su **documento primario**. Spec y plan en
 `docs/superpowers/specs|plans/2026-09-24-control-ventas-diarias*.md`.
 
