@@ -1,7 +1,8 @@
 # Reducción de la cuota de Firestore — diseño validado con medición
 
 **Fecha:** 24-09-2026 · **Rama:** `claude/awesome-dirac-484azm` · **Estado: DISEÑO APROBADO POR EL
-DUEÑO. CERO CÓDIGO ESCRITO.** El siguiente paso es el plan de implementación.
+DUEÑO, ENMENDADO EL 25-09-2026 (§10). CERO CÓDIGO ESCRITO.** Plan de implementación en
+`docs/superpowers/plans/2026-09-25-reduccion-cuota.md`. **Donde §10 contradiga a §1–§9, manda §10.**
 
 Sustituye como documento operativo a `docs/SYNC-LECTURAS.md` (09-09-2026), que sigue siendo válido
 en su mecánica y **queda corregido aquí en tres puntos medidos**. Todo lo que dice "medido" se
@@ -407,3 +408,87 @@ falta F0.
    código: sin verificar. Por eso R3 se mitiga con margen y no con él.
 7. **El arnés de medición es DESECHABLE y no está en el repositorio.** No protege contra regresiones
    futuras. Su guarda de fidelidad contra `pushEngine.js` solo vale mientras se vuelva a correr.
+
+---
+
+## 10. Enmienda del 25-09-2026 — lo que cambió al contrastar el diseño con el código
+
+Antes de escribir el plan se contrastó este diseño con el código real: nueve lecturas independientes,
+todas con evidencia `fichero:línea`, y el código fuente del SDK instalado (`firebase` 12.15.0,
+`@firebase/firestore` 4.16.0). Salieron cuatro fallos de diseño. **El dueño decidió los cuatro el
+25-09-2026 y eligió en todos la opción recomendada.** Donde esta sección contradiga a las anteriores,
+manda esta.
+
+### 10.1 Las cuatro decisiones
+
+| # | Qué decía el diseño | Qué se encontró | Decisión del dueño |
+|---|---|---|---|
+| D1 | P1: `_up: now()`, la hora del teléfono; margen de 5 min | **`now()` es la hora de ENCOLAR, no la de llegada.** `doPush` no espera el commit (`pushEngine.js:168-176`) y, con la cuota agotada (`resource-exhausted`), el SDK reintenta el lote sin fin (`common:5773-5787`). Un lote sellado a las 10:00 que llega a las 14:00 queda por debajo del cursor de los demás y **no baja nunca**. Además, un teléfono con la hora desviada más de 5 min deja huecos permanentes: si va atrasado, sus documentos no le llegan a nadie; si va adelantado, **envenena el cursor de todos**. | **`_up = serverTimestamp()`**: lo pone el servidor al llegar. Según el SDK, la cola guarda la orden `REQUEST_TIME` y ninguna hora del cliente (`common:7118-7123`). **No se puede verificar en ejecución en esta máquina** (sin Java no hay emulador): se comprueba en la consola tras desplegar el Hito 1, antes de encender nada. |
+| D2 | La espera tras F1: «hasta que todos los aparatos hayan subido al menos una vez» | **La PWA no se recarga sola** (`registerSW.js` solo registra el service worker). Tras desplegar, cada teléfono sigue con el build viejo **toda esa sesión**, que pueden ser días. El build viejo sube sin `_up`, y `where('_up','>',x)` no devuelve documentos sin el campo (`index.d.ts:3218-3220`). Hoy tampoco se puede observar quién está actualizado: `version` sigue en `0.1.0` desde el 21-06-2026. | **Guarda automática.** Cada aparato publica `caps.up = 1` y `sealSeenAt` en su fila de `/devices`, dentro del `setDoc` de siempre (cero lecturas y escrituras extra). Un aparato solo filtra si **todos** los aparatos activos lo publican. Si aparece uno sin él, vuelve al tiempo real, y esa relectura rellena lo que faltara. |
+| D3 | P8: bandera LOCAL por aparato (`LOCAL_CONFIG_KEYS`) | Contradice a F3 y F4 («encender por negocio»). Como `/cloud` es solo del dueño, habría que entrar con su PIN en cada teléfono, y no habría marcha atrás a distancia. | **Bandera del NEGOCIO, sincronizada** (`config.bajadaFiltrada`, fuera de `LOCAL_CONFIG_KEYS`). El dueño la enciende y la apaga para todos desde su aparato, y cada aparato hace su propia reconciliación. **No viaja en los respaldos.** |
+| D4 | F0: registrar en `/errors` cada reenganche | **No mide el reenganche que se cobra**: lo hace el SDK por su cuenta, sin pasar por `startRealtime`. `logSyncEvent` deja una entrada por sesión, y esas entradas saldrían en rojo empujando fuera los errores reales (la pantalla muestra 50). | **F0 sale de este plan.** Lo que valida el ahorro es la consola en F3 (48 h). Queda anotado como pendiente. |
+
+### 10.2 El diseño que resulta (sustituye a P1, P3, P7 y P8)
+
+- **Solo `stockMovements` y `sales` llevan sello** (`deferred.js` → `SEALED`). Las demás siguen en
+  vivo, **sin sello y con su contenido en la nube idéntico a hoy**. Motivo: el eco del §10.4, que con
+  un sello cambiante convertiría cada resubida en un cambio que pagan los oyentes.
+- **El sello va DESPUÉS de serializar.** `JSON.stringify(serverTimestamp())` da
+  `{"_methodName":"serverTimestamp"}` (ejecutado): si se pusiera antes, en la nube quedaría un mapa, y
+  un mapa no entra en ningún filtro. Además pisa cualquier `_up` que un build viejo haya guardado en
+  Dexie.
+- **Margen del cursor: 120 s**, no 5 min. Con la hora del servidor ya no hay relojes de teléfono que
+  cubrir; el margen solo tiene que superar el plazo de una petición de commit (60 s).
+- **El cursor avanza solo si esa colección vino del servidor.** Se comprueba **por colección**: el
+  `fromServer` actual de `initialPull` es un O sobre las 34.
+- **Los cursores y la marca de reconciliación van atados al `businessId`** (`pull:<negocio>:<col>`):
+  `unlinkDevice` no limpia `syncState`, y un cursor de otro negocio dejaría huecos en este.
+- **La reconciliación (P7) se hace mientras la colección SIGUE en vivo.** Su `getDocs` sin filtro
+  reutiliza la vista del oyente, así que no cuesta lecturas. Se repite cada vez que una colección
+  entra en diferido, no «una vez por aparato».
+- **La guarda también detecta los builds viejos que se ejecutaron y ya se fueron.** Si en un aparato
+  corrió un build viejo después de su último toque con sello, el build nuevo lo deja anotado
+  (`legacyAt`, hora del servidor). Los aparatos que filtran y reconciliaron antes de esa hora vuelven
+  al tiempo real.
+- **`sales` sale del vivo solo con prueba de que no hay mesas.** Hacen falta tres cosas: licencia con
+  firma válida sin `mesas`, `db.orders` vacía y ningún error al comprobarlo. Si llega un pedido,
+  `sales` vuelve al vivo. Diferir solo `stockMovements` no basta: la bajada quedaría en ~53 k
+  lecturas/día, **por encima del tope**.
+- **El timbre (P6) suena con los cambios de `products` que vienen de OTRO aparato**, no con las
+  escrituras propias pendientes. Tiene tope: 6 bajadas cada 10 minutos (R2).
+
+### 10.3 Correcciones de hecho a §1–§9
+
+1. **`toCloud` está en `pushEngine.js:65`, no en `:58`.** Y **no es el único serializador**:
+   `compareResendEngine.js:13` tiene el suyo y escribe `products`, `counts` y `auditEvents` con un
+   `tx.set` que reemplaza el documento entero. No afecta a F2, porque ninguna de las tres lleva
+   sello. **En F5 hay que sellarlo también**, o esa reparación borraría el `_up` de la nube.
+2. **P6: la transacción de `voidItem` es `ordersRepo.js:305`, no `:298`.** La frase «no hay ningún
+   camino que mueva el libro en silencio» solo vale para las 13 transacciones de `repositories/`.
+   Quedan fuera cinco caminos:
+   - `forceResend('stockMovements')`;
+   - los reintentos individuales;
+   - el traspaso de turno (`handoffService.applySnapshot`);
+   - la restauración de un respaldo;
+   - un lote de `stockMovements` que llegue después que su ficha.
+
+   Ninguno hace sonar el timbre: lo que suben baja con el siguiente timbre o, como tarde, con la red
+   de seguridad de 60 min.
+3. **§7bis: el cobro de mesa sí escribe una colección que sigue en vivo.** Es `orders`, desde
+   `markClosed` (`TableScreen.jsx:497-498` → `ordersRepo.js:550-559`). **La conclusión se mantiene**,
+   pero por otra razón: `markClosed` no es atómico con la venta, la cabecera se pierde por LWW (H2) y
+   el candado lee `db.sales` local.
+4. **El R3 no se puede programar tal como está escrito**: el SDK no expone `readTime` (hay 0
+   coincidencias en `index.d.ts`). Lo resuelve D1.
+5. **§5: las suites sí cubren parte del motor.** `ordersRepo.test.mjs` usa `mergeIncoming` y
+   `recomputeStock` reales (D4/D5): son la guarda de regresión de P2.
+
+### 10.4 Hallazgo aparte, que NO entra en este plan: el eco
+
+Cada aparato **vuelve a subir lo que baja de los otros**. La bajada no mueve el cursor de subida
+(`pushEngine.js:141-150`; las únicas escrituras de `push:*` están en `:61` y `:303`), así que toda
+fila ajena con `syncTs` por encima del cursor propio se reenvía. **Probablemente explica buena
+parte del 67 % de escrituras sin explicar del §9.4**, justo cuando las escrituras están al 100 %.
+Arreglarlo cambia qué sube `doPush`, que es lógica de producción (regla 2): **va aparte, con su
+propia autorización y su propia medición.** Mientras siga ahí, cada eco de una fila sellada lleva
+un `_up` nuevo y cuesta una lectura en los demás aparatos (§11 del plan).
