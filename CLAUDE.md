@@ -932,7 +932,23 @@ dueño corra `npm run deploy`.
 
 ## Estado del trabajo en curso (25-09-2026, tarde) — doble anulación en mesas
 
-**EN LA RAMA, SIN FUSIONAR.** La auditoría del respaldo de Burger del 25-09 midió
+**FUSIONADO A `main` EL 25-09-2026**, con autorización explícita del dueño.
+- **Qué entró:** fast-forward de 2 commits, `826b4fa` → **`fb6c3b0`**. Ese es el hash del
+  **código**; esta acta va encima.
+- **Cómo:** `git push origin HEAD:main`, **sin `--force`**.
+- **Verificado después:** rama y `main` idénticas (`0 0` y `git diff` vacío), y `826b4fa` sigue
+  siendo ancestro.
+- **Para saber dónde está `main` hoy:** `git fetch` + `git rev-parse origin/main`.
+
+**EL DUEÑO LO PROBÓ EN SU DISPOSITIVO y funciona correctamente.** Lo hizo con `npm run host`, en
+otro origen y con la base vacía. Probó toques rápidos en «−» y en la papelera. **Sin probar:** dos
+teléfonos sincronizando la misma mesa.
+
+**Fusionar NO es desplegar:** hasta que el dueño corra `npm run deploy`, en producción sigue el
+build anterior. **Conviene actualizar TODOS los teléfonos de Burger**, porque uno sin actualizar
+sigue pudiendo duplicar devoluciones.
+
+La auditoría del respaldo de Burger del 25-09 midió
 **devoluciones de stock de más**:
 - **Cuánto:** 10 u en 3 pedidos, 6.290 MN a precio de ficha. Contado producto a producto, sin
   depender del detector de integridad.
