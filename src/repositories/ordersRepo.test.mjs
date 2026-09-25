@@ -263,5 +263,23 @@ await Promise.all([ordersRepo.decrementOne({ orderId: 'o1', productId: 'p1', use
   ok(vivas >= 1 && vivas <= 2, `D6: nunca mas consumo que el que habia (${vivas})`)
 }
 
+// D7 (auditoria previa a main, menor 1). El aparato B hizo "-" sobre i1 (3 u): anulo i1 y
+// recargo 2 u en una linea nueva. A este aparato solo le llego la devolucion de B. Si aqui se
+// toca "-", la reparacion de i1 NO es una anulacion de esta llamada: recargar el resto otra vez
+// dejaria la mesa con 4 u cuando llegue la linea de B (se le cobrarian 2 de mas al cliente).
+await seedLibro()
+await db.orderItems.update('i1', { qty: 3 })
+await db.stockMovements.update('c0', { qty: -3 })
+await db.stockMovements.put({ id: 'order-void:i1', productId: 'p1', qty: 3, type: MOVEMENT_TYPES.SALE_OUT, refType: 'order_void', refId: 'o1', location: 'Salon', userId: 'B', createdAt: '2026-09-21T19:45:00.000Z' })
+ok((await ordersRepo.voidItem({ itemId: 'i1', userId: 'A' })) === false, 'D7: reparar no cuenta como anular en esta llamada')
+await db.orderItems.update('i1', { voided: false })
+await ordersRepo.decrementOne({ orderId: 'o1', productId: 'p1', userId: 'A' })
+await db.orderItems.put({ id: 'L2', orderId: 'o1', productId: 'p1', qty: 2, area: 'Salon', voided: false, createdAt: '2026-09-21T19:45:00.001Z', updatedAt: '2026-09-21T19:45:00.001Z' })
+{
+  const vivas = (await db.orderItems.toArray()).filter((i) => !i.voided).reduce((a, i) => a + i.qty, 0)
+  ok(vivas === 2, `D7: al llegar la linea de B la mesa queda en 2 u, no en 4 (${vivas})`)
+  ok((await voids()).length === 1, `D7: una sola devolucion (${(await voids()).length})`)
+}
+
 console.log(`ordersRepo: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)

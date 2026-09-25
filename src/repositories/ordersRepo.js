@@ -324,7 +324,9 @@ export const ordersRepo = {
           updatedAt: stampItem(fresh)
         })
         await db.orders.update(item.orderId, { updatedAt: stampOrder(order) })
-        voided = true
+        // No cuenta como anulacion DE ESTA LLAMADA (auditoria previa a main, menor 1): la hizo
+        // otro aparato, que ya recargo el resto de la linea; si decrementOne lo recargara aqui
+        // tambien, la mesa quedaria con unidades de mas al llegar esa linea.
         return
       }
       await db.orderItems.update(itemId, {

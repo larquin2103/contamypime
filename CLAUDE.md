@@ -106,8 +106,8 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas tres dentro: **30 suites / 3.465 aserciones** en total, medidas el 25-09-2026 tras las
-dos revisiones de la rama (`ordersRepo` 23→47→62, `orderSale` 18→29→36, `resend` 22→28), con
+Con esas tres dentro: **30 suites / 3.468 aserciones** en total, medidas el 25-09-2026 tras las
+dos revisiones de la rama (`ordersRepo` 23→47→65, `orderSale` 18→29→36, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
 antes de escribir, `dailySalesControl` (163) y su fuzz (1.813), el Control de Ventas Diarias, `dailyControlLocations` (6), y `reportCells` (10).
@@ -994,6 +994,28 @@ dueño corra `npm run deploy`.
 
 **No hay pruebas de pantalla**: la cola se prueba como lógica pura, no tocando el botón.
 **Nadie lo ha ejecutado en un teléfono.**
+
+**Auditoría previa a `main` (25-09-2026, ejecutada).** Veredicto: **sin críticos ni
+importantes**; se puede fusionar sin romper producción ni la sincronización.
+- **Equivalencia con `main` sin duplicados**, sobre base real: 300 secuencias aleatorias de toques
+  con los dos `ordersRepo` dan **0 diferencias** en líneas, movimientos, stock y estado de la mesa,
+  salvo el id de las devoluciones. La primera corrida dio 51, y el error era del arnés, que elegía
+  líneas por su id aleatorio.
+- **Las pruebas D1–D6 fallan con el código de `main`** (51 OK / 11 fallos) y pasan con la rama.
+- **Salida de las suites:** las 26 de node dan salida **idéntica byte a byte** a `main`, y las dos
+  empaquetadas no dependen de ningún fichero cambiado.
+- **Revisión independiente:** coincide.
+- **Menor 1, corregido:** en un conflicto entre dos aparatos, la **reparación** de una línea
+  contaba como anulación de esta llamada. `decrementOne` recargaba el resto otra vez y la mesa
+  quedaba con **4 u vivas en vez de 2**: al cliente se le cobraban 2 de más. Se corrigió quitando
+  una línea: la reparación ya no cuenta. Prueba D7 en rojo antes y en verde después;
+  **30 suites / 3.468 aserciones**.
+- **Quedan declarados:**
+  - los teléfonos sin actualizar;
+  - el detector de integridad con relojes desfasados;
+  - la cola sin tiempo límite;
+  - el cobro, que no espera a la cola, aunque un «+» tardío lo rechaza el candado sin mover
+    stock.
 
 ## Estado del trabajo (25-09-2026)
 
