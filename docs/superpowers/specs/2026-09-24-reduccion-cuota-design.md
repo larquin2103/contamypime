@@ -72,7 +72,7 @@ Proyección medida, manteniendo los 21,9 reenganches calibrados y dejando crecer
 |---|---|---|---|---|
 | **No hacer nada** | 113 k | 618 k | **1.137 k** | ya cruzado |
 | Repartir en 5 proyectos gratis (tope 250 k) | 113 k | 618 k | 1.137 k | **1,6 meses** |
-| Sacar las 2 mayores del oyente + sondeo 15 min (F2) | 34 k | 160 k | 290 k | **0,8 meses** |
+| Sacar del oyente las mayores + timbre (F2) | 36 k | 189 k | 347 k | **0,6 meses** |
 | **Filtrar el OYENTE por marca de llegada (F5)** | **3 k** | **3 k** | **3 k** | **nunca** |
 
 Y el coste de dar de alta un negocio, que es el otro reloj corriendo:
@@ -120,22 +120,23 @@ emergencia a control de gasto.
 ## 4. El diseño
 
 **La medida: sellar cada documento con la hora en que LLEGÓ a la nube y filtrar la bajada por ese
-sello, empezando por las dos colecciones que son el 63–83 % del volumen.**
+sello, empezando por las colecciones más pesadas, que son el 70,0 % del volumen medido.**
 
-### 4.1 Por qué empezar por `stockMovements` y `sales`, y sin oyente
+### 4.1 Por qué empezar por las inmutables más pesadas, y sin oyente
 
 El acta del 09-09 identificó **R1 como su riesgo crítico y lo dejó sin validar**: si una consulta
 *con filtro* no comparte forma canónica con la del oyente, el pull de 45 s deja de ser gratis y pasa
 a **34 × 1.920 × 30 aparatos ≈ 1,9 M lecturas/día** — mucho peor que hoy y sin aviso.
 
 **Este diseño esquiva R1 por construcción en su primera fase: si no hay oyente, no hay vista en
-caché que preservar.** Las dos colecciones salen del tiempo real y se bajan por consulta propia.
+caché que preservar.** Las colecciones diferidas salen del tiempo real y se bajan por consulta
+propia (P6, el timbre).
 
 Y son el caso más seguro que existe para estrenar el mecanismo:
 - **Inmutables y append-only** (verificado en el acta del 09-09: cero `update`/`put`/`modify` en
   `src/` para las 16 inmutables, `stockMovements` y `sales` entre ellas).
 - No se fusionan por campos: una fila que llega, llega entera y no pisa nada.
-- Son el **63–83 % de D** medido.
+- Son el **70,0 % de D** de media, medido negocio a negocio (P4).
 
 ### 4.2 Las piezas
 
@@ -155,19 +156,63 @@ Avanza **solo si la respuesta vino del servidor**, y al **máximo `_up` visto me
 solapamiento deliberado que cubre el desfase de reloj (~21 s documentado) y que Firestore no
 garantiza entregar en orden de `_up`.
 
-**P4 — Las dos colecciones salen de `startRealtime`.** Un conjunto `SIN_TIEMPO_REAL` en
+**P4 — Las colecciones diferidas salen de `startRealtime`.** Un conjunto `SIN_TIEMPO_REAL` en
 `collections.js`; `syncEngine.startRealtime` no se suscribe a las que estén en él.
+
+- **`stockMovements` siempre** (54,3 % / 36,8 % / 69,7 % de D en los tres negocios).
+- **`sales` SOLO si el negocio no tiene el módulo `mesas`** (22,3 % y 25,8 % de D donde aplica).
+  **Con `mesas` NO puede salir, y no es cuestión de comodidad sino de dinero:** ver §7bis.
+  Y no cuesta casi nada dejarla: en el negocio con mesas medido, `sales` es el **1,3 % de D**.
+
+Queda fuera del vivo el **70,0 % de D de media**, medido negocio a negocio.
 
 **P5 — `initialPull` deja de leerlas sin filtro.** **Ésta es la pieza crítica**: si el pull de 45 s
 siguiera haciendo `getDocs` sin filtro sobre colecciones que ya no tienen oyente, cada ciclo sería
 una consulta real y el remedio sería peor que la enfermedad. `initialPull` las salta.
 
-**P6 — Bajada propia en ciclo lento + por evento.** Un `pullDiferido()` que hace
-`getDocs(query(col, where('_up','>',cursor)))` para las dos colecciones:
-- **cada 15 minutos** en segundo plano — a 30 aparatos (15 negocios x 2) son `2 × 96 × 30 = 5.760` lecturas/día de
-  mínimo por consulta (12 % del tope), frente a las 17.280 (35 %) que costaría a 5 minutos;
-- **y de inmediato** al abrir el salón, la pantalla de venta o el conteo físico, y antes de cobrar.
-  Convergencia cuando importa, sin pagar sondeo.
+**P6 — El TIMBRE: la bajada diferida se dispara por evento, no por reloj.**
+
+El sondeo periódico es la solución obvia y **es la peor de las dos, medido**: paga el silencio. En
+su lugar, `pullDiferido()` —que hace `getDocs(query(col, where('_up','>',cursor)))`— se dispara
+**cuando una colección que SIGUE EN VIVO entrega un cambio**, con antirrebote de 5 s.
+
+**Por qué el timbre suena siempre que hubo movimiento, verificado sobre el fuente:** las **13**
+transacciones de `src/repositories/` que escriben `stockMovements` escriben **todas** también
+`db.products` **con `updatedAt`** — `conversionsRepo:47`, `debtsRepo:22`, `kitchenRepo:114`,
+`mermasRepo:27`, `ordersRepo:231` y `:298`, `partnersRepo:160`, `purchasesRepo:31`,
+`remittancesRepo:383` y `:669`, `salesRepo:87`, `stockRepo:29`, `transfersRepo:29`. Y `products`
+se queda en el tiempo real. **No hay ningún camino que mueva el libro en silencio.**
+
+**Medido sobre el libro real de los tres negocios** (pulsaciones/día y aparato, tras antirrebote):
+
+| | movs/día | 2 s | 5 s | 15 s | 30 s |
+|---|---|---|---|---|---|
+| Yurqueidy | 88 | 50 | 50 | 48 | 43 |
+| Lisett | 33 | 30 | 30 | 21 | 15 |
+| Abar (mesas) | 174 | 39 | 33 | 24 | 19 |
+| **media** | | 40 | **38** | 31 | 26 |
+
+El negocio más activo (174 movimientos/día) da solo **33 pulsaciones**: los toques llegan en rachas
+y el antirrebote las agrupa.
+
+**Timbre contra sondeo, en lecturas/día de todo el proyecto:**
+
+| estrategia | lecturas/día | % del tope | retraso del stock |
+|---|---|---|---|
+| sondeo cada 15 min | 5.760 | 12 % | hasta 15 min |
+| sondeo cada 5 min | 17.280 | 35 % | hasta 5 min |
+| sondeo cada 1 min | 86.400 | **173 % — peor que hoy** | hasta 1 min |
+| **TIMBRE, antirrebote 5 s** | **1.501** | **3 %** | **segundos** |
+
+**El timbre cuesta 3,8 veces menos que el sondeo de 15 minutos y además borra el retraso.** No es
+un compromiso entre coste y latencia: gana en los dos.
+
+**Red de seguridad** (un timbre se puede perder si el aparato estaba dormido): un sondeo lento de
+respaldo **cada 60 minutos**, más un tirón al traer la app al frente. Coste marginal.
+
+**Orden dentro del timbre:** cuando llega una tanda de `products`, primero el `pullDiferido` y
+**después** `recomputeStock`. Al revés, el stock parpadearía unos segundos con el valor viejo,
+porque `recomputeStock` deriva del libro **local**.
 
 **P7 — Reconciliación inicial obligatoria, una vez por aparato.** Antes de encender el filtro:
 una lectura completa, marcada como hecha **solo si `fromServer === true`**. Motivo: los aparatos
@@ -213,12 +258,12 @@ pero provocaría una resubida completa innecesaria.
 | **F0** | Instrumentar el **reenganche**: registrar en `/errors` cuántas veces y tras cuánto hueco se reabre el tiempo real | Aparecen entradas con el hueco real. Hoy **21,9 reenganches/día es un cociente, no una observación** | Aditivo, nada que revertir |
 | **F1** | P1 + P2 (el sello). **La bajada sigue completa.** | `npm run build` limpio; las lecturas **no cambian**; los documentos nuevos en la nube llevan `_up` | Quitar el campo; los documentos con `_up` siguen siendo válidos |
 | *espera* | Varios días, hasta que todos los aparatos hayan subido al menos una vez | — | — |
-| **F2** | P3 a P9 sobre `stockMovements` y `sales`. Bandera apagada | Con la bandera apagada, el comportamiento es **idéntico** al de hoy | La bandera ya está apagada |
-| **F3** | Reconciliar y **encender en UN negocio** | 48 h de consola: las lecturas del proyecto **bajan**, y el pull de las 32 restantes **sigue costando cero** | Apagar la bandera (escritura en `config`) |
+| **F2** | P3 a P9 sobre `stockMovements` (siempre) y `sales` (solo sin `mesas`). Bandera apagada | Con la bandera apagada, el comportamiento es **idéntico** al de hoy | La bandera ya está apagada |
+| **F3** | Reconciliar y **encender en UN negocio** | 48 h de consola: las lecturas del proyecto **bajan**, y el pull de las que siguen en vivo **sigue costando cero** | Apagar la bandera (escritura en `config`) |
 | **F4** | Abrir negocio a negocio | Las lecturas se mantienen por debajo del tope | Apagar por negocio |
-| **F5** | Extender el filtro **al oyente** de las 32 restantes. **Aquí se afronta R1**, ya con el sello y el cursor probados en producción | Las lecturas bajan otra vez y el pull sigue gratis | Volver al alcance de F2 |
+| **F5** | Extender el filtro **al oyente** de las colecciones que quedaron en vivo. **Aquí se afronta R1**, ya con el sello y el cursor probados en producción | Las lecturas bajan otra vez y el pull sigue gratis | Volver al alcance de F2 |
 
-**F1–F4 llevan las lecturas de 113 k a ~34 k/día y compran MENOS DE UN MES (0,8).** No son la
+**F1–F4 llevan las lecturas de 113 k a ~36 k/día y compran MENOS DE UN MES (0,6).** No son la
 solución: son el experimento barato que valida el sello y el cursor **sin tocar R1**, y de paso dan
 aire para hacer F5 sin prisa. **La solución es F5, que las deja en ~3 k constantes.** Decirlo al
 revés sería vender F1–F4 como algo que no son.
@@ -232,13 +277,17 @@ comprobar que no se rompió nada, **no como prueba de este cambio**.
 ## 6. Riesgos
 
 **R1 — El enganche de la consulta filtrada · CRÍTICO, y aplazado a F5 a propósito.** F1–F4 no lo
-tocan porque las dos colecciones se quedan sin oyente. En F5 vuelve entero: la mitigación es el
+tocan porque las colecciones diferidas se quedan sin oyente. En F5 vuelve entero: la mitigación es el
 **cursor fijo por sesión** (la consulta del oyente y la del pull, idénticas carácter a carácter).
 **No verificado empíricamente, y no se puede verificar en node.**
 
-**R2 — Mínimo por consulta del ciclo lento.** Una consulta vacía cuesta 1 lectura. A 15 minutos y 30
-aparatos son 5.760/día (12 % del tope). **A 5 minutos serían 17.280 (35 %) y a 1 minuto, 86.400
-(173 %) — peor que hoy.** La cadencia de P6 no es un detalle de ajuste: es parte del diseño.
+**R2 — Tormenta de timbre.** Una fusión grande (el alta de un negocio: 6.622 documentos) haría
+sonar el timbre muchas veces. El antirrebote de 5 s agrupa la racha, pero hace falta además un
+**tope de pulsaciones por minuto**; superado, se cae al sondeo lento hasta que amaine. Sin ese
+tope, el peor caso es el sondeo de 1 minuto: **86.400 lecturas/día, 173 % del tope, peor que hoy.**
+
+**R2b — Si el timbre no suena.** Cubierto por la red de seguridad de P6 (sondeo de respaldo cada
+60 min + tirón al traer la app al frente). El peor caso pasa de "nunca" a "una hora".
 
 **R3 — Hueco por orden de entrega.** Firestore no garantiza entregar en orden de `_up`. El margen de
 5 minutos lo hace improbable, **no imposible**. Endurecimiento opcional: `serverTimestamp()` y
@@ -266,17 +315,51 @@ negocios y ~5.200 documentos cada uno: decenas de MB, muy por debajo del 1 GiB g
 
 ## 7. El coste que hay que aceptar, dicho antes de programar
 
-**`stockMovements` deja de llegar en vivo.** La existencia entre aparatos converge en **minutos**
-(ciclo de 15 min, o al instante en los eventos de P6), no en segundos.
+**`stockMovements` deja de llegar en vivo.** Con el timbre (P6) la existencia converge en
+**segundos**. El retraso solo aparece si el timbre se pierde, y ahí lo acota la red de seguridad en
+**60 minutos como máximo**.
+
+*(La primera versión de este diseño usaba un sondeo de 15 minutos y declaraba aquí ese retraso como
+coste a aceptar. Al medirlo resultó que el timbre es **a la vez más barato y más rápido**, así que
+ese coste desapareció y esta sección se reescribió.)*
 
 Qué NO cambia: el candado de existencia de `salesRepo.create` revalida contra el **libro local**, y
 siempre fue así. La sobreventa entre dos aparatos de la misma área ya era posible y lo sigue siendo,
 ni más ni menos.
 
-Qué sí cambia, y es lo que el dueño tiene que aceptar: con **`mesas`**, `orders` y `orderItems`
-**siguen en vivo** (la cuenta de la mesa llega al instante, que es lo que hace falta para cobrar),
-pero el **stock** que mueve cada toque baja con retraso. En un negocio con camarero y caja sobre la
-misma área, el inventario que ve la caja puede ir hasta 15 minutos por detrás.
+Qué sí cambia: con **`mesas`**, `orders`, `orderItems` y `sales` **siguen en vivo**, así que la
+cuenta de la mesa y su cobro llegan al instante. El **stock** que mueve cada toque llega con el
+timbre, en segundos.
+
+---
+
+## 7bis. Por qué `sales` NO puede salir del tiempo real con `mesas`
+
+**Es un fallo de seguridad que la primera versión de este diseño tenía, encontrado al medir. Toca
+dinero.**
+
+Al cobrar una mesa, `salesRepo.create` se llama con `skipStock: true` (el inventario ya se movió
+al agregar cada ítem). Leído el código:
+
+- `db.stockMovements.add` y `db.products.update` están **dentro de `if (!skipStock)`**: no se
+  ejecutan.
+- `db.partnerMovements` solo con consignación; `accountMovements` solo con `creditAccounts`
+  (módulo `cuentas`).
+- `ordersRepo.reconcileClosed` escribe `orders` **sin marcas de tiempo** — el comentario del
+  propio código lo dice: *"SIN marcas: derivado"*— así que **esa reparación no se sube**.
+
+**En un negocio con `mesas` y sin `cuentas`, la ÚNICA colección sincronizada que escribe el
+cobro de una mesa es `sales`.** Si `sales` sale del tiempo real:
+
+1. **Ningún timbre suena** (no se escribe nada que siga en vivo).
+2. El otro aparato **no se entera de que la mesa se cobró**.
+3. Y el candado contra el doble cobro **depende de eso**: `ordersRepo.addItem` rechaza con
+   `if (await this.saleOf(order)) throw chargedError()`, y `saleOf` lee `db.sales` **local**.
+   Sin la venta, **el candado no dispara** y el camarero puede seguir agregando a una mesa ya
+   cobrada — que es exactamente el hallazgo H1/H2 que se cerró en septiembre.
+
+**Por eso `sales` se gatea por módulo y no por conveniencia.** Y sale gratis: en el negocio con
+mesas medido, `sales` es el **1,3 % de D** (frente al 69,7 % de `stockMovements`).
 
 ---
 
