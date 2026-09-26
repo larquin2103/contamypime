@@ -1,8 +1,9 @@
 # Reducción de la cuota de Firestore — diseño validado con medición
 
 **Fecha:** 24-09-2026 · **Rama:** `claude/awesome-dirac-484azm` · **Estado: DISEÑO APROBADO POR EL
-DUEÑO, ENMENDADO EL 25-09-2026 (§10). CERO CÓDIGO ESCRITO.** Plan de implementación en
-`docs/superpowers/plans/2026-09-25-reduccion-cuota.md`. **Donde §10 contradiga a §1–§9, manda §10.**
+DUEÑO, ENMENDADO EL 25-09-2026 (§10) Y AUDITADO EL MISMO DÍA (§10.5). CERO CÓDIGO ESCRITO.** Plan
+de implementación en `docs/superpowers/plans/2026-09-25-reduccion-cuota.md`. **Precedencia: §10.5
+manda sobre §10, y §10 sobre §1–§9.**
 
 Sustituye como documento operativo a `docs/SYNC-LECTURAS.md` (09-09-2026), que sigue siendo válido
 en su mecánica y **queda corregido aquí en tres puntos medidos**. Todo lo que dice "medido" se
@@ -492,3 +493,131 @@ parte del 67 % de escrituras sin explicar del §9.4**, justo cuando las escritur
 Arreglarlo cambia qué sube `doPush`, que es lógica de producción (regla 2): **va aparte, con su
 propia autorización y su propia medición.** Mientras siga ahí, cada eco de una fila sellada lleva
 un `_up` nuevo y cuesta una lectura en los demás aparatos (§11 del plan).
+
+### 10.5 Auditoría del 25-09-2026 — cuatro hallazgos que la enmienda no vio
+
+§10 se contrastó **otra vez** contra el fuente y contra el SDK instalado, ejecutando en vez de
+releyendo: tres arneses en node, **todos con control negativo**, fuera del repositorio. **Todas las
+afirmaciones falsables de §10 que se pueden comprobar sin runtime salieron ciertas**, incluidas sus
+tres autocorrecciones (`toCloud` en `:65`, la transacción de `voidItem` en `:305`, y el §7bis mal
+razonado). Lo que sigue es lo que **§10 no vio**. El primero es grave.
+
+*(Nota de método, porque casi cuela: el primer arnés dio DOS hallazgos falsos —`conversionsRepo` y
+`kitchenRepo` "no escriben products"— porque no saltaba los comentarios, y un `// 1) Valida…` trae
+un paréntesis sin pareja que cerraba el cuerpo de la transacción antes de tiempo. Se corrigió antes
+de contarlo. Un arnés sin control negativo habría dejado pasar lo contrario.)*
+
+#### H-A · El TIPO del cursor de bajada — falla en silencio y para siempre · CRÍTICO
+
+D1 deja `_up` en `serverTimestamp()`, así que en la nube `_up` es un **Timestamp**. Pero **todos los
+cursores de hoy son cadenas ISO**: `syncTs` solo acepta `typeof v === 'string'`
+(`collections.js:114` y siguientes), `getCursor` cae a `''` y `setCursorForward` compara con `>` de
+cadenas (`pushEngine.js:54-61`). Si P3 hereda esa convención y pasa la cadena al filtro:
+
+```js
+where('_up', '>', '2026-09-25T12:00:00.000Z')   // ← una cadena
+```
+
+Firestore compara **primero por orden de TIPO**, y leído del SDK (`common-456515ba.esm.js`,
+`__PRIVATE_typeOrder`): `TimestampValue = 3`, `StringValue = 5`. **Todo Timestamp es menor que
+cualquier cadena**, así que la consulta devuelve **cero documentos, sin error y sin excepción**. La
+colección diferida **no baja nunca**, `recomputeStock` deriva la existencia de un libro incompleto y
+el stock de ese teléfono queda **mal de forma permanente** — que es exactamente el daño que P7
+existe para evitar, entrando por la puerta de al lado.
+
+**Decisión: el plan fija el tipo explícitamente.** El cursor se guarda en `syncState` como texto (la
+convención de la casa, para que siga siendo legible y comparable), y se **reconstruye** con
+`Timestamp.fromMillis(Date.parse(cursor))` **al armar la consulta**; nunca se pasa en crudo. Y que
+la consulta filtrada **devuelva filas** es condición de aceptación de F3, no una suposición.
+
+*(Dato del mismo sitio, para quien lo programe: un `serverTimestamp()` **pendiente** de confirmar
+tiene orden de tipo **4**, entre Timestamp y String. Solo afecta a consultas contra la caché local,
+no a las del servidor.)*
+
+#### H-B · §10.2 es ambiguo justo donde se decide si esto ahorra algo
+
+§10.2 dice que la reconciliación «se repite **cada vez que una colección entra en diferido**». Tiene
+dos lecturas, y una de ellas anula el diseño entero:
+
+- **La buena:** solo se reconcilia en la **transición** (al encender la bandera, al pasar la guarda,
+  al volver de un build viejo). Un aparato que ya filtra **no se suscribe** a las diferidas al
+  arrancar, y por eso no paga el enganche en frío.
+- **La que lo anula:** en cada arranque la colección entra viva, se reconcilia gratis y después pasa
+  a diferida. Entonces **se engancha el oyente en cada arranque**, que es **precisamente el coste
+  que se quiere quitar** (§2.2), y F2 no ahorraría nada.
+
+**Decisión: manda la primera**, y el plan la escribe como invariante comprobable: **un aparato con
+el filtro activo NO llama a `onSnapshot` sobre las colecciones diferidas, en ningún arranque.**
+
+#### H-C · La guarda de D2 puede no encenderse nunca, en silencio
+
+«Todos los aparatos activos» se resuelve hoy con `active !== false` (`deviceRegistry.js`), y ese
+campo **solo** pasa a `false` cuando el dueño **quita el aparato a mano** (`removeDevice`). Un
+teléfono perdido, roto, vendido o reinstalado se queda `active: true` **para siempre** → la guarda
+no se cumple nunca → el filtro no se enciende, el ahorro es **cero** y **nadie se entera**, porque
+no hay ningún error: la app se comporta igual que hoy.
+
+Cae del lado seguro (no se pierde un solo dato), pero convierte la medida en algo que **puede quedar
+apagado sin aviso**, y eso se da por hecho en vez de comprobarse. `lastSeenAt` **ya existe** en
+`/devices`, escrito con `serverTimestamp()` en cada arranque con sesión de nube.
+
+**Decisión:** «activo» se acota **también por antigüedad de `lastSeenAt`**, y el panel de `/cloud`
+**dice si está filtrando, y si no, qué aparato lo bloquea**. Un ahorro que no se enciende y no lo
+dice es peor que no tenerlo.
+
+*(Lo que §10 sí acierta, y conviene dejarlo escrito: la guarda **no cuesta lecturas nuevas**.
+`registerThisDevice` ya hace `getDocs` de `/devices` —`SyncProvider.jsx:90` → `touchThisDevice`— y
+su `setDoc` ya va con `{ merge: true }`, así que `caps.up` y `sealSeenAt` viajan dentro de una
+escritura que ya se hacía.)*
+
+#### H-D · F1 no vigila las escrituras, y las escrituras están al tope
+
+P1 afirma «coste en cuota de escritura: cero». **La evidencia lo respalda**: el transform viaja
+dentro del **mismo** `Write` que el documento (`n.updateTransforms`, `common-456515ba.esm.js:7118`),
+no como una escritura aparte. Pero el criterio de aceptación de F1 dice solo «las lecturas **no
+cambian**», y **las escrituras ya tocaron el 100 % del tope el 24-sep** (§1.1). Si la facturación
+contara el transform por separado, F1 lo descubriría… solo si alguien mira.
+
+**Decisión:** el criterio de F1 pasa a ser **«las lecturas no cambian Y las escrituras no suben»**.
+Es una línea en el plan, y cierra el único punto donde P1 se apoya en algo que el código no decide:
+la facturación la decide el servidor.
+
+#### Menor · dónde está el `tx.set`
+
+§10.3.1 sitúa en `compareResendEngine.js` el `tx.set` que reemplaza el documento entero; está en
+**`compareResendFirebase.js:29`**. El fondo no cambia: el serializador propio sí está en
+`compareResendEngine.js:13`, y `COMPARE_RESENDABLE` son `products`, `counts` y `auditEvents`
+(`compareResend.js:18`). **En F5 hay que sellarlo igual.**
+
+#### Lo que esta auditoría dejó SOSTENIDO (y §10 daba por bueno sin volver a mirar)
+
+Dos piezas de las que cuelga el diseño entero, ahora con evidencia en el SDK y no en el acta del
+09-09:
+
+1. **P7 es gratis por una razón concreta.** `getDocs` no es una consulta suelta: es un **oyente
+   temporal** (`__PRIVATE_firestoreClientGetDocumentsViaSnapshotListener`, `:26605`), y
+   `__PRIVATE_eventManagerListen` (`:24118`) busca la consulta en un mapa indexado por **forma
+   canónica**; si ya hay un oyente con esa misma consulta, devuelve `NoActionRequired` y resuelve
+   con la vista en caché, **sin ir al servidor**.
+2. **R1 es real, no una precaución.** `__PRIVATE_canonifyTarget` construye la clave con
+   `"|f:" + filters.map(canonifyFilter)`: **los filtros Y SU VALOR entran en la forma canónica**.
+   Una consulta con `where` tiene otra clave que la del oyente sin filtro → oyente nuevo → **se
+   factura**. Por eso la mitigación de F5 («cursor **fijo por sesión**, las dos consultas idénticas
+   carácter a carácter») es la correcta, y por eso el cursor **no puede avanzar a media sesión** sin
+   pagar un enganche.
+
+Y la aritmética de §10.2 cuadra: con el 53,6 % medio de `stockMovements`, diferir **solo** esa deja
+113 k × 46,4 % ≈ **52 k/día**, por encima del tope de 50 k. Hace falta `sales` donde se pueda.
+
+#### Lo que esta auditoría NO puede garantizar
+
+1. **Las cifras de §1 a §9 NO se re-midieron: los tres respaldos reales no están en esta máquina.**
+   D, los repartos por colección, las 6.622 filas y los 21,9 reenganches quedan **tal como los dejó
+   la sesión anterior**. Lo único contrastado aquí es su coherencia interna.
+2. **Cero runtime, otra vez.** Sin emulador (sin Java, §10.1 D1), sin Firestore real y sin un
+   teléfono. Todo es fuente, SDK instalado y aritmética.
+3. **La facturación es política del servidor, no del código.** La evidencia del SDK es fuerte en los
+   dos sitios que deciden (P7 y R1), pero **lo que se cobra se comprueba en la consola**, que es
+   justo lo que hace F3.
+4. **Los tres arneses son DESECHABLES y no están en el repositorio.** No protegen contra regresiones
+   futuras.
