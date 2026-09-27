@@ -11,7 +11,8 @@ import {
   linkDevice,
   unlinkDevice
 } from './syncService'
-import { syncNow, initialPull } from './syncEngine'
+import { syncNow, initialPull, pullDiferido } from './syncEngine'
+import { configRepo } from '../../repositories/configRepo'
 import { listDevices, removeDevice, getDeviceId } from './deviceRegistry'
 import { countResend, forceResend } from './pushEngine'
 import { RESENDABLE, localInputToIso } from './resend'
@@ -100,10 +101,14 @@ export function CloudScreen() {
     try {
       const { up } = await syncNow() // sube lo local
       const down = await initialPull() // y baja de la nube (getDocs, fiable)
+      // Lo DIFERIDO no baja por initialPull. Sin esta linea, el dueño pulsa aqui
+      // cuando algo va mal, ve "sincronizado" y el libro mayor no se ha movido.
+      const dif = await pullDiferido().catch(() => ({ total: 0 }))
       if (!down.ok) {
         setError('Subida: ' + up.queued + '. Bajada fallo: ' + down.reason)
       } else {
-        setOk(`Sincronizado: ${up.queued} enviado(s), ${down.total} recibido(s) de la nube.`)
+        const total = down.total + (dif?.total || 0)
+        setOk(`Sincronizado: ${up.queued} enviado(s), ${total} recibido(s) de la nube.`)
       }
     } catch (e) {
       setError('No se pudo sincronizar: ' + (e?.code || e?.message || e))
@@ -151,6 +156,7 @@ export function CloudScreen() {
 
       {cloudUser && <DevicesPanel maxDevices={maxDevices} />}
 
+      {cloudUser && syncEnabled && <BajadaFiltradaPanel />}
       {cloudUser && syncEnabled && <ResendPanel />}
       {cloudUser && syncEnabled && <CompareResendPanel />}
 
@@ -218,6 +224,58 @@ export function CloudScreen() {
 
       {ok && <p className="ok-text">{ok}</p>}
     </div>
+  )
+}
+
+// Bajada filtrada (spec 2026-09-24-reduccion-cuota). Dice SIEMPRE si este
+// aparato esta filtrando y, si no, POR QUE: un ahorro que no se enciende y no lo
+// dice se da por hecho, que es justo como se pierde (hallazgo H-C del §10.5).
+function BajadaFiltradaPanel() {
+  const { filtradas, motivoFiltro } = useSync()
+  const [activa, setActiva] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    configRepo.getBajadaFiltrada().then((v) => { if (vivo) setActiva(v) })
+    return () => { vivo = false }
+  }, [])
+
+  const cambiar = async (v) => {
+    setBusy(true)
+    try {
+      await configRepo.setBajadaFiltrada(v)
+      setActiva(v)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="card">
+      <h3>Bajada filtrada</h3>
+      <p className="muted">
+        Baja del libro de existencias solo lo que ha llegado nuevo a la nube, en vez de
+        releerlo entero. Ahorra datos y cuota. Es del negocio: se aplica a todos los
+        teléfonos, cada uno en cuanto vuelva a abrir la app.
+      </p>
+      <label className="field">
+        <input
+          type="checkbox"
+          checked={activa}
+          disabled={busy}
+          onChange={(e) => cambiar(e.target.checked)}
+        />
+        <span>Bajar solo lo nuevo</span>
+      </label>
+      <p className="muted">
+        {motivoFiltro
+          ? <>No está filtrando: {motivoFiltro}</>
+          : filtradas?.size
+            ? <>Filtrando: {[...filtradas].join(', ')}.</>
+            : <>Bajando todo, como siempre.</>}
+      </p>
+    </section>
   )
 }
 

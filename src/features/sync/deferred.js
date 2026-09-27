@@ -237,3 +237,23 @@ export function hasForeignChange(pendingWrites) {
   if (!Array.isArray(pendingWrites)) return false
   return pendingWrites.some((p) => !p)
 }
+
+// Que hacer cuando el veredicto cambia. Dos reglas, y las dos importan:
+//
+//  - EMPEZAR a filtrar no reabre el tiempo real. La sesion en la que se decide
+//    se queda en vivo -exactamente como hoy- y el filtro entra en el arranque
+//    siguiente, que es cuando `startRealtime` lee el veredicto antes de
+//    suscribir. Cerrar y reabrir aqui costaria un enganche en frio de las otras
+//    32 colecciones en cada arranque: justo el coste que se quiere quitar.
+//
+//  - DEJAR de filtrar si reabre, y ademas borra la marca de reconciliacion.
+//    Mientras este aparato filtraba nadie escuchaba esas colecciones, asi que
+//    hay que resuscribirse ya; y la reconciliacion tiene que rehacerse para
+//    rellenar lo que un build sin sello hubiera subido sin `_up`. Sin ese
+//    borrado, un `legacyAt` posterior dejaba la guarda cerrada PARA SIEMPRE.
+export function transitionPlan({ prevCols, nextCols }) {
+  const antes = prevCols instanceof Set ? prevCols : new Set()
+  const despues = nextCols instanceof Set ? nextCols : new Set()
+  const vuelveAlVivo = [...antes].some((c) => !despues.has(c))
+  return { restart: vuelveAlVivo, resetReconcile: vuelveAlVivo }
+}

@@ -128,6 +128,21 @@ export const configRepo = {
     return clean
   },
 
+  // Bajada filtrada por marca de llegada (spec 2026-09-24-reduccion-cuota, D3).
+  // Es del NEGOCIO y SINCRONIZADA a proposito: el dueño la enciende y la apaga
+  // para todos desde su aparato, sin tener que entrar con su PIN en cada
+  // telefono. Apagada por defecto = comportamiento clasico.
+  //
+  // Cada aparato la aplica en SU siguiente arranque, porque es ahi donde se lee
+  // el veredicto antes de suscribir el tiempo real.
+  async getBajadaFiltrada() {
+    return !!(await this.get('bajadaFiltrada', false))
+  },
+
+  async setBajadaFiltrada(v) {
+    await this.set('bajadaFiltrada', !!v)
+  },
+
   async setAreas(list) {
     const clean = (Array.isArray(list) ? list : [])
       .map((s) => String(s).trim())

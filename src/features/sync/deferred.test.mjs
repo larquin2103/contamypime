@@ -7,7 +7,7 @@ import {
   STALE_DEVICE_MS, guardState, ranLegacyBuild,
   deferredSet, verdictKey, parseDeferred,
   RING_DEBOUNCE_MS, RING_WINDOW_MS, RING_MAX_PER_WINDOW, SAFETY_NET_MS,
-  ringDecision, hasForeignChange, reconciledKey
+  ringDecision, hasForeignChange, reconciledKey, transitionPlan
 } from './deferred.js'
 
 let n = 0
@@ -236,5 +236,32 @@ ok(reconciledKey('neg1').startsWith('pull:'),
   'empieza por pull: -> la Tarea 10 la excluye del respaldo junto con los cursores')
 ok(reconciledKey('neg1') !== verdictKey('neg1'), 'y no choca con la del veredicto')
 ok(reconciledKey('neg1') !== pullCursorKey('neg1', 'sales'), 'ni con la de ningun cursor')
+
+// --- 12) La transicion: que hacer cuando cambia el veredicto ------------------
+// Encender el filtro NO reabre el tiempo real: la sesion de transicion se queda
+// en vivo, como hoy, y el aparato empieza a filtrar en el arranque siguiente.
+// Cerrar y reabrir aqui costaria un enganche de las otras 32 colecciones, que es
+// justo lo que este trabajo viene a quitar.
+eq(transitionPlan({ prevCols: new Set([]), nextCols: new Set(['stockMovements']) }),
+  { restart: false, resetReconcile: false },
+  'empezar a filtrar no reabre el tiempo real')
+
+// Volver al vivo SI: mientras este aparato filtraba nadie escuchaba esa
+// coleccion, asi que hay que resuscribirse ya, y volver a reconciliar despues
+// (esa relectura es la que rellena lo que se hubiera perdido).
+eq(transitionPlan({ prevCols: new Set(['stockMovements', 'sales']), nextCols: new Set([]) }),
+  { restart: true, resetReconcile: true },
+  'dejar de filtrar reabre el vivo y obliga a reconciliar otra vez')
+eq(transitionPlan({ prevCols: new Set(['stockMovements', 'sales']), nextCols: new Set(['stockMovements']) }),
+  { restart: true, resetReconcile: true },
+  'si una sola coleccion vuelve al vivo, tambien: nadie la estaba escuchando')
+
+eq(transitionPlan({ prevCols: new Set(['stockMovements']), nextCols: new Set(['stockMovements']) }),
+  { restart: false, resetReconcile: false }, 'sin cambios no se toca nada')
+eq(transitionPlan({ prevCols: new Set([]), nextCols: new Set([]) }),
+  { restart: false, resetReconcile: false }, 'y con todo en vivo, menos aun')
+eq(transitionPlan({ prevCols: new Set(['stockMovements']), nextCols: new Set(['stockMovements', 'sales']) }),
+  { restart: false, resetReconcile: false },
+  'anadir una coleccion al filtro tampoco reabre: se aplica en el arranque siguiente')
 
 console.log(`deferred (sello y cursor): ${n} aserciones OK`)

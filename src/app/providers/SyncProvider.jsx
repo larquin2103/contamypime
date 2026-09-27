@@ -2,10 +2,18 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { observeAuth, syncConfig, refreshSession } from '../../features/sync/syncService'
 import {
   syncNow, startRealtime, stopRealtime, initialPull, restartRealtime,
-  setRingHandler, pullDiferido
+  setRingHandler, pullDiferido, getDeferred, reconciliarDiferidas
 } from '../../features/sync/syncEngine'
-import { ringDecision, RING_DEBOUNCE_MS, SAFETY_NET_MS } from '../../features/sync/deferred'
-import { touchThisDevice } from '../../features/sync/deviceRegistry'
+import {
+  ringDecision, RING_DEBOUNCE_MS, SAFETY_NET_MS,
+  guardState, deferredSet, transitionPlan, parseCursor, parseDeferred,
+  verdictKey, reconciledKey
+} from '../../features/sync/deferred'
+import { touchThisDevice, readDevices } from '../../features/sync/deviceRegistry'
+import { db } from '../../db/db'
+import { configRepo } from '../../repositories/configRepo'
+import { licenseRepo } from '../../repositories/licenseRepo'
+import { evaluateLicense, licenseModules, today, LICENSE_MODULES } from '../../lib/license'
 import { logSyncEvent } from '../../lib/syncLog'
 
 const SyncContext = createContext(null)
@@ -47,6 +55,11 @@ export function SyncProvider({ children }) {
   // aparece si hubo ida y vuelta real reciente con Firestore.
   const [lastPullOkAt, setLastPullOkAt] = useState(null)
   const [pullError, setPullError] = useState('')
+  // Bajada filtrada: QUE esta difiriendo este aparato ahora mismo y, si no
+  // difiere nada, POR QUE. Lo pinta la tarjeta de /cloud: un ahorro que no se
+  // enciende y no lo dice se da por hecho, que es justo como se pierde (H-C).
+  const [filtradas, setFiltradas] = useState(() => new Set())
+  const [motivoFiltro, setMotivoFiltro] = useState('')
   const busyRef = useRef(false)
   const pullBusyRef = useRef(false)
   // A) Push por evento: temporizador del debounce + bandera de "llegó algo
@@ -303,6 +316,93 @@ export function SyncProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, cloudUser])
 
+  // ¿Tiene mesas este negocio? Se lee la licencia por el MISMO camino que
+  // LicenseProvider y no con su hook: SyncProvider se monta POR FUERA de el
+  // (App.jsx), asi que useLicense() aqui lanzaria.
+  const sinMesas = async () => {
+    const ev = await evaluateLicense(await licenseRepo.getToken(), { nowDate: today() })
+    const desbloqueada = ['active', 'expiring', 'grace'].includes(ev.status)
+    const modulos = desbloqueada ? licenseModules(ev.payload) : []
+    return !modulos.includes(LICENSE_MODULES.TABLES)
+  }
+
+  // Decide si este aparato FILTRARA, y lo deja ESCRITO. No lo aplica a la sesion
+  // en curso a proposito: `startRealtime` ya arranco (sale del callback de
+  // observeAuth, sin esperar a nadie) y cerrar y reabrir el tiempo real aqui
+  // costaria un enganche en frio de las otras 32 colecciones en CADA arranque,
+  // que es justo el coste que se quiere quitar. El filtro entra en el arranque
+  // siguiente, cuando el motor lee el veredicto ANTES de suscribir.
+  useEffect(() => {
+    if (!enabled || !cloudUser) return
+    let vivo = true
+    ;(async () => {
+      try {
+        const businessId = await syncConfig.businessId()
+        if (!businessId) return
+        const prevCols = parseDeferred((await db.syncState.get(verdictKey(businessId)))?.value)
+
+        const aplicar = async (cols, motivo) => {
+          const plan = transitionPlan({ prevCols, nextCols: cols })
+          await db.syncState.put({ key: verdictKey(businessId), value: [...cols] })
+          // Al volver al vivo se borra la marca de reconciliacion: el arranque
+          // siguiente tiene que reconciliar otra vez, y esa relectura es la que
+          // rellena lo que un build sin sello hubiera subido sin `_up`.
+          if (plan.resetReconcile) {
+            await db.syncState.put({ key: reconciledKey(businessId), value: '' })
+          }
+          if (plan.restart) await restartRealtime()
+          if (!vivo) return
+          const ahora = getDeferred()
+          setFiltradas(ahora)
+          setMotivoFiltro(
+            motivo || (cols.size && !ahora.size ? 'Se aplicará al volver a abrir la app.' : '')
+          )
+        }
+
+        if (!(await configRepo.getBajadaFiltrada())) {
+          await aplicar(new Set(), 'Desactivada por el dueño.')
+          return
+        }
+
+        const reconciledAtMs = parseCursor((await db.syncState.get(reconciledKey(businessId)))?.value)
+        const guarda = guardState({
+          devices: await readDevices(), nowMs: Date.now(), reconciledAtMs
+        })
+        if (!guarda.ok) {
+          await aplicar(new Set(), guarda.motivo)
+          return
+        }
+
+        const cols = deferredSet({
+          flagOn: true,
+          guardOk: true,
+          sinMesas: await sinMesas(),
+          ordersVacia: (await db.orders.count()) === 0
+        })
+        // TRANSICION: si este aparato aun no ha reconciliado, se hace AHORA, con
+        // las colecciones todavia en vivo (por eso no cuesta lecturas).
+        if (reconciledAtMs == null) {
+          const r = await reconciliarDiferidas(businessId, cols)
+          if (!r.ok) {
+            await aplicar(new Set(), r.motivo)
+            return
+          }
+        }
+        await aplicar(cols, '')
+      } catch (e) {
+        // Ante CUALQUIER duda no se decide nada: el veredicto se queda como estaba
+        // y la guarda se vuelve a evaluar en el arranque siguiente. El panel dice
+        // lo que esta sesion hace DE VERDAD, no lo que se pretendia.
+        if (!vivo) return
+        setFiltradas(getDeferred())
+        setMotivoFiltro('No se pudo comprobar si se puede filtrar; se reintenta al reabrir.')
+        logSyncEvent('bajada-diferida-arranque', null, e)
+      }
+    })()
+    return () => { vivo = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, cloudUser])
+
   // Engancha el timbre al motor. En su PROPIO efecto y no dentro del callback de
   // observeAuth: alli el cierre se quedaria con el `cloudUser` que habia al
   // registrarse -todavia undefined-, y `tocarTimbre` saldria por su guarda para
@@ -340,7 +440,10 @@ export function SyncProvider({ children }) {
     refresh: async () => setEnabled(await syncConfig.isEnabled()),
     syncNow: runPush,
     // A) lo llama la pantalla de venta tras registrar una venta (no-op sin sync).
-    nudgePush
+    nudgePush,
+    // Bajada filtrada: lo lee la tarjeta de /cloud.
+    filtradas,
+    motivoFiltro
   }
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>
