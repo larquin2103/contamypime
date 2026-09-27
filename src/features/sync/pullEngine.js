@@ -2,6 +2,7 @@ import { db } from '../../db/db'
 import { WAREHOUSE } from '../../db/constants'
 import { cleanQty } from '../../lib/qty'
 import { LOCAL_CONFIG_KEYS, syncTs } from './collections'
+import { stripUp } from './deferred'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Bloque 24: motor de BAJADA (pull).
@@ -19,9 +20,21 @@ export async function mergeIncoming(col, docs) {
   const table = db[col.name]
   if (!table || !docs.length) return new Set()
 
-  let items = docs.filter((d) => d && d[col.pk] != null)
+  // P2: `_up` es el sello de llegada a la nube. NO entra en Dexie (el registro
+  // local queda IDENTICO al de hoy), no viaja en respaldos y no se resube. Lo
+  // unico que se conserva de el es el MAXIMO, que el llamador usa para el cursor
+  // de la bajada diferida. Se cuelga del Set que ya se devolvia, para no tocar la
+  // firma: sus consumidores lo siguen usando como Set.
+  //
+  // Va ANTES de los descartes a proposito: aunque la tanda entera se descarte por
+  // no traer clave primaria, el maximo tiene que salir de aqui, o esos documentos
+  // se volverian a pedir en cada timbre para siempre.
+  const { docs: limpios, maxUpMs } = stripUp(docs)
+  const conMarca = (set) => { set.maxUpMs = maxUpMs; return set }
+
+  let items = limpios.filter((d) => d && d[col.pk] != null)
   if (col.name === 'config') items = items.filter((d) => !LOCAL_CONFIG_KEYS.has(d.key))
-  if (!items.length) return new Set()
+  if (!items.length) return conMarca(new Set())
 
   const ids = items.map((d) => d[col.pk])
   const locals = await table.bulkGet(ids)
@@ -39,7 +52,7 @@ export async function mergeIncoming(col, docs) {
     if (col.name === 'products') affected.add(incoming.id)
   }
   if (toPut.length) await table.bulkPut(toPut)
-  return affected
+  return conMarca(affected)
 }
 
 // Recalcula products.stock (total) y stockByLocation (por ubicacion) como la
