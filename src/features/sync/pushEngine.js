@@ -7,6 +7,7 @@ import { logSyncEvent } from '../../lib/syncLog'
 import { isPermanent, dueIds, markAttempted, onSuccess, onTransient, onPermanent, autoResume } from './retryQueue'
 import { isResendable, countSince, rewindTo, waitWhile } from './resend'
 import { createCommitWatch } from './commitWatch'
+import { seal } from './deferred'
 
 // La Patrona ยง14.5 (commit 2): avisa en /errors de un lote que no se confirma
 // estando en linea. Solo observa; no cambia que se sube ni el cursor.
@@ -65,6 +66,13 @@ async function setCursorForward(name, value) {
 function toCloud(rec) {
   return JSON.parse(JSON.stringify(rec))
 }
+
+// Sella con la hora en que el documento LLEGA a la nube (spec ง10, D1). Va
+// DESPUES de toCloud a proposito: el centinela de serverTimestamp() no sobrevive
+// a JSON.stringify (quedaria el mapa {"_methodName":"serverTimestamp"}, que no
+// entra en ningun filtro de rango). Solo lo llevan las colecciones de SEALED;
+// las demas suben con su contenido IDENTICO al de hoy.
+const toCloudSellado = (name, rec, sentinel) => seal(name, toCloud(rec), sentinel)
 
 // --- MINI-MUTEX por retry:<col> -------------------------------------------
 // Serializa la lectura-modificacion-escritura de cada cola: cada operacion lee
@@ -127,11 +135,11 @@ async function doPush() {
 
   const { db: fs, auth } = await getFirebase()
   if (!auth.currentUser) return { queued: 0, skipped: 'no-auth' }
-  const { doc, writeBatch, setDoc } = await import('firebase/firestore')
+  const { doc, writeBatch, setDoc, serverTimestamp } = await import('firebase/firestore')
 
   const now = Date.now()
   const ref = (name, id) => doc(fs, 'businesses', businessId, name, id)
-  const ctx = { fs, setDoc, ref }
+  const ctx = { fs, setDoc, ref, serverTimestamp }
 
   let queuedCount = 0
   for (const col of SYNC_COLLECTIONS) {
@@ -170,7 +178,7 @@ async function doPush() {
     for (let i = 0; i < nuevos.length; i += step) {
       const slice = nuevos.slice(i, i + step)
       const batch = writeBatch(fs)
-      for (const { r, id } of slice) batch.set(ref(col.name, id), toCloud(r))
+      for (const { r, id } of slice) batch.set(ref(col.name, id), toCloudSellado(col.name, r, serverTimestamp))
       watchCommit(col.name, slice, batch.commit()) // devuelve LA MISMA promesa (commitWatch.js)
         .then(() => withRetry(col.name, (list) => slice.reduce((l, { id }) => onSuccess(l, id), list)))
         .catch((e) => onBatchError(col, slice, e, { ...ctx, now: Date.now() }))
@@ -184,7 +192,7 @@ async function doPush() {
         await withRetry(col.name, (list) => onSuccess(list, id)) // ya no existe local: sale de la cola
         continue
       }
-      setDoc(ref(col.name, id), toCloud(r))
+      setDoc(ref(col.name, id), toCloudSellado(col.name, r, serverTimestamp))
         .then(() => withRetry(col.name, (list) => onSuccess(list, id)))
         .catch((e) => onOneError(col, id, e, Date.now()))
       queuedCount += 1
@@ -217,7 +225,7 @@ async function onBatchError(col, slice, e, ctx) {
   // PERMANENTE: el commit atomico fallo -> los inocentes fallaron solo por
   // compartir lote. Reenviar cada uno por separado para salvarlos.
   const results = await Promise.allSettled(
-    slice.map(({ r, id }) => ctx.setDoc(ctx.ref(col.name, id), toCloud(r)))
+    slice.map(({ r, id }) => ctx.setDoc(ctx.ref(col.name, id), toCloudSellado(col.name, r, ctx.serverTimestamp)))
   )
   await withRetry(col.name, (list) => {
     let l = list
