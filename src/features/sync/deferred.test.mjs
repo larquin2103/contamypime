@@ -7,7 +7,7 @@ import {
   STALE_DEVICE_MS, guardState, ranLegacyBuild,
   deferredSet, verdictKey, parseDeferred,
   RING_DEBOUNCE_MS, RING_WINDOW_MS, RING_MAX_PER_WINDOW, SAFETY_NET_MS,
-  ringDecision, hasForeignChange
+  ringDecision, hasForeignChange, reconciledKey
 } from './deferred.js'
 
 let n = 0
@@ -229,5 +229,12 @@ ok(hasForeignChange([false]), 'un cambio ajeno basta')
 ok(!hasForeignChange([]), 'sin cambios no suena')
 ok(!hasForeignChange(undefined), 'ni con una lista ilegible (lado barato)')
 ok(!hasForeignChange(null), 'ni con null')
+
+// --- 11) La marca de reconciliacion ------------------------------------------
+eq(reconciledKey('neg1'), 'pull:neg1:reconciliado', 'la marca tambien va atada al negocio')
+ok(reconciledKey('neg1').startsWith('pull:'),
+  'empieza por pull: -> la Tarea 10 la excluye del respaldo junto con los cursores')
+ok(reconciledKey('neg1') !== verdictKey('neg1'), 'y no choca con la del veredicto')
+ok(reconciledKey('neg1') !== pullCursorKey('neg1', 'sales'), 'ni con la de ningun cursor')
 
 console.log(`deferred (sello y cursor): ${n} aserciones OK`)

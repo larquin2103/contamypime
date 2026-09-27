@@ -7,7 +7,7 @@ import { logSyncEvent } from '../../lib/syncLog'
 import { db } from '../../db/db'
 import {
   verdictKey, parseDeferred, pullCursorKey, parseCursor, formatCursor, nextCursor,
-  hasForeignChange
+  hasForeignChange, reconciledKey
 } from './deferred'
 
 // ---------------------------------------------------------------------------
@@ -158,6 +158,77 @@ export async function pullDiferido() {
 
 let listeners = []
 let starting = false
+
+
+// P7 — reconciliacion de la TRANSICION: una lectura COMPLETA antes de empezar a
+// filtrar. Los aparatos pueden tener huecos en lo viejo por los cortes de cuota
+// de estos meses, y en `stockMovements` un hueco significa que `recomputeStock`
+// suma un libro incompleto y el stock de ese telefono queda mal PARA SIEMPRE.
+//
+// Se hace MIENTRAS la coleccion sigue en vivo: su getDocs SIN filtro comparte
+// forma canonica con la consulta del oyente, asi que reutiliza su vista en cache
+// y no cuesta lecturas (verificado en el SDK: getDocs es un oyente temporal y el
+// mapa de consultas se indexa por forma canonica -> NoActionRequired).
+//
+// NO se hace en cada arranque (spec §10.5, H-B): solo en la TRANSICION -al
+// encender la bandera, al pasar la guarda, al volver de un build viejo-. Un
+// aparato que ya filtra no se suscribe, y por tanto no tiene nada que reconciliar.
+export async function reconciliarDiferidas(businessId, cols) {
+  if (!cols || !cols.size) return { ok: false, motivo: 'No hay nada que reconciliar.' }
+  const { db: fs, auth } = await getFirebase()
+  if (!auth.currentUser) return { ok: false, motivo: 'Sin sesión de nube.' }
+  const { collection, getDocs } = await import('firebase/firestore')
+
+  const affected = new Set()
+  const cursores = []
+  for (const col of SYNC_COLLECTIONS) {
+    if (!cols.has(col.name)) continue
+    const snap = await getDocs(collection(fs, 'businesses', businessId, col.name))
+    // Si vino de cache, NO cuenta: reconciliar contra la cache no rellena ningun
+    // hueco, y darlo por hecho dejaria ese hueco cerrado para siempre.
+    if (snap.metadata.fromCache) {
+      return { ok: false, motivo: 'El servidor no respondió; no se pudo reconciliar.' }
+    }
+    const docs = snap.docs.map((d) => d.data())
+
+    // OJO: el maximo es POR COLECCION, no global. Cada cursor tiene que arrancar
+    // en el maximo de SU propia coleccion: si `sales` heredara el de
+    // `stockMovements` (que se mueve mucho mas), su primera bajada filtrada se
+    // saltaria todo lo que quedo entre medias.
+    let maxCol = null
+    if (docs.length) {
+      const aff = await mergeIncoming(col, docs)
+      maxCol = aff.maxUpMs ?? null
+      aff.forEach((x) => affected.add(x))
+    }
+
+    // Sin un solo documento sellado no hay cursor posible, y NO se puede entrar en
+    // diferido: sin cursor, cada timbre haria un getDocs SIN filtro -ya sin oyente
+    // con el que compartir vista- y eso es la coleccion entera, hasta seis veces
+    // cada diez minutos. Seria mucho peor que no ahorrar nada. Se queda en vivo y
+    // se reintenta en el arranque siguiente, cuando algo se haya subido ya sellado.
+    if (maxCol == null) {
+      return { ok: false, motivo: `Todavía no hay nada sellado en ${col.name}; se reintenta luego.` }
+    }
+
+    // El cursor NUNCA retrocede, tampoco entre reconciliaciones: si ya habia uno
+    // mas adelantado, se respeta.
+    const clave = pullCursorKey(businessId, col.name)
+    const previo = parseCursor((await db.syncState.get(clave))?.value)
+    cursores.push({ clave, ms: nextCursor({ prevMs: previo, maxUpMs: maxCol, fromServer: true }) })
+  }
+
+  // Se escriben al final, cuando TODAS las colecciones han salido bien: a medias
+  // no sirve de nada y dejaria cursores puestos sin que el aparato llegue a filtrar.
+  for (const c of cursores) {
+    if (c.ms != null) await db.syncState.put({ key: c.clave, value: formatCursor(c.ms) })
+  }
+  if (affected.size) await recomputeStock(affected)
+
+  const reconciledAtMs = Date.now()
+  await db.syncState.put({ key: reconciledKey(businessId), value: formatCursor(reconciledAtMs) })
+  return { ok: true, reconciledAtMs, motivo: '' }
+}
 
 // EL TIMBRE. Lo toca el oyente de una coleccion que SIGUE en vivo y lo atiende
 // el proveedor (que es quien tiene el antirrebete y el tope). Se fija igual que

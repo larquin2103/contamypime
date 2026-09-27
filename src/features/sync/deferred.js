@@ -192,6 +192,11 @@ export function deferredSet({ flagOn, guardOk, sinMesas, ordersVacia } = {}) {
 // con una guarda que ya no se cumple.
 export const verdictKey = (businessId) => `pull:${businessId}:diferidas`
 
+// Marca de "este aparato ya reconcilio con el servidor para este negocio". Se
+// borra (se deja en blanco) cuando la guarda se rompe, para que el arranque
+// siguiente vuelva a reconciliar con las colecciones otra vez en vivo.
+export const reconciledKey = (businessId) => `pull:${businessId}:reconciliado`
+
 // Lee el veredicto guardado. Solo admite colecciones CON SELLO: un valor viejo o
 // corrupto no puede sacar del tiempo real una coleccion que nadie sella, porque
 // esa no bajaria por ningun otro camino y desapareceria del aparato en silencio.
