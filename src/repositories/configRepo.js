@@ -143,6 +143,19 @@ export const configRepo = {
     await this.set('bajadaFiltrada', !!v)
   },
 
+  // Subida sin eco (spec 2026-09-27-subida-sin-eco). Del NEGOCIO y SINCRONIZADA,
+  // como `bajadaFiltrada`: el dueño la enciende y la apaga para todos desde su
+  // aparato, o a distancia desde la consola (§6 de la spec). Apagada por defecto
+  // = la subida clasica. A diferencia de `bajadaFiltrada`, no cambia
+  // suscripciones: doPush la lee en cada ciclo, asi que se aplica sin reabrir.
+  async getSubidaSinEco() {
+    return !!(await this.get('subidaSinEco', false))
+  },
+
+  async setSubidaSinEco(v) {
+    await this.set('subidaSinEco', !!v)
+  },
+
   async setAreas(list) {
     const clean = (Array.isArray(list) ? list : [])
       .map((s) => String(s).trim())

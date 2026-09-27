@@ -29,7 +29,10 @@ const DEVICE_ONLY_KEYS = new Set([
   'licenseLastSeen',
   'deviceId',
   'lastBackupAt',
-  'lastRestoreAt'
+  'lastRestoreAt',
+  // Subida sin eco: es del negocio y vive en la nube (llega por la sync). Un
+  // respaldo viejo no debe encenderla ni apagarla al restaurarse.
+  'subidaSinEco'
 ])
 
 // Arma el respaldo integro: todas las tablas, con la version de esquema para
