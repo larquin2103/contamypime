@@ -6,7 +6,8 @@ import { mergeIncoming, recomputeStock } from './pullEngine'
 import { logSyncEvent } from '../../lib/syncLog'
 import { db } from '../../db/db'
 import {
-  verdictKey, parseDeferred, pullCursorKey, parseCursor, formatCursor, nextCursor
+  verdictKey, parseDeferred, pullCursorKey, parseCursor, formatCursor, nextCursor,
+  hasForeignChange
 } from './deferred'
 
 // ---------------------------------------------------------------------------
@@ -158,6 +159,14 @@ export async function pullDiferido() {
 let listeners = []
 let starting = false
 
+// EL TIMBRE. Lo toca el oyente de una coleccion que SIGUE en vivo y lo atiende
+// el proveedor (que es quien tiene el antirrebete y el tope). Se fija igual que
+// el veredicto: sin handler, no suena nada y todo queda como hoy.
+let onRing = null
+export function setRingHandler(fn) {
+  onRing = typeof fn === 'function' ? fn : null
+}
+
 // Procesa una tanda entrante y, si toca inventario, recalcula stock.
 async function handleIncoming(col, docs) {
   try {
@@ -193,12 +202,18 @@ export async function startRealtime() {
       const unsub = onSnapshot(
         ref,
         (snap) => {
-          const docs = snap
+          // c es un DocumentChange: el documento (con .data()) esta en c.doc.
+          const cambios = snap
             .docChanges()
             .filter((c) => c.type === 'added' || c.type === 'modified')
-            // c es un DocumentChange: el documento (con .data()) esta en c.doc.
-            .map((c) => c.doc.data())
-          if (docs.length) handleIncoming(col, docs)
+          if (!cambios.length) return
+          handleIncoming(col, cambios.map((c) => c.doc.data()))
+          // El timbre solo lo tocan los cambios de OTRO aparato: una escritura
+          // propia vuelve por aqui al instante con hasPendingWrites, y bajar lo
+          // diferido por ella seria pagar una consulta que no trae ninguna novedad.
+          if (onRing && hasForeignChange(cambios.map((c) => c.doc.metadata.hasPendingWrites))) {
+            onRing(col.name)
+          }
         },
         (err) => {
           console.warn('[sync] onSnapshot', col.name, err?.code || err?.message)

@@ -199,3 +199,36 @@ export function parseDeferred(stored) {
   if (!Array.isArray(stored)) return new Set()
   return new Set(stored.filter((n) => typeof n === 'string' && isSealed(n)))
 }
+
+// EL TIMBRE (P6): la bajada diferida se dispara por EVENTO, no por reloj. El
+// sondeo paga el silencio; medido sobre el libro real de tres negocios, el timbre
+// con antirrebote de 5 s cuesta 3,8 veces menos que sondear cada 15 minutos Y
+// ademas borra el retraso. No es un compromiso: gana en los dos ejes.
+export const RING_DEBOUNCE_MS = 5000
+// R2 — tormenta de timbre: el alta de un negocio son 6.622 documentos y haria
+// sonar el timbre muchas veces. Con tope, el peor caso es la red de seguridad.
+export const RING_WINDOW_MS = 10 * 60 * 1000
+export const RING_MAX_PER_WINDOW = 6
+// R2b — si el timbre no suena (el aparato estaba dormido): el peor caso pasa de
+// "nunca" a "una hora".
+export const SAFETY_NET_MS = 60 * 60 * 1000
+
+export function ringDecision({ nowMs, recientes }) {
+  const previas = Array.isArray(recientes) ? recientes : []
+  const enVentana = previas.filter((t) => nowMs - t < RING_WINDOW_MS)
+  if (enVentana.length >= RING_MAX_PER_WINDOW) return { suena: false, recientes: enVentana }
+  return { suena: true, recientes: [...enVentana, nowMs] }
+}
+
+// ¿Esta tanda del oyente trae algo de OTRO aparato? Se le pasa el
+// `hasPendingWrites` de cada cambio. Una escritura propia llega al instante con
+// la marca puesta; sin este filtro, cada venta de este mismo aparato tocaria el
+// timbre y se pagaria una consulta que no puede traer ninguna novedad.
+//
+// La confirmacion del servidor de esa misma escritura NO vuelve a disparar el
+// oyente: sin `includeMetadataChanges`, un cambio que solo toca metadatos no se
+// entrega. Asi que filtrar aqui no pierde ningun aviso ajeno.
+export function hasForeignChange(pendingWrites) {
+  if (!Array.isArray(pendingWrites)) return false
+  return pendingWrites.some((p) => !p)
+}

@@ -5,7 +5,9 @@ import {
   SEALED, isSealed, seal, upToMillis, stripUp,
   pullCursorKey, parseCursor, formatCursor, CURSOR_MARGIN_MS, nextCursor,
   STALE_DEVICE_MS, guardState, ranLegacyBuild,
-  deferredSet, verdictKey, parseDeferred
+  deferredSet, verdictKey, parseDeferred,
+  RING_DEBOUNCE_MS, RING_WINDOW_MS, RING_MAX_PER_WINDOW, SAFETY_NET_MS,
+  ringDecision, hasForeignChange
 } from './deferred.js'
 
 let n = 0
@@ -192,5 +194,40 @@ eq([...parseDeferred('stockMovements')], [], 'una cadena suelta no es un veredic
 eq([...parseDeferred({})], [], 'ni un objeto')
 eq(parseDeferred(['stockMovements', 'stockMovements']).size, 1, 'sin duplicados')
 ok(parseDeferred(null) instanceof Set, 'siempre un Set')
+
+// --- 10) El timbre, su tope (R2) y la red de seguridad (R2b) ------------------
+eq(RING_DEBOUNCE_MS, 5000, 'antirrebote de 5 s (el medido: 38 pulsaciones/dia y aparato)')
+eq(RING_WINDOW_MS, 600000, 'la ventana del tope son 10 minutos')
+eq(RING_MAX_PER_WINDOW, 6, 'y caben 6 bajadas en ella')
+eq(SAFETY_NET_MS, 3600000, 'red de seguridad cada 60 min por si el timbre se pierde')
+
+const t0 = 1000000
+let est = []
+for (let i = 0; i < RING_MAX_PER_WINDOW; i++) {
+  const d = ringDecision({ nowMs: t0 + i, recientes: est })
+  ok(d.suena, `pulsacion ${i + 1} dentro del tope: suena`)
+  est = d.recientes
+}
+ok(!ringDecision({ nowMs: t0 + 100, recientes: est }).suena,
+  'R2: pasado el tope, NO suena (si no, el alta de un negocio serian 86.400 lecturas/dia)')
+ok(ringDecision({ nowMs: t0 + RING_WINDOW_MS + 1, recientes: est }).suena,
+  'y vuelve a sonar cuando la ventana pasa')
+eq(ringDecision({ nowMs: t0 + RING_WINDOW_MS + 10, recientes: est }).recientes.length, 1,
+  'pasada la ventana entera, la lista se poda y solo queda la de ahora')
+ok(ringDecision({ nowMs: t0 + RING_WINDOW_MS + 1, recientes: est }).recientes.length <= RING_MAX_PER_WINDOW,
+  'la lista NUNCA crece por encima del tope, aunque la ventana solo se haya pasado a medias')
+ok(ringDecision({ nowMs: t0, recientes: undefined }).suena, 'sin historial, suena')
+ok(ringDecision({ nowMs: t0, recientes: 'basura' }).suena, 'con un historial ilegible, tambien')
+
+// R6: el timbre lo tocan los cambios de OTRO aparato, no las escrituras propias.
+// Una venta escribe `products`, el oyente la devuelve al instante con
+// hasPendingWrites=true, y sin este filtro el aparato se llamaria a si mismo:
+// hasta 864 consultas al dia por puro eco, sin una sola novedad que traer.
+ok(!hasForeignChange([true, true]), 'solo escrituras propias pendientes -> NO suena')
+ok(hasForeignChange([true, false]), 'si alguna viene confirmada del servidor -> suena')
+ok(hasForeignChange([false]), 'un cambio ajeno basta')
+ok(!hasForeignChange([]), 'sin cambios no suena')
+ok(!hasForeignChange(undefined), 'ni con una lista ilegible (lado barato)')
+ok(!hasForeignChange(null), 'ni con null')
 
 console.log(`deferred (sello y cursor): ${n} aserciones OK`)

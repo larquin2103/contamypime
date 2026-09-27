@@ -1,6 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { observeAuth, syncConfig, refreshSession } from '../../features/sync/syncService'
-import { syncNow, startRealtime, stopRealtime, initialPull, restartRealtime } from '../../features/sync/syncEngine'
+import {
+  syncNow, startRealtime, stopRealtime, initialPull, restartRealtime,
+  setRingHandler, pullDiferido
+} from '../../features/sync/syncEngine'
+import { ringDecision, RING_DEBOUNCE_MS, SAFETY_NET_MS } from '../../features/sync/deferred'
 import { touchThisDevice } from '../../features/sync/deviceRegistry'
 import { logSyncEvent } from '../../lib/syncLog'
 
@@ -53,6 +57,11 @@ export function SyncProvider({ children }) {
   const lastPullAtRef = useRef(0)
   // FASE 2: marca del último intento de recuperación de sesión (throttle).
   const lastRecoverRef = useRef(0)
+  // EL TIMBRE de la bajada diferida: temporizador del antirrebote y pulsaciones
+  // recientes (para el tope por ventana). Van en refs y no en estado porque no
+  // se pintan: cambiarlos no tiene por que repintar la app entera.
+  const ringTimerRef = useRef(null)
+  const ringRecentRef = useRef([])
 
   // ¿Esta activada la sync en este dispositivo? (no toca Firebase)
   useEffect(() => {
@@ -132,6 +141,26 @@ export function SyncProvider({ children }) {
     }, NUDGE_DEBOUNCE_MS)
   }
 
+  // EL TIMBRE: cuando una coleccion que SIGUE EN VIVO entrega un cambio de otro
+  // aparato, se baja lo diferido. Antirrebote para agrupar las rachas y tope por
+  // ventana (R2), porque el alta de un negocio son miles de documentos y haria
+  // sonar esto sin parar. Lo que el tope deje fuera lo recoge la red de seguridad.
+  const tocarTimbre = () => {
+    if (!enabled || !cloudUser) return
+    clearTimeout(ringTimerRef.current)
+    ringTimerRef.current = setTimeout(async () => {
+      const d = ringDecision({ nowMs: Date.now(), recientes: ringRecentRef.current })
+      ringRecentRef.current = d.recientes
+      if (!d.suena) return
+      if (!navigator.onLine) return
+      try {
+        await pullDiferido()
+      } catch (e) {
+        logSyncEvent('bajada-diferida', null, e)
+      }
+    }, RING_DEBOUNCE_MS)
+  }
+
   // Bajada de respaldo (getDocs de todas las colecciones + recalculo de stock).
   // Complementa el tiempo real: si onSnapshot no entrega (red movil/proxy), esto
   // mantiene el inventario al dia en todos los dispositivos.
@@ -187,6 +216,7 @@ export function SyncProvider({ children }) {
       }
       await restartRealtime() // re-arma listeners que pudieran haber muerto por auth
       await runPull()         // baja y confirma ya con el token nuevo
+      await pullDiferido().catch(() => {}) // y lo diferido, que no pasa por runPull
       runPush()               // empuja lo local pendiente (no bloqueante)
     } catch (e) {
       console.warn('[sync] recover', e?.message)
@@ -208,6 +238,9 @@ export function SyncProvider({ children }) {
       await restartRealtime()
       await syncNow()                 // sube lo local (motor; no lanza por red)
       const res = await initialPull() // baja y CONFIRMA ida y vuelta
+      // Lo diferido NO baja por initialPull: sin esto, el dueño pulsa "Sincronizar
+      // ahora", ve el verde de confirmado y el libro mayor no se ha movido.
+      await pullDiferido().catch(() => {})
       lastPullAtRef.current = Date.now()
       // Solo es exito real si la respuesta vino del SERVIDOR. Leer de la cache
       // (fromServer=false) NO confirma que el servidor este accesible.
@@ -262,10 +295,34 @@ export function SyncProvider({ children }) {
       if (typeof document === 'undefined' || document.visibilityState !== 'visible') return
       if (!navigator.onLine) return
       if (Date.now() - lastPullAtRef.current > FOREGROUND_PULL_MIN_MS) runPull()
+      pullDiferido().catch(() => {}) // lo diferido, al volver al frente
       nudgePush()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, cloudUser])
+
+  // Engancha el timbre al motor. En su PROPIO efecto y no dentro del callback de
+  // observeAuth: alli el cierre se quedaria con el `cloudUser` que habia al
+  // registrarse -todavia undefined-, y `tocarTimbre` saldria por su guarda para
+  // siempre. El timbre no sonaria nunca, sin un solo error.
+  useEffect(() => {
+    if (!enabled || !cloudUser) return
+    setRingHandler(tocarTimbre)
+    return () => setRingHandler(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, cloudUser])
+
+  // Red de seguridad: si el timbre no suena (el aparato estaba dormido, o el tope
+  // de la ventana dejo fuera una racha), una bajada lenta cada 60 min. Coste
+  // marginal, y acota el peor caso a una hora en vez de "hasta que algo pase".
+  useEffect(() => {
+    if (!enabled || !cloudUser) return
+    const id = setInterval(() => {
+      if (navigator.onLine) pullDiferido().catch(() => {})
+    }, SAFETY_NET_MS)
+    return () => clearInterval(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, cloudUser])
 
