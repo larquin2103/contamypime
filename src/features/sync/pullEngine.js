@@ -3,6 +3,7 @@ import { WAREHOUSE } from '../../db/constants'
 import { cleanQty } from '../../lib/qty'
 import { LOCAL_CONFIG_KEYS, syncTs } from './collections'
 import { stripUp } from './deferred'
+import { record as anotarEco } from './echoLedger'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Bloque 24: motor de BAJADA (pull).
@@ -52,6 +53,10 @@ export async function mergeIncoming(col, docs) {
     if (col.name === 'products') affected.add(incoming.id)
   }
   if (toPut.length) await table.bulkPut(toPut)
+  // Subida sin eco: se anota la version de lo que ACABA de entrar, y solo eso
+  // (lo que gano el LWW). Una escritura propia que vuelve por el oyente trae la
+  // misma marca, no entra en toPut y no se anota: sube por su cursor como siempre.
+  anotarEco(col.name, col.pk, toPut)
   return conMarca(affected)
 }
 
