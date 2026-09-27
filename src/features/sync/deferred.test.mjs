@@ -4,7 +4,8 @@ import assert from 'node:assert/strict'
 import {
   SEALED, isSealed, seal, upToMillis, stripUp,
   pullCursorKey, parseCursor, formatCursor, CURSOR_MARGIN_MS, nextCursor,
-  STALE_DEVICE_MS, guardState, ranLegacyBuild
+  STALE_DEVICE_MS, guardState, ranLegacyBuild,
+  deferredSet, verdictKey, parseDeferred
 } from './deferred.js'
 
 let n = 0
@@ -156,5 +157,40 @@ ok(!ranLegacyBuild({ lastSeenAt: 2000 }), 'sin sealSeenAt no se concluye nada (d
 ok(!ranLegacyBuild({ sealSeenAt: 2000 }), 'sin lastSeenAt tampoco')
 ok(!ranLegacyBuild(null), 'aparato nuevo: no hay fila previa')
 ok(ranLegacyBuild({ lastSeenAt: { seconds: 2, nanoseconds: 0 }, sealSeenAt: { seconds: 1, nanoseconds: 0 } }), 'con Timestamps de Firestore tambien lo detecta')
+
+// --- 8) Que se difiere -------------------------------------------------------
+const todo = { flagOn: true, guardOk: true, sinMesas: true, ordersVacia: true }
+eq([...deferredSet(todo)].sort(), ['sales', 'stockMovements'], 'sin mesas se difieren las dos')
+
+eq([...deferredSet({ ...todo, sinMesas: false })], ['stockMovements'],
+  'con licencia de mesas, `sales` se QUEDA en vivo (§7bis: toca dinero)')
+eq([...deferredSet({ ...todo, ordersVacia: false })], ['stockMovements'],
+  'y si hay algun pedido, tambien se queda, aunque la licencia diga que no hay mesas')
+
+eq([...deferredSet({ ...todo, flagOn: false })], [],
+  'bandera apagada -> NADA se difiere: identico al comportamiento de hoy')
+eq([...deferredSet({ ...todo, guardOk: false })], [], 'guarda no pasada -> NADA se difiere')
+eq([...deferredSet({})], [], 'sin datos -> NADA se difiere (lado seguro)')
+eq([...deferredSet()], [], 'ni siquiera llamandola sin argumentos')
+ok(deferredSet(todo) instanceof Set, 'devuelve un Set')
+
+// --- 9) El VEREDICTO persistido: lo que hace que el invariante sea cierto -----
+// `startRealtime` lo lee ANTES de suscribir, asi que un aparato que filtra no
+// llama a onSnapshot sobre las diferidas en NINGUN arranque (hallazgo H-B).
+eq(verdictKey('neg1'), 'pull:neg1:diferidas', 'el veredicto va atado al negocio')
+ok(verdictKey('neg1').startsWith('pull:'),
+  'y empieza por pull: -> la Tarea 10 lo excluye del respaldo con los cursores')
+
+eq([...parseDeferred(['stockMovements'])], ['stockMovements'], 'se lee de vuelta')
+eq([...parseDeferred(['stockMovements', 'sales'])].sort(), ['sales', 'stockMovements'], 'las dos')
+eq([...parseDeferred(['products', 'orders', 'config'])], [],
+  'un veredicto corrupto NUNCA puede sacar del vivo una coleccion que no lleva sello')
+eq([...parseDeferred(['stockMovements', 'products'])], ['stockMovements'], 'y filtra solo lo bueno')
+eq([...parseDeferred(null)], [], 'sin fila -> nada diferido (comportamiento clasico)')
+eq([...parseDeferred(undefined)], [], 'sin valor -> nada')
+eq([...parseDeferred('stockMovements')], [], 'una cadena suelta no es un veredicto')
+eq([...parseDeferred({})], [], 'ni un objeto')
+eq(parseDeferred(['stockMovements', 'stockMovements']).size, 1, 'sin duplicados')
+ok(parseDeferred(null) instanceof Set, 'siempre un Set')
 
 console.log(`deferred (sello y cursor): ${n} aserciones OK`)

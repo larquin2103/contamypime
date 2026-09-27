@@ -164,3 +164,38 @@ export function ranLegacyBuild(prev) {
   if (visto == null || sellado == null) return false
   return visto > sellado
 }
+
+// Que colecciones salen del tiempo real. Por defecto NINGUNA: con la bandera
+// apagada o la guarda sin pasar, la app se comporta EXACTAMENTE como hoy.
+//
+// `sales` solo sale si el negocio no tiene mesas, y hacen falta las DOS pruebas:
+// la licencia (que es LOCAL de cada aparato y puede ir desfasada) y que `orders`
+// este vacia (que es dato sincronizado). Con mesas, el cobro de una mesa escribe
+// `sales` y `orders`, la cabecera se pierde por LWW (H2) y el candado contra el
+// doble cobro lee `db.sales` LOCAL: sin `sales` en vivo, el candado no dispara.
+// Cuesta poco dejarla: en el negocio con mesas medido es el 1,3 % de D.
+export function deferredSet({ flagOn, guardOk, sinMesas, ordersVacia } = {}) {
+  if (!flagOn || !guardOk) return new Set()
+  const out = new Set(['stockMovements'])
+  if (sinMesas && ordersVacia) out.add('sales')
+  return out
+}
+
+// EL VEREDICTO PERSISTIDO. Aqui es donde vive el invariante del hallazgo H-B:
+// "un aparato con el filtro activo NO llama a onSnapshot sobre las diferidas, en
+// ningun arranque". Para que eso sea cierto, la decision no puede depender de una
+// comprobacion asincrona que corre DESPUES de que el tiempo real ya arranco: se
+// guarda en `syncState` y `startRealtime` la lee antes de suscribir.
+//
+// Va bajo el prefijo `pull:` para que la Tarea 10 lo saque del respaldo junto con
+// los cursores: restaurar un respaldo viejo no puede dejar a un aparato filtrando
+// con una guarda que ya no se cumple.
+export const verdictKey = (businessId) => `pull:${businessId}:diferidas`
+
+// Lee el veredicto guardado. Solo admite colecciones CON SELLO: un valor viejo o
+// corrupto no puede sacar del tiempo real una coleccion que nadie sella, porque
+// esa no bajaria por ningun otro camino y desapareceria del aparato en silencio.
+export function parseDeferred(stored) {
+  if (!Array.isArray(stored)) return new Set()
+  return new Set(stored.filter((n) => typeof n === 'string' && isSealed(n)))
+}

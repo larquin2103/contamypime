@@ -4,6 +4,8 @@ import { SYNC_COLLECTIONS } from './collections'
 import { pushChanges } from './pushEngine'
 import { mergeIncoming, recomputeStock } from './pullEngine'
 import { logSyncEvent } from '../../lib/syncLog'
+import { db } from '../../db/db'
+import { verdictKey, parseDeferred } from './deferred'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Orquestador de sincronizacion.
@@ -16,6 +18,29 @@ import { logSyncEvent } from '../../lib/syncLog'
 export async function syncNow() {
   const up = await pushChanges()
   return { up }
+}
+
+// Lo que ESTA sesion NO escucha en vivo. No se inyecta desde fuera: se fija
+// dentro de `startRealtime`, leyendo el veredicto que dejo escrito el arranque
+// anterior, y SIEMPRE antes de suscribir. Ahi esta el invariante del hallazgo
+// H-B: un aparato que filtra no llama a onSnapshot sobre las diferidas en ningun
+// arranque. Si la decision se tomara despues -con una comprobacion de red, por
+// ejemplo- el oyente ya habria enganchado, que es EXACTAMENTE el coste que esto
+// viene a quitar. Vacio = comportamiento clasico.
+let diferidasSesion = new Set()
+
+// Lo que este aparato esta difiriendo AHORA. Lo leen `pullDiferido` y el panel.
+export function getDeferred() {
+  return new Set(diferidasSesion)
+}
+
+async function leerVeredicto(businessId) {
+  try {
+    const row = await db.syncState.get(verdictKey(businessId))
+    return parseDeferred(row?.value)
+  } catch {
+    return new Set() // ante cualquier duda, el vivo de siempre
+  }
 }
 
 // Descarga inicial de una sola pasada (getDocs). A diferencia del listener en
@@ -41,6 +66,10 @@ export async function initialPull() {
   let fromServer = false
   const affected = new Set()
   for (const col of SYNC_COLLECTIONS) {
+    // Las diferidas no bajan por aqui: sin oyente, este getDocs sin filtro dejaria
+    // de ser gratis y seria una consulta real de la coleccion ENTERA cada 45 s.
+    // Bajan por `pullDiferido`, que pide solo lo llegado desde el cursor.
+    if (diferidasSesion.has(col.name)) continue
     const snap = await getDocs(collection(fs, 'businesses', businessId, col.name))
     if (!snap.metadata.fromCache) fromServer = true
     const docs = snap.docs.map((d) => d.data())
@@ -81,7 +110,13 @@ export async function startRealtime() {
     if (!auth.currentUser) return
     const { collection, onSnapshot } = await import('firebase/firestore')
 
+    // AQUI, y no despues: lo que se lea ahora decide a que se suscribe este
+    // arranque. El veredicto lo dejo escrito el arranque anterior (SyncProvider),
+    // asi que es una lectura local y rapida, sin red de por medio.
+    diferidasSesion = await leerVeredicto(businessId)
+
     for (const col of SYNC_COLLECTIONS) {
+      if (diferidasSesion.has(col.name)) continue
       const ref = collection(fs, 'businesses', businessId, col.name)
       const unsub = onSnapshot(
         ref,
