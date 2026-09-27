@@ -133,8 +133,19 @@ export function guardState({ devices, nowMs, reconciledAtMs }) {
       bloqueantes.push({ id: d.id, name: d.name || d.id, motivo: 'no ha actualizado la app' })
       continue
     }
-    // Un build viejo que corrio DESPUES de nuestra reconciliacion pudo subir filas
-    // sin sello, que ninguna consulta filtrada devolveria: hay que volver al vivo.
+    // Un build viejo corriendo AHORA MISMO en ese aparato (hallazgo C1 de la
+    // revision). `caps.up` no lo delata -el viejo no escribe `caps` y el setDoc va
+    // con merge, asi que conserva el del build nuevo- y `legacyAt` es
+    // RETROSPECTIVO: solo se escribe cuando ese aparato vuelve al build nuevo.
+    // Entre medias, los demas filtrarian y sus filas sin `_up` no bajarian por
+    // ninguna consulta: hueco permanente y silencioso en el libro. Lo que SI deja
+    // huella en el acto es que el viejo toca `lastSeenAt` y no `sealSeenAt`.
+    if (ranLegacyBuild(d)) {
+      bloqueantes.push({ id: d.id, name: d.name || d.id, motivo: 'está usando una versión antigua' })
+      continue
+    }
+    // Y uno que ya volvio al build nuevo, pero corrio uno viejo DESPUES de nuestra
+    // reconciliacion: lo que subio entonces va sin sello y hay que volver al vivo.
     const legacy = upToMillis(d.legacyAt)
     if (legacy != null && reconciledAtMs != null && legacy > reconciledAtMs) {
       bloqueantes.push({ id: d.id, name: d.name || d.id, motivo: 'abrio una version antigua' })
@@ -158,6 +169,8 @@ export function guardState({ devices, nowMs, reconciledAtMs }) {
 //
 // Los dos son hora del SERVIDOR y el build nuevo los escribe en la MISMA
 // escritura, asi que en marcha normal salen iguales, nunca uno mayor.
+// OJO: `guardState` la llama, y esta declarada DESPUES. Es una `function` (sube
+// por hoisting); convertirla en `const` la rompe.
 export function ranLegacyBuild(prev) {
   const visto = upToMillis(prev?.lastSeenAt)
   const sellado = upToMillis(prev?.sealSeenAt)
@@ -196,6 +209,11 @@ export const verdictKey = (businessId) => `pull:${businessId}:diferidas`
 // borra (se deja en blanco) cuando la guarda se rompe, para que el arranque
 // siguiente vuelva a reconciliar con las colecciones otra vez en vivo.
 export const reconciledKey = (businessId) => `pull:${businessId}:reconciliado`
+
+// Marca de "este aparato ya bajo TODAS las colecciones del servidor al menos una
+// vez para este negocio". Va bajo `pull:` como las demas: no viaja en el respaldo,
+// porque en otro aparato seria mentira.
+export const fullPullKey = (businessId) => `pull:${businessId}:bajadaCompleta`
 
 // Lee el veredicto guardado. Solo admite colecciones CON SELLO: un valor viejo o
 // corrupto no puede sacar del tiempo real una coleccion que nadie sella, porque
@@ -256,4 +274,27 @@ export function transitionPlan({ prevCols, nextCols }) {
   const despues = nextCols instanceof Set ? nextCols : new Set()
   const vuelveAlVivo = [...antes].some((c) => !despues.has(c))
   return { restart: vuelveAlVivo, resetReconcile: vuelveAlVivo }
+}
+
+// Cuantas filas de la tanda traen el sello como MAPA en vez de como Timestamp.
+//
+// Pasa asi: un aparato con el build VIEJO baja una fila ya sellada y la guarda
+// en su Dexie, donde el Timestamp pierde el prototipo y queda {seconds,
+// nanoseconds}; el eco del §10.4 la vuelve a subir con `JSON.stringify`, y en la
+// nube queda un mapa. Firestore ordena por TIPO antes que por valor, y
+// ObjectValue (11) va POR ENCIMA de TimestampValue (3): esa fila satisface
+// `_up > cualquier cursor` y vuelve a bajar en CADA consulta filtrada, para
+// siempre. Desde la bajada no hay forma de excluirla -ningun cursor la deja
+// fuera-, asi que lo unico honesto es CONTARLA y que se vea en el registro.
+//
+// Del servidor, un campo timestamp llega SIEMPRE como Timestamp del SDK (con su
+// `toMillis`); un campo mapa llega como objeto pelado. Por ahi se distinguen.
+export function mapSeals(docs) {
+  if (!Array.isArray(docs)) return 0
+  let n = 0
+  for (const doc of docs) {
+    const v = doc?._up
+    if (v != null && typeof v.toMillis !== 'function') n++
+  }
+  return n
 }

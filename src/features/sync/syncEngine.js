@@ -7,7 +7,7 @@ import { logSyncEvent } from '../../lib/syncLog'
 import { db } from '../../db/db'
 import {
   verdictKey, parseDeferred, pullCursorKey, parseCursor, formatCursor, nextCursor,
-  hasForeignChange, reconciledKey
+  hasForeignChange, reconciledKey, mapSeals, fullPullKey
 } from './deferred'
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,12 @@ export async function initialPull() {
     }
   }
   if (affected.size) await recomputeStock(affected)
+  // Marca de que este aparato ha completado al menos una bajada CONFIRMADA por el
+  // servidor para este negocio. La usa la decision de diferir `sales`: `orders`
+  // vacia solo es prueba de que no hay mesas si de verdad se ha bajado `orders`.
+  if (fromServer) {
+    await db.syncState.put({ key: fullPullKey(businessId), value: formatCursor(Date.now()) })
+  }
   return { ok: true, total, fromServer }
 }
 
@@ -112,6 +118,7 @@ export async function pullDiferido() {
   let total = 0
   const porColeccion = {}
   const affected = new Set()
+  const cursores = []
   try {
     for (const col of SYNC_COLLECTIONS) {
       if (!cols.has(col.name)) continue
@@ -123,13 +130,27 @@ export async function pullDiferido() {
       // CERO documentos, sin error, sin excepcion y para siempre: la coleccion
       // dejaria de bajar y el stock de este aparato quedaria mal de forma permanente.
       const desdeMs = parseCursor(fila?.value)
+      // SIN CURSOR NO SE LEE. Una consulta sin filtro aqui es la coleccion ENTERA,
+      // y ya sin oyente con el que compartir vista: hasta seis veces cada diez
+      // minutos, mas la red de 60 min, mas cada vuelta al frente. Seria mucho peor
+      // que no ahorrar nada. El cursor lo pone la reconciliacion, que se hace con
+      // la coleccion todavia en vivo; hasta entonces esta no baja por aqui.
+      if (desdeMs == null) {
+        porColeccion[col.name] = { leidos: 0, sinCursor: true }
+        continue
+      }
       const ref = collection(fs, 'businesses', businessId, col.name)
-      const q = desdeMs == null ? ref : query(ref, where('_up', '>', Timestamp.fromMillis(desdeMs)))
+      const q = query(ref, where('_up', '>', Timestamp.fromMillis(desdeMs)))
 
       const snap = await getDocs(q)
       const docs = snap.docs.map((d) => d.data())
       const delServidor = !snap.metadata.fromCache
-      porColeccion[col.name] = { leidos: docs.length, fromCache: snap.metadata.fromCache }
+      const mapas = mapSeals(docs)
+      porColeccion[col.name] = { leidos: docs.length, fromCache: snap.metadata.fromCache, mapas }
+      // Filas cuyo sello llego como MAPA: vuelven a bajar en CADA consulta y ningun
+      // cursor las deja fuera. Se registra para poder MEDIRLO en F3; el remedio
+      // (volver a sellarlas) toca el camino de subida y va aparte.
+      if (mapas) logSyncEvent('bajada-diferida-sello-mapa', col.name, null, `${mapas} fila(s)`)
 
       let maxUpMs = null
       if (docs.length) {
@@ -142,14 +163,22 @@ export async function pullDiferido() {
       // (no del O global de initialPull): avanzarlo con una respuesta de cache
       // dejaria un hueco permanente en el libro.
       const siguiente = nextCursor({ prevMs: desdeMs, maxUpMs, fromServer: delServidor })
-      if (siguiente != null && siguiente !== desdeMs) {
-        await db.syncState.put({ key: clave, value: formatCursor(siguiente) })
-      }
+      if (siguiente != null && siguiente !== desdeMs) cursores.push({ clave, ms: siguiente })
     }
 
     // Igual que en el vivo: primero fusionar, DESPUES derivar el stock; al reves
     // parpadearia unos segundos con el valor viejo (recomputeStock lee el libro local).
     if (affected.size) await recomputeStock(affected)
+
+    // Y el cursor se escribe AL FINAL, cuando el stock ya esta derivado. Si se
+    // escribiera dentro del bucle y el sistema matara la pestana entre medias -esto
+    // se dispara tambien al mandar la app al fondo-, el libro quedaria completo pero
+    // `products.stock` viejo, y el cursor ya pasado: esos documentos no volverian a
+    // bajar y nada volveria a disparar el recalculo. Mismo patron que la
+    // reconciliacion.
+    for (const c of cursores) {
+      await db.syncState.put({ key: c.clave, value: formatCursor(c.ms) })
+    }
   } finally {
     bajandoDiferido = false
   }
@@ -159,6 +188,19 @@ export async function pullDiferido() {
 let listeners = []
 let starting = false
 
+
+// ¿Que colecciones diferidas no tienen cursor todavia? Sin cursor no bajan (ver
+// `pullDiferido`), asi que hay que reconciliar antes de darlas por diferidas. Pasa
+// cuando el conjunto CRECE -por ejemplo, `sales` se suma al filtro- despues de que
+// este aparato ya reconciliara: sin esto, `sales` no bajaria nunca.
+export async function faltanCursores(businessId, cols) {
+  const faltan = []
+  for (const nombre of cols || []) {
+    const fila = await db.syncState.get(pullCursorKey(businessId, nombre))
+    if (parseCursor(fila?.value) == null) faltan.push(nombre)
+  }
+  return faltan
+}
 
 // P7 — reconciliacion de la TRANSICION: una lectura COMPLETA antes de empezar a
 // filtrar. Los aparatos pueden tener huecos en lo viejo por los cortes de cuota

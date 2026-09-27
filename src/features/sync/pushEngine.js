@@ -67,7 +67,7 @@ function toCloud(rec) {
   return JSON.parse(JSON.stringify(rec))
 }
 
-// Sella con la hora en que el documento LLEGA a la nube (spec ง10, D1). Va
+// Sella con la hora en que el documento LLEGA a la nube (spec ยง10, D1). Va
 // DESPUES de toCloud a proposito: el centinela de serverTimestamp() no sobrevive
 // a JSON.stringify (quedaria el mapa {"_methodName":"serverTimestamp"}, que no
 // entra en ningun filtro de rango). Solo lo llevan las colecciones de SEALED;

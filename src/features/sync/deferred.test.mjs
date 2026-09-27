@@ -7,7 +7,7 @@ import {
   STALE_DEVICE_MS, guardState, ranLegacyBuild,
   deferredSet, verdictKey, parseDeferred,
   RING_DEBOUNCE_MS, RING_WINDOW_MS, RING_MAX_PER_WINDOW, SAFETY_NET_MS,
-  ringDecision, hasForeignChange, reconciledKey, transitionPlan
+  ringDecision, hasForeignChange, reconciledKey, transitionPlan, mapSeals
 } from './deferred.js'
 
 let n = 0
@@ -263,5 +263,48 @@ eq(transitionPlan({ prevCols: new Set([]), nextCols: new Set([]) }),
 eq(transitionPlan({ prevCols: new Set(['stockMovements']), nextCols: new Set(['stockMovements', 'sales']) }),
   { restart: false, resetReconcile: false },
   'anadir una coleccion al filtro tampoco reabre: se aplica en el arranque siguiente')
+
+// --- 13) El build viejo corriendo AHORA (hallazgo C1 de la revision) ---------
+// La guarda miraba `caps.up` y `legacyAt`, y NINGUNO ve una sesion de build
+// viejo EN CURSO: el viejo no escribe `caps` y el setDoc va con merge, asi que
+// el `caps.up` del build nuevo sigue en la fila; y `legacyAt` solo se escribe
+// cuando ese aparato VUELVE al build nuevo. Mientras tanto, los demas filtraban
+// y sus filas sin `_up` no bajaban por ninguna consulta: hueco permanente.
+const conBuildViejoAhora = {
+  id: 'b', name: 'b', active: true, caps: { up: 1 },
+  sealSeenAt: ahora - 100000, // sello de la ultima vez que corrio el build nuevo
+  lastSeenAt: ahora - 1000 // pero se le vio DESPUES, sin volver a sellar
+}
+const conViejo = guarda([vivo('a'), conBuildViejoAhora])
+ok(!conViejo.ok, 'un aparato que ACABA de correr un build sin sello bloquea, aunque conserve caps.up')
+eq(conViejo.bloqueantes.map((x) => x.id), ['b'], 'y lo nombra')
+
+// Y no puede dar falsos positivos: el build nuevo escribe los dos sellos en el
+// MISMO setDoc, asi que comparten el instante del commit.
+ok(guarda([vivo('a'), vivo('b')]).ok, 'con los dos sellos iguales no bloquea nadie')
+ok(guarda([{ ...vivo('c'), sealSeenAt: ahora - 1000, lastSeenAt: ahora - 1000 }]).ok,
+  'ni con sellos iguales en otro instante')
+ok(guarda([{ id: 'd', name: 'd', active: true, caps: { up: 1 }, lastSeenAt: ahora - 1000 }]).ok,
+  'un aparato sin sealSeenAt no se juzga por aqui: de ese ya se encarga caps')
+
+// Un aparato RETIRADO o DORMIDO no bloquea aunque haya corrido un build viejo.
+ok(guarda([vivo('a'), { ...conBuildViejoAhora, active: false }]).ok,
+  'retirado a mano: no bloquea')
+ok(guarda([vivo('a'), { ...conBuildViejoAhora, lastSeenAt: ahora - STALE_DEVICE_MS - 1 }]).ok,
+  'dormido hace mas de 30 dias: no bloquea')
+
+// --- 14) Sellos que llegaron como MAPA (hallazgo I4 de la revision) ----------
+// Un build VIEJO baja una fila sellada, guarda el `_up` en su Dexie (donde el
+// Timestamp pierde el prototipo) y el eco del §10.4 la vuelve a subir con su
+// `toCloud`, que es JSON.stringify: en la nube queda un MAPA. Y un mapa ordena
+// POR ENCIMA de cualquier Timestamp (ObjectValue=11 > TimestampValue=3), asi
+// que satisface `> cualquier cursor` y vuelve a bajar EN CADA consulta, para
+// siempre. No se puede arreglar desde la bajada; se CUENTA para poder medirlo.
+eq(mapSeals([{ _up: { toMillis: () => 1 } }]), 0, 'un Timestamp de verdad no cuenta')
+eq(mapSeals([{ _up: { seconds: 1, nanoseconds: 0 } }]), 1, 'un mapa plano SI')
+eq(mapSeals([{ _up: { seconds: 1 } }, { _up: { seconds: 2 } }]), 2, 'se cuentan todos')
+eq(mapSeals([{ id: 'a' }, { _up: null }]), 0, 'sin sello no hay mapa')
+eq(mapSeals([]), 0, 'tanda vacia')
+eq(mapSeals(null), 0, 'lista ilegible -> 0, no lanza')
 
 console.log(`deferred (sello y cursor): ${n} aserciones OK`)

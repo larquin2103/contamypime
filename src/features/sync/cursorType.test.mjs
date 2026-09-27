@@ -30,8 +30,18 @@ ok(!/where\('_up',\s*'>',\s*desdeMs\s*\)/.test(linea),
 // El cursor se guarda como texto y se lee como numero. Si alguien guardara el
 // Timestamp tal cual en `syncState`, el respaldo y la fila dejarian de ser
 // legibles y `parseCursor` devolveria null para siempre (y volveria a bajarlo todo).
-ok(fuente.includes('formatCursor(siguiente)'), 'el cursor se GUARDA con formatCursor (texto ISO)')
+const escrituras = fuente.split('\n').filter((l) => /db\.syncState\.put\(\{\s*key:/.test(l))
+ok(escrituras.length > 0, 'alguien escribe cursores en syncState')
+ok(escrituras.every((l) => /value:\s*(formatCursor\(|'')/.test(l)),
+  'TODO cursor se guarda con formatCursor (texto ISO) o se borra con vacio: nunca un Timestamp ni un numero crudo')
 ok(fuente.includes('parseCursor(fila?.value)'), 'y se LEE con parseCursor (numero o null)')
+
+// Y la consulta sin filtro no puede existir: seria la coleccion ENTERA, ya sin
+// oyente con el que compartir vista (hallazgo I2 de la revision).
+ok(/if \(desdeMs == null\) \{/.test(fuente),
+  'sin cursor NO se consulta: pullDiferido se salta esa coleccion')
+ok(!/const q = desdeMs == null \? ref :/.test(fuente),
+  'y no queda ningun camino que caiga en la consulta sin filtro')
 
 // El cursor solo avanza si esa coleccion vino del servidor (FOCO 5).
 ok(/fromServer:\s*delServidor/.test(fuente),

@@ -165,6 +165,11 @@ export async function readDevices() {
     if (!auth.currentUser) return []
     const { collection, getDocs } = await import('firebase/firestore')
     const snap = await getDocs(collection(fs, 'businesses', auth.currentUser.uid, 'devices'))
+    // Si la respuesta vino de la CACHE, no sirve para decidir: Firestore no lanza
+    // cuando el servidor no responde, sirve la foto de hace dias y resuelve igual.
+    // Con esa foto todos parecerian al dia y se empezaria a filtrar sin haberle
+    // preguntado nunca al servidor. La guarda lee la lista vacia como "no filtrar".
+    if (snap.metadata.fromCache) return []
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
   } catch (e) {
     logSyncEvent('guarda-dispositivos', null, e)

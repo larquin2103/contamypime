@@ -2,12 +2,12 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { observeAuth, syncConfig, refreshSession } from '../../features/sync/syncService'
 import {
   syncNow, startRealtime, stopRealtime, initialPull, restartRealtime,
-  setRingHandler, pullDiferido, getDeferred, reconciliarDiferidas
+  setRingHandler, pullDiferido, getDeferred, reconciliarDiferidas, faltanCursores
 } from '../../features/sync/syncEngine'
 import {
   ringDecision, RING_DEBOUNCE_MS, SAFETY_NET_MS,
   guardState, deferredSet, transitionPlan, parseCursor, parseDeferred,
-  verdictKey, reconciledKey
+  verdictKey, reconciledKey, fullPullKey
 } from '../../features/sync/deferred'
 import { touchThisDevice, readDevices } from '../../features/sync/deviceRegistry'
 import { db } from '../../db/db'
@@ -307,8 +307,14 @@ export function SyncProvider({ children }) {
     const onVisible = () => {
       if (typeof document === 'undefined' || document.visibilityState !== 'visible') return
       if (!navigator.onLine) return
-      if (Date.now() - lastPullAtRef.current > FOREGROUND_PULL_MIN_MS) runPull()
-      pullDiferido().catch(() => {}) // lo diferido, al volver al frente
+      // Las dos bajadas van con el MISMO estrangulador: un telefono de mostrador
+      // entra y sale de la app decenas de veces al dia, y cada vuelta serian dos
+      // consultas (Firestore cobra un minimo de una lectura por consulta, aunque no
+      // devuelva nada). Lo que el estrangulador deje fuera lo recoge el timbre.
+      if (Date.now() - lastPullAtRef.current > FOREGROUND_PULL_MIN_MS) {
+        runPull()
+        pullDiferido().catch(() => {}) // lo diferido, al volver al frente
+      }
       nudgePush()
     }
     document.addEventListener('visibilitychange', onVisible)
@@ -322,8 +328,13 @@ export function SyncProvider({ children }) {
   const sinMesas = async () => {
     const ev = await evaluateLicense(await licenseRepo.getToken(), { nowDate: today() })
     const desbloqueada = ['active', 'expiring', 'grace'].includes(ev.status)
-    const modulos = desbloqueada ? licenseModules(ev.payload) : []
-    return !modulos.includes(LICENSE_MODULES.TABLES)
+    // Sin licencia desbloqueada NO se concluye nada. La lista de modulos vacia
+    // significa "no se sabe", no "no tiene mesas", y `licenseToken` es LOCAL (no
+    // sincroniza): un telefono recien vinculado o reinstalado dira que no hay
+    // mesas sin tener ni idea, y diferir `sales` en un negocio con mesas es lo
+    // que el §7bis prohibe, porque toca dinero.
+    if (!desbloqueada) return false
+    return !licenseModules(ev.payload).includes(LICENSE_MODULES.TABLES)
   }
 
   // Decide si este aparato FILTRARA, y lo deja ESCRITO. No lo aplica a la sesion
@@ -373,15 +384,24 @@ export function SyncProvider({ children }) {
           return
         }
 
+        // `orders` vacia solo prueba que no hay mesas si este aparato ha bajado
+        // `orders` de verdad alguna vez: en un Dexie recien puesto esta vacia porque
+        // no ha llegado nada todavia, no porque el negocio no tenga mesas.
+        const bajoTodo = parseCursor((await db.syncState.get(fullPullKey(businessId)))?.value) != null
         const cols = deferredSet({
           flagOn: true,
           guardOk: true,
           sinMesas: await sinMesas(),
-          ordersVacia: (await db.orders.count()) === 0
+          ordersVacia: bajoTodo && (await db.orders.count()) === 0
         })
-        // TRANSICION: si este aparato aun no ha reconciliado, se hace AHORA, con
-        // las colecciones todavia en vivo (por eso no cuesta lecturas).
-        if (reconciledAtMs == null) {
+        // TRANSICION: se reconcilia si este aparato aun no lo ha hecho, o si al
+        // conjunto le FALTA algun cursor -- por ejemplo cuando `sales` se suma al
+        // filtro despues de que ya se hubiera reconciliado. Sin cursor esa coleccion
+        // no baja por `pullDiferido`, asi que reconciliar es lo unico que la salva.
+        // Y se hace AHORA, con las colecciones todavia en vivo, que es lo que hace
+        // que no cueste lecturas.
+        const faltan = await faltanCursores(businessId, cols)
+        if (reconciledAtMs == null || faltan.length) {
           const r = await reconciliarDiferidas(businessId, cols)
           if (!r.ok) {
             await aplicar(new Set(), r.motivo)

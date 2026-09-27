@@ -234,6 +234,10 @@ function BajadaFiltradaPanel() {
   const { filtradas, motivoFiltro } = useSync()
   const [activa, setActiva] = useState(false)
   const [busy, setBusy] = useState(false)
+  // Lo que se acaba de tocar. El efecto que decide corre al abrir la app, no al
+  // mover el interruptor, asi que sin esto el panel seguiria diciendo lo de antes
+  // -- y este panel existe precisamente para no mentir sobre lo que esta pasando.
+  const [aviso, setAviso] = useState('')
 
   useEffect(() => {
     let vivo = true
@@ -246,6 +250,9 @@ function BajadaFiltradaPanel() {
     try {
       await configRepo.setBajadaFiltrada(v)
       setActiva(v)
+      setAviso(v
+        ? 'Guardado. Cada teléfono lo comprueba al volver a abrir la app, y empieza a filtrar en la apertura siguiente.'
+        : 'Guardado. Cada teléfono vuelve a bajarlo todo al volver a abrir la app.')
     } finally {
       setBusy(false)
     }
@@ -257,7 +264,8 @@ function BajadaFiltradaPanel() {
       <p className="muted">
         Baja del libro de existencias solo lo que ha llegado nuevo a la nube, en vez de
         releerlo entero. Ahorra datos y cuota. Es del negocio: se aplica a todos los
-        teléfonos, cada uno en cuanto vuelva a abrir la app.
+        teléfonos. Cada uno necesita abrir la app DOS veces — la primera comprueba
+        que todos están al día y deja el libro completo, y la segunda ya filtra.
       </p>
       <label className="field">
         <input
@@ -275,6 +283,7 @@ function BajadaFiltradaPanel() {
             ? <>Filtrando: {[...filtradas].join(', ')}.</>
             : <>Bajando todo, como siempre.</>}
       </p>
+      {aviso && <p className="muted"><small>{aviso}</small></p>}
     </section>
   )
 }
