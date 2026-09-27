@@ -983,7 +983,7 @@ el contador de filas no reenviadas de la sesión. Se anota siempre (memoria invi
 solo con la bandera encendida. El cursor de subida se calcula igual que hoy, sobre TODOS los
 candidatos (subidos o saltados), así que la marca de agua no cambia de significado.
 
-**Auditoría de cierre (25-09-2026 → 27-09-2026, EJECUTADA, no citada de ninguna acta anterior):**
+**Auditoría de cierre (27-09-2026, EJECUTADA, no citada de ninguna acta anterior):**
 
 - **Step 1 — todas las suites, en la rama y en `main`, byte a byte:** **39 suites** en total (30
   de node directo, incluida la nueva `echoLedger` con 18 aserciones; 7 empaquetadas con base real
@@ -1037,6 +1037,12 @@ revertidas con `git checkout --` tras cada una; `git status --short` quedó limp
   «bandera apagada: sube TODO»); `prune` con `<` en vez de `<=` (deja una anotación de más, 2
   esperado 1); anotar sin `String(pk)` (una clave no textual deja de anotarse). **Las cuatro
   cazadas.**
+- **Tarea 3 (`configRepo.js`/`backupService.js`, con `backupFlags.test.mjs`):** renombrar la clave
+  `'subidaSinEco'` dentro de `DEVICE_ONLY_KEYS` (2 aserciones caen: la bandera viajaría en el
+  respaldo y un respaldo viejo podría encenderla o apagarla al restaurarse); quitar la
+  normalización a booleano de `getSubidaSinEco` (2 aserciones caen: un valor no booleano que
+  llegue por la sync, p. ej. `'si'` o `0`, dejaría de leerse como `true`/`false`). **Las dos
+  cazadas.**
 - **Tarea 4 (`pullEngine.js`, con `echoMerge.test.mjs`):** quitar la llamada a `anotarEco` tras el
   `bulkPut` (6 de 12 aserciones caen: nada se anota nunca); anotar `items` en vez de `toPut` —o
   sea, TODO lo que llega, no solo lo que gana el LWW— (3 aserciones caen: lo que pierde el LWW y lo
@@ -1046,12 +1052,6 @@ revertidas con `git checkout --` tras cada una; `git status --short` quedó limp
   `separarEco` (7 aserciones caen: con la bandera encendida no se saltaría ningún eco); comentar la
   llamada a `podarEco` tras `setCursorForward` (1 aserción cae: el libro de ecos no se poda y crece
   sin límite). **Las dos cazadas.**
-- **Tarea 3 (`configRepo.js`/`backupService.js`, con `backupFlags.test.mjs`):** renombrar la clave
-  `'subidaSinEco'` dentro de `DEVICE_ONLY_KEYS` (2 aserciones caen: la bandera viajaría en el
-  respaldo y un respaldo viejo podría encenderla o apagarla al restaurarse); quitar la
-  normalización a booleano de `getSubidaSinEco` (2 aserciones caen: un valor no booleano que
-  llegue por la sync, p. ej. `'si'` o `0`, dejaría de leerse como `true`/`false`). **Las dos
-  cazadas.**
 
 **Casos límite deferidos (de la ejecución de las Tareas 1 a 6, `progress.md`), sin corregir por
 decisión de alcance — ninguno bloquea, todos son menores:**
