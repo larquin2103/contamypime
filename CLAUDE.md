@@ -953,8 +953,10 @@ colecciones siguen en vivo, con su contenido en la nube **idéntico al de hoy**.
 - **F1 (el sello) NO tiene bandera.** En cuanto se despliegue, todos los aparatos añaden ese campo a
   lo que suben. Lo autorizó el dueño (spec §10, D1–D4).
 - **F2 (bajar filtrado) va detrás de una bandera APAGADA por defecto** (`config.bajadaFiltrada`, del
-  negocio y sincronizada). Sin encenderla, **el comportamiento es exactamente el de hoy**: el
-  veredicto de qué se difiere nace vacío y los dos `continue` del motor no se ejecutan nunca.
+  negocio y sincronizada). Sin encenderla, **la BAJADA es exactamente la de hoy**: el veredicto nace
+  vacío, los dos `continue` del motor no se ejecutan nunca, `pullDiferido` sale en su primera línea
+  y ni siquiera se lee `/devices`. **La SUBIDA sí cambia desde el primer día, y a propósito**: eso
+  es F1.
 
 **Lo que se corrigió del plan mientras se ejecutaba** (todo está en el ledger de la ejecución, con
 su coste si me equivoco):
@@ -997,7 +999,7 @@ su coste si me equivoco):
 
 **Auditoría de la rama (27-09-2026, EJECUTADA, no citada):**
 
-- `npm run build` **exit 0** · **34 suites / 3.616 aserciones**, **0 fallos** (29 con node directo +
+- `npm run build` **exit 0** · **34 suites / 3.632 aserciones**, **0 fallos** (29 con node directo +
   5 con `fake-indexeddb`: `ordersRepo`, `syncLog`, `dailyControlLocations`, `pullDeferred` y
   `backupCursors`).
 - **Las 27 suites que ya existían dan salida BYTE A BYTE idéntica** a las mismas 27 corridas en un
@@ -1026,6 +1028,59 @@ su coste si me equivoco):
   y como no escribe `caps`, **bloquea la guarda**, que es el lado seguro: mientras quede uno sin
   actualizar, **nadie filtra**. Esta entrega **no sube esquema** (v19 en los dos árboles), así que el
   retroceso a un build del mismo esquema es viable; el respaldo previo sigue siendo lo sensato.
+
+**Revisión independiente de toda la rama (27-09-2026): halló UN CRÍTICO y seis importantes, y
+los siete están corregidos.** El revisor ejecutó lo suyo (build, las 34 suites, 15 mutaciones
+propias sobre `deferred.js` y `syncEngine.js`, y el orden de tipos leído del SDK instalado), no
+citó el acta.
+
+- **CRÍTICO — la guarda no veía un build VIEJO corriendo AHORA en otro aparato.** El viejo no
+  escribe `caps` y el `setDoc` va con `merge`, así que conserva el `caps.up` que dejó el build
+  nuevo; y `legacyAt` es **retrospectivo** (solo se escribe cuando ese aparato vuelve al build
+  nuevo). Entre medias los demás filtraban y sus filas sin `_up` **no bajaban por ninguna
+  consulta**: hueco permanente y silencioso en el libro, con el stock derivado mal para siempre. Y
+  **revertir un despliegue es una operación documentada de este proyecto**, no un caso raro. Ahora
+  la guarda aplica `ranLegacyBuild` a **cada** aparato y lo delata en el acto.
+- **La guarda se decidía sobre la caché de `/devices`.** Era el único `getDocs` del cambio que no
+  miraba `fromCache`: con el servidor caído se filtraba **sin haberle preguntado nunca**.
+- **`pullDiferido` podía leer una colección ENTERA sin filtro**, y repetirlo en cada timbre, si a
+  una colección diferida le faltaba el cursor. El candado estaba en la reconciliación pero **no en
+  el punto de uso**. Ahora sin cursor no se consulta, y la decisión reconcilia cuando al conjunto le
+  **falta** algún cursor.
+- **El cursor se escribía antes de `recomputeStock`.** Como esto se dispara también al mandar la
+  app al fondo, el sistema podía matar la pestaña en medio y dejar el libro completo con
+  `products.stock` **viejo** y el cursor ya pasado.
+- **`sinMesas` era verdadero POR VACÍO** en un aparato sin licencia (el token es local y no
+  sincroniza) y `orders` está vacía en un Dexie recién puesto: juntos **diferían `sales` en un
+  negocio CON mesas**, que es justo lo que el §7bis prohíbe porque toca dinero.
+- Y dos de coste: el tirón al volver al frente **no estaba estrangulado**, y un byte `0xA7` suelto
+  que metió este trabajo dejaba `pushEngine.js` sin ser UTF-8 válido.
+
+**El hallazgo I4, que NO se arregla y hay que medir en F3.** Un aparato con el build viejo baja una
+fila ya sellada, la guarda en su Dexie —donde el `Timestamp` pierde el prototipo— y el **eco del
+§10.4** la vuelve a subir con `JSON.stringify`: en la nube queda un **mapa**. Y un mapa ordena **por
+encima de cualquier Timestamp** (`ObjectValue = 11` > `TimestampValue = 3`, leído del SDK), así que
+satisface `> cualquier cursor` y **vuelve a bajar en CADA consulta filtrada, para siempre**. Desde
+la bajada no hay forma de excluirlo: ningún cursor lo deja fuera. **Se cuenta y se registra**
+(`bajada-diferida-sello-mapa` en `/errors`) para poder medirlo en las 48 h de F3; el remedio —volver
+a sellar esas filas— toca el camino de **subida** y necesita su propia autorización.
+
+**Y un fallo que solo cazó la herramienta de identificadores libres**, ya dentro del pase de
+arreglos: `syncEngine.js` usaba `fullPullKey` **sin importarlo**. `initialPull` corre cada 45 s:
+habría lanzado `ReferenceError` en cada bajada confirmada, dejando la sincronización en rojo y
+disparando la recuperación de sesión una y otra vez —**más** lecturas, justo lo contrario del
+objetivo—. El build pasa (no hay linter) y ninguna suite lo ejercita. Es la segunda vez en este
+trabajo que esa comprobación encuentra algo que el build no ve.
+
+**Lo que el revisor dejó anotado y NO se ha tocado** (decisión del dueño): que `bajadaFiltrada` viaje
+en el respaldo se aparta de la letra de D3 —el plan decía «preguntárselo al dueño antes de cerrar la
+tarea» y **no se le preguntó**: la vuelta atrás es una línea, añadirla a `DEVICE_ONLY_KEYS`—;
+`upToMillis` no acota el sello por arriba; el antirrebote del timbre es de cola pura (bajo un flujo
+continuo no suena hasta que haya un hueco de 5 s); `reconciliarDiferidas` puede salir por `return`
+sin recalcular stock (inofensivo: la colección sigue en vivo); `sinMesas` usa `today()` crudo y no la
+fecha efectiva anti-reloj-atrasado de `LicenseProvider`; hay una carrera estrecha si `restartRealtime`
+coincide con el `startRealtime` en vuelo (se cura al arranque siguiente); y `_up` sí puede entrar en
+Dexie al **restaurar** un respaldo viejo (inofensivo: `syncTs` lo ignora y `seal` lo pisa al subir).
 
 **Lo que esto NO puede garantizar:**
 
