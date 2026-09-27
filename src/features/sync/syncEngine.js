@@ -5,7 +5,9 @@ import { pushChanges } from './pushEngine'
 import { mergeIncoming, recomputeStock } from './pullEngine'
 import { logSyncEvent } from '../../lib/syncLog'
 import { db } from '../../db/db'
-import { verdictKey, parseDeferred } from './deferred'
+import {
+  verdictKey, parseDeferred, pullCursorKey, parseCursor, formatCursor, nextCursor
+} from './deferred'
 
 // ---------------------------------------------------------------------------
 // Fase 4 - Orquestador de sincronizacion.
@@ -81,6 +83,76 @@ export async function initialPull() {
   }
   if (affected.size) await recomputeStock(affected)
   return { ok: true, total, fromServer }
+}
+
+
+// Cerrojo de la bajada diferida. Sin el, el timbre, la red de seguridad de 60 min
+// y el tiron al traer la app al frente pueden solaparse: se pagarian las mismas
+// lecturas dos veces y las dos pasadas se pisarian el cursor. `runPull` ya lleva
+// el suyo por lo mismo.
+let bajandoDiferido = false
+
+// Bajada de las colecciones DIFERIDAS: una consulta por coleccion, filtrada por
+// la marca de llegada. Sin oyente, esto SI es una consulta real y cuesta lo que
+// devuelve -- que es justo el punto: devuelve lo nuevo, no la historia entera.
+export async function pullDiferido() {
+  const cols = getDeferred()
+  if (!cols.size) return { ok: true, total: 0, porColeccion: {} }
+  if (bajandoDiferido) return { ok: false, reason: 'ya hay una bajada en curso', total: 0 }
+  if (!(await syncConfig.isEnabled())) return { ok: false, reason: 'sync desactivada', total: 0 }
+  const businessId = await syncConfig.businessId()
+  if (!businessId) return { ok: false, reason: 'sin negocio vinculado', total: 0 }
+
+  const { db: fs, auth } = await getFirebase()
+  if (!auth.currentUser) return { ok: false, reason: 'sin sesion de nube', total: 0 }
+  const { collection, getDocs, query, where, Timestamp } = await import('firebase/firestore')
+
+  bajandoDiferido = true
+  let total = 0
+  const porColeccion = {}
+  const affected = new Set()
+  try {
+    for (const col of SYNC_COLLECTIONS) {
+      if (!cols.has(col.name)) continue
+      const clave = pullCursorKey(businessId, col.name)
+      const fila = await db.syncState.get(clave)
+      // EL TIPO IMPORTA (spec §10.5, H-A). El cursor se guarda como texto ISO y se
+      // reconstruye a Timestamp para la consulta. Pasar la cadena tal cual haria que
+      // Firestore comparase tipos distintos (Timestamp=3 < String=5) y devolviera
+      // CERO documentos, sin error, sin excepcion y para siempre: la coleccion
+      // dejaria de bajar y el stock de este aparato quedaria mal de forma permanente.
+      const desdeMs = parseCursor(fila?.value)
+      const ref = collection(fs, 'businesses', businessId, col.name)
+      const q = desdeMs == null ? ref : query(ref, where('_up', '>', Timestamp.fromMillis(desdeMs)))
+
+      const snap = await getDocs(q)
+      const docs = snap.docs.map((d) => d.data())
+      const delServidor = !snap.metadata.fromCache
+      porColeccion[col.name] = { leidos: docs.length, fromCache: snap.metadata.fromCache }
+
+      let maxUpMs = null
+      if (docs.length) {
+        const aff = await mergeIncoming(col, docs)
+        maxUpMs = aff.maxUpMs ?? null
+        aff.forEach((x) => affected.add(x))
+        total += docs.length
+      }
+      // El cursor avanza SOLO si la respuesta vino del SERVIDOR de ESTA coleccion
+      // (no del O global de initialPull): avanzarlo con una respuesta de cache
+      // dejaria un hueco permanente en el libro.
+      const siguiente = nextCursor({ prevMs: desdeMs, maxUpMs, fromServer: delServidor })
+      if (siguiente != null && siguiente !== desdeMs) {
+        await db.syncState.put({ key: clave, value: formatCursor(siguiente) })
+      }
+    }
+
+    // Igual que en el vivo: primero fusionar, DESPUES derivar el stock; al reves
+    // parpadearia unos segundos con el valor viejo (recomputeStock lee el libro local).
+    if (affected.size) await recomputeStock(affected)
+  } finally {
+    bajandoDiferido = false
+  }
+  return { ok: true, total, porColeccion }
 }
 
 let listeners = []
