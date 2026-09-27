@@ -8,6 +8,8 @@ import { isPermanent, dueIds, markAttempted, onSuccess, onTransient, onPermanent
 import { isResendable, countSince, rewindTo, waitWhile } from './resend'
 import { createCommitWatch } from './commitWatch'
 import { seal } from './deferred'
+import { split as separarEco, prune as podarEco } from './echoLedger'
+import { configRepo } from '../../repositories/configRepo'
 
 // La Patrona §14.5 (commit 2): avisa en /errors de un lote que no se confirma
 // estando en linea. Solo observa; no cambia que se sube ni el cursor.
@@ -141,6 +143,11 @@ async function doPush() {
   const ref = (name, id) => doc(fs, 'businesses', businessId, name, id)
   const ctx = { fs, setDoc, ref, serverTimestamp }
 
+  // Subida sin eco (spec 2026-09-27-subida-sin-eco): se lee una vez por ciclo,
+  // asi que encenderla o apagarla se aplica en la siguiente subida. Si la
+  // lectura fallara, la subida clasica (el lado seguro).
+  const sinEco = await configRepo.getSubidaSinEco().catch(() => false)
+
   let queuedCount = 0
   for (const col of SYNC_COLLECTIONS) {
     const table = db[col.name]
@@ -174,9 +181,15 @@ async function doPush() {
     for (const x of nuevos) if (x.ts > maxTs) maxTs = x.ts
 
     // 1) NUEVOS -> lotes (como siempre). Sin await: offline queda pendiente.
+    // Con la bandera, se quedan fuera las filas cuya version es EXACTAMENTE la
+    // que llego de la nube (el eco): la nube ya la tiene. El cursor de arriba se
+    // calculo sobre TODOS los nuevos, asi que queda en el mismo valor que si se
+    // hubieran subido, y `changedIds` tampoco cambia (un saltado con reintento
+    // pendiente se reintenta en el ciclo siguiente, por su camino de siempre).
+    const { subir } = separarEco(col.name, nuevos, sinEco)
     const step = batchSizeFor(col.name)
-    for (let i = 0; i < nuevos.length; i += step) {
-      const slice = nuevos.slice(i, i + step)
+    for (let i = 0; i < subir.length; i += step) {
+      const slice = subir.slice(i, i + step)
       const batch = writeBatch(fs)
       for (const { r, id } of slice) batch.set(ref(col.name, id), toCloudSellado(col.name, r, serverTimestamp))
       watchCommit(col.name, slice, batch.commit()) // devuelve LA MISMA promesa (commitWatch.js)
@@ -199,6 +212,7 @@ async function doPush() {
     }
 
     await setCursorForward(col.name, maxTs)
+    podarEco(col.name, maxTs)
   }
   return { queued: queuedCount }
 }
