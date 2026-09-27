@@ -40,6 +40,13 @@ export async function buildBackup(fromUser) {
     if (table.name === 'errorLog') continue // diagnostico local: no viaja
     let rows = await table.toArray()
     if (table.name === 'config') rows = rows.filter((r) => !DEVICE_ONLY_KEYS.has(r.key))
+    // Los cursores de BAJADA (`pull:*`: el de cada coleccion diferida, el veredicto
+    // y la marca de reconciliacion) NO viajan: restaurar un respaldo viejo le diria
+    // al aparato "ya baje hasta aqui" cuando no es verdad, y ese hueco en el libro
+    // seria PERMANENTE. Los `push:*` y `retry:*` SI se dejan, como hasta hoy:
+    // excluirlos tambien seria seguro (el reenvio es idempotente por id) pero
+    // provocaria una resubida completa que no hace falta.
+    if (table.name === 'syncState') rows = rows.filter((r) => !String(r.key).startsWith('pull:'))
     tables[table.name] = rows
   }
   return {
@@ -106,6 +113,13 @@ export async function applyBackup(backup) {
       if (!Array.isArray(rows) || rows.length === 0) continue
       if (table.name === 'config') {
         rows = rows.filter((r) => r && r.key && !DEVICE_ONLY_KEYS.has(r.key))
+      }
+      // Y tampoco se aplican: un respaldo hecho por un build anterior a este
+      // cambio SI los trae dentro, y meterlos aqui es exactamente lo que deja el
+      // hueco permanente. El cursor propio del aparato se queda como estaba.
+      if (table.name === 'syncState') {
+        rows = rows.filter((r) => r && !String(r.key).startsWith('pull:'))
+        if (!rows.length) continue
       }
       // Respaldos de esquemas previos al v5: los movimientos no traian
       // ubicacion; quedan en el almacen central (misma regla que la migracion).
