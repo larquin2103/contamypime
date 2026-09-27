@@ -91,13 +91,17 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/features/sync/compareResendEngine.test.mjs \
          src/lib/dailySalesControl.test.mjs \
          src/lib/dailySalesControl.fuzz.test.mjs \
-         src/lib/reportCells.test.mjs; do node "$t"; done
+         src/lib/reportCells.test.mjs \
+         src/features/sync/deferred.test.mjs \
+         src/features/sync/cursorType.test.mjs; do node "$t"; done
 ```
 
-**Tres suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/lib/syncLog.test.mjs` (el
-escritor del registro de la sync) y `src/features/reports/dailyControlLocations.test.mjs` (el
-selector de ubicaciones del Control de Ventas Diarias, que lee el índice `location`), usan base real
-y NO corren con node directo**: los repos importan sin extensión, así que hace falta empaquetarla con el esbuild que ya
+**Cinco suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/lib/syncLog.test.mjs` (el
+escritor del registro de la sync), `src/features/reports/dailyControlLocations.test.mjs` (el
+selector de ubicaciones del Control de Ventas Diarias, que lee el índice `location`),
+`src/features/sync/pullDeferred.test.mjs` (que el sello `_up` no entra en Dexie, con el
+`mergeIncoming` real) y `src/features/backup/backupCursors.test.mjs` (que los cursores de bajada no
+viajan en el respaldo), usan base real y NO corren con node directo**: los repos importan sin extensión, así que hace falta empaquetarla con el esbuild que ya
 trae Vite y `fake-indexeddb` (`devDependency` desde el 23-09-2026) antes de ejecutarla. Comando
 exacto (copiado del comentario de cabecera del propio fichero; para `syncLog` es el mismo con su ruta):
 
@@ -106,7 +110,10 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas tres dentro: **30 suites / 3.468 aserciones** en total, medidas el 25-09-2026 tras las
+Con esas cinco dentro: **34 suites / 3.616 aserciones** en total, medidas el 27-09-2026 (eran 30 y
+3.468 el 25-09; las cuatro nuevas son `deferred` 121, `cursorType` 7, `pullDeferred` 15 y
+`backupCursors` 5, y las 27 preexistentes dan salida byte a byte idéntica a `main`). Cifras
+anteriores, medidas el 25-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47→65, `orderSale` 18→29→36, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
@@ -929,6 +936,129 @@ de Mermas no se filtró por licencia.
 
 **Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que el
 dueño corra `npm run deploy`.
+
+## Estado del trabajo (27-09-2026) — reducción de la cuota de Firestore (F1 + F2)
+
+**PROGRAMADO, PROBADO Y COMMITEADO en `claude/awesome-dirac-484azm`. NO fusionado a `main` y NO
+desplegado.** Plan y su validación en `docs/superpowers/plans/2026-09-25-reduccion-cuota.md` (el
+**§12** de ese fichero manda sobre las tareas); diseño en
+`docs/superpowers/specs/2026-09-24-reduccion-cuota-design.md` (**§10.5 manda sobre §10, y §10 sobre
+§1–§9**). **Leer los dos antes de tocar nada de esto.**
+
+**Qué hace.** Cada documento de `stockMovements` y `sales` sube con un sello `_up` puesto por el
+**servidor** (`serverTimestamp()`), y un aparato puede bajar esas dos colecciones **filtrando por ese
+sello** en vez de releer la historia entera. El resto de la app **no cambia**: las otras 32
+colecciones siguen en vivo, con su contenido en la nube **idéntico al de hoy**.
+
+- **F1 (el sello) NO tiene bandera.** En cuanto se despliegue, todos los aparatos añaden ese campo a
+  lo que suben. Lo autorizó el dueño (spec §10, D1–D4).
+- **F2 (bajar filtrado) va detrás de una bandera APAGADA por defecto** (`config.bajadaFiltrada`, del
+  negocio y sincronizada). Sin encenderla, **el comportamiento es exactamente el de hoy**: el
+  veredicto de qué se difiere nace vacío y los dos `continue` del motor no se ejecutan nunca.
+
+**Lo que se corrigió del plan mientras se ejecutaba** (todo está en el ledger de la ejecución, con
+su coste si me equivoco):
+
+- **CRÍTICO, C1 del §12 — el ahorro no se habría producido.** El plan hacía que `SyncProvider`
+  calculara qué diferir y se lo inyectara al motor. No puede funcionar: `startRealtime()` sale
+  disparado desde el callback de `observeAuth` (`SyncProvider.jsx`) sin esperar a nadie, y el efecto
+  que decide es asíncrono y hace hasta una lectura de red. El oyente de `stockMovements` habría
+  enganchado en **cada arranque** —el coste que F2 viene a quitar— y el `restartRealtime()` de
+  después habría cobrado **un enganche extra de las otras 32**. Ahora el veredicto se **persiste**
+  (`pull:<negocio>:diferidas`) y `startRealtime` lo lee **antes** de suscribir. La sesión en que se
+  decide se queda en vivo entera, como hoy; el filtro entra en el **arranque siguiente**.
+- **`legacyAt` era código muerto.** El plan detectaba el paso de un build viejo comparando
+  capacidades (`prev?.caps?.up && !CAPS.up`), y eso **no puede dispararse nunca**: el build viejo no
+  escribe `caps` y el `setDoc` va con `merge:true`, así que el `caps.up` del build nuevo sigue en la
+  fila. `legacyAt` no se habría escrito jamás y los aparatos habrían seguido filtrando después de que
+  un build sin sello subiera filas sin `_up` — **huecos permanentes en el libro**, que es justo el
+  daño que la reconciliación existe para evitar. Se detecta por donde sí queda huella:
+  `lastSeenAt > sealSeenAt` (`ranLegacyBuild`, pura y probada).
+- **Sin nada sellado NO se entra en diferido.** El plan decía que si una colección no tiene ningún
+  documento con `_up` no se escriba cursor y «la primera bajada la traerá entera una vez». No es una
+  vez: sin cursor, **cada** timbre hace un `getDocs` sin filtro y ya sin oyente con el que compartir
+  vista — hasta seis colecciones enteras cada diez minutos. Sería mucho peor que no ahorrar nada.
+- **La puerta de la licencia estaba invertida:** `LICENSE_MODULES.MESAS` no existe (es `TABLES`), y
+  con `undefined` un negocio **con** mesas habría diferido `sales` en silencio.
+- **`useLicense()` dentro de `SyncProvider` habría roto la app entera** (`App.jsx` lo monta por fuera
+  de `LicenseProvider`). La licencia se lee por el mismo camino que usa `LicenseProvider`.
+- **El bloqueo permanente por `legacyAt`:** al volver al vivo se borra la marca de reconciliación,
+  para que el arranque siguiente reconcilie otra vez. Sin eso la guarda quedaba cerrada **para
+  siempre**, con el ahorro apagado y sin que nadie se enterara.
+- **Las herramientas de reparación del dueño:** *Sincronizar ahora*, la recuperación de sesión y
+  «bajar de la nube» de `/cloud` encadenan `pullDiferido()`. Sin eso el dueño pulsaba, veía el verde
+  de «confirmado» y el libro mayor no se había movido.
+- **El timbre sonaba con las escrituras propias** (hasta ~864 consultas al día y aparato de puro
+  eco). Ahora solo lo tocan los cambios de **otro** aparato (`hasPendingWrites`).
+- Y dos fallos propios, encontrados ejecutando: `upToMillis` no entendía un número de milisegundos
+  (un `lastSeenAt` numérico se leía como «visto ahora mismo» y **bloqueaba** el ahorro), y el timbre
+  se enganchaba dentro del callback de `observeAuth`, cuyo cierre congela `cloudUser = undefined`:
+  **no habría sonado nunca, sin un solo error**.
+
+**Auditoría de la rama (27-09-2026, EJECUTADA, no citada):**
+
+- `npm run build` **exit 0** · **34 suites / 3.616 aserciones**, **0 fallos** (29 con node directo +
+  5 con `fake-indexeddb`: `ordersRepo`, `syncLog`, `dailyControlLocations`, `pullDeferred` y
+  `backupCursors`).
+- **Las 27 suites que ya existían dan salida BYTE A BYTE idéntica** a las mismas 27 corridas en un
+  worktree de `origin/main` (`diff -r` sin diferencias), **con control negativo** que sí detecta un
+  byte inyectado. Sin ese control la comparación no mediría nada.
+- **CERO cambios en los ficheros sensibles** contra `origin/main`: `src/db/db.js`,
+  `firestore.rules`, `firestore.indexes.json`, `package.json`, `package-lock.json`, `vite.config.js`
+  e `index.html` — `git diff --stat` **vacío**. Dexie sigue en **v19** y `SYNC_COLLECTIONS` en **34**
+  (leído importando el módulo real). **No hay que redesplegar reglas de Firestore**, y **no hay
+  índice que crear**: la consulta lleva un solo campo de rango y Firestore indexa cada campo solo.
+- **Las únicas escrituras nuevas a la base son a `syncState`** (los cursores de bajada, el veredicto
+  y la marca de reconciliación) y a `config` por la bandera del dueño. **Ninguna tabla de negocio se
+  toca.** **18 líneas borradas en `src/`** (sin contar pruebas), leídas una a una: todas son
+  sustituciones en el sitio —imports que se amplían y líneas reescritas—, ninguna lógica retirada.
+- **0 identificadores libres** en los 9 ficheros de producción tocados (esbuild + acorn), **con
+  control negativo** que sí caza uno inyectado. Es la puerta que el build NO cubre, porque no hay
+  linter — y en esta misma ronda hizo falta: el ayudante `toCloudSellado` llegó a quedarse sin
+  definir y **el build pasó igual**.
+- **Peso**, construyendo `origin/main` en un worktree aparte y comprimiendo con el **mismo** comando:
+  CSS con **hash idéntico** (`index-B34NE6G1.css`, 87.657 bytes) → byte a byte igual. Chunk principal
+  1.040.450 → **1.049.962 bytes**; gzip 304.272 → **307.251**: **+9.512 B crudos, +2.979 B gzip
+  (+0,98 %)**. Como el chunk lleva hash, actualizar cuesta la **descarga completa** (~300 kB gzip por
+  teléfono), no el delta.
+- **Riesgos de CONVIVENCIA de versiones:** un teléfono con el build viejo **ignora `_up`** (no lo
+  mira nadie: no está en `TS_FIELDS`, comprobado ejecutando `syncTs`), así que fusiona igual que hoy;
+  y como no escribe `caps`, **bloquea la guarda**, que es el lado seguro: mientras quede uno sin
+  actualizar, **nadie filtra**. Esta entrega **no sube esquema** (v19 en los dos árboles), así que el
+  retroceso a un build del mismo esquema es viable; el respaldo previo sigue siendo lo sensato.
+
+**Lo que esto NO puede garantizar:**
+
+- **NADIE HA EJECUTADO LA APP.** Ni un sello escrito en Firestore, ni una consulta filtrada que
+  devuelva filas, ni dos aparatos sincronizando. Todo es código, build, pruebas en node y el SDK
+  instalado.
+- **El cableado no lo prueba nada, ni lo va a probar.** El módulo puro se prueba entero
+  (`deferred.js`, 121 aserciones con control negativo en 13 mutaciones), `mergeIncoming` y el
+  respaldo se prueban con base real, y el tipo del cursor tiene su candado sobre el fuente
+  (`cursorType.test.mjs`). Lo demás —el oyente, la consulta, el timbre en un teléfono— lo decide la
+  consola en F3.
+- **Que `serverTimestamp()` sea la hora de llegada está leído en el SDK, no observado.** Sin Java no
+  hay emulador. **Se comprueba en la consola de Firebase tras desplegar, ANTES de encender nada.**
+- **El paso del plan que comprobaba un respaldo real no se ejecutó**: no hay ningún respaldo en esta
+  máquina. En su lugar quedó una suite con base real, que además se queda en el repositorio.
+- **F5 no entra** (extender el filtro al oyente, que es la medida permanente) ni **el eco del §10.4**
+  (cada aparato vuelve a subir lo que baja de los otros), que **acota el ahorro real de F2**. F1+F2
+  llevan de 113 k a ~36 k lecturas/día y compran **menos de un mes**: son el experimento barato que
+  valida el sello y el cursor sin tocar R1.
+
+**Orden operativo para el dueño, y no otro:**
+
+1. **Desplegar** (`npm run deploy`). La bandera nace apagada: el comportamiento es el de hoy.
+2. **Mirar en la consola de Firebase** que los documentos nuevos de `stockMovements` traen `_up` con
+   hora del servidor, y que **las escrituras NO suben** (tocaron el 100 % del tope el 24-sep).
+3. **Esperar a que todos los teléfonos del negocio abran la app nueva.** No hay que contarlos:
+   `/cloud` dice si está filtrando y, si no, **qué aparato falta**.
+4. **Encender la bandera** en `/cloud` desde el aparato del dueño. Cada teléfono la aplica **en su
+   siguiente arranque** (es lo que permite no pagar el enganche).
+5. **Mirar la consola 48 h.** Criterio de aceptación, los dos a la vez: **las lecturas BAJAN** y
+   **las escrituras NO SUBEN**.
+6. **Marcha atrás:** apagar la bandera en `/cloud`. Cada aparato vuelve al vivo, reconcilia otra vez
+   y rellena lo que faltara.
 
 ## Estado del trabajo en curso (25-09-2026, tarde) — doble anulación en mesas
 
