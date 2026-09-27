@@ -17,6 +17,7 @@ import { listDevices, removeDevice, getDeviceId } from './deviceRegistry'
 import { countResend, forceResend } from './pushEngine'
 import { RESENDABLE, localInputToIso } from './resend'
 import { COMPARE_RESENDABLE, MAX_PER_RUN } from './compareResend'
+import { skippedCount } from './echoLedger'
 import { countCompareResend, compareResend } from './compareResendFirebase'
 
 export function CloudScreen() {
@@ -156,6 +157,7 @@ export function CloudScreen() {
 
       {cloudUser && <DevicesPanel maxDevices={maxDevices} />}
 
+      {cloudUser && syncEnabled && <SubidaSinEcoPanel />}
       {cloudUser && syncEnabled && <BajadaFiltradaPanel />}
       {cloudUser && syncEnabled && <ResendPanel />}
       {cloudUser && syncEnabled && <CompareResendPanel />}
@@ -224,6 +226,63 @@ export function CloudScreen() {
 
       {ok && <p className="ok-text">{ok}</p>}
     </div>
+  )
+}
+
+// Subida sin eco (spec 2026-09-27-subida-sin-eco). Del NEGOCIO y apagada por
+// defecto. Se aplica en el siguiente envio de cada telefono, sin reabrir la app,
+// y el contador dice lo que ESTE telefono ha dejado de reenviar en la sesion:
+// un ahorro que no se ve se da por hecho, que es justo como se pierde.
+function SubidaSinEcoPanel() {
+  const [activa, setActiva] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [saltadas, setSaltadas] = useState(() => skippedCount())
+
+  useEffect(() => {
+    let vivo = true
+    configRepo.getSubidaSinEco().then((v) => { if (vivo) setActiva(v) })
+    // El contador vive en memoria (echoLedger): releerlo no toca la base ni la red.
+    const id = setInterval(() => setSaltadas(skippedCount()), 5000)
+    return () => {
+      vivo = false
+      clearInterval(id)
+    }
+  }, [])
+
+  const cambiar = async (v) => {
+    setBusy(true)
+    try {
+      await configRepo.setSubidaSinEco(v)
+      setActiva(v)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="card">
+      <h3>Subida sin eco</h3>
+      <p className="muted">
+        Evita que cada teléfono vuelva a subir a la nube lo que acaba de recibir de otro.
+        Ahorra escrituras y cuota. Es del negocio: se aplica a todos los teléfonos en su
+        siguiente envío, sin volver a abrir la app. Lo que cada teléfono cambia se sigue
+        subiendo siempre.
+      </p>
+      <label className="field">
+        <input
+          type="checkbox"
+          checked={activa}
+          disabled={busy}
+          onChange={(e) => cambiar(e.target.checked)}
+        />
+        <span>No reenviar lo recibido</span>
+      </label>
+      <p className="muted">
+        {activa
+          ? <>Activa. En esta sesión, este teléfono ha dejado de reenviar {saltadas} fila(s).</>
+          : <>Apagada: se sube como siempre.</>}
+      </p>
+    </section>
   )
 }
 
