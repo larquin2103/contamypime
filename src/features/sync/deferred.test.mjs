@@ -3,7 +3,8 @@
 import assert from 'node:assert/strict'
 import {
   SEALED, isSealed, seal, upToMillis, stripUp,
-  pullCursorKey, parseCursor, formatCursor, CURSOR_MARGIN_MS, nextCursor
+  pullCursorKey, parseCursor, formatCursor, CURSOR_MARGIN_MS, nextCursor,
+  STALE_DEVICE_MS, guardState, ranLegacyBuild
 } from './deferred.js'
 
 let n = 0
@@ -34,6 +35,9 @@ const ms = Date.UTC(2026, 8, 25, 12, 0, 0)
 eq(upToMillis({ toMillis: () => ms }), ms, 'Timestamp del SDK')
 eq(upToMillis({ seconds: ms / 1000, nanoseconds: 0 }), ms, 'Timestamp plano (cache/serializado)')
 eq(upToMillis(new Date(ms)), ms, 'Date')
+eq(upToMillis(ms), ms, 'milisegundos sueltos (asi los mide la guarda de aparatos)')
+eq(upToMillis(Number.NaN), null, 'un numero que no es finito -> null')
+eq(upToMillis(Infinity), null, 'ni infinito')
 eq(upToMillis('2026-09-25T12:00:00.000Z'), ms, 'cadena ISO (tolerada al leer, nunca al filtrar)')
 eq(upToMillis(undefined), null, 'ausente -> null, NUNCA NaN')
 eq(upToMillis(null), null, 'null -> null')
@@ -86,5 +90,71 @@ eq(nextCursor({ prevMs: 10, maxUpMs: null, fromServer: true }), 10,
 const dos = nextCursor({ prevMs: null, maxUpMs: ms, fromServer: true })
 ok(ms - dos === CURSOR_MARGIN_MS,
   'el solapamiento hace que un empate al milisegundo vuelva a bajar (el limite es >)')
+
+
+// --- 7) FOCO 4: la guarda de aparatos ----------------------------------------
+const ahora = Date.UTC(2026, 8, 25, 12, 0, 0)
+const vivo = (id, extra = {}) => ({
+  id, name: id, active: true, caps: { up: 1 },
+  sealSeenAt: ahora - 60000, lastSeenAt: ahora - 60000, ...extra
+})
+const guarda = (devices, reconciledAtMs = ahora) => guardState({ devices, nowMs: ahora, reconciledAtMs })
+
+ok(guarda([vivo('a'), vivo('b')]).ok, 'todos sellan y estan recientes -> se puede filtrar')
+
+const sinCaps = guarda([vivo('a'), vivo('b', { caps: {} })])
+ok(!sinCaps.ok, 'un aparato con build viejo bloquea')
+eq(sinCaps.bloqueantes.map((x) => x.id), ['b'], 'y lo NOMBRA (si no, el dueno no sabe cual es)')
+
+ok(!guarda([]).ok, 'FOCO 4: lista VACIA -> NO se filtra (lado seguro, nunca "si" por omision)')
+ok(!guarda(null).ok, 'FOCO 4: lista ilegible -> NO se filtra')
+ok(!guarda(undefined).ok, 'FOCO 4: sin lista -> NO se filtra')
+
+ok(guarda([vivo('a'), { id: 'z', active: false }]).ok,
+  'un aparato retirado (active:false) no bloquea')
+
+// H-C: y uno que lleva meses sin abrirse, TAMPOCO -- si no, el ahorro no se
+// enciende jamas y nadie se entera.
+const olvidado = { id: 'viejo', name: 'viejo', active: true, caps: {},
+                   lastSeenAt: ahora - STALE_DEVICE_MS - 1 }
+ok(guarda([vivo('a'), olvidado]).ok,
+  'un aparato sin abrirse desde hace mas de STALE_DEVICE_MS no bloquea')
+ok(!guarda([vivo('a'), { ...olvidado, lastSeenAt: ahora - STALE_DEVICE_MS + 1000 }]).ok,
+  'pero uno visto AYER si bloquea (el umbral no es un coladero)')
+ok(!guarda([vivo('a'), { id: 'x', name: 'x', active: true, caps: {} }]).ok,
+  'y uno SIN lastSeenAt bloquea: no se sabe cuando se vio, asi que no se le da por dormido')
+eq(STALE_DEVICE_MS, 30 * 24 * 60 * 60 * 1000, 'el umbral son 30 dias')
+
+// legacyAt: un build viejo corrio DESPUES de que este aparato reconciliara.
+ok(!guarda([vivo('a'), vivo('b', { legacyAt: ahora - 1000 })], ahora - 5000).ok,
+  'si un build viejo corrio tras nuestra reconciliacion, se vuelve al tiempo real')
+ok(guarda([vivo('a'), vivo('b', { legacyAt: ahora - 9000 })], ahora - 5000).ok,
+  'un legacyAt ANTERIOR a la reconciliacion ya esta cubierto')
+ok(guarda([vivo('a'), vivo('b', { legacyAt: ahora - 1000 })], null).ok,
+  'sin marca de reconciliacion, legacyAt no bloquea: no hay nada que rellenar todavia')
+
+// El sello de los tiempos llega como Timestamp, no como numero (viene de /devices).
+const comoTimestamp = (ms) => ({ seconds: Math.floor(ms / 1000), nanoseconds: 0 })
+ok(guarda([vivo('a', { lastSeenAt: comoTimestamp(ahora - 60000) })]).ok,
+  'lastSeenAt como Timestamp de Firestore se entiende igual')
+ok(!guarda([vivo('a'), vivo('b', { legacyAt: comoTimestamp(ahora - 1000) })], ahora - 5000).ok,
+  'y legacyAt tambien')
+
+ok(typeof guarda([]).motivo === 'string' && guarda([]).motivo.length > 0,
+  'siempre da un motivo legible para el panel de /cloud')
+ok(guarda([vivo('a')]).motivo === '', 'y cuando si se puede filtrar, no hay motivo que dar')
+ok(sinCaps.motivo.includes('b'), 'el motivo NOMBRA al aparato que bloquea')
+
+// --- 7bis) Detectar que en ese aparato corrio un build VIEJO ------------------
+// El build viejo NO escribe `caps`, y el `setDoc` va con merge:true, asi que el
+// `caps.up` que dejo el build nuevo SIGUE AHI: comparar capacidades no detecta
+// nada. Lo que si deja huella es que el viejo toca `lastSeenAt` y no `sealSeenAt`.
+ok(!ranLegacyBuild({ lastSeenAt: 1000, sealSeenAt: 1000 }), 'los dos sellos iguales (lo normal): no corrio ninguno viejo')
+ok(ranLegacyBuild({ lastSeenAt: 2000, sealSeenAt: 1000 }), 'visto DESPUES de sellar -> corrio un build viejo')
+ok(!ranLegacyBuild({ lastSeenAt: 1000, sealSeenAt: 2000 }), 'al reves no significa nada')
+ok(!ranLegacyBuild({ lastSeenAt: 2000 }), 'sin sealSeenAt no se concluye nada (de eso ya se encarga caps)')
+ok(!ranLegacyBuild({ sealSeenAt: 2000 }), 'sin lastSeenAt tampoco')
+ok(!ranLegacyBuild(null), 'aparato nuevo: no hay fila previa')
+ok(ranLegacyBuild({ lastSeenAt: { seconds: 2, nanoseconds: 0 }, sealSeenAt: { seconds: 1, nanoseconds: 0 } }), 'con Timestamps de Firestore tambien lo detecta')
 
 console.log(`deferred (sello y cursor): ${n} aserciones OK`)

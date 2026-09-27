@@ -26,6 +26,10 @@ export function seal(name, plain, sentinel) {
 // el cursor lo envenena para siempre y la coleccion deja de bajar en silencio.
 export function upToMillis(v) {
   if (v == null) return null
+  // Milisegundos sueltos. `_up` nunca llega asi desde Firestore, pero esta funcion
+  // tambien mide `lastSeenAt` y `legacyAt`, y negarse a entender un numero dejaria
+  // ese aparato como "visto ahora mismo": el lado que BLOQUEA el ahorro en silencio.
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v.toMillis === 'function') {
     const ms = v.toMillis()
     return Number.isFinite(ms) ? ms : null
@@ -100,4 +104,63 @@ export function nextCursor({ prevMs, maxUpMs, fromServer }) {
   const candidato = maxUpMs - CURSOR_MARGIN_MS
   if (base == null) return candidato
   return candidato > base ? candidato : base
+}
+
+
+// Un aparato que el dueno no ha retirado a mano sigue `active:true` PARA SIEMPRE
+// (removeDevice es la unica via). Sin este umbral, un telefono perdido, roto o
+// reinstalado bloquearia el filtro eternamente y el ahorro no se encenderia nunca
+// —sin ningun error, que es lo peor—. 30 dias: quien no abre la app en un mes no
+// va a recibir una bajada que le importe.
+export const STALE_DEVICE_MS = 30 * 24 * 60 * 60 * 1000
+
+// ¿Puede este aparato filtrar? Solo si TODOS los aparatos activos y recientes
+// publican que sellan (`caps.up`), y si ninguno ejecuto un build viejo DESPUES de
+// nuestra ultima reconciliacion. Ante la duda —lista vacia, ilegible— devuelve
+// NO: el lado seguro es no filtrar, nunca filtrar por omision.
+export function guardState({ devices, nowMs, reconciledAtMs }) {
+  if (!Array.isArray(devices) || devices.length === 0) {
+    return { ok: false, bloqueantes: [], motivo: 'No se pudo leer la lista de dispositivos.' }
+  }
+  const bloqueantes = []
+  for (const d of devices) {
+    if (!d || d.active === false) continue
+    const visto = upToMillis(d.lastSeenAt)
+    // Sin `lastSeenAt` NO se le da por dormido: no se sabe cuando se vio, y darlo
+    // por muerto seria filtrar por omision, que es justo lo que no se puede hacer.
+    if (visto != null && nowMs - visto > STALE_DEVICE_MS) continue
+    if (!(d.caps && d.caps.up)) {
+      bloqueantes.push({ id: d.id, name: d.name || d.id, motivo: 'no ha actualizado la app' })
+      continue
+    }
+    // Un build viejo que corrio DESPUES de nuestra reconciliacion pudo subir filas
+    // sin sello, que ninguna consulta filtrada devolveria: hay que volver al vivo.
+    const legacy = upToMillis(d.legacyAt)
+    if (legacy != null && reconciledAtMs != null && legacy > reconciledAtMs) {
+      bloqueantes.push({ id: d.id, name: d.name || d.id, motivo: 'abrio una version antigua' })
+    }
+  }
+  if (bloqueantes.length) {
+    const nombres = bloqueantes.map((b) => `${b.name} (${b.motivo})`).join(', ')
+    return { ok: false, bloqueantes, motivo: `Esperando a: ${nombres}.` }
+  }
+  return { ok: true, bloqueantes: [], motivo: '' }
+}
+
+// ¿Corrio un build VIEJO en este aparato despues de la ultima vez que sello?
+//
+// No se puede detectar comparando capacidades: el build viejo no escribe `caps`,
+// y como el `setDoc` va con merge:true, el `caps.up` que dejo el build nuevo sigue
+// en la fila. Lo que si deja huella es que el viejo toca `lastSeenAt` y NO
+// `sealSeenAt`: si el visto es posterior al sellado, por ahi paso un build que no
+// sella, y todo lo que subio va sin `_up`, asi que ninguna consulta filtrada lo
+// devolveria. Los aparatos que ya filtraban tienen que volver al tiempo real.
+//
+// Los dos son hora del SERVIDOR y el build nuevo los escribe en la MISMA
+// escritura, asi que en marcha normal salen iguales, nunca uno mayor.
+export function ranLegacyBuild(prev) {
+  const visto = upToMillis(prev?.lastSeenAt)
+  const sellado = upToMillis(prev?.sealSeenAt)
+  if (visto == null || sellado == null) return false
+  return visto > sellado
 }

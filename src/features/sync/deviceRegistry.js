@@ -2,6 +2,7 @@ import { getFirebase } from '../../lib/firebase'
 import { configRepo } from '../../repositories/configRepo'
 import { newId } from '../../lib/ids'
 import { logSyncEvent } from '../../lib/syncLog'
+import { ranLegacyBuild } from './deferred'
 
 // ---------------------------------------------------------------------------
 // Fase 5 - Bloque 31: registro de dispositivos por negocio y limite de la
@@ -15,6 +16,12 @@ import { logSyncEvent } from '../../lib/syncLog'
 // ---------------------------------------------------------------------------
 
 const DEVICE_ID_KEY = 'deviceId'
+
+// Capacidades de ESTE build. `up` dice "yo sello lo que subo". La bajada
+// filtrada no se enciende en NINGUN aparato hasta que todos lo publican
+// (spec 2026-09-24-reduccion-cuota, D2). Viaja dentro del setDoc que ya se
+// hacia, asi que no cuesta ni una lectura ni una escritura mas.
+const CAPS = { up: 1 }
 
 // Id estable de ESTE dispositivo (se genera una vez y se guarda local).
 export async function getDeviceId() {
@@ -80,6 +87,11 @@ export async function registerThisDevice(fs, businessId, { enforce = false } = {
   }
 
   const prev = all.find((d) => d.id === deviceId)
+  // Si en este aparato corrio un build que NO sella despues de la ultima vez que
+  // sello, se anota la hora del SERVIDOR: lo que ese build subio va sin `_up` y
+  // ninguna consulta filtrada lo devolveria, asi que los aparatos que ya
+  // filtraban tienen que volver al tiempo real y rellenar el hueco.
+  const corrioViejo = ranLegacyBuild(prev)
   await setDoc(
     doc(devicesCol, deviceId),
     {
@@ -88,7 +100,10 @@ export async function registerThisDevice(fs, businessId, { enforce = false } = {
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent || '' : '',
       active: true,
       linkedAt: prev?.linkedAt || serverTimestamp(),
-      lastSeenAt: serverTimestamp()
+      lastSeenAt: serverTimestamp(),
+      caps: CAPS,
+      sealSeenAt: serverTimestamp(),
+      ...(corrioViejo ? { legacyAt: serverTimestamp() } : {})
     },
     { merge: true }
   )
@@ -130,5 +145,29 @@ export async function touchThisDevice() {
   } catch (e) {
     console.warn('[devices] touch', e?.code || e?.message)
     logSyncEvent('registro-aparato', null, e)
+  }
+}
+
+// Lista CRUDA de dispositivos (la usa la guarda de la bajada diferida). A
+// diferencia de `listDevices`, no filtra ni ordena: la guarda necesita ver
+// tambien los retirados para decidir, y decide ella.
+//
+// Hace su PROPIO getDocs y no reusa el de `registerThisDevice` a proposito: ese
+// se lee ANTES de escribir `caps`, asi que este aparato no se veria a si mismo
+// sellando y la guarda no pasaria nunca. Cuesta N filas (los aparatos del
+// negocio) por arranque.
+//
+// Devuelve [] si no hay sesion o si falla: la guarda lee la lista vacia como
+// "no filtrar", que es el lado seguro.
+export async function readDevices() {
+  try {
+    const { db: fs, auth } = await getFirebase()
+    if (!auth.currentUser) return []
+    const { collection, getDocs } = await import('firebase/firestore')
+    const snap = await getDocs(collection(fs, 'businesses', auth.currentUser.uid, 'devices'))
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+  } catch (e) {
+    logSyncEvent('guarda-dispositivos', null, e)
+    return []
   }
 }
