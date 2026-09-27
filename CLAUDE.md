@@ -110,9 +110,9 @@ npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas cinco dentro: **34 suites / 3.616 aserciones** en total, medidas el 27-09-2026 (eran 30 y
-3.468 el 25-09; las cuatro nuevas son `deferred` 121, `cursorType` 7, `pullDeferred` 15 y
-`backupCursors` 5, y las 27 preexistentes dan salida byte a byte idéntica a `main`). Cifras
+Con esas cinco dentro: **34 suites / 3.632 aserciones** en total, medidas el 27-09-2026 (eran 30 y
+3.468 el 25-09; las cuatro nuevas son `deferred` 134, `cursorType` 10, `pullDeferred` 15 y
+`backupCursors` 5, y las 30 preexistentes dan salida byte a byte idéntica a `main`). Cifras
 anteriores, medidas el 25-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47→65, `orderSale` 18→29→36, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
@@ -940,7 +940,10 @@ dueño corra `npm run deploy`.
 ## Estado del trabajo (27-09-2026) — reducción de la cuota de Firestore (F1 + F2)
 
 **PROGRAMADO, PROBADO Y COMMITEADO en `claude/awesome-dirac-484azm`. NO fusionado a `main` y NO
-desplegado.** Plan y su validación en `docs/superpowers/plans/2026-09-25-reduccion-cuota.md` (el
+desplegado.** **DECISIÓN DEL DUEÑO (27-09-2026, tras la auditoría previa a `main`): NO se fusiona
+hasta arreglar primero el eco del §10.4**, porque F1 —que se activa al desplegar, sin bandera— hace
+que ese eco se pague en **lecturas** (ver «Auditoría previa a `main`» al final de esta sección).
+Plan y su validación en `docs/superpowers/plans/2026-09-25-reduccion-cuota.md` (el
 **§12** de ese fichero manda sobre las tareas); diseño en
 `docs/superpowers/specs/2026-09-24-reduccion-cuota-design.md` (**§10.5 manda sobre §10, y §10 sobre
 §1–§9**). **Leer los dos antes de tocar nada de esto.**
@@ -956,7 +959,9 @@ colecciones siguen en vivo, con su contenido en la nube **idéntico al de hoy**.
   negocio y sincronizada). Sin encenderla, **la BAJADA es exactamente la de hoy**: el veredicto nace
   vacío, los dos `continue` del motor no se ejecutan nunca, `pullDiferido` sale en su primera línea
   y ni siquiera se lee `/devices`. **La SUBIDA sí cambia desde el primer día, y a propósito**: eso
-  es F1.
+  es F1. **Matiz de la auditoría del 27-09: «exactamente la de hoy» es cierto en LLAMADAS, no en
+  COSTE.** Con F1 cada eco de `stockMovements`/`sales` lleva un `_up` nuevo y despierta a los
+  oyentes de los demás aparatos (ver la auditoría previa a `main`, al final de esta sección).
 
 **Lo que se corrigió del plan mientras se ejecutaba** (todo está en el ledger de la ejecución, con
 su coste si me equivoco):
@@ -1022,7 +1027,9 @@ su coste si me equivoco):
   CSS con **hash idéntico** (`index-B34NE6G1.css`, 87.657 bytes) → byte a byte igual. Chunk principal
   1.040.450 → **1.049.962 bytes**; gzip 304.272 → **307.251**: **+9.512 B crudos, +2.979 B gzip
   (+0,98 %)**. Como el chunk lleva hash, actualizar cuesta la **descarga completa** (~300 kB gzip por
-  teléfono), no el delta.
+  teléfono), no el delta. *(Cifra de antes del commit de arreglos `f3aa58e`; remedida el 27-09 sobre
+  `c34275d`: 1.040.450 → **1.051.158 bytes**, gzip 304.272 → **307.595**: **+10.708 B crudos,
+  +3.323 B gzip (+1,09 %)**, con `gzip -9` en los dos árboles.)*
 - **Riesgos de CONVIVENCIA de versiones:** un teléfono con el build viejo **ignora `_up`** (no lo
   mira nadie: no está en `TS_FIELDS`, comprobado ejecutando `syncTs`), así que fusiona igual que hoy;
   y como no escribe `caps`, **bloquea la guarda**, que es el lado seguro: mientras quede uno sin
@@ -1064,6 +1071,14 @@ satisface `> cualquier cursor` y **vuelve a bajar en CADA consulta filtrada, par
 la bajada no hay forma de excluirlo: ningún cursor lo deja fuera. **Se cuenta y se registra**
 (`bajada-diferida-sello-mapa` en `/errors`) para poder medirlo en las 48 h de F3; el remedio —volver
 a sellar esas filas— toca el camino de **subida** y necesita su propia autorización.
+**CORRECCIÓN de la auditoría del 27-09: este razonamiento está AL REVÉS.** Un filtro de rango solo
+compara valores **del mismo tipo** (el SDK instalado lo hace así al casar un filtro:
+`typeOrder(this.value) === typeOrder(other)`, `common-*.node.cjs.js:6622-6625`; es la misma regla
+que el propio H-A usa bien). Una fila con `_up` convertido en mapa **no baja NUNCA** por la consulta
+filtrada, no «en cada consulta»: es un **hueco**, no un coste. Lo cubren la guarda (mientras corre un
+build viejo nadie filtra) y la reconciliación completa al volver, pero **la métrica
+`bajada-diferida-sello-mapa` dará siempre 0 y no sirve para medirlo en F3**. Leído del SDK, no
+observado contra el servidor.
 
 **Y un fallo que solo cazó la herramienta de identificadores libres**, ya dentro del pase de
 arreglos: `syncEngine.js` usaba `fullPullKey` **sin importarlo**. `initialPull` corre cada 45 s:
@@ -1088,7 +1103,7 @@ Dexie al **restaurar** un respaldo viejo (inofensivo: `syncTs` lo ignora y `seal
   devuelva filas, ni dos aparatos sincronizando. Todo es código, build, pruebas en node y el SDK
   instalado.
 - **El cableado no lo prueba nada, ni lo va a probar.** El módulo puro se prueba entero
-  (`deferred.js`, 121 aserciones con control negativo en 13 mutaciones), `mergeIncoming` y el
+  (`deferred.js`, 134 aserciones con control negativo en 13 mutaciones), `mergeIncoming` y el
   respaldo se prueban con base real, y el tipo del cursor tiene su candado sobre el fuente
   (`cursorType.test.mjs`). Lo demás —el oyente, la consulta, el timbre en un teléfono— lo decide la
   consola en F3.
@@ -1096,6 +1111,9 @@ Dexie al **restaurar** un respaldo viejo (inofensivo: `syncTs` lo ignora y `seal
   hay emulador. **Se comprueba en la consola de Firebase tras desplegar, ANTES de encender nada.**
 - **El paso del plan que comprobaba un respaldo real no se ejecutó**: no hay ningún respaldo en esta
   máquina. En su lugar quedó una suite con base real, que además se queda en el repositorio.
+  *(Corrección del 27-09: en la máquina del dueño **sí** hay respaldos —
+  `Downloads/respaldo_mypicuadre_2026-09-12dueña.json`, `…-09-12vendedor.json` y `…-09-22.json`, y
+  `D:\DIRECTOR\burguer\respaldo_mypicuadre_2026-09-06.json`—. Ese paso sigue sin ejecutarse.)*
 - **F5 no entra** (extender el filtro al oyente, que es la medida permanente) ni **el eco del §10.4**
   (cada aparato vuelve a subir lo que baja de los otros), que **acota el ahorro real de F2**. F1+F2
   llevan de 113 k a ~36 k lecturas/día y compran **menos de un mes**: son el experimento barato que
@@ -1114,6 +1132,64 @@ Dexie al **restaurar** un respaldo viejo (inofensivo: `syncTs` lo ignora y `seal
    **las escrituras NO SUBEN**.
 6. **Marcha atrás:** apagar la bandera en `/cloud`. Cada aparato vuelve al vivo, reconcilia otra vez
    y rellena lo que faltara.
+
+**Ese orden operativo queda EN SUSPENSO** por la decisión del dueño del 27-09 (arreglar antes el eco).
+
+### Auditoría previa a `main` (27-09-2026, segunda sesión, EJECUTADA, no citada)
+
+Hecha sobre `c34275d` contra `origin/main` = `ec45b03`, con worktrees aparte de los dos árboles, un
+investigador y un revisor independientes. **Veredicto: la rama NO rompe la producción ni la
+corrección de la sincronización, tampoco en mesas; pero F1 NO es neutra en coste, y por eso no se
+fusiona todavía.**
+
+- `npm run build` **exit 0** en los dos árboles · **34 suites / 3.632 aserciones, 0 fallos** · las
+  **30 suites preexistentes** (27 de node directo + 3 empaquetadas) dan salida **byte a byte
+  idéntica** a `main`, con control negativo · CSS con el **mismo hash** · JS **+3.323 B gzip
+  (+1,09 %)**.
+- **Cero cambios** en `db.js`, reglas, índices, `package*.json`, `collections.js`, `ordersRepo`,
+  `salesRepo` y `features/tables`. Las 19 líneas borradas de `src/` son sustituciones en el sitio.
+- **Con la bandera apagada no hay ninguna LECTURA nueva a Firestore** (revisor): `readDevices` solo
+  corre con la bandera encendida y `pullDiferido` sale antes de tocar Firebase. Escrituras: el mismo
+  `setDoc` de `/devices` con tres campos más.
+- **`_up` no entra en Dexie por ningún camino** (todos desembocan en `mergeIncoming`) y con `mesas`
+  `sales` se queda en vivo (`LICENSE_MODULES.TABLES`, licencia no desbloqueada = no se difiere).
+- **0 identificadores libres** en los 9 ficheros (revisor, con control negativo).
+
+**IMPORTANTE 1 — el eco se paga en LECTURAS desde el primer día, sin bandera.** Encontrado por la
+auditoría y, por separado, por el revisor. La bajada **no mueve** el cursor `push:<col>` (solo lo
+escriben `pushEngine.js:62` y `:311`), así que cada aparato resube lo que baja de los otros. En `main`
+ese eco lleva el **mismo contenido**: según el contrato de la API de Firestore, una escritura que no
+cambia el documento conserva su `update_time`, así que se **cobra como escritura** pero **no despierta
+a ningún oyente**. Con F1 cada eco lleva un `_up` nuevo (`pushEngine.js:181/195/228`): el documento
+**sí cambia** y cada aparato en vivo paga una lectura. En `stockMovements` y `sales` las lecturas por
+cambio suelto pasan de **(N−1) a N(N−1)** (×2 con 2 aparatos, ×3 con 3); los reenganches en frío no
+cambian. Estimado —no medido— en **+1 % a +5 %** de las lecturas de hoy. Los tres respaldos reales
+son **coherentes** con el eco: en los tres el cursor de subida es exactamente la marca más alta de la
+tabla y esa fila es de **otro** usuario (no es prueba absoluta: un usuario puede entrar en el aparato
+de otro; la prueba es el código). `forceResend` y los reintentos sufren lo mismo.
+
+**Otros hallazgos del revisor, confirmados en el código, todos con la bandera ENCENDIDA y todos del
+lado seguro:** (2) un arranque sin servidor lee `/devices` como vacío (`deviceRegistry.js:172`),
+`SyncProvider.jsx:381-384` vuelve al vivo **y** borra la reconciliación → pierde el ahorro esa sesión
+y la siguiente, con red intermitente será lo normal: «no se pudo leer» debería conservar el veredicto
+anterior; (3) el margen de 120 s hace que cada `pullDiferido` relea los últimos 2 minutos; (4) si se
+activa `mesas` a media sesión, `sales` sigue diferida hasta el siguiente arranque (ya en el plan
+§12.5); y menores: el I4 al revés (corregido arriba), la carrera de `restartRealtime`, y que el timbre
+suena con cualquier colección en vivo, no solo `products`.
+
+**Las pruebas NO cubren el cableado:** de **12 mutaciones** del revisor sobre `syncEngine`,
+`SyncProvider` y `pushEngine` —sacar los `continue`, sellar antes de serializar, subir sin sello,
+`TABLES`→`MESAS`, el timbre con escrituras propias…—, **solo 1** hizo fallar una suite.
+
+**La pregunta del dueño: ¿subió el consumo por los cambios del 17-09? — REFUTADA como causa de
+código.** Se revisaron todos los commits de `src/` que llegaron a `main` del 10 al 26-09. Ninguno
+añade lecturas o escrituras periódicas a Firestore ni reenganches: los avisos de negativos escriben en
+`notifications` (no sincroniza), `reconcileClosed`/`reconcileDiscount` escriben **sin marca** (no
+suben) y sin bucle, y lo del escritorio solo lee. Comprobado con un arnés sobre `fake-indexeddb` con
+control negativo: 0 filas nuevas para subir. Lo del 17-09 no llegó a `main` ese día (se fusionó el
+19-09). Lo que explica la curva no tiene fecha: la historia crece (~128 docs/día y negocio, y cada
+reenganche en frío la relee), el **alta del 24-09** (6.630 escrituras más cada aparato releyéndola) y
+el eco. **No se sabe:** cuándo se desplegó cada fusión y si se usó «Reenviar a la nube».
 
 ## Estado del trabajo en curso (25-09-2026, tarde) — doble anulación en mesas
 
