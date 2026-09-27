@@ -93,27 +93,50 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/dailySalesControl.fuzz.test.mjs \
          src/lib/reportCells.test.mjs \
          src/features/sync/deferred.test.mjs \
-         src/features/sync/cursorType.test.mjs; do node "$t"; done
+         src/features/sync/cursorType.test.mjs \
+         src/features/sync/echoLedger.test.mjs; do node "$t"; done
 ```
 
-**Cinco suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/lib/syncLog.test.mjs` (el
+**Siete suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/lib/syncLog.test.mjs` (el
 escritor del registro de la sync), `src/features/reports/dailyControlLocations.test.mjs` (el
 selector de ubicaciones del Control de Ventas Diarias, que lee el índice `location`),
 `src/features/sync/pullDeferred.test.mjs` (que el sello `_up` no entra en Dexie, con el
-`mergeIncoming` real) y `src/features/backup/backupCursors.test.mjs` (que los cursores de bajada no
-viajan en el respaldo), usan base real y NO corren con node directo**: los repos importan sin extensión, así que hace falta empaquetarla con el esbuild que ya
+`mergeIncoming` real), `src/features/backup/backupCursors.test.mjs` (que los cursores de bajada no
+viajan en el respaldo), `src/features/backup/backupFlags.test.mjs` (que la bandera `subidaSinEco`
+tampoco viaja en el respaldo) y `src/features/sync/echoMerge.test.mjs` (que la bajada solo anota las
+filas que ganan el LWW, con el `mergeIncoming` real), usan base real y NO corren con node directo**:
+los repos importan sin extensión, así que hace falta empaquetarla con el esbuild que ya
 trae Vite y `fake-indexeddb` (`devDependency` desde el 23-09-2026) antes de ejecutarla. Comando
-exacto (copiado del comentario de cabecera del propio fichero; para `syncLog` es el mismo con su ruta):
+exacto (copiado del comentario de cabecera del propio fichero; para las demás es el mismo con su ruta):
 
 ```bash
 npx esbuild src/repositories/ordersRepo.test.mjs --bundle --platform=node \
   --format=esm --outfile=<scratch>/ordersRepo.test.bundle.mjs && node <scratch>/ordersRepo.test.bundle.mjs
 ```
 
-Con esas cinco dentro: **34 suites / 3.632 aserciones** en total, medidas el 27-09-2026 (eran 30 y
-3.468 el 25-09; las cuatro nuevas son `deferred` 134, `cursorType` 10, `pullDeferred` 15 y
-`backupCursors` 5, y las 30 preexistentes dan salida byte a byte idéntica a `main`). Cifras
-anteriores, medidas el 25-09-2026 tras las
+**Dos suites más, `src/features/sync/pushTrace.test.mjs`** (la huella byte a byte de `doPush` real
+frente al `doPush` de `main`, 300 escenarios con semilla fija) **y `src/features/sync/pushEcho.test.mjs`**
+(que la bandera `subidaSinEco` salta exactamente los ecos y nada más), además sustituyen el SDK de
+Firebase por los falsos de `./testing` con los **tres `--alias`** (sin ellos el `pushEngine.js` real
+no se puede empaquetar; comando copiado de la cabecera de `pushTrace.test.mjs`):
+
+```bash
+npx esbuild src/features/sync/pushTrace.test.mjs --bundle --platform=node --format=esm \
+  --alias:firebase/app=./src/features/sync/testing/fakeFirebaseApp.mjs \
+  --alias:firebase/auth=./src/features/sync/testing/fakeFirebaseAuth.mjs \
+  --alias:firebase/firestore=./src/features/sync/testing/fakeFirestore.mjs \
+  --outfile=<scratch>/pushTrace.bundle.mjs && node <scratch>/pushTrace.bundle.mjs
+```
+
+Con todas dentro: **39 suites / 3.692 aserciones** en total, medidas el 27-09-2026 (38 suites dan un
+recuento explícito de aserciones; la 39ª, `pushTrace`, valida por **equivalencia de trazas** —300
+escenarios, 3.859 escrituras comparadas, 0 invariantes rotas— y no suma al recuento de aserciones).
+Eran 34 y 3.632, medidas ese mismo 27-09 antes de la tarea «subida sin eco»: las cinco suites nuevas
+son `echoLedger` (18, node directo), `backupFlags` (9), `echoMerge` (12), `pushEcho` (21) y
+`pushTrace` (sin recuento propio), y las **31 suites que existen también en `main`** (las 30
+preexistentes más `pushTrace`) dan salida byte a byte idéntica a las mismas 31 corridas en un
+worktree de `origin/main`, con control negativo (un byte añadido a una copia, detectado por `cmp`).
+Cifras anteriores, medidas el 25-09-2026 tras las
 dos revisiones de la rama (`ordersRepo` 23→47→65, `orderSale` 18→29→36, `resend` 22→28), con
 `convergence` (15), `syncLogPolicy` (29), `syncLog` (11), `commitWatch` (36, el vigilante de lotes
 de subida sin confirmar), `compareResend` (23) y `compareResendEngine` (28), el reenvío que compara
@@ -936,6 +959,151 @@ de Mermas no se filtró por licencia.
 
 **Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que el
 dueño corra `npm run deploy`.
+
+## Estado del trabajo (27-09-2026) — subida sin eco
+
+**PROGRAMADO, PROBADO Y COMMITEADO en `claude/awesome-dirac-484azm` (commits `328e5dd..369d1d0`).
+NO fusionado a `main` y NO desplegado.**
+
+**Qué hace y dónde vive.** `doPush` sube por marca de agua (`syncTs(r) > push:<col>`), sin
+distinguir quién escribió la fila: una fila que llega de OTRO aparato con marca por encima del
+cursor propio se reenvía en el siguiente ciclo, aunque la nube ya la tenga (el «eco»). Con N
+aparatos cada documento se escribe hasta N veces; con F1 (reducción de cuota, sección de abajo)
+cada eco de `stockMovements`/`sales` sellaría un `_up` nuevo y **el eco pasaría de costar
+escrituras a costar también lecturas**. Diseño en
+`docs/superpowers/specs/2026-09-27-subida-sin-eco-design.md`, plan en
+`docs/superpowers/plans/2026-09-27-subida-sin-eco.md`. El mecanismo: un módulo puro
+`src/features/sync/echoLedger.js` anota en **memoria de la sesión** (cero escrituras a Dexie, nada
+en respaldos) la versión (id + `syncTs`) de cada fila que la bajada mete en Dexie, y `doPush` se
+salta una fila candidata **solo si** su versión coincide exactamente con la anotada — la nube ya la
+tiene, porque de ahí vino (Firestore no borra: `allow delete: if false`). Todo detrás de una
+bandera del negocio, sincronizada y **apagada por defecto**: `config.subidaSinEco`
+(`configRepo.getSubidaSinEco`/`setSubidaSinEco`), con su interruptor en `/cloud` (solo el dueño) y
+el contador de filas no reenviadas de la sesión. Se anota siempre (memoria invisible); se salta
+solo con la bandera encendida. El cursor de subida se calcula igual que hoy, sobre TODOS los
+candidatos (subidos o saltados), así que la marca de agua no cambia de significado.
+
+**Auditoría de cierre (25-09-2026 → 27-09-2026, EJECUTADA, no citada de ninguna acta anterior):**
+
+- **Step 1 — todas las suites, en la rama y en `main`, byte a byte:** **39 suites** en total (30
+  de node directo, incluida la nueva `echoLedger` con 18 aserciones; 7 empaquetadas con base real
+  vía `corre_base` —`ordersRepo`, `syncLog`, `dailyControlLocations`, `pullDeferred`,
+  `backupCursors`, y las dos nuevas `backupFlags` (9) y `echoMerge` (12)—; y 2 empaquetadas con los
+  falsos de Firebase vía `corre_fb` —`pushEcho` (21) y `pushTrace`—). **0 fallos en las 39.** De
+  ellas, **38 dan un recuento explícito de aserciones que suma 3.692**; la 39ª, `pushTrace`, no
+  cuenta por aserciones sino por **equivalencia de trazas**: 300 escenarios con semilla fija,
+  3.859 escrituras comparadas, **0 invariantes rotas**, ejecutada en los dos árboles (la rama y un
+  worktree de `origin/main` en `ec45b03`, con los mismos falsos de Firebase por `--alias`) — y las
+  dos salidas, **idénticas byte a byte** (`cmp`, sin diferencia). Las **31 suites que existen
+  también en `main`** (las 30 que no dependen de código exclusivo de esta rama, más `pushTrace`) se
+  corrieron en los dos árboles y dan salida **byte a byte idéntica** en las 31, con **control
+  negativo**: un byte añadido a una copia de una salida, detectado por `cmp` (exit 1). Las 8 suites
+  restantes (`deferred`, `cursorType`, `echoLedger`, `pullDeferred`, `backupCursors`, `backupFlags`,
+  `echoMerge`, `pushEcho`) no existen en `main` (código exclusivo de esta rama o de la reducción de
+  cuota previa) y no tienen con qué compararse.
+- **Step 2 — ficheros sensibles:** `git diff --stat origin/main HEAD` sobre `src/db/db.js`,
+  `firestore.rules`, `firestore.indexes.json`, `package.json`, `package-lock.json`,
+  `vite.config.js`, `index.html`, `src/features/sync/collections.js`, `ordersRepo.js`,
+  `salesRepo.js`, `src/features/tables` **vacío**, y `git diff --stat 328e5dd HEAD` sobre
+  `retryQueue.js`, `resend.js`, `commitWatch.js`, `deferred.js`, `syncEngine.js`,
+  `SyncProvider.jsx` **vacío**. Dexie sigue en v19, `SYNC_COLLECTIONS` sin tocar.
+- **Step 3 — líneas borradas en producción:** `git diff 328e5dd HEAD -- src ':!*.test.mjs'
+  ':!src/features/sync/testing'` da **exactamente tres** líneas borradas, las tres sustituciones en
+  el sitio: `'lastRestoreAt'` (gana la coma, por la clave `subidaSinEco` que se añade después en
+  `DEVICE_ONLY_KEYS`) y las dos del bucle de lotes de `doPush` (`nuevos.length`/`nuevos.slice` →
+  `subir.length`/`subir.slice`, para que los lotes salgan de lo que de verdad se sube). Ninguna
+  otra.
+- **Step 4 — escrituras nuevas a la base:** el mismo diff filtrado por `.add/.put/.bulkPut/.update/
+  .delete/.modify/.bulkAdd(` o `.transaction(` da **una sola** coincidencia:
+  `for (const [id, ts] of m) if (ts <= cursor) m.delete(id)`, de `echoLedger.js` — es el `Map` **en
+  memoria** del propio módulo, no una tabla de Dexie. Ninguna escritura nueva a la base.
+- **Step 5 — identificadores libres** (con `@babel/parser`/`@babel/traverse`, sobre los seis
+  ficheros de producción tocados —`echoLedger.js`, `pullEngine.js`, `pushEngine.js`,
+  `configRepo.js`, `backupService.js`, `CloudScreen.jsx`—): **0** identificadores sin ligar en su
+  ámbito. **Control negativo:** una copia de `echoLedger.js` con `noExisteNunca()` inyectado la
+  herramienta la caza (`TOTAL libres: 1`).
+- **Step 6 — peso, medido en los dos árboles con el mismo compresor:** el CSS sale con el
+  **mismo nombre de hash** en los dos árboles (`index-B34NE6G1.css`, 87.657 bytes, idéntico). El
+  chunk principal: `main` 1.040.450 B (gzip 304.272) → rama 1.053.141 B (gzip 308.086) — **+12.691 B
+  crudos (+1,22 %), +3.814 B gzip (+1,25 %)**. `grep -c "__serverTimestamp__"` sobre los JS del
+  build de la rama da **0** en todos: los falsos de `testing/` no se colaron en el bundle.
+
+**Mutaciones cazadas (control negativo, ejecutadas ahora mismo sobre el código commiteado y
+revertidas con `git checkout --` tras cada una; `git status --short` quedó limpio salvo
+`.claude/settings.json`, preexistente):**
+
+- **Tarea 1 (`echoLedger.js`, con `echoLedger.test.mjs`):** `===` → `>=` en la comparación de
+  `split` (rompe la aserción «marca distinta → sube», 0/1 esperado); ignorar `enabled` (rompe
+  «bandera apagada: sube TODO»); `prune` con `<` en vez de `<=` (deja una anotación de más, 2
+  esperado 1); anotar sin `String(pk)` (una clave no textual deja de anotarse). **Las cuatro
+  cazadas.**
+- **Tarea 4 (`pullEngine.js`, con `echoMerge.test.mjs`):** quitar la llamada a `anotarEco` tras el
+  `bulkPut` (6 de 12 aserciones caen: nada se anota nunca); anotar `items` en vez de `toPut` —o
+  sea, TODO lo que llega, no solo lo que gana el LWW— (3 aserciones caen: lo que pierde el LWW y lo
+  que vuelve igual por el oyente se anotarían igual, rompiendo la garantía central). **Las dos
+  cazadas.**
+- **Tarea 5 (`pushEngine.js`, con `pushEcho.test.mjs`):** pasar `false` en vez de `sinEco` a
+  `separarEco` (7 aserciones caen: con la bandera encendida no se saltaría ningún eco); comentar la
+  llamada a `podarEco` tras `setCursorForward` (1 aserción cae: el libro de ecos no se poda y crece
+  sin límite). **Las dos cazadas.**
+- **Tarea 3 (`configRepo.js`/`backupService.js`, con `backupFlags.test.mjs`):** renombrar la clave
+  `'subidaSinEco'` dentro de `DEVICE_ONLY_KEYS` (2 aserciones caen: la bandera viajaría en el
+  respaldo y un respaldo viejo podría encenderla o apagarla al restaurarse); quitar la
+  normalización a booleano de `getSubidaSinEco` (2 aserciones caen: un valor no booleano que
+  llegue por la sync, p. ej. `'si'` o `0`, dejaría de leerse como `true`/`false`). **Las dos
+  cazadas.**
+
+**Casos límite deferidos (de la ejecución de las Tareas 1 a 6, `progress.md`), sin corregir por
+decisión de alcance — ninguno bloquea, todos son menores:**
+
+- **El más importante para el panel de `/cloud`:** con la bandera **ENCENDIDA**, «Reenviar a la
+  nube» (`forceResend`) rebobina el cursor y llama a `pushChanges()` como siempre, así que las
+  filas rebobinadas que siguen anotadas en el libro de ecos **SÍ se saltan** — sin pérdida de dato
+  (esas versiones exactas vinieron de la nube, que no borra), pero el contador `countResend` del
+  panel puede mostrar **más** filas de las que después aparecen como «Encoladas». La tabla del §4
+  de la spec dice que `forceResend` «no cambia», y con la bandera encendida **esa frase es
+  inexacta**: no cambia su código, pero sí su resultado observable.
+- `split` no tiene una aserción explícita para un elemento `null` dentro de `candidatos` (va a
+  `subir`, el lado seguro); lo que garantiza la forma es `doPush`, no el módulo puro.
+- En `pushTrace`, los reintentos `paused` con `lastAttemptAt: 0` se reactivan por `autoResume`, así
+  que el caso «paused y por tanto excluido» no queda cubierto por esa suite.
+- `drenar()` espera 50 ms fijos; la comparación de colas depende de que las cadenas asíncronas
+  terminen en ese margen (determinista en las corridas medidas; frágil en una máquina muy lenta).
+- Si `record()` lanzara una excepción, 3 de los 4 llamadores de `mergeIncoming` (`initialPull`,
+  `pullDiferido`, `reconciliarDiferidas`) no tienen `try/catch` alrededor. Hoy `record` es puro y
+  defensivo (no lanza).
+- `prune` solo corre si la colección pasa la salida temprana de `doPush` (tiene `nuevos` o
+  reintentos); una colección sin ninguno de los dos conserva sus anotaciones `<=` cursor toda la
+  sesión (inocuo, acotado por el tamaño de lo bajado).
+- Ninguna prueba cubre el `.catch(() => false)` de `getSubidaSinEco` (la lectura que falla cae al
+  lado seguro: subida clásica).
+- El contador del panel (`skippedCount`) es global de la sesión y no se reinicia al apagar/encender
+  la bandera (literalmente cierto: «filas no reenviadas en esta sesión»); y el `setInterval` de 5 s
+  que lo refresca corre también con la bandera apagada (solo lee memoria, no hace E/S).
+
+**Lo que NO se puede garantizar (spec §8, en el fondo, literal):**
+
+1. **El ahorro real en la consola de Firebase.** Lo decide la facturación del servidor, y en
+   particular que una escritura sin efecto no despierte oyentes: documentado en la API de
+   Firestore, **no observado aquí**.
+2. **Cero runtime.** Sin emulador (sin Java), sin Firestore real y sin un teléfono. Todo lo de
+   arriba es código, build y pruebas en node.
+3. **La magnitud del eco** se deduce del código y es coherente con los tres respaldos reales de la
+   auditoría previa, pero no se ha medido: depende de cuántos aparatos escuchan en cada negocio.
+4. **Los teléfonos sin actualizar** siguen haciendo eco (y, con F1 desplegado, su eco de filas
+   selladas sube el `_up` como si fuera un cambio real).
+
+**Orden operativo (spec §6):** tras desplegar, en cada negocio donde la bandera siga apagada, F1
+(si se despliega junto con esto) cuesta lecturas de más por el eco. Dos vías para encenderla: (1)
+**el dueño del negocio**, en `/cloud`; (2) **a distancia, desde la consola de Firebase**, creando o
+editando el documento `/businesses/{uid}/config/subidaSinEco` con
+`{ key: "subidaSinEco", value: true, updatedAt: "<ISO de ahora>" }` (`updatedAt` como **cadena
+ISO**, no como Timestamp: `syncTs` solo mira cadenas) — baja a todos los aparatos por la fusión LWW
+de siempre; para apagarla, lo mismo con `value: false` y un `updatedAt` más nuevo. Orden
+recomendado: desplegar → encender en **un** negocio → 24 h de consola antes y después (el criterio
+de aceptación de la spec: las escrituras bajan y las lecturas no suben) → abrir negocio a negocio.
+
+**NO fusionado a `main` y NO desplegado.**
 
 ## Estado del trabajo (27-09-2026) — reducción de la cuota de Firestore (F1 + F2)
 
