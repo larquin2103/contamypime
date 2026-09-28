@@ -121,6 +121,16 @@ sincronizadas (`update`/`modify`/`put`/`bulkPut`):
 
 Una fila tocada después de bajarla trae una marca distinta y sube como siempre.
 
+**Corrección del 27-09-2026 (revisión final):** la garantía de arriba tiene una excepción real, el
+reloj atrasado. `echoLedger.js:52` compara `syncTs`, y `productsRepo.js:71`/`debtsRepo.js:107`
+sellan con `now()`, no con `tsAfter`. Si otro aparato crea una fila (`createdAt = updatedAt = T1`)
+y este teléfono, con el reloj atrasado, la edita antes del siguiente `doPush`, el nuevo
+`updatedAt` queda por debajo de `createdAt` y `syncTs` sigue siendo T1 — la misma versión ya
+anotada — así que el cambio real se salta. No rompe la sincronización porque el LWW de los demás
+aparatos ya exige `syncTs` estrictamente mayor (`pullEngine.js:51`) y hoy rechazaría igual esa
+subida; es un defecto preexistente, ajeno a `mesas` (que sella con `tsAfter`). El análisis del
+árbol sintáctico de arriba comprobó que existe un campo de `TS_FIELDS`, no que `syncTs` suba.
+
 **Casos límite:**
 
 | Caso | Qué pasa |

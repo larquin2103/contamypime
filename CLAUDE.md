@@ -983,6 +983,13 @@ el contador de filas no reenviadas de la sesión. Se anota siempre (memoria invi
 solo con la bandera encendida. El cursor de subida se calcula igual que hoy, sobre TODOS los
 candidatos (subidos o saltados), así que la marca de agua no cambia de significado.
 
+**Corrección del 27-09-2026 (revisión final), precisando "coincide exactamente con la
+anotada":** coincidir la versión no siempre significa que el cambio real quedó reflejado en la
+marca. Con un reloj atrasado, `productsRepo.js:71`/`debtsRepo.js:107` sellan con `now()` (no con
+`tsAfter`) y una edición real puede sellarse con la MISMA versión ya anotada, saltándose. Detalle
+completo, por qué no rompe nada y por qué queda fuera de `mesas`, en el Hallazgo 1 de la
+«Revisión final de toda la rama», más abajo.
+
 **Auditoría de cierre (27-09-2026, EJECUTADA, no citada de ninguna acta anterior):**
 
 - **Step 1 — todas las suites, en la rama y en `main`, byte a byte:** **39 suites** en total (30
@@ -1102,6 +1109,50 @@ ISO**, no como Timestamp: `syncTs` solo mira cadenas) — baja a todos los apara
 de siempre; para apagarla, lo mismo con `value: false` y un `updatedAt` más nuevo. Orden
 recomendado: desplegar → encender en **un** negocio → 24 h de consola antes y después (el criterio
 de aceptación de la spec: las escrituras bajan y las lecturas no suben) → abrir negocio a negocio.
+
+**Revisión final de toda la rama (27-09-2026).** Veredicto: **fusionable a `main` sin romper
+producción, la sincronización ni `mesas`; sin hallazgos críticos ni importantes**; los criterios
+del controlador en las Tareas 1-6 (qué se dejó como caso límite y por qué) se juzgaron correctos.
+Lo que comprobó, sobre el código commiteado: los **cuatro** llamadores de `mergeIncoming`
+(`initialPull`, `pullDiferido`, `reconciliarDiferidas` y el oyente en tiempo real), que **F1 sigue
+sellando la primera subida** de cada fila (no rompe con la bandera encendida), que los
+reintentos/`forceResend`/el reenvío que compara no pasan por `split` y quedan idénticos, **cada**
+escritura `update`/`modify`/`put`/`bulkPut` de `src/` (de las 89 que ya contaba la spec §4, solo
+las **cuatro** conocidas —`recomputeStock`, `reconcileDiscount`, `reconcileClosed`,
+`reconcileFromDeliveries`— siguen sin marca, a propósito), y varias pestañas/una recarga a medio
+ciclo (cada una con su propio mapa en memoria; en el peor caso una hace eco como hoy — lado
+seguro, no pérdida). Encontró cuatro hallazgos menores, **reproducido el 1 con el `doPush` real**,
+que **no bloquean**:
+
+1. **La garantía de la spec §4 y de esta acta ("ningún cambio real del aparato se queda sin
+   subir") está exagerada en un caso: el reloj atrasado.** Dónde: `echoLedger.js:52` junto con
+   `productsRepo.js:71` (sella con `now()`, no con `tsAfter`); igual en `debtsRepo.js:107`
+   (`settledAt: now()`). Escenario reproducido: un producto recién creado en OTRO aparato llega
+   con `createdAt = updatedAt = T1`; este teléfono, con el reloj 10 s atrasado, cambia el precio
+   antes del siguiente `doPush` (< 20 s): `updatedAt = T1 − 10 s`; `syncTs` sigue siendo T1 (gana
+   `createdAt`), que es exactamente la versión anotada. Resultado: con la bandera apagada se sube
+   el precio 99; con la bandera **encendida**, no se sube nada. **Por qué no bloquea:** incluso en
+   el camino clásico los demás aparatos rechazan esa subida, porque el LWW exige un `syncTs`
+   **estrictamente mayor** (`pullEngine.js:51`) y aquí es igual, así que el resultado en la red es
+   el mismo; solo cambia qué copia queda en la nube, y eso solo lo notarían los aparatos que
+   todavía no tienen la fila. Es un defecto **preexistente**: la regla «toda mutación sella» se
+   cumple con una marca que no sube `syncTs`. `mesas` no lo sufre (`orders`/`orderItems` usan
+   `tsAfter`). El análisis del árbol sintáctico verificó que hay un campo de marca de tiempo
+   presente, **no** que `syncTs` suba.
+2. **La bandera quita un «arreglo accidental» que hacía el eco:** el eco de un aparato ya
+   actualizado volvía a sellar con un Timestamp correcto las filas cuyo `_up` se había vuelto un
+   mapa por el eco de un build viejo (I4). Con la bandera encendida esto deja de pasar. Es seguro
+   porque el candado de F2 (nadie filtra mientras corre un build viejo) y la reconciliación
+   completa al volver no dependen del eco.
+3. **Un reintento pausado para siempre puede quedarse en `retry:<col>`:** una fila con un error
+   permanente queda en pausa; otro aparato la reemplaza con una versión más nueva que sí se
+   anota; con la bandera encendida esa versión no se sube, así que nunca pasa por `onSuccess` y la
+   entrada de reintento nunca sale (en el camino clásico sí saldría). No se pierde nada (la nube
+   tiene la versión más nueva) y ninguna pantalla lee esa cola.
+4. **El panel `/cloud` (`CloudScreen.jsx`, `SubidaSinEcoPanel`):** `activa` se lee una sola vez al
+   montar (si la bandera se cambia desde la consola con el panel abierto, el panel sigue mostrando
+   el estado viejo); `cambiar` no tiene `catch` (un guardado que falla no muestra error; el estado
+   no miente porque `setActiva` solo corre tras un guardado exitoso).
 
 **NO fusionado a `main` y NO desplegado.**
 
