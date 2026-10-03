@@ -16,7 +16,8 @@ import { configRepo } from '../../repositories/configRepo'
 import { listDevices, removeDevice, getDeviceId } from './deviceRegistry'
 import { countResend, forceResend } from './pushEngine'
 import { RESENDABLE, localInputToIso } from './resend'
-import { COMPARE_RESENDABLE, MAX_PER_RUN } from './compareResend'
+import { compareResendableFor, MAX_PER_RUN } from './compareResend'
+import { LICENSE_MODULES } from '../../lib/license'
 import { skippedCount } from './echoLedger'
 import { countCompareResend, compareResend } from './compareResendFirebase'
 
@@ -569,11 +570,16 @@ function ResendPanel() {
 const COMPARE_LABELS = {
   products: 'Productos (fichas)',
   counts: 'Conteos físicos',
-  auditEvents: 'Eventos de auditoría'
+  auditEvents: 'Eventos de auditoría',
+  shifts: 'Turnos',
+  orders: 'Mesas (cabeceras)'
 }
 
 function CompareResendPanel() {
-  const [col, setCol] = useState(COMPARE_RESENDABLE[0])
+  // Las mesas solo se ofrecen con el modulo `mesas` (regla 3, sin fugas).
+  const { hasModule } = useLicense()
+  const opciones = compareResendableFor({ mesas: hasModule(LICENSE_MODULES.TABLES) })
+  const [col, setCol] = useState(opciones[0])
   const [when, setWhen] = useState('')
   const [sinceIso, setSinceIso] = useState(null)
   const [count, setCount] = useState(null)
@@ -618,7 +624,7 @@ function CompareResendPanel() {
       <label className="field">
         <span>Colección</span>
         <select value={col} onChange={changeCol}>
-          {COMPARE_RESENDABLE.map((name) => (
+          {opciones.map((name) => (
             <option key={name} value={name}>{COMPARE_LABELS[name] || name}</option>
           ))}
         </select>
@@ -660,6 +666,8 @@ function CompareResendPanel() {
           Úsalo en el aparato que tiene los datos buenos. Necesita internet. Nunca escribe algo que la nube
           tenga con marca más nueva, pero en productos lo que escribe reemplaza la ficha entera por la de este
           aparato: si este aparato vendió sin haber recibido un cambio de precio, repondría el precio viejo.
+          En turnos y mesas, lánzalo en el aparato que los ve CERRADOS: desde uno que los ve abiertos no
+          escribe nada.
         </small>
       </p>
     </section>

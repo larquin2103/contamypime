@@ -13,11 +13,22 @@ import { syncTs } from './collections.js'
 // que un aparato que vendio sin haber recibido un cambio de precio tiene la marca
 // mas alta con el precio viejo: repararlo desde ahi repone ese precio. Es la misma
 // LWW que ya aplica la sync; por eso se lanza desde el aparato con los datos buenos.
-// Alcance cerrado por el duenio: las tres colecciones de La Patrona.
+// Alcance cerrado por el duenio: las tres colecciones de La Patrona, y desde el
+// 03-10-2026 turnos y mesas (auditoria de Burger: una subida tardia de un aparato
+// pinto en la nube la version ABIERTA de un turno y de 7 mesas que otro aparato ya
+// tenia cerrados; los turnos no tienen ninguna reparacion automatica). Como en las
+// demas, se lanza desde el aparato con los datos buenos; lanzado desde el que tiene
+// la version vieja no escribe nada (misma marca que la nube).
 // ---------------------------------------------------------------------------
-export const COMPARE_RESENDABLE = ['products', 'counts', 'auditEvents']
+export const COMPARE_RESENDABLE = ['products', 'counts', 'auditEvents', 'shifts', 'orders']
 
 export const isCompareResendable = (name) => COMPARE_RESENDABLE.includes(name)
+
+// Lo que se OFRECE en pantalla. Las mesas son del modulo `mesas`: sin el, ni se
+// ofrecen (regla 3, sin fugas). Sin decir nada se oculta, que es el lado seguro.
+export function compareResendableFor({ mesas = false } = {}) {
+  return COMPARE_RESENDABLE.filter((n) => n !== 'orders' || mesas)
+}
 
 export const MAX_PER_RUN = 1000
 

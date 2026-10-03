@@ -163,5 +163,42 @@ const P = (id, t, extra = {}) => ({ id, name: `P${id}`, updatedAt: t, ...extra }
   eq(seen.join(','), '1/2,2/2', 'progreso por documento')
 }
 
+// H. Burger (auditoria del 03-10-2026). La nube tiene ABIERTO el turno del 25-09 y
+// dos mesas que la tablet tiene cerradas. Lanzado desde la tablet: escribe SOLO esos
+// tres; los turnos y mesas que coinciden no se tocan. Lanzado desde el PC: nada.
+{
+  const T = (id, openedAt, closedAt) => ({ id, status: closedAt ? 'closed' : 'open', openedAt, closedAt })
+  const M = (id, updatedAt, closedAt) => ({ id, status: closedAt ? 'closed' : 'open', updatedAt, closedAt: closedAt || null })
+  const nube = {
+    shifts: [T('731e', '2026-09-24T13:21:58.524Z', '2026-09-25T14:09:07.480Z'), T('f5fe', '2026-09-25T14:09:52.323Z', null),
+      T('7757', '2026-09-26T13:19:06.695Z', '2026-09-27T02:11:51.777Z')],
+    orders: [M('m1', '2026-09-25T23:26:00.000Z'), M('m2', '2026-09-26T00:48:55.056Z'), M('m3', '2026-09-26T01:03:00.000Z', '2026-09-26T01:03:00.000Z')]
+  }
+  const tablet = harness({
+    local: {
+      shifts: [T('731e', '2026-09-24T13:21:58.524Z', '2026-09-25T14:09:07.480Z'), T('f5fe', '2026-09-25T14:09:52.323Z', '2026-09-26T02:12:00.000Z'),
+        T('7757', '2026-09-26T13:19:06.695Z', '2026-09-27T02:11:51.777Z')],
+      orders: [M('m1', '2026-09-26T00:59:30.000Z', '2026-09-26T00:59:30.000Z'), M('m2', '2026-09-26T01:00:10.000Z', '2026-09-26T01:00:10.000Z'),
+        M('m3', '2026-09-26T01:03:00.000Z', '2026-09-26T01:03:00.000Z')]
+    },
+    cloud: nube
+  })
+  const st = await tablet.r.run('shifts', '2026-09-24T00:00:00.000Z')
+  eq(`${st.escritos}/${st.iguales}/${st.nubeMasNueva}`, '1/2/0', 'tablet, turnos: 1 escrito, 2 iguales')
+  eq(tablet.C.get('shifts').get('f5fe').status, 'closed', 'la nube recibe el turno CERRADO')
+  eq(tablet.C.get('shifts').get('f5fe').closedAt, '2026-09-26T02:12:00.000Z', 'con su cierre de la tablet')
+  const so = await tablet.r.run('orders', '2026-09-24T00:00:00.000Z')
+  eq(`${so.escritos}/${so.iguales}/${so.nubeMasNueva}`, '2/1/0', 'tablet, mesas: 2 escritas, 1 igual')
+  eq(tablet.writes.join(','), 'shifts/f5fe,orders/m1,orders/m2', 'solo lo que la nube tenia mas viejo')
+  // El PC tiene lo mismo que la nube (y sus mesas reparadas sin tocar updatedAt).
+  const pc = harness({
+    local: { shifts: nube.shifts, orders: [{ ...nube.orders[0], status: 'closed', saleId: 'v1' }, { ...nube.orders[1], status: 'closed', saleId: 'v2' }, nube.orders[2]] },
+    cloud: nube
+  })
+  await pc.r.run('shifts', '2026-09-24T00:00:00.000Z')
+  await pc.r.run('orders', '2026-09-24T00:00:00.000Z')
+  eq(pc.writes.length, 0, 'lanzado por error desde el PC: NO escribe nada')
+}
+
 console.log(`compareResendEngine: ${pass} OK, ${fail} fallos`)
 if (fail) process.exit(1)
