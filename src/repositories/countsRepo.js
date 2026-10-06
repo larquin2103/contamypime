@@ -208,6 +208,7 @@ export const countsRepo = {
     if (!c || c.status !== COUNT_STATUS.PENDING) return
     const loc = c.location || WAREHOUSE
     const locNote = loc === WAREHOUSE ? 'almacén' : loc
+    const congelada = await configRepo.getConteoDiferenciaCongelada()
     for (const it of c.items) {
       if (!it.counted) continue
       // Id DETERMINISTA por conteo y producto (auditoria de Rikisimo, 06-10-2026): el mismo
@@ -229,8 +230,10 @@ export const countsRepo = {
         // asiento append-only que NO se puede deshacer: el conteo de Galletas de soda
         // registro 48 cuando el libro daba -3, se calculo 7-48 y quedo un -41 clavado
         // para siempre. 41 de sus 44 unidades negativas las puso este calculo.
-        const sysNow = await stockFromLedger(it.productId, loc)
-        const delta = round2(Number(it.physicalQty) - sysNow)
+        // Con `conteoDiferenciaCongelada` se aplica `it.diff`, que `submit` ya calculo contra el libro.
+        const delta = congelada
+          ? round2(Number(it.diff) || 0)
+          : round2(Number(it.physicalQty) - (await stockFromLedger(it.productId, loc)))
         if (delta !== 0) {
           await stockRepo.adjust({
             id: movId,

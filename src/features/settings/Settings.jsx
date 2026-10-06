@@ -58,6 +58,7 @@ export function Settings() {
         </Section>
         <Section id="turno" label="Turno y cuadre" layout="acc-stack">
           <SemaphoreSection />
+          <CountRulesSection />
           <DenominationsSection />
           <WhatsappSection />
         </Section>
@@ -298,6 +299,31 @@ function UnitsSection() {
         Ojo: poner «trago» como unidad <strong>no</strong> convierte la botella en tragos. Para eso
         está el fraccionamiento (ventas mayoristas) o la receta de coctelería.
       </p>
+    </section>
+  )
+}
+
+// Conteo fisico: que significa APROBAR (D4, auditoria de Rikisimo 06-10-2026). Apagado por
+// defecto = comportamiento de siempre. Solo el dueño (la pantalla entera exige isOwner).
+function CountRulesSection() {
+  const on = useLiveQuery(() => configRepo.getConteoDiferenciaCongelada(), [], undefined)
+  if (on === undefined) return null
+  return (
+    <section className="card">
+      <h3>Conteo físico</h3>
+      <p className="muted">
+        Apagado: al aprobar, la existencia queda igual a lo contado. Encendido: se aplica la diferencia
+        que había al enviar el conteo, y lo vendido entre el envío y la aprobación se respeta.
+      </p>
+      <div className="kv">
+        <span className="muted">Respetar las ventas posteriores al envío</span>
+        <button
+          className={`btn btn--sm ${on ? 'btn--primary' : 'btn--ghost'}`}
+          onClick={() => configRepo.set('conteoDiferenciaCongelada', !on)}
+        >
+          {on ? 'Activado ✓' : 'Desactivado'}
+        </button>
+      </div>
     </section>
   )
 }

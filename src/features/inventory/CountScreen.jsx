@@ -467,6 +467,7 @@ function CountEditor({ draft }) {
 // ---- Revision / aprobacion (dueño) ----
 function CountReview({ count, ownerId, others = [], onPick }) {
   const creator = useLiveQuery(() => usersRepo.get(count.createdBy), [count.createdBy])
+  const congelada = useLiveQuery(() => configRepo.getConteoDiferenciaCongelada(), [], false)
   const [busy, setBusy] = useState(false)
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState('')
@@ -515,8 +516,10 @@ function CountReview({ count, ownerId, others = [], onPick }) {
 
       {isStale(count.submittedAt, Date.now()) && (
         <p className="warn-text">
-          Enviado hace {Math.floor(hoursSince(count.submittedAt, Date.now()))} h. Al aprobar, la existencia
-          queda igual a lo contado entonces: lo vendido desde el envío se da por no vendido.
+          Enviado hace {Math.floor(hoursSince(count.submittedAt, Date.now()))} h.{' '}
+          {congelada
+            ? 'Se aplicará la diferencia que había al enviarlo; lo vendido desde entonces se respeta.'
+            : 'Al aprobar, la existencia queda igual a lo contado entonces: lo vendido desde el envío se da por no vendido.'}
         </p>
       )}
       {isSelfApproval(count, ownerId) && (

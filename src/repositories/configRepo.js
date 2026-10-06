@@ -26,6 +26,14 @@ export const configRepo = {
     return this.get('semaphore', DEFAULT_SEMAPHORE_CONFIG)
   },
 
+  // Conteo fisico (D4, auditoria de Rikisimo 06-10-2026): con la bandera, aprobar aplica la
+  // diferencia CALCULADA AL ENVIAR (lo vendido despues se respeta); sin ella, la de siempre
+  // (la existencia queda igual a lo contado). Solo `true` la enciende: un valor raro que llegue
+  // por la sync cae al comportamiento clasico.
+  async getConteoDiferenciaCongelada() {
+    return (await this.get('conteoDiferenciaCongelada', false)) === true
+  },
+
   async getDenominations() {
     return this.get('denominations', DEFAULT_DENOMINATIONS)
   },

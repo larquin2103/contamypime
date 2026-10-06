@@ -153,5 +153,33 @@ await db.counts.put({ id: 'k4', status: COUNT_STATUS.DRAFT, location: LOC, creat
   ok((await countsRepo.openAt('__almacen', 'yo')).map((c) => c.id).join() === 'f', 'O2: sin location = almacen')
 }
 
-console.log(`countsRepo:${pass} OK / ${fail} fallos`)
+// F1. Bandera AUSENTE: approve re-deriva como hoy (una venta tras el envio se "deshace").
+await seed()
+await db.stockMovements.put({ id: 'v1', productId: 'p1', qty: -2, type: MOVEMENT_TYPES.SALE_OUT, location: LOC, createdAt: '2026-10-01T11:00:00.000Z' })
+await countsRepo.approve('c1', 'jefe')
+ok((await libro()) === 40, `F1: sin bandera, libro = fisico (${await libro()})`)
+// F2. Bandera ENCENDIDA: se aplica la diferencia del envio; la venta posterior se respeta.
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: true, updatedAt: T })
+await db.stockMovements.put({ id: 'v1', productId: 'p1', qty: -2, type: MOVEMENT_TYPES.SALE_OUT, location: LOC, createdAt: '2026-10-01T11:00:00.000Z' })
+await countsRepo.approve('c1', 'jefe')
+ok((await libro()) === 38 && (await ajustes())[0].qty === -10, `F2: con bandera, fisico - venta posterior (${await libro()})`)
+// F3. Bandera encendida + doble aprobacion: sigue habiendo UN ajuste (la guarda de la tarea 1).
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: true, updatedAt: T })
+await Promise.all([countsRepo.approve('c1', 'jefe'), countsRepo.approve('c1', 'jefe')])
+ok((await ajustes()).length === 1, 'F3: un ajuste con bandera y doble toque')
+// F4. Valor no booleano que llegue por la sync (p.ej. 'si'): se lee como APAGADA.
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: 'si', updatedAt: T })
+await countsRepo.approve('c1', 'jefe')
+ok((await libro()) === 40, 'F4: solo `true` enciende')
+// F4b. Lo mismo CON venta posterior: sin ella 'si' y `true` dan igual (40 en ambos), asi que F4 sola no distingue.
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: 'si', updatedAt: T })
+await db.stockMovements.put({ id: 'v1', productId: 'p1', qty: -2, type: MOVEMENT_TYPES.SALE_OUT, location: LOC, createdAt: '2026-10-01T11:00:00.000Z' })
+await countsRepo.approve('c1', 'jefe')
+ok((await libro()) === 40, `F4b: 'si' con venta posterior se lee como apagada (${await libro()})`)
+
+console.log(`countsRepo: ${pass} OK / ${fail} fallos`)
 if (fail) process.exit(1)
