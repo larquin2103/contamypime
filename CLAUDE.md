@@ -99,7 +99,7 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/appBuild.test.mjs; do node "$t"; done
 ```
 
-**Siete suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/repositories/countsRepo.test.mjs`
+**Ocho suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/repositories/countsRepo.test.mjs`
 (la aplicación única del ajuste del conteo físico), `src/lib/syncLog.test.mjs` (el
 escritor del registro de la sync), `src/features/reports/dailyControlLocations.test.mjs` (el
 selector de ubicaciones del Control de Ventas Diarias, que lee el índice `location`),
@@ -131,7 +131,10 @@ npx esbuild src/features/sync/pushTrace.test.mjs --bundle --platform=node --form
   --outfile=<scratch>/pushTrace.bundle.mjs && node <scratch>/pushTrace.bundle.mjs
 ```
 
-Con todas dentro: **39 suites / 3.692 aserciones** en total, medidas el 27-09-2026 (38 suites dan un
+Con todas dentro: **42 suites / 3.774 aserciones** en total, medidas el 06-10-2026 (41 suites dan un
+recuento explícito de aserciones; la 42ª, `pushTrace`, valida por equivalencia de trazas y no suma).
+Las tres nuevas son `countsRepo` (41, con base real), `countWarnings` (10, node directo) y `appBuild`
+(12, node directo). Eran **39 suites / 3.692 aserciones**, medidas el 27-09-2026 (38 suites dan un
 recuento explícito de aserciones; la 39ª, `pushTrace`, valida por **equivalencia de trazas** —300
 escenarios, 3.859 escrituras comparadas, 0 invariantes rotas— y no suma al recuento de aserciones).
 Eran 34 y 3.632, medidas ese mismo 27-09 antes de la tarea «subida sin eco»: las cinco suites nuevas
@@ -962,6 +965,101 @@ de Mermas no se filtró por licencia.
 
 **Fusionar NO es desplegar:** lo que hay en producción sigue siendo el build anterior hasta que el
 dueño corra `npm run deploy`.
+
+## Estado del trabajo (06-10-2026) — conteo físico: aplicación única, cola, avisos y versión visible
+
+**PROGRAMADO, PROBADO Y COMMITEADO en `claude/awesome-dirac-484azm`** (commits de código `e66a794`,
+`e251861`, `3555228`, `fa38d7d`, `97978de`, `f296a65` y `6bdb188`; plan en `d20f8d7`, en
+`docs/superpowers/plans/2026-10-06-conteo-fisico-doble-aplicacion.md`). **NO fusionado a `main` y NO
+desplegado; sin push.** `origin/main` = `5f09101` al medir.
+
+**Origen.** Auditoría del respaldo `respaldo_mypicuadre_2026-10-05.json` de *Minimercado Rikisimo*
+(06-10-2026): el **mismo conteo se aplicó dos veces** (lotes de 41 ajustes idénticos, Aylin el 24-09
+03:22 y Ariadna a las 12:26; el conteo `700effcd` aprobado por Yuniel el 20-09 y por Ariadna el 22-09);
+una aprobación 26 h después neutralizó −219 u (`1e78ee92`); borradores de 26 a 98 h; 24 pares de
+conteos simultáneos; vendedores con rol ADMIN que aprueban lo suyo.
+
+**Decisiones del dueño (06-10-2026).** D1 = **no** (transacción por producto, no una sola); D2 = **8 h**
+(desde cuándo un borrador o envío es viejo); D3 = **sí** (aviso de autoaprobación, solo texto, sin
+bloquear); D4 = **sí** (bandera `conteoDiferenciaCongelada`, **APAGADA** por defecto); D5 = **fuera**
+(versión por aparato en `/devices`).
+
+**Qué hace.**
+1. **Ajuste único por producto.** El ajuste de conteo lleva id determinista `count-adj:<conteo>:<producto>`;
+   `approve` hace una transacción por producto con revalidación del estado del conteo, guarda por id y
+   delta re-derivado **dentro** de la transacción. `stockRepo.record/adjust` aceptan un `id` opcional
+   (sin él, `newId()` como siempre). `type`, nota y `refType`/`refId` no cambian.
+2. **Cola de pendientes:** `countsRepo.listPending` y la revisión del mando recorre todos (con `key={shown.id}`).
+3. **Avisos** (`src/lib/countWarnings.js`): borrador viejo, envío viejo (8 h) y autoaprobación. Solo texto.
+4. **Otro conteo abierto** en la misma ubicación (`countsRepo.openAt`); no es consulta viva y no nombra
+   usuarios inactivos.
+5. **Bandera `conteoDiferenciaCongelada`** (config, sincroniza por LWW, viaja en el respaldo; Ajustes →
+   Turno, solo dueño). Con ella `approve` aplica la diferencia **del envío**. Salvaguarda: si en esa
+   ubicación hay un ajuste con nota «Ajuste por conteo físico…» posterior al `submittedAt` y de otro
+   conteo, ese producto vuelve al cálculo clásico; sin `submittedAt`, re-deriva. Apagada = comportamiento de siempre.
+6. **Versión de la app visible en la Ayuda** para los cuatro roles (hash del chunk `index-<hash>.js`),
+   con comprobación de la última publicada vía `fetch('/index.html?version=…', {cache:'no-store'})`.
+   `package.json` sigue en 0.1.0 y no sirve de versión.
+
+**Validación (ejecutada por revisores independientes, no citada).**
+- Cada tarea: implementador + revisor nuevo que ejecutó build, suites byte a byte contra la línea base,
+  ficheros sensibles, líneas borradas, escrituras, identificadores libres y mutaciones con control negativo.
+- En `6bdb188`: **42 suites, 0 fallos; 41 con recuento suman 3.774 aserciones** más `pushTrace` (300
+  escenarios, 3.859 escrituras, 0 invariantes rotas). Nuevas: `countsRepo` 41 (base real), `countWarnings`
+  10, `appBuild` 12. Las 39 previas, salida byte a byte idéntica a la línea base, con control negativo.
+- Frente a `main` (worktree de `origin/main`): 37 suites idénticas byte a byte; `compareResend` y
+  `compareResendEngine` difieren por `0fef676`, anterior a este trabajo.
+- **Ficheros sensibles** (`db.js`, `features/sync`, reglas, índices, `package*.json`, `vite.config.js`,
+  `index.html`): diff **vacío**. Dexie v19, `SYNC_COLLECTIONS` sin cambios.
+- **Escrituras nuevas a la base:** la `db.transaction` de `approve` y `configRepo.set('conteoDiferenciaCongelada')`
+  del interruptor. La salvaguarda solo lee (y solo con la bandera).
+- **Identificadores libres:** 0 en los 9 ficheros de producción tocados, con control negativo.
+- **Mutaciones cazadas:** id aleatorio; delta fuera de la transacción sin guarda; sin guarda con bandera;
+  `=== true` → `!!`; forzar la bandera; `listPending` sin ordenar; `openAt` sin filtro de usuario/ubicación;
+  `isStale` con `>` y sin `Math.max`; quitar `\.js` de `ENTRY` y `buildStatus` «al día» si falta uno; quitar la
+  salvaguarda; quitar su filtro por nota. **No cazadas, declaradas:** quitar la guarda por id sin bandera
+  (redundante mientras se re-deriva dentro de la transacción), quitar la revalidación del estado (sin
+  prueba determinista) y la condición de id propio de la salvaguarda (inalcanzable por la guarda).
+- **Regla de versión contra el `dist` real:** `buildIdFromHtml(dist/index.html)` = hash del `index-*.js`;
+  `precacheAndRoute(…, {})` sin `ignoreURLParametersMatching` propio.
+- **Peso** (base `d20f8d7` → `6bdb188`): chunk 1.053.428 → 1.059.247 B, gzip -9 308.258 → 310.152 B:
+  **+5.819 B crudos, +1.894 B gzip (+0,61 %)**; CSS con el mismo hash. Actualizar cuesta la descarga completa (~310 kB gzip por teléfono).
+- **Convivencia de versiones** (leído en `origin/main`): `mergeIncoming`/`recomputeStock` no interpretan el
+  id; un teléfono viejo ignora la bandera y sigue re-derivando; `ledgerKey` y `atomicity.js` clasifican igual;
+  nada en `main` rechaza la clave nueva de config.
+
+**Lo que esto NO puede garantizar.**
+1. **Un teléfono sin actualizar** sigue escribiendo ajustes con id aleatorio: la doble aplicación sigue siendo
+   posible hasta que **todos** estén actualizados (ahora comprobable en Ayuda → Versión).
+2. Con **libros distintos** en dos aparatos queda la fila de `createdAt` mayor (reloj más adelantado); con la
+   subida sin eco encendida la nube puede quedarse con la otra versión.
+3. **La parada cuando `APPROVED`/`REJECTED` llega por la sync a mitad del bucle** no tiene prueba determinista;
+   un `REJECTED` a mitad deja ajustes parciales (antes se aplicaba todo); el `update` final a `APPROVED` no se
+   revalida (ventana mínima, preexistente).
+4. **Con la bandera ENCENDIDA:** (a) se confía en la diferencia calculada por el build del remitente (uno
+   anterior a F3, 15-09, la calculaba contra la caché): encenderla solo con todos los teléfonos actualizados;
+   (b) la salvaguarda depende de relojes coherentes: un ajuste ajeno con reloj atrasado no la dispara y uno
+   adelantado puede hacerla saltar sin solape (se pierde el beneficio en ese producto, nunca duplica);
+   (c) no ve ajustes que aún no llegaron por la sync; (d) no detecta notas sin tilde de builds anteriores al
+   30-06-2026 («Ajuste por conteo fisico»).
+5. Que la tarjeta de versión **salte el precache** del service worker está deducido del `sw.js` construido y
+   de Workbox, **no observado**; el `fetch` no tiene tiempo límite (con red muerta puede quedarse en
+   «Comprobando…», nunca da un falso «al día»).
+6. **No hay pruebas de pantalla; nadie ha ejecutado la app** en un teléfono ni con dos aparatos.
+7. **Los datos ya dañados de Rikisimo no se tocan** (append-only).
+
+**Pendiente de decisión del dueño (no hecho).** El texto de la revisión con bandera no menciona la
+salvaguarda; el texto sin bandera (`CountScreen`) dice «lo vendido desde el envío se da por no vendido» y
+omite que las entradas/traspasos posteriores al envío también se borran al aprobar (comportamiento de
+`main`); la bandera viaja en el respaldo (como `bajadaFiltrada`; `subidaSinEco` no); y D5, la versión por
+aparato en `/devices` para ver en `/cloud` quién falta.
+
+**Orden operativo:** (1) desplegar, solo cuando el dueño lo autorice tras fusionar; (2) que **TODOS los
+teléfonos de Rikisimo** abran la app y comprueben en Ayuda que tienen la última versión; (3) sincronizar;
+(4) **solo entonces** volver a contar (una persona por área, contar y aprobar el mismo día); (5) la bandera,
+solo después de (2), y sin contar la misma ubicación a la vez.
+
+**NO fusionado a `main` y NO desplegado.**
 
 ## Estado del trabajo (27-09-2026) — subida sin eco
 
