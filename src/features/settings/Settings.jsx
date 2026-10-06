@@ -43,7 +43,7 @@ export function Settings() {
   // componente (devuelven null sin su modulo), asi que el acordeon no puede saber
   // cuales se van a pintar; por eso cada grupo lleva AL MENOS UNA seccion BASE (sin
   // modulo) y ninguno puede quedar como una categoria vacia. Comprobado una a una:
-  // Monedas (Rates, Converter), Turno (Semaforo, Denominaciones, WhatsApp), Negocio
+  // Monedas (Rates, Converter), Turno (Semaforo, Conteo fisico, Denominaciones, WhatsApp), Negocio
   // (Areas, Unidades) y Sistema (Respaldo, Errores, Avisos, Seguridad, Licencia) son
   // base; Permisos depende de UNA sola -SellerPermsSection-, porque Administrativo,
   // Mayorista y Tableros SI estan gateadas. Si algun dia esa se gatea, este grupo se
@@ -313,7 +313,11 @@ function CountRulesSection() {
       <h3>Conteo físico</h3>
       <p className="muted">
         Apagado: al aprobar, la existencia queda igual a lo contado. Encendido: se aplica la diferencia
-        que había al enviar el conteo, y lo vendido entre el envío y la aprobación se respeta.
+        que había al enviar el conteo, y lo vendido o movido entre el envío y la aprobación se respeta.
+      </p>
+      <p className="muted">
+        Si se cuenta la misma ubicación a la vez y otro conteo se aprueba primero, en los productos
+        que ese conteo ajustó se vuelve al cálculo de siempre: queda lo contado.
       </p>
       <div className="kv">
         <span className="muted">Respetar las ventas posteriores al envío</span>

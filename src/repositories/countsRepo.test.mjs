@@ -181,5 +181,54 @@ await db.stockMovements.put({ id: 'v1', productId: 'p1', qty: -2, type: MOVEMENT
 await countsRepo.approve('c1', 'jefe')
 ok((await libro()) === 40, `F4b: 'si' con venta posterior se lee como apagada (${await libro()})`)
 
+// Salvaguarda de la bandera (revision final): dos conteos SOLAPADOS de la misma ubicacion.
+const conteoGemelo = (id) => ({
+  id, status: COUNT_STATUS.PENDING, location: LOC, createdBy: 'u2', createdAt: T, submittedAt: T, updatedAt: T,
+  items: [{ productId: 'p1', name: 'Keke', unit: 'u', systemStock: 50, physicalQty: 40, counted: true, diff: -10, semaphore: 'red' }]
+})
+// F5. Bandera encendida, c1 y c2 con el mismo fisico y diff -10, aprobados en serie: el segundo
+// ve el ajuste del primero (posterior al envio) y vuelve al calculo clasico -> libro 40, no 30.
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: true, updatedAt: T })
+await db.counts.put(conteoGemelo('c2'))
+await countsRepo.approve('c2', 'jefe')
+await countsRepo.approve('c1', 'jefe')
+ok((await libro()) === 40, `F5: dos conteos solapados con bandera, libro 40 (${await libro()})`)
+ok((await ajustes()).length === 1, `F5: un solo ajuste (${(await ajustes()).length})`)
+ok((await db.counts.get('c1')).status === COUNT_STATUS.APPROVED, 'F5: el segundo queda aprobado')
+// F6. Lo mismo con un ajuste AJENO de id aleatorio (telefono sin actualizar): tambien salta.
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: true, updatedAt: T })
+await db.stockMovements.put({ ...ajenoDe(-10, '2026-10-01T12:00:00.000Z'), id: 'a8f3c2e1-viejo' })
+await countsRepo.approve('c1', 'jefe')
+ok((await libro()) === 40, `F6: ajuste ajeno de id aleatorio, libro 40 (${await libro()})`)
+ok((await ajustes()).length === 1, `F6: no se escribe un segundo ajuste (${(await ajustes()).length})`)
+// F7. Un ajuste que NO es de conteo, o de conteo pero ANTERIOR al envio, no dispara la
+// salvaguarda: se aplica `it.diff` (-10) como con la bandera sin salvaguarda.
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: true, updatedAt: T })
+await db.stockMovements.put({ ...ajenoDe(-10, '2026-10-01T12:00:00.000Z'), id: 'otro-ajuste', note: 'Ajuste manual' })
+await countsRepo.approve('c1', 'jefe')
+{
+  const propio = await db.stockMovements.get('count-adj:c1:p1')
+  ok(propio?.qty === -10 && (await libro()) === 30, `F7: otra nota no dispara (${propio?.qty} / ${await libro()})`)
+}
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: true, updatedAt: T })
+await db.stockMovements.put({ ...ajenoDe(-10, '2026-10-01T09:00:00.000Z'), id: 'conteo-anterior' })
+await countsRepo.approve('c1', 'jefe')
+{
+  const propio = await db.stockMovements.get('count-adj:c1:p1')
+  ok(propio?.qty === -10 && (await libro()) === 30, `F7: ajuste de conteo anterior al envio no dispara (${propio?.qty} / ${await libro()})`)
+}
+// Ubicacion distinta: un ajuste de conteo en OTRA ubicacion tampoco dispara.
+await seed()
+await db.config.put({ key: 'conteoDiferenciaCongelada', value: true, updatedAt: T })
+await db.stockMovements.put({ ...ajenoDe(-10, '2026-10-01T12:00:00.000Z'), id: 'conteo-otra-ubi', location: 'Otra' })
+// Venta posterior al envio: asi re-derivar (-8) y aplicar `it.diff` (-10) dan cosas distintas.
+await db.stockMovements.put({ id: 'v1', productId: 'p1', qty: -2, type: MOVEMENT_TYPES.SALE_OUT, location: LOC, createdAt: '2026-10-01T11:00:00.000Z' })
+await countsRepo.approve('c1', 'jefe')
+ok((await db.stockMovements.get('count-adj:c1:p1'))?.qty === -10, `F7: ajuste de conteo de otra ubicacion no dispara (${(await db.stockMovements.get('count-adj:c1:p1'))?.qty})`)
+
 console.log(`countsRepo: ${pass} OK / ${fail} fallos`)
 if (fail) process.exit(1)

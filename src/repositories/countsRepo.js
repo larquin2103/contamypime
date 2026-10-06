@@ -3,7 +3,7 @@ import { newId } from '../lib/ids'
 import { now, tsAfter } from '../lib/dates'
 import { round2 } from '../lib/currency'
 import { evalSemaphore } from '../lib/semaphore'
-import { COUNT_STATUS, WAREHOUSE } from '../db/constants'
+import { COUNT_STATUS, MOVEMENT_TYPES, WAREHOUSE } from '../db/constants'
 import { configRepo } from './configRepo'
 import { stockRepo } from './stockRepo'
 // Existencia de un producto en una ubicacion. Vivia aqui como copia propia y
@@ -45,6 +45,27 @@ async function stockFromLedger(productId, location) {
 // coherente devuelve now(), o sea exactamente lo de hoy. `submittedAt`/`approvedAt`
 // conservan el reloj REAL (son hechos: cuando se envio y cuando se aprobo).
 const stampFor = (c) => tsAfter(c?.updatedAt, c?.createdAt)
+
+// Salvaguarda de `conteoDiferenciaCongelada` (revision final, auditoria de Rikisimo): hasta
+// cuatro personas contaban la misma ubicacion a la vez. Con la bandera, dos conteos enviados
+// con el mismo fisico llevan la MISMA `diff`, y aprobados en serie la aplicarian DOS veces
+// (libro 50, fisico 40 y 40 -> 30). Re-derivar del libro no tiene ese fallo: el segundo ve el
+// ajuste del primero y da 0. Por eso, si en el libro de esa ubicacion hay un ajuste de OTRO
+// conteo posterior a este envio, ese producto vuelve al calculo de siempre.
+// Se detecta por la NOTA y no por el prefijo `count-adj:` del id: los telefonos sin
+// actualizar escriben el ajuste con id aleatorio. Sin `submittedAt` no hay contra que
+// comparar y se va al lado seguro (re-derivar). Solo lee.
+function otroConteoTrasEnvio(movs, location, submittedAt, ownId) {
+  if (!submittedAt) return true
+  return movs.some(
+    (m) =>
+      (m?.location || WAREHOUSE) === location &&
+      m.type === MOVEMENT_TYPES.ADJUSTMENT &&
+      String(m.note || '').startsWith('Ajuste por conteo físico') &&
+      (m.createdAt || '') > submittedAt &&
+      m.id !== ownId
+  )
+}
 
 // Conteo fisico interactivo (Fase 3). Snapshot del stock del sistema vs lo
 // contado fisicamente; al aprobar, las diferencias se aplican como ajustes
@@ -230,10 +251,18 @@ export const countsRepo = {
         // asiento append-only que NO se puede deshacer: el conteo de Galletas de soda
         // registro 48 cuando el libro daba -3, se calculo 7-48 y quedo un -41 clavado
         // para siempre. 41 de sus 44 unidades negativas las puso este calculo.
-        // Con `conteoDiferenciaCongelada` se aplica `it.diff`, que `submit` ya calculo contra el libro.
-        const delta = congelada
-          ? round2(Number(it.diff) || 0)
-          : round2(Number(it.physicalQty) - (await stockFromLedger(it.productId, loc)))
+        // Con `conteoDiferenciaCongelada` se aplica `it.diff`, que `submit` ya calculo contra el libro,
+        // salvo que otro conteo de esta ubicacion se haya aplicado despues del envio (ver
+        // `otroConteoTrasEnvio`): entonces se re-deriva. Sin la bandera no se lee nada de mas.
+        let delta
+        if (congelada) {
+          const movs = await db.stockMovements.where('productId').equals(it.productId).toArray()
+          delta = otroConteoTrasEnvio(movs, loc, c.submittedAt, movId)
+            ? round2(Number(it.physicalQty) - ledgerQtyAt(movs, loc))
+            : round2(Number(it.diff) || 0)
+        } else {
+          delta = round2(Number(it.physicalQty) - (await stockFromLedger(it.productId, loc)))
+        }
         if (delta !== 0) {
           await stockRepo.adjust({
             id: movId,

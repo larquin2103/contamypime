@@ -123,7 +123,7 @@ export function CountScreen() {
   useEffect(() => {
     let vivo = true
     const loc = isManager ? countLoc : sellerCountLoc
-    countsRepo.openAt(loc, user.id).then((r) => { if (vivo) setOpenOthers(r) })
+    countsRepo.openAt(loc, user.id).then((r) => { if (vivo) setOpenOthers(r) }).catch(() => {})
     return () => { vivo = false }
   }, [isManager, countLoc, sellerCountLoc, user.id])
 
@@ -147,6 +147,7 @@ export function CountScreen() {
     const shown = (pickId && pendings.find((p) => p.id === pickId)) || pending
     return isManager ? (
       <CountReview
+        key={shown.id}
         count={shown}
         ownerId={user.id}
         others={pendings.filter((p) => p.id !== shown.id)}
@@ -518,7 +519,7 @@ function CountReview({ count, ownerId, others = [], onPick }) {
         <p className="warn-text">
           Enviado hace {Math.floor(hoursSince(count.submittedAt, Date.now()))} h.{' '}
           {congelada
-            ? 'Se aplicará la diferencia que había al enviarlo; lo vendido desde entonces se respeta.'
+            ? 'Se aplicará la diferencia que había al enviarlo; lo vendido o movido desde entonces se respeta.'
             : 'Al aprobar, la existencia queda igual a lo contado entonces: lo vendido desde el envío se da por no vendido.'}
         </p>
       )}
@@ -543,7 +544,11 @@ function CountReview({ count, ownerId, others = [], onPick }) {
         ))}
       </div>
 
-      <p className="muted">Al aprobar, el stock se ajusta para coincidir con lo contado.</p>
+      <p className="muted">
+        {congelada
+          ? 'Al aprobar, se aplica la diferencia que había al enviar el conteo.'
+          : 'Al aprobar, el stock se ajusta para coincidir con lo contado.'}
+      </p>
       <button className="btn btn--primary btn--block" disabled={busy} onClick={approve}>
         {busy ? 'Aplicando…' : 'Aprobar y ajustar stock'}
       </button>

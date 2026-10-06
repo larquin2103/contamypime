@@ -35,7 +35,7 @@ export function AppVersionCard() {
         </p>
       )}
       {estado === 'desconocida' && running && (
-        <p className="muted">Sin conexión: no se pudo comprobar si es la última.</p>
+        <p className="muted">No se pudo comprobar si es la última (sin conexión o sin respuesta).</p>
       )}
     </section>
   )
