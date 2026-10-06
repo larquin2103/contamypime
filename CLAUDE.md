@@ -94,7 +94,8 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/lib/reportCells.test.mjs \
          src/features/sync/deferred.test.mjs \
          src/features/sync/cursorType.test.mjs \
-         src/features/sync/echoLedger.test.mjs; do node "$t"; done
+         src/features/sync/echoLedger.test.mjs \
+         src/lib/countWarnings.test.mjs; do node "$t"; done
 ```
 
 **Siete suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/repositories/countsRepo.test.mjs`

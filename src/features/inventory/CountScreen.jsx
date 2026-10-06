@@ -19,6 +19,7 @@ import { SEMAPHORE_EMOJI } from '../../lib/semaphore'
 import { stockAtLocation } from '../../lib/stockLocation'
 import { WAREHOUSE, ELABORATION, COCINA, ENTREGAS_AREA, locationLabel } from '../../db/constants'
 import { backdropProps } from '../../lib/modalClose'
+import { hoursSince, isStale, isSelfApproval } from '../../lib/countWarnings'
 
 // Existencia de un producto en una ubicacion. Era un "espejo de countsRepo"
 // copiado a mano, y con el mismo respaldo de la v5 que inventaba existencia en el
@@ -386,6 +387,12 @@ function CountEditor({ draft }) {
         <span className="badge">{counted}/{visible.length}</span>
       </div>
       <p className="muted">Ubicación: <strong>{locationLabel(draft.location)}</strong></p>
+      {isStale(draft.createdAt, Date.now()) && (
+        <p className="warn-text">
+          Este conteo lleva {Math.floor(hoursSince(draft.createdAt, Date.now()))} h abierto. Si cuentas un
+          producto y después se vende, su diferencia saldrá mal: cuenta y envía en la misma sesión.
+        </p>
+      )}
       <CloseReturnBanner />
       <div className="progress">
         <div className="progress__bar" style={{ width: `${progress}%` }} />
@@ -484,6 +491,16 @@ function CountReview({ count, ownerId, others = [], onPick }) {
             </div>
           ))}
         </section>
+      )}
+
+      {isStale(count.submittedAt, Date.now()) && (
+        <p className="warn-text">
+          Enviado hace {Math.floor(hoursSince(count.submittedAt, Date.now()))} h. Al aprobar, la existencia
+          queda igual a lo contado entonces: lo vendido desde el envío se da por no vendido.
+        </p>
+      )}
+      {isSelfApproval(count, ownerId) && (
+        <p className="muted">Vas a aprobar un conteo que hiciste tú.</p>
       )}
 
       <h3 className="section-title">Diferencias</h3>
