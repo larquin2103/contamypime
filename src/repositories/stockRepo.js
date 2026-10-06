@@ -20,9 +20,13 @@ export const stockRepo = {
     shiftId = null,
     userId = null,
     note = '',
-    location = WAREHOUSE
+    location = WAREHOUSE,
+    id: idIn = null
   }) {
-    const id = newId()
+    // Id DETERMINISTA opcional (conteo fisico, auditoria de Rikisimo 06-10-2026): quien lo
+    // pasa lo usa para que el MISMO asiento escrito desde dos aparatos se funda en uno por la
+    // sync (LWW por id). Sin pasarlo, aleatorio como siempre: ningun otro llamador cambia.
+    const id = idIn || newId()
     const ts = now()
     const delta = Number(qty)
     const loc = location || WAREHOUSE
@@ -56,7 +60,7 @@ export const stockRepo = {
   },
 
   // Ajuste manual de existencia en una ubicacion (movimiento con nota, no se borra).
-  async adjust({ productId, delta, note, userId, shiftId = null, location = WAREHOUSE }) {
+  async adjust({ productId, delta, note, userId, shiftId = null, location = WAREHOUSE, id = null }) {
     return this.record({
       productId,
       qty: delta,
@@ -64,7 +68,8 @@ export const stockRepo = {
       note,
       userId,
       shiftId,
-      location
+      location,
+      id
     })
   },
 

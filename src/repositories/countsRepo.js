@@ -191,23 +191,39 @@ export const countsRepo = {
     const locNote = loc === WAREHOUSE ? 'almacén' : loc
     for (const it of c.items) {
       if (!it.counted) continue
-      const p = await db.products.get(it.productId)
-      if (!p) continue
-      // El delta sale del LIBRO MAYOR, no de la cache (F3). Aqui se escribe un
-      // asiento append-only que NO se puede deshacer: el conteo de Galletas de soda
-      // registro 48 cuando el libro daba -3, se calculo 7-48 y quedo un -41 clavado
-      // para siempre. 41 de sus 44 unidades negativas las puso este calculo.
-      const sysNow = await stockFromLedger(it.productId, loc)
-      const delta = round2(Number(it.physicalQty) - sysNow)
-      if (delta !== 0) {
-        await stockRepo.adjust({
-          productId: it.productId,
-          delta,
-          note: `Ajuste por conteo físico (${locNote})`,
-          userId: ownerId,
-          location: loc
-        })
-      }
+      // Id DETERMINISTA por conteo y producto (auditoria de Rikisimo, 06-10-2026): el mismo
+      // conteo se aplico DOS veces, aprobado desde dos telefonos que no se habian visto, y un
+      // doble toque en "Aprobar" hace lo mismo en uno solo. Con este id, el segundo asiento es
+      // el MISMO documento: la guarda de abajo lo evita en el aparato, y la sync (LWW por id)
+      // funde en uno los de dos aparatos. Mismo patron que `order-void:` en ordersRepo.
+      const movId = `count-adj:${id}:${it.productId}`
+      let parar = false
+      await db.transaction('rw', db.counts, db.products, db.stockMovements, async () => {
+        // Se REVALIDA dentro: si la aprobacion o el rechazo de otro aparato llego por la sync
+        // mientras este bucle corria, no se escribe ni un ajuste mas.
+        const fresh = await db.counts.get(id)
+        if (!fresh || fresh.status !== COUNT_STATUS.PENDING) { parar = true; return }
+        if (await db.stockMovements.get(movId)) return
+        const p = await db.products.get(it.productId)
+        if (!p) return
+        // El delta sale del LIBRO MAYOR, no de la cache (F3). Aqui se escribe un
+        // asiento append-only que NO se puede deshacer: el conteo de Galletas de soda
+        // registro 48 cuando el libro daba -3, se calculo 7-48 y quedo un -41 clavado
+        // para siempre. 41 de sus 44 unidades negativas las puso este calculo.
+        const sysNow = await stockFromLedger(it.productId, loc)
+        const delta = round2(Number(it.physicalQty) - sysNow)
+        if (delta !== 0) {
+          await stockRepo.adjust({
+            id: movId,
+            productId: it.productId,
+            delta,
+            note: `Ajuste por conteo físico (${locNote})`,
+            userId: ownerId,
+            location: loc
+          })
+        }
+      })
+      if (parar) return
     }
     // updatedAt: la resolucion debe avanzar syncTs para que la aprobacion vuelva
     // al vendedor (sin el, incoming == local y el LWW de bajada la descartaria).

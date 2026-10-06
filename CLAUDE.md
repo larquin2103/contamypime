@@ -97,7 +97,8 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/features/sync/echoLedger.test.mjs; do node "$t"; done
 ```
 
-**Siete suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/lib/syncLog.test.mjs` (el
+**Siete suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/repositories/countsRepo.test.mjs`
+(la aplicación única del ajuste del conteo físico), `src/lib/syncLog.test.mjs` (el
 escritor del registro de la sync), `src/features/reports/dailyControlLocations.test.mjs` (el
 selector de ubicaciones del Control de Ventas Diarias, que lee el índice `location`),
 `src/features/sync/pullDeferred.test.mjs` (que el sello `_up` no entra en Dexie, con el
