@@ -10,6 +10,7 @@ import { useAuth } from '../../app/providers/AuthProvider'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { HELP_SECTIONS, visibleArticles } from './helpContent'
 import { downloadHelpPdf } from './helpPdf'
+import { AppVersionCard } from './AppVersionCard'
 
 // Icono lucide de cada artículo (mismos iconos que el Home para los mismos conceptos).
 const ARTICLE_ICONS = {
@@ -137,6 +138,8 @@ export function HelpScreen() {
           </div>
         </section>
       ))}
+
+      <AppVersionCard />
     </div>
   )
 }
