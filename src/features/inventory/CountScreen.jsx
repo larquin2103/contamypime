@@ -92,6 +92,10 @@ export function CountScreen() {
     [isManager, user.id],
     undefined
   )
+  // Cola completa del mando: con mas de un pendiente, la revision los lista para que se
+  // vean todos. Con uno solo (lo normal) la pantalla queda identica.
+  const pendings = useLiveQuery(() => (isManager ? countsRepo.listPending() : []), [isManager], [])
+  const [pickId, setPickId] = useState(null)
   const areas = useLiveQuery(() => configRepo.getAreas(), [], [])
   const products = useLiveQuery(() => productsRepo.list(), [], [])
   // Bloque A (mayorista): permiso del dueño para que el vendedor opere el almacén.
@@ -128,8 +132,14 @@ export function CountScreen() {
 
   // 2. Hay un conteo enviado: el mando lo revisa; el vendedor que lo envió espera.
   if (pending) {
+    const shown = (pickId && pendings.find((p) => p.id === pickId)) || pending
     return isManager ? (
-      <CountReview count={pending} ownerId={user.id} />
+      <CountReview
+        count={shown}
+        ownerId={user.id}
+        others={pendings.filter((p) => p.id !== shown.id)}
+        onPick={setPickId}
+      />
     ) : (
       <div className="screen">
         <h2>Conteo físico</h2>
@@ -428,7 +438,7 @@ function CountEditor({ draft }) {
 }
 
 // ---- Revision / aprobacion (dueño) ----
-function CountReview({ count, ownerId }) {
+function CountReview({ count, ownerId, others = [], onPick }) {
   const creator = useLiveQuery(() => usersRepo.get(count.createdBy), [count.createdBy])
   const [busy, setBusy] = useState(false)
   const [rejecting, setRejecting] = useState(false)
@@ -460,6 +470,21 @@ function CountReview({ count, ownerId }) {
         <div className="kv"><span className="muted">Productos contados</span><strong>{counted.length}</strong></div>
         <div className="kv"><span className="muted">Con diferencia</span><strong>{withDiff.length}</strong></div>
       </section>
+
+      {others.length > 0 && (
+        <section className="card">
+          <p className="warn-text">
+            <strong>Hay {others.length} conteo{others.length === 1 ? '' : 's'} pendiente{others.length === 1 ? '' : 's'} más.</strong>{' '}
+            Revísalos antes de volver a contar la misma ubicación.
+          </p>
+          {others.map((o) => (
+            <div key={o.id} className="kv">
+              <span className="muted">{locationLabel(o.location)} · {formatDateTime(o.submittedAt)}</span>
+              <button className="btn btn--sm btn--ghost" onClick={() => onPick(o.id)}>Revisar</button>
+            </div>
+          ))}
+        </section>
+      )}
 
       <h3 className="section-title">Diferencias</h3>
       <div className="count-list">

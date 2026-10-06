@@ -123,5 +123,19 @@ await countsRepo.approve('c1', 'jefe')
   ok((await ajustes()).length === 1 && (await libro()) === 47, 'C11: un asiento, el del otro aparato')
 }
 
+// P1. listPending devuelve TODOS los pendientes, del mas reciente al mas viejo.
+await Promise.all(db.tables.map((t) => t.clear()))
+for (const [id, t] of [['k1', '2026-10-01T01:00:00.000Z'], ['k2', '2026-10-01T03:00:00.000Z'], ['k3', '2026-10-01T02:00:00.000Z']]) {
+  await db.counts.put({ id, status: COUNT_STATUS.PENDING, location: LOC, createdBy: id, createdAt: t, items: [] })
+}
+await db.counts.put({ id: 'k4', status: COUNT_STATUS.DRAFT, location: LOC, createdBy: 'x', createdAt: T, items: [] })
+{
+  const l = await countsRepo.listPending()
+  ok(l.map((c) => c.id).join() === 'k2,k3,k1', `P1: todos y en orden (${l.map((c) => c.id)})`)
+  // P2. getPending sigue devolviendo exactamente el primero de esa lista (no cambia).
+  ok((await countsRepo.getPending())?.id === 'k2', 'P2: getPending intacto')
+  ok((await countsRepo.getPending('k1'))?.id === 'k1', 'P2: getPending(userId) intacto')
+}
+
 console.log(`countsRepo: ${pass} OK / ${fail} fallos`)
 if (fail) process.exit(1)

@@ -68,6 +68,14 @@ export const countsRepo = {
     return mine.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] || null
   },
 
+  // TODOS los conteos enviados, del mas reciente al mas viejo (auditoria de Rikisimo,
+  // 06-10-2026): `getPending` devuelve solo el primero, y con varios pendientes el mando
+  // no veia los demas -cada uno acababa aprobando el suyo-. Solo lectura.
+  async listPending() {
+    const rows = await db.counts.where('status').equals(COUNT_STATUS.PENDING).toArray()
+    return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
   async get(id) {
     return db.counts.get(id)
   },
