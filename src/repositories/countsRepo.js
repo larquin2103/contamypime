@@ -76,6 +76,17 @@ export const countsRepo = {
     return rows.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   },
 
+  // Conteos ABIERTOS (borrador o enviado) de una ubicacion, de OTROS usuarios (auditoria de
+  // Rikisimo: hasta cuatro personas contaban la misma area a la vez). Solo lectura: la
+  // pantalla avisa, no bloquea -un borrador abandonado de otro telefono no se puede borrar
+  // (append-only) y un candado dejaria la ubicacion sin poder contarse-.
+  async openAt(location, exceptUserId = null) {
+    const rows = await db.counts.where('status').anyOf(COUNT_STATUS.DRAFT, COUNT_STATUS.PENDING).toArray()
+    return rows
+      .filter((r) => (r.location || WAREHOUSE) === location && r.createdBy !== exceptUserId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  },
+
   async get(id) {
     return db.counts.get(id)
   },

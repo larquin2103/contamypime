@@ -116,6 +116,17 @@ export function CountScreen() {
     !isManager && !!sellerArea && !!warehouseAllowed && hasModule(LICENSE_MODULES.WHOLESALE)
   const sellerCountLoc = canSellerWarehouse ? (sellerPick ?? sellerArea) : (sellerArea || WAREHOUSE)
 
+  // Usuarios para nombrar a quien tiene otro conteo abierto; los INACTIVOS no se nombran
+  // (su borrador viejo no lo puede cerrar nadie y el aviso quedaria fijo para siempre).
+  const users = useLiveQuery(() => usersRepo.list(), [], [])
+  const [openOthers, setOpenOthers] = useState([])
+  useEffect(() => {
+    let vivo = true
+    const loc = isManager ? countLoc : sellerCountLoc
+    countsRepo.openAt(loc, user.id).then((r) => { if (vivo) setOpenOthers(r) })
+    return () => { vivo = false }
+  }, [isManager, countLoc, sellerCountLoc, user.id])
+
   if (pending === undefined || draft === undefined) {
     return <div className="screen"><p className="muted">Cargando…</p></div>
   }
@@ -207,6 +218,15 @@ export function CountScreen() {
             </select>
           </label>
         )}
+        {openOthers
+          .filter((o) => users.find((u) => u.id === o.createdBy)?.active !== false)
+          .map((o) => (
+            <p key={o.id} className="warn-text">
+              {users.find((u) => u.id === o.createdBy)?.name || 'Otro usuario'} tiene un conteo{' '}
+              {o.status === 'pending' ? 'enviado' : 'abierto'} de esta ubicación desde {formatDateTime(o.createdAt)}.
+              Contar a la vez la misma ubicación descuadra las existencias.
+            </p>
+          ))}
         {!hasItems ? (
           <p className="muted">
             {isManager || targetLoc === WAREHOUSE

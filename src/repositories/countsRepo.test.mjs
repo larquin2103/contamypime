@@ -137,5 +137,21 @@ await db.counts.put({ id: 'k4', status: COUNT_STATUS.DRAFT, location: LOC, creat
   ok((await countsRepo.getPending('k1'))?.id === 'k1', 'P2: getPending(userId) intacto')
 }
 
-console.log(`countsRepo: ${pass} OK / ${fail} fallos`)
+{
+  // O1. openAt: borradores y pendientes de ESA ubicacion de OTROS usuarios.
+  await Promise.all(db.tables.map((t) => t.clear()))
+  await db.counts.bulkPut([
+    { id: 'a', status: COUNT_STATUS.DRAFT, location: LOC, createdBy: 'yo', createdAt: '2026-10-01T01:00:00.000Z', items: [] },
+    { id: 'b', status: COUNT_STATUS.DRAFT, location: LOC, createdBy: 'ana', createdAt: '2026-10-01T02:00:00.000Z', items: [] },
+    { id: 'c', status: COUNT_STATUS.PENDING, location: LOC, createdBy: 'eva', createdAt: '2026-10-01T03:00:00.000Z', items: [] },
+    { id: 'd', status: COUNT_STATUS.APPROVED, location: LOC, createdBy: 'eva', createdAt: T, items: [] },
+    { id: 'e', status: COUNT_STATUS.DRAFT, location: 'Otra', createdBy: 'ana', createdAt: T, items: [] },
+    { id: 'f', status: COUNT_STATUS.DRAFT, createdBy: 'ana', createdAt: T, items: [] }
+  ])
+  ok((await countsRepo.openAt(LOC, 'yo')).map((c) => c.id).join() === 'c,b', 'O1: solo otros, abiertos, de esa ubicacion')
+  // O2. Sin location en la fila = almacen (como en todo el repo).
+  ok((await countsRepo.openAt('__almacen', 'yo')).map((c) => c.id).join() === 'f', 'O2: sin location = almacen')
+}
+
+console.log(`countsRepo:${pass} OK / ${fail} fallos`)
 if (fail) process.exit(1)
