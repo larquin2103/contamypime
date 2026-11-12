@@ -96,7 +96,8 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/features/sync/cursorType.test.mjs \
          src/features/sync/echoLedger.test.mjs \
          src/lib/countWarnings.test.mjs \
-         src/lib/appBuild.test.mjs; do node "$t"; done
+         src/lib/appBuild.test.mjs \
+         src/lib/productSalesHistory.test.mjs; do node "$t"; done
 ```
 
 **Ocho suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/repositories/countsRepo.test.mjs`
@@ -2565,6 +2566,16 @@ muta) y devuelve `{ title, subtitle, head, rows, filename, orientation }`. Se ex
 `exportExcel` / `exportPdf`, ambos con **`import()` dinámico** de `xlsx` / `jspdf`. Los rangos usan
 el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anuladas.
 
+- **Histórico de ventas por producto (base, 12-11-2026):** Reportes → Ventas. Se eligen uno o
+  varios productos (también los dados de baja) y el rango; sale una fila por línea de venta con
+  subtotal por producto y total. Lógica pura en `src/lib/productSalesHistory.js` (suite propia,
+  642 aserciones); `buildProductSalesHistory` va al final de `reportsService.js` (+21 / −0) y solo
+  lee. Cantidad, precio, importe y costo son los **congelados** en la línea; el descuento de mesa se
+  prorratea con `saleNetFactor` (el mismo criterio del panel del dueño, comparado contra `sumSales`).
+  Excluye las ventas anuladas (las cuenta en el pie) y las líneas sin `productId`. Sin selección no
+  devuelve filas. Columnas Descuento/Neto y USD son data-driven. Validado contra 8 respaldos reales
+  (producto a producto contra un recálculo independiente, 0 fallos). **Nadie lo ha ejecutado en un
+  dispositivo.**
 - **Base:** ventas (detalle), inventario por ubicación, entradas, salidas almacén→área, cierres de
   turno, ventas del turno, submayor por producto (kardex) y consolidado, conteo físico (submayor).
 - **Por licencia:** *Ventas por área* y *por vendedor* (áreas), *Movimientos de cuentas* (`cuentas`),

@@ -13,6 +13,7 @@ import { accountsRepo, ACCOUNT_REF_LABELS, conceptLabel } from '../../repositori
 import { ratesRepo } from '../../repositories/ratesRepo'
 import { buildDailyControl, dailyControlReport } from '../../lib/dailySalesControl'
 import { plainRows } from '../../lib/reportCells'
+import { buildProductSales, productSalesReport } from '../../lib/productSalesHistory'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
@@ -1749,4 +1750,24 @@ export async function dailyControlLocations() {
   for (const l of [...locs].sort()) add(l)
   distinguish()
   return out
+}
+
+// --- Historico de ventas por producto ---------------------------------------------
+// Solo LEE. El calculo vive en lib/productSalesHistory.js (puro y probado); aqui se
+// le pasan las ventas y las etiquetas. Sin productos elegidos no devuelve filas (no
+// se interpreta como "todos": para eso ya esta el reporte de Ventas).
+export async function buildProductSalesHistory({ productIds = [], from = null, to = null, divisas = false } = {}) {
+  const [sales, names, products] = await Promise.all([db.sales.toArray(), userMap(), productMap()])
+  const result = buildProductSales({
+    sales, productIds, from: from || '', to: to || '',
+    dayOf: (x) => localDay(x),
+    userName: (id) => names[id] || 'vendedor',
+    // El mismo origen que "Ventas por vendedor": el almacen central o el area del turno.
+    originLabel: (s) => {
+      const loc = s.sourceLocation || s.area || ''
+      return loc === WAREHOUSE ? WAREHOUSE_LABEL : areaLabel(loc)
+    },
+    productName: (id) => products[id]?.name || ''
+  })
+  return productSalesReport(result, { from: from || '', to: to || '', divisas, formatDateTime })
 }

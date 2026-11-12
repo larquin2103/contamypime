@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../app/providers/AuthProvider'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { configRepo } from '../../repositories/configRepo'
 import { remittancesRepo } from '../../repositories/remittancesRepo'
 import { categoriesRepo } from '../../repositories/categoriesRepo'
+import { productsRepo } from '../../repositories/productsRepo'
+import { matchesQuery } from '../../lib/search'
 import { logError } from '../../lib/errorLog'
 import { useLicense } from '../../app/providers/LicenseProvider'
 import { LICENSE_MODULES } from '../../lib/license'
@@ -31,6 +33,7 @@ import {
   buildShiftPaymentReport,
   buildDailySalesControl,
   dailyControlLocations,
+  buildProductSalesHistory,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -165,6 +168,7 @@ export function ReportsScreen() {
     { id: 'ventas', label: 'Ventas', items: [
       { key: 'sales', title: 'Ventas', desc: 'Detalle de ventas por fecha, vendedor, área y metodo', builder: buildSalesReport, range: true },
       { key: 'dailyctl', title: 'Control de Ventas Diarias', desc: 'Por día y ubicación: saldo inicio, entradas, salidas, mermas, ventas, ajustes por conteo, precio, importe y saldo final — todo del libro mayor, con controles de dinero, caché e integridad', render: true },
+      { key: 'prodsales', title: 'Histórico de ventas por producto', desc: 'Eliges uno o varios productos y ves cada venta: fecha, vendedor, origen, cantidad, precio, importe, costo y ganancia, con subtotal por producto', render: true },
       { key: 'seller', title: 'Ventas por vendedor', desc: 'Productos, cantidades y fechas de lo vendido por cada vendedor', builder: buildSellerSalesReport, range: true },
       { key: 'area', title: 'Ventas por área', desc: 'Ingreso y ganancia por área y vendedor', builder: buildAreaReport, range: true, show: areas.length > 0 },
       { key: 'tables', title: 'Ventas por mesa', desc: 'Cuentas cobradas por mesa: consumo, servicio, total y ticket promedio', builder: buildTablesReport, range: true, show: hasModule(LICENSE_MODULES.TABLES) },
@@ -211,7 +215,9 @@ export function ReportsScreen() {
       <Accordion storageKey="reports">
         {visibles.map((c) => (
           <Section key={c.id} id={c.id} label={c.label} layout="acc-stack">
-            {c.items.map((i) => i.render
+            {c.items.map((i) => i.key === 'prodsales'
+              ? <ProductSalesCard key={i.key} title={i.title} desc={i.desc} run={run} busy={busy} />
+              : i.render
               ? <DailyControlCard key={i.key} title={i.title} desc={i.desc} run={run} busy={busy} />
               : card(i.key, i.title, i.desc, i.builder, i.range))}
           </Section>
@@ -259,6 +265,66 @@ function DailyControlCard({ title, desc, run, busy }) {
         </button>
         <button className="btn" disabled={!!busy || !location} onClick={() => run('dailyctl', builder, 'pdf')}>
           {busy === 'dailyctl-pdf' ? '...' : '⬇ PDF'}
+        </button>
+      </div>
+    </section>
+  )
+}
+
+// Ficha del Historico de ventas por producto: usa el rango de fechas de arriba y
+// añade la SELECCION de productos (uno o varios). El catalogo se carga UNA vez al
+// montar (no en una consulta viva: cada venta toca `products` y la relanzaria).
+// Se ofrecen TAMBIEN los productos dados de baja: su historial de ventas existe.
+function ProductSalesCard({ title, desc, run, busy }) {
+  const [products, setProducts] = useState([])
+  const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState({}) // { productId: true }
+  useEffect(() => {
+    let alive = true
+    productsRepo.list()
+      .then((l) => { if (alive) setProducts(l) })
+      .catch((e) => logError('reportes', e))
+    return () => { alive = false }
+  }, [])
+  const selIds = useMemo(() => Object.keys(selected).filter((k) => selected[k]), [selected])
+  // Sin busqueda se muestran solo los marcados; al buscar, las coincidencias.
+  const shown = useMemo(() => {
+    const base = query.trim()
+      ? products.filter((p) => matchesQuery(p, query))
+      : products.filter((p) => selected[p.id])
+    return [...base].sort((a, b) => a.name.localeCompare(b.name, 'es')).slice(0, 40)
+  }, [products, query, selected])
+  const toggle = (id) => setSelected((prev) => ({ ...prev, [id]: !prev[id] }))
+  const builder = (args) => buildProductSalesHistory({ ...args, productIds: selIds })
+  const off = !!busy || selIds.length === 0
+  return (
+    <section className="card">
+      <h3>{title}</h3>
+      <p className="muted">{desc} (usa el rango de fechas).</p>
+      <p className="muted">
+        {selIds.length === 0 ? 'Busca y marca al menos un producto.' : `${selIds.length} seleccionado(s).`}
+        {selIds.length > 0 && <button className="link-del" onClick={() => setSelected({})} style={{ marginLeft: 8 }}>quitar todos</button>}
+      </p>
+      <input className="search-input" type="search" value={query}
+        onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nombre o código…" />
+      <div className="list">
+        {shown.map((p) => (
+          <label key={p.id} className={`check-row ${selected[p.id] ? 'is-checked' : ''}`}>
+            <input type="checkbox" checked={!!selected[p.id]} onChange={() => toggle(p.id)} />
+            <div className="check-row__main">
+              <strong>{p.name}</strong>
+              <span className="muted">{p.code ? `${p.code} · ` : ''}{p.unit}{p.active ? '' : ' · dado de baja'}</span>
+            </div>
+          </label>
+        ))}
+        {query.trim() && shown.length === 0 && <p className="muted">Sin resultados.</p>}
+      </div>
+      <div className="report-actions">
+        <button className="btn" disabled={off} onClick={() => run('prodsales', builder, 'excel')}>
+          {busy === 'prodsales-excel' ? '...' : '⬇ Excel'}
+        </button>
+        <button className="btn" disabled={off} onClick={() => run('prodsales', builder, 'pdf')}>
+          {busy === 'prodsales-pdf' ? '...' : '⬇ PDF'}
         </button>
       </div>
     </section>
