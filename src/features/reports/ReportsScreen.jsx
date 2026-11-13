@@ -292,7 +292,8 @@ function ProductSalesCard({ title, desc, run, busy }) {
     const base = query.trim()
       ? products.filter((p) => matchesQuery(p, query))
       : products.filter((p) => selected[p.id])
-    return [...base].sort((a, b) => a.name.localeCompare(b.name, 'es')).slice(0, 40)
+    // `String(... || '')`: una ficha sin nombre (rota, llegada por la sync) no puede tumbar Reportes.
+    return [...base].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es')).slice(0, 40)
   }, [products, query, selected])
   const toggle = (id) => setSelected((prev) => ({ ...prev, [id]: !prev[id] }))
   const builder = (args) => buildProductSalesHistory({ ...args, productIds: selIds })
