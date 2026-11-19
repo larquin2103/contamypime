@@ -666,8 +666,10 @@ function CompareResendPanel() {
           Úsalo en el aparato que tiene los datos buenos. Necesita internet. Nunca escribe algo que la nube
           tenga con marca más nueva, pero en productos lo que escribe reemplaza la ficha entera por la de este
           aparato: si este aparato vendió sin haber recibido un cambio de precio, repondría el precio viejo.
-          En turnos y mesas, lánzalo en el aparato que los ve CERRADOS: desde uno que los ve abiertos no
-          escribe nada.
+          En turnos, lánzalo en el aparato que los ve CERRADOS: desde uno que los ve abiertos no escribe nada.
+          En mesas, lánzalo en el aparato que COBRÓ la mesa (o en uno que recibió ese cobro por la
+          sincronización): si este aparato solo la ve cerrada porque la reparó al abrir el salón, tiene la
+          misma marca que la nube y no escribe nada.
         </small>
       </p>
     </section>
