@@ -60,9 +60,9 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **34** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**4.301 aserciones**, medidas el 24-11-2026; 1.813 son del fuzz
+se corren **uno a uno con node** (**4.304 aserciones**, medidas el 24-11-2026; 1.813 son del fuzz
 determinista del Control de Ventas Diarias y 642 de `productSalesHistory`; la última en llegar es
-`cashOutReports`, los reportes de deudas internas y de extracciones de caja, con 70). Las tres de la
+`cashOutReports`, los reportes de deudas internas y de extracciones de caja, con 73). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). En su momento la última en llegar fue `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -134,13 +134,13 @@ npx esbuild src/features/sync/pushTrace.test.mjs --bundle --platform=node --form
   --outfile=<scratch>/pushTrace.bundle.mjs && node <scratch>/pushTrace.bundle.mjs
 ```
 
-Con todas dentro: **44 suites / 4.486 aserciones** en total, medidas el 24-11-2026 (43 suites dan un
+Con todas dentro: **44 suites / 4.489 aserciones** en total, medidas el 24-11-2026 (43 suites dan un
 recuento explícito de aserciones; la 44ª, `pushTrace`, valida por equivalencia de trazas y no suma).
 Las **43 suites que ya existían** dan salida **byte a byte idéntica** a la línea base tomada antes de
 tocar nada (las 10 empaquetadas se comparan sin las líneas de esbuild, que llevan el tiempo de la
-corrida), con control negativo; la nueva es `cashOutReports` (70). La cifra anterior, **42 suites /
+corrida), con control negativo; la nueva es `cashOutReports` (73). La cifra anterior, **42 suites /
 3.774 aserciones** (06-10-2026), **no contaba `productSalesHistory`** (642 aserciones, llegada el
-12-11-2026): por eso el salto de 3.774 a 4.486 no es solo la suite nueva (4.416 + 70). Las tres
+12-11-2026): por eso el salto de 3.774 a 4.489 no es solo la suite nueva (4.416 + 73). Las tres
 medidas el 06-10-2026 eran `countsRepo` (41, con base real), `countWarnings` (10, node directo) y `appBuild`
 (12, node directo). Eran **39 suites / 3.692 aserciones**, medidas el 27-09-2026 (38 suites dan un
 recuento explícito de aserciones; la 39ª, `pushTrace`, valida por **equivalencia de trazas** —300
@@ -2587,7 +2587,7 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
   recientes primero: fecha, producto, U/M, ubicación, cantidad, valor, moneda, deudor, quién
   autorizó, quién registró, estado (pendiente o saldada, con método y fecha) y nota; con el total y
   un **resumen por deudor** (total, pendiente y saldado, cada moneda por separado). Lógica pura en
-  `src/lib/cashOutReports.js` (`buildDebts`/`debtsReport`, suite `cashOutReports.test.mjs`, 70
+  `src/lib/cashOutReports.js` (`buildDebts`/`debtsReport`, suite `cashOutReports.test.mjs`, 73
   aserciones junto con la de retiros); `buildInternalDebtsReport` va al final de `reportsService.js`
   y **solo lee**. De dónde sale cada columna: el **valor** es `valueAtTime` (el congelado al
   registrar); producto y U/M, la ficha **actual**; la **ubicación**, el movimiento del libro de
@@ -2605,7 +2605,7 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
   registra» en vez de inventar un nombre. Los turnos cerrados **antes** de que existiera
   `ownerWithdrawal` no muestran retiro (no hay dato que mostrar).
 - **Auditoría de los dos reportes (24-11-2026, EJECUTADA, no citada).** `npm run build` exit 0;
-  **44 suites / 4.486 aserciones**, 0 fallos (ver «Pruebas»), con las 43 anteriores idénticas byte a
+  **44 suites / 4.489 aserciones**, 0 fallos (ver «Pruebas»), con las 43 anteriores idénticas byte a
   byte a la línea base. **CERO cambios** contra `cf3344f` en `src/db`, `src/features/sync`,
   `src/repositories`, `src/features/cash`, `src/features/shifts`, reglas, índices y
   `package*.json`/`vite.config.js`/`index.html` (`git diff --stat` vacío); Dexie sigue en v19 y
@@ -2639,6 +2639,19 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
   muestran retiro y de ningún retiro al cierre consta quién lo autorizó. **El arnés de validación
   era temporal y no se commiteó**: no protege contra regresiones futuras. **Está en la rama de
   desarrollo, NO fusionado a `main`, NO desplegado y sin push.**
+- **Defecto hallado en la revisión final de toda la rama (24-11-2026), ya corregido.** La columna
+  «Autorizó» de los dos reportes mostraba **«usuario»** en todas las filas: el módulo buscaba
+  `authorizedBy` como si fuera un **id** de usuario (`userName(d.authorizedBy)`), pero la app guarda
+  ahí el **nombre** de quien autorizó (`CashScreen`), así que nunca lo encontraba y caía al valor por
+  defecto. Lo ocultó la propia suite, cuyo `userName` inyectado era la **identidad** (`id => id`): con
+  ese doble el nombre «pasaba» sin que nada lo mapeara. Ahora se imprime el valor guardado tal cual
+  (`d.authorizedBy || ''`, `m.authorizedBy || ''`) y la suite usa un `userName` **no identidad**
+  (`'N:' + id`), con aserciones de que Deudor y Registró **sí** se mapean y Autorizó **no**; con el
+  código viejo esas aserciones fallan (en rojo antes del arreglo) y tres copias de control (volver a
+  mapear Autorizó en deudas, en extracciones, o dejar de mapear Deudor) también las rompen. Con el
+  respaldo real del dueño de 12-09-2026 (solo lectura): 0 celdas «usuario» y todas las de Autorizó
+  coinciden con el valor guardado (10 de 10 deudas, 4 de 4 extracciones). La suite pasa de 70 a **73**
+  aserciones; las cifras de arriba ya cuentan esas 3.
 - **Base:** ventas (detalle), inventario por ubicación, entradas, salidas almacén→área, cierres de
   turno, ventas del turno, submayor por producto (kardex) y consolidado, conteo físico (submayor).
 - **Por licencia:** *Ventas por área* y *por vendedor* (áreas), *Movimientos de cuentas* (`cuentas`),
