@@ -34,5 +34,7 @@ ok(buildTimeLabel('2026-01-05T14:05:00.000Z', 'America/Havana') === '05-01-2026 
 ok(buildTimeLabel('nada') === null, 'V6b no es fecha -> null')
 ok(buildTimeLabel(null) === null, 'V6c nulo -> null')
 ok(/^\d{2}-\d{2}-\d{4} · \d{2}:\d{2}$/.test(buildTimeLabel(ISO)), 'V6d sin zona: hora local con el mismo formato')
+ok(buildTimeFromHtml('<meta name="description" content="2026-01-01T00:00:00.000Z">') === null, 'V3e otra meta con fecha valida -> null')
+ok(buildTimeLabel('2026-11-25T05:00:00.000Z', 'America/Havana') === '25-11-2026 · 00:00', 'V7 medianoche local -> 00:00 (h23)')
 console.log(`appBuild: ${pass} OK / ${fail} fallos`)
 if (fail) process.exit(1)

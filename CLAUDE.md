@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **34** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**4.316 aserciones**, medidas el 24-11-2026; 1.813 son del fuzz
+se corren **uno a uno con node** (**4.318 aserciones**, medidas el 24-11-2026; 1.813 son del fuzz
 determinista del Control de Ventas Diarias y 642 de `productSalesHistory`; la última en llegar es
 `cashOutReports`, los reportes de deudas internas y de extracciones de caja, con 73). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
@@ -134,13 +134,13 @@ npx esbuild src/features/sync/pushTrace.test.mjs --bundle --platform=node --form
   --outfile=<scratch>/pushTrace.bundle.mjs && node <scratch>/pushTrace.bundle.mjs
 ```
 
-Con todas dentro: **44 suites / 4.501 aserciones** en total, medidas el 24-11-2026 (43 suites dan un
+Con todas dentro: **44 suites / 4.503 aserciones** en total, medidas el 24-11-2026 (43 suites dan un
 recuento explícito de aserciones; la 44ª, `pushTrace`, valida por equivalencia de trazas y no suma).
 Las **43 suites que ya existían** dan salida **byte a byte idéntica** a la línea base tomada antes de
 tocar nada (las 10 empaquetadas se comparan sin las líneas de esbuild, que llevan el tiempo de la
 corrida), con control negativo; la nueva es `cashOutReports` (73). Después, el mismo 24-11-2026, `appBuild`
-pasó de 12 a **24 aserciones** (la versión legible de la Ayuda): +12 sobre las 4.304 y 4.489 de arriba, es
-decir 4.316 y 4.501, y las otras 43 suites siguen idénticas byte a byte a la línea base. La cifra anterior, **42 suites /
+pasó de 12 a **26 aserciones** (la versión legible de la Ayuda): +14 sobre las 4.304 y 4.489 de arriba, es
+decir 4.318 y 4.503, y las otras 43 suites siguen idénticas byte a byte a la línea base. La cifra anterior, **42 suites /
 3.774 aserciones** (06-10-2026), **no contaba `productSalesHistory`** (642 aserciones, llegada el
 12-11-2026): por eso el salto de 3.774 a 4.489 no es solo la suite nueva (4.416 + 73). Las tres
 medidas el 06-10-2026 eran `countsRepo` (41, con base real), `countWarnings` (10, node directo) y `appBuild`
@@ -1026,14 +1026,14 @@ bloquear); D4 = **sí** (bandera `conteoDiferenciaCongelada`, **APAGADA** por de
    esperado). El paso del plan «grep de `app-build-time` = 0 en el JS» era un **defecto del plan** y se
    sustituyó por esa comprobación de la fecha. Identificadores libres 0 en los tres ficheros, con control
    negativo. Mutaciones sobre `appBuild.js`: UTC ignorando `timeZone`, quitar ceros a la izquierda y no
-   validar la fecha del `content` las caza la suite; **NO la caza** quitar la comprobación de
-   `name="app-build-time"`: la suite solo prueba otra meta con un `content` que no es fecha, así que una
-   meta ajena con una fecha válida se leería como la del build (con el código real da `null`). Hueco
-   conocido de la suite, **no corregido** (no se tocaron las pruebas).
+   validar la fecha del `content` las caza la suite. Quitar la comprobación de
+   `name="app-build-time"` era un hueco hallado en la auditoría (la suite solo probaba otra meta con un
+   `content` que no es fecha) y **ya está fijado por una prueba** (otra meta con fecha válida -> `null`),
+   cazado en una copia de trabajo: sin la comprobación la suite falla (25 OK / 1 fallo).
    **Lo que NO se garantiza:** **nadie lo ha visto en un teléfono**. Los teléfonos con el build viejo
    siguen mostrando el código del chunk hasta que se actualicen. Y el `index.html` cambia en **cada**
    build (la fecha es nueva) aunque el código sea el mismo: no afecta a la comprobación (que mira el
-   hash), pero un `index.html` publicado distinto no significa que haya código nuevo. Mostrar la fecha
+   hash), pero un `index.html` publicado distinto no significa que haya código nuevo. Mostrar la fecha Tras un redespliegue con código IDÉNTICO cambian `index.html` y `sw.js` (la fecha va en el HTML), así que dos teléfonos pueden mostrar fechas distintas y decir los dos «al día»: la fecha es la del build que cada uno instaló, no prueba de código distinto.
    local del aparato depende de su zona horaria y de su reloj.
 
 **Validación (ejecutada por revisores independientes, no citada).**
