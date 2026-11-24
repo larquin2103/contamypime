@@ -25,7 +25,7 @@ const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100
 
 const deps = {
   dayOf: (iso) => String(iso || '').slice(0, 10),
-  userName: (id) => id || '',
+  userName: (id) => 'N:' + id,
   locationName: (l) => 'L:' + l
 }
 const products = {
@@ -94,7 +94,9 @@ const textOf = (rows) => rows.filter(isText).map((r) => r[0].content)
   const rep = debtsReport(r)
   const filas = rep.rows.filter((x) => !isText(x) && x[0] !== '' && x[0] !== 'TOTAL')
   const i = rep.head.indexOf('Autorizó')
-  eq(filas.map((f) => f[i]), ['Yuniel', '—'], 'D5) autorizo vacio -> —, con nombre -> nombre')
+  eq(filas.map((f) => f[i]), ['Yuniel', '—'], 'D5) Autorizó = nombre guardado tal cual (no se busca como id); vacio -> —')
+  eq(r.lines.map((l) => l.authorizedBy), ['Yuniel', ''], 'D5) linea: authorizedBy sin mapear')
+  eq(r.lines.map((l) => [l.debtor, l.registeredBy]), [['N:Aylin', 'N:Vendedor'], ['N:Aylin', 'N:Vendedor']], 'D5) deudor y registro SI se mapean id -> nombre')
 }
 
 // D6 estado
@@ -125,8 +127,8 @@ const textOf = (rows) => rows.filter(isText).map((r) => r[0].content)
   ]
   const r = buildDebts({ debts: ds, products, ...deps })
   eq(r.byDebtor, [
-    { debtor: 'Aylin', count: 2, byCurrency: { MN: { total: 150, pending: 100, settled: 50 } } },
-    { debtor: 'Beto', count: 1, byCurrency: { MN: { total: 30, pending: 30, settled: 0 } } }
+    { debtor: 'N:Aylin', count: 2, byCurrency: { MN: { total: 150, pending: 100, settled: 50 } } },
+    { debtor: 'N:Beto', count: 1, byCurrency: { MN: { total: 30, pending: 30, settled: 0 } } }
   ], 'D7) resumen por deudor, alfabetico')
   ok(r.byDebtor.every((x) => !('qty' in x) && !Object.values(x.byCurrency).some((c) => 'qty' in c)), 'D7) el resumen no suma cantidades')
 }
@@ -199,9 +201,9 @@ const textOf = (rows) => rows.filter(isText).map((r) => r[0].content)
   const i = t.indexOf('Resumen por deudor')
   ok(i >= 0, 'D13) titulo del resumen como fila de texto')
   const lineas = t.slice(i + 1)
-  ok(lineas.some((x) => x.startsWith('Aylin') && x.includes('2 deudas') && x.includes('total 240MN') && x.includes('saldado 240MN') && x.includes('pendiente 0MN')), 'D13) Aylin en MN')
-  ok(lineas.some((x) => x.startsWith('Aylin') && x.includes('total 20USD') && x.includes('pendiente 20USD')), 'D13) Aylin en USD')
-  ok(lineas.some((x) => x.startsWith('Beto') && x.includes('1 deuda') && x.includes('total 30MN')), 'D13) Beto')
+  ok(lineas.some((x) => x.startsWith('N:Aylin') && x.includes('2 deudas') && x.includes('total 240MN') && x.includes('saldado 240MN') && x.includes('pendiente 0MN')), 'D13) Aylin en MN')
+  ok(lineas.some((x) => x.startsWith('N:Aylin') && x.includes('total 20USD') && x.includes('pendiente 20USD')), 'D13) Aylin en USD')
+  ok(lineas.some((x) => x.startsWith('N:Beto') && x.includes('1 deuda') && x.includes('total 30MN')), 'D13) Beto')
   // el orden de los pies: TOTAL, aviso de moneda, resumen
   const pos = (f) => rep.rows.findIndex(f)
   ok(pos((r) => !isText(r) && r[0] === 'TOTAL') < pos((r) => isText(r) && r[0].content.includes('se deduce')) &&
@@ -228,13 +230,13 @@ const wdeps = { ...deps, shiftLabel: (s) => (s ? `T:${s.id}` : '') }
   const r = buildWithdrawals({ shifts: [sh()], ...wdeps })
   eq(r.lines.length, 1, 'W2) una linea')
   eq([r.lines[0].kind, r.lines[0].amount, r.lines[0].currency, r.lines[0].reason, r.lines[0].registeredBy, r.lines[0].at],
-    ['retiro', 300, 'MN', 'Retiro al cierre de turno', 'u2', '2026-11-05T20:00'], 'W2) campos del retiro')
+    ['retiro', 300, 'MN', 'Retiro al cierre de turno', 'N:u2', '2026-11-05T20:00'], 'W2) campos del retiro')
   const sin = (o) => buildWithdrawals({ shifts: [sh(o)], ...wdeps }).lines.length
   eq(sin({ ownerWithdrawal: undefined }), 0, 'W2) sin ownerWithdrawal')
   eq(sin({ ownerWithdrawal: { MN: 0, USD: 0, MLC: 0 } }), 0, 'W2) todo en 0')
   eq(sin({ closedAt: null }), 0, 'W2) sin closedAt')
   eq(buildWithdrawals({ shifts: [sh()], from: '2026-11-06', ...wdeps }).lines.length, 0, 'W2) rango por closedAt')
-  eq(buildWithdrawals({ shifts: [sh({ closedBy: '' })], ...wdeps }).lines[0].registeredBy, 'u1', 'W2) registro cae al vendedor')
+  eq(buildWithdrawals({ shifts: [sh({ closedBy: '' })], ...wdeps }).lines[0].registeredBy, 'N:u1', 'W2) registro cae al vendedor')
   const dos = buildWithdrawals({ shifts: [sh({ ownerWithdrawal: { MN: 5, USD: 7, MLC: 0 } })], ...wdeps }).lines
   eq(dos.map((l) => l.currency), ['MN', 'USD'], 'W2) solo monedas > 0, en orden')
 }
@@ -246,7 +248,8 @@ const wdeps = { ...deps, shiftLabel: (s) => (s ? `T:${s.id}` : '') }
   const datos = rep.rows.filter((x) => !isText(x) && x[0] !== 'Extracciones' && x[0] !== 'Retiros al cierre' && x[0] !== 'TOTAL')
   const byTipo = (t) => datos.filter((x) => x[1] === t)
   eq(byTipo('Retiro al cierre')[0][7], 'no se registra', 'W3) retiro: Autorizo')
-  eq(byTipo('Extracción').map((x) => x[7]).sort(), ['own', '—'].sort(), 'W3) extraccion vacia -> raya')
+  eq(byTipo('Extracción').map((x) => x[3]), ['N:u1', 'N:u1'], 'W3) extraccion: Registró SI se mapea id -> nombre')
+  eq(byTipo('Extracción').map((x) => x[7]).sort(), ['own', '—'].sort(), 'W3) extraccion: Autorizó = nombre guardado tal cual (no se busca como id); vacia -> raya')
 }
 
 // W4 textos numericos

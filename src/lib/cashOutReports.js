@@ -11,6 +11,8 @@ import { cleanQty } from './qty.js'
 // el total y un resumen por deudor. SOLO LEE: recibe los datos ya cargados.
 //
 // DE DONDE SALE CADA COLUMNA:
+//  - «Autorizó» es authorizedBy TAL CUAL: la app guarda ahi el NOMBRE de quien
+//    autorizo (no un id), asi que NO se pasa por userName.
 //  - Fecha, Cantidad, Valor, Deudor, Autorizó, Registró, Estado y Nota: la propia
 //    deuda. El Valor es `valueAtTime`, el congelado al registrarla (un cambio de
 //    precio posterior no lo altera).
@@ -67,7 +69,7 @@ export function buildDebts({
         value: round2(Number(d.valueAtTime || 0)),
         currency: divisas && isForeignPriced(p, BASE) ? p.priceCurrency : BASE,
         debtor: userName(d.userId),
-        authorizedBy: d.authorizedBy ? userName(d.authorizedBy) : '',
+        authorizedBy: d.authorizedBy || '',
         registeredBy: userName(d.registeredBy),
         settled: !!d.settled,
         settledAt: d.settledAt || '',
@@ -184,7 +186,7 @@ export function buildWithdrawals({
     lines.push({
       at: m.createdAt, kind: 'extraccion', shift: labelOf(shiftById.get(m.shiftId)),
       registeredBy: userName(m.userId), amount: round2(Number(m.amount) || 0), currency: m.currency || BASE,
-      reason: m.reason || '', authorizedBy: m.authorizedBy ? userName(m.authorizedBy) : ''
+      reason: m.reason || '', authorizedBy: m.authorizedBy || ''
     })
   }
   for (const s of shiftList) {
