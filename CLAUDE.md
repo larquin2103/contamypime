@@ -59,9 +59,10 @@ npm run host       # dev server expuesto en la LAN (probar desde el teléfono)
 npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
-**Pruebas:** NO hay script `npm test` (ni linter). **27** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**3.386 aserciones**, medidas el 25-09-2026; 1.813 son del fuzz
-determinista del Control de Ventas Diarias). Las tres de la
+**Pruebas:** NO hay script `npm test` (ni linter). **34** suites son ficheros `.test.mjs` puros que
+se corren **uno a uno con node** (**4.301 aserciones**, medidas el 24-11-2026; 1.813 son del fuzz
+determinista del Control de Ventas Diarias y 642 de `productSalesHistory`; la última en llegar es
+`cashOutReports`, los reportes de deudas internas y de extracciones de caja, con 70). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
 atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
@@ -97,7 +98,8 @@ for t in src/lib/custodyMath.test.mjs src/lib/dates.test.mjs \
          src/features/sync/echoLedger.test.mjs \
          src/lib/countWarnings.test.mjs \
          src/lib/appBuild.test.mjs \
-         src/lib/productSalesHistory.test.mjs; do node "$t"; done
+         src/lib/productSalesHistory.test.mjs \
+         src/lib/cashOutReports.test.mjs; do node "$t"; done
 ```
 
 **Ocho suites más, `src/repositories/ordersRepo.test.mjs` (H1/H2), `src/repositories/countsRepo.test.mjs`
@@ -132,9 +134,14 @@ npx esbuild src/features/sync/pushTrace.test.mjs --bundle --platform=node --form
   --outfile=<scratch>/pushTrace.bundle.mjs && node <scratch>/pushTrace.bundle.mjs
 ```
 
-Con todas dentro: **42 suites / 3.774 aserciones** en total, medidas el 06-10-2026 (41 suites dan un
-recuento explícito de aserciones; la 42ª, `pushTrace`, valida por equivalencia de trazas y no suma).
-Las tres nuevas son `countsRepo` (41, con base real), `countWarnings` (10, node directo) y `appBuild`
+Con todas dentro: **44 suites / 4.486 aserciones** en total, medidas el 24-11-2026 (43 suites dan un
+recuento explícito de aserciones; la 44ª, `pushTrace`, valida por equivalencia de trazas y no suma).
+Las **43 suites que ya existían** dan salida **byte a byte idéntica** a la línea base tomada antes de
+tocar nada (las 10 empaquetadas se comparan sin las líneas de esbuild, que llevan el tiempo de la
+corrida), con control negativo; la nueva es `cashOutReports` (70). La cifra anterior, **42 suites /
+3.774 aserciones** (06-10-2026), **no contaba `productSalesHistory`** (642 aserciones, llegada el
+12-11-2026): por eso el salto de 3.774 a 4.486 no es solo la suite nueva (4.416 + 70). Las tres
+medidas el 06-10-2026 eran `countsRepo` (41, con base real), `countWarnings` (10, node directo) y `appBuild`
 (12, node directo). Eran **39 suites / 3.692 aserciones**, medidas el 27-09-2026 (38 suites dan un
 recuento explícito de aserciones; la 39ª, `pushTrace`, valida por **equivalencia de trazas** —300
 escenarios, 3.859 escrituras comparadas, 0 invariantes rotas— y no suma al recuento de aserciones).
@@ -2576,6 +2583,59 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
   devuelve filas. Columnas Descuento/Neto y USD son data-driven. Validado contra 8 respaldos reales
   (producto a producto contra un recálculo independiente, 0 fallos). **Nadie lo ha ejecutado en un
   dispositivo.**
+- **Deudas internas (base, 24-11-2026):** Reportes → *Turnos y caja*. Una fila por deuda, más
+  recientes primero: fecha, producto, U/M, ubicación, cantidad, valor, moneda, deudor, quién
+  autorizó, quién registró, estado (pendiente o saldada, con método y fecha) y nota; con el total y
+  un **resumen por deudor** (total, pendiente y saldado, cada moneda por separado). Lógica pura en
+  `src/lib/cashOutReports.js` (`buildDebts`/`debtsReport`, suite `cashOutReports.test.mjs`, 70
+  aserciones junto con la de retiros); `buildInternalDebtsReport` va al final de `reportsService.js`
+  y **solo lee**. De dónde sale cada columna: el **valor** es `valueAtTime` (el congelado al
+  registrar); producto y U/M, la ficha **actual**; la **ubicación**, el movimiento del libro de
+  **esa** deuda (`refId` = id de la deuda, leído por el índice `type`, sin barrer el libro) y, si
+  aún no llegó por la sync, queda «—» y el pie lo avisa. El día es el **local** (`localDay`). **La
+  deuda no guarda su moneda:** con el módulo `divisas` se **deduce** de la ficha de hoy del
+  producto, así que si esa ficha cambió de moneda después de la deuda la columna Moneda se
+  equivocaría (el pie lo dice); sin `divisas` todo sale en MN, como siempre.
+- **Extracciones y retiros de caja (base, 24-11-2026):** mismo sitio. Dos orígenes en una sola
+  lista, más recientes primero (a igual fecha, la extracción antes que el retiro): las
+  **extracciones del turno** (`cashMovements` de tipo `withdrawal`: motivo y quién autorizó) y el
+  **retiro al cierre** (`shifts.ownerWithdrawal`, una fila por moneda con importe mayor que 0).
+  Totales por tipo y moneda, **sin convertir** (criterio del cuadre de turno). Del retiro al cierre
+  **no se registra quién lo autorizó** —el turno solo guarda quién lo cerró—: la columna dice «no se
+  registra» en vez de inventar un nombre. Los turnos cerrados **antes** de que existiera
+  `ownerWithdrawal` no muestran retiro (no hay dato que mostrar).
+- **Auditoría de los dos reportes (24-11-2026, EJECUTADA, no citada).** `npm run build` exit 0;
+  **44 suites / 4.486 aserciones**, 0 fallos (ver «Pruebas»), con las 43 anteriores idénticas byte a
+  byte a la línea base. **CERO cambios** contra `cf3344f` en `src/db`, `src/features/sync`,
+  `src/repositories`, `src/features/cash`, `src/features/shifts`, reglas, índices y
+  `package*.json`/`vite.config.js`/`index.html` (`git diff --stat` vacío); Dexie sigue en v19 y
+  `SYNC_COLLECTIONS` no se tocó. **Cero escrituras a la base** en el diff de producción; las **2
+  líneas borradas** en `src` son sustituciones en el sitio (la última entrada de la categoría
+  *turnos* gana la coma y el `import` de constantes gana `DEBT_SETTLE_LABELS`). **0 identificadores
+  libres** en `cashOutReports.js`, `reportsService.js` y `ReportsScreen.jsx` (`@babel/parser` +
+  `@babel/traverse`), con control negativo (un `noExisteNunca()` en una copia, detectado).
+  **Mutaciones sobre `cashOutReports.js`:** ignorar `divisas`, sumar las monedas en un solo total
+  (deudas, por deudor y retiros), no filtrar `type === 'withdrawal'`, incluir monedas con importe
+  0, orden ascendente (deudas y retiros) y emparejar el movimiento por `productId` en vez de
+  `refId` —**todas cazadas**—; **no la cazó** poner el nombre de quien cerró como `authorizedBy` de
+  la línea de retiro, porque el reporte pinta «no se registra» por **tipo de fila** sin mirar ese
+  campo (equivalente a nivel de reporte: si además se cambia esa celda, la suite sí falla). **Validación
+  con los 9 respaldos reales de la máquina del dueño** (`respaldo_mypicuadre_2026-*.json`, solo
+  lectura, con `TZ=America/Havana`): contra un **recuento independiente** (por día local con `Intl`,
+  sin llamar al módulo ni a `dates.js`) coinciden las **32 deudas**, las **10 extracciones** y los
+  **191 retiros al cierre** —cantidad, valor y total por deudor, ubicación por multiconjunto contra el
+  movimiento de cada deuda, y totales por tipo y moneda—, 0 fallos, y con **un rango de fechas por
+  respaldo** (dentro de su propio periodo) también 0; los controles negativos (alterar un valor, un
+  importe o el `userId` de una deuda) los **detectan** todos. **Peso**, construyendo `cf3344f` en un
+  worktree aparte y comprimiendo con el mismo `gzip -9`: CSS con el **mismo hash**
+  (`index-B34NE6G1.css`); chunk principal 1.066.131 → **1.072.994 bytes** (gzip 312.107 → **314.228**):
+  **+6.863 B crudos, +2.121 B gzip (+0,68 %)**.
+  **Lo que NO se puede garantizar:** **nadie ha ejecutado la app** en un dispositivo ni en un
+  navegador (ni la ficha en Reportes, ni el PDF o el Excel descargados); la **moneda de una deuda**
+  con `divisas` es una deducción de la ficha de hoy; los cierres anteriores a `ownerWithdrawal` no
+  muestran retiro y de ningún retiro al cierre consta quién lo autorizó. **El arnés de validación
+  era temporal y no se commiteó**: no protege contra regresiones futuras. **Está en la rama de
+  desarrollo, NO fusionado a `main`, NO desplegado y sin push.**
 - **Base:** ventas (detalle), inventario por ubicación, entradas, salidas almacén→área, cierres de
   turno, ventas del turno, submayor por producto (kardex) y consolidado, conteo físico (submayor).
 - **Por licencia:** *Ventas por área* y *por vendedor* (áreas), *Movimientos de cuentas* (`cuentas`),
