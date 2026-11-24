@@ -65,7 +65,7 @@ determinista del Control de Ventas Diarias y 642 de `productSalesHistory`; la ú
 `cashOutReports`, los reportes de deudas internas y de extracciones de caja, con 70). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
 cobrada), `resend` (H3-a: el reenvío forzado) y `atomicity` (H3-b: el diagnóstico de roturas de
-atomicidad). La última en llegar es `convergence`, el diagnóstico de fichas de producto cuya versión
+atomicidad). En su momento la última en llegar fue `convergence`, el diagnóstico de fichas de producto cuya versión
 no llegó a un aparato, que salió del respaldo B de La Patrona; y `syncLogPolicy`, la política del registro
 de la sincronización en `/errors`. Ojo: casi todas viven en `src/lib/` pero `retryQueue.test.mjs` está
 en `src/features/sync/`, `fichaReports.test.mjs` en `src/features/reports/` y `helpContent.test.mjs`
@@ -2625,8 +2625,11 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
   sin llamar al módulo ni a `dates.js`) coinciden las **32 deudas**, las **10 extracciones** y los
   **191 retiros al cierre** —cantidad, valor y total por deudor, ubicación por multiconjunto contra el
   movimiento de cada deuda, y totales por tipo y moneda—, 0 fallos, y con **un rango de fechas por
-  respaldo** (dentro de su propio periodo) también 0; los controles negativos (alterar un valor, un
-  importe o el `userId` de una deuda) los **detectan** todos. **Peso**, construyendo `cf3344f` en un
+  respaldo** (dentro de su propio periodo) también 0, pero **3 de los 9 respaldos no tienen ninguna
+  deuda**, así que su rango solo ejercitó extracciones y retiros; los controles negativos (alterar un
+  valor, un importe o el `userId` de una deuda) detectan en **todos los respaldos donde hay algo que
+  alterar** (el del `userId` solo existe donde hay deudas). Los 9 son los que casó el glob (el plan
+  contaba 8) y los **191** son **filas** de retiro (una por moneda con importe mayor que 0), no turnos. **Peso**, construyendo `cf3344f` en un
   worktree aparte y comprimiendo con el mismo `gzip -9`: CSS con el **mismo hash**
   (`index-B34NE6G1.css`); chunk principal 1.066.131 → **1.072.994 bytes** (gzip 312.107 → **314.228**):
   **+6.863 B crudos, +2.121 B gzip (+0,68 %)**.
