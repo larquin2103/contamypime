@@ -34,6 +34,8 @@ import {
   buildDailySalesControl,
   dailyControlLocations,
   buildProductSalesHistory,
+  buildInternalDebtsReport,
+  buildCashWithdrawalsReport,
   exportExcel,
   exportPdf
 } from './reportsService'
@@ -163,7 +165,9 @@ export function ReportsScreen() {
       { key: 'shifts', title: 'Cierres de turno', desc: 'Cuadre de cada turno cerrado, por área', builder: buildShiftsReport, range: true },
       { key: 'postclose', title: 'Ventas después del cierre', desc: 'Ventas que quedaron registradas en un turno YA cerrado (posible descuadre): fecha, vendedor, área, cuándo se cerró el turno e importe MN', builder: buildPostCloseSalesReport, range: true },
       { key: 'forced', title: 'Cierres forzados', desc: 'Turnos cerrados por el dueño/administrativo (no por el vendedor) y su diferencia de caja — para supervisión', builder: buildForcedClosuresReport, range: true },
-      { key: 'shiftpay', title: 'Ventas del turno por método', desc: 'Por cada turno: subtotales Efectivo / Transferencia / Mixto y total (según el método de pago)', builder: buildShiftPaymentReport, range: true }
+      { key: 'shiftpay', title: 'Ventas del turno por método', desc: 'Por cada turno: subtotales Efectivo / Transferencia / Mixto y total (según el método de pago)', builder: buildShiftPaymentReport, range: true },
+      { key: 'debts', title: 'Deudas internas', desc: 'Productos sacados como deuda: fecha, producto, cantidad, valor, deudor, quién autorizó y estado, con resumen por deudor', builder: buildInternalDebtsReport, range: true },
+      { key: 'withdrawals', title: 'Extracciones y retiros de caja', desc: 'Dinero sacado de la caja: extracciones del turno (motivo y quién autorizó) y retiros al cierre, con totales por moneda', builder: buildCashWithdrawalsReport, range: true }
     ] },
     { id: 'ventas', label: 'Ventas', items: [
       { key: 'sales', title: 'Ventas', desc: 'Detalle de ventas por fecha, vendedor, área y metodo', builder: buildSalesReport, range: true },

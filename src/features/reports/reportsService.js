@@ -5,7 +5,7 @@ import { discountFromEvents, isCourtesyPct } from '../../lib/orderTotals'
 import {
   SHIFT_STATUS, COUNT_STATUS, MOVEMENT_TYPES,
   areaLabel, locationLabel, WAREHOUSE, WAREHOUSE_LABEL, ELABORATION, COCINA,
-  RECIPE_KINDS, RECIPE_KIND_LABELS, recipeKind
+  RECIPE_KINDS, RECIPE_KIND_LABELS, recipeKind, DEBT_SETTLE_LABELS
 } from '../../db/constants'
 import { analyticsRepo } from '../../repositories/analyticsRepo'
 import { configRepo } from '../../repositories/configRepo'
@@ -14,6 +14,7 @@ import { ratesRepo } from '../../repositories/ratesRepo'
 import { buildDailyControl, dailyControlReport } from '../../lib/dailySalesControl'
 import { plainRows } from '../../lib/reportCells'
 import { buildProductSales, productSalesReport } from '../../lib/productSalesHistory'
+import { buildDebts, debtsReport, buildWithdrawals, withdrawalsReport } from '../../lib/cashOutReports'
 
 // Dia LOCAL del negocio (no UTC); ver lib/dates.localDay.
 function inRange(iso, from, to) {
@@ -1770,4 +1771,41 @@ export async function buildProductSalesHistory({ productIds = [], from = null, t
     productName: (id) => products[id]?.name || ''
   })
   return productSalesReport(result, { from: from || '', to: to || '', divisas, formatDateTime })
+}
+
+// --- Deudas internas ---------------------------------------------------------------
+// Solo LEE. El calculo vive en lib/cashOutReports.js (puro y probado). La ubicacion sale
+// del movimiento del libro mayor de cada deuda, leido por el indice `type` (no barre el libro).
+export async function buildInternalDebtsReport({ from = null, to = null, divisas = false } = {}) {
+  const [debts, movements, names, products] = await Promise.all([
+    db.internalDebts.toArray(),
+    db.stockMovements.where('type').equals(MOVEMENT_TYPES.INTERNAL_DEBT_OUT).toArray(),
+    userMap(), productMap()
+  ])
+  const result = buildDebts({
+    debts, movements, products, from: from || '', to: to || '', divisas,
+    dayOf: (x) => localDay(x),
+    userName: (id) => names[id] || 'usuario',
+    locationName: locationLabel
+  })
+  return debtsReport(result, {
+    from: from || '', to: to || '', formatDateTime, formatMoney,
+    settleLabel: (m) => DEBT_SETTLE_LABELS[m] || m || ''
+  })
+}
+
+// --- Extracciones y retiros de caja ------------------------------------------------
+// Solo LEE. Extracciones del turno (cashMovements) y retiro al cierre (shifts.ownerWithdrawal),
+// cada moneda por separado. El calculo vive en lib/cashOutReports.js.
+export async function buildCashWithdrawalsReport({ from = null, to = null } = {}) {
+  const [cashMovements, shifts, names] = await Promise.all([
+    db.cashMovements.toArray(), db.shifts.toArray(), userMap()
+  ])
+  const result = buildWithdrawals({
+    cashMovements, shifts, from: from || '', to: to || '',
+    dayOf: (x) => localDay(x),
+    userName: (id) => names[id] || 'usuario',
+    shiftLabel: (s) => `${names[s.sellerId] || 'vendedor'} · ${areaLabel(s.area)}`
+  })
+  return withdrawalsReport(result, { from: from || '', to: to || '', formatDateTime })
 }
