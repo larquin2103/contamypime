@@ -60,7 +60,7 @@ npm run deploy     # build + firebase deploy --only hosting (AQUÍ sale la URL)
 ```
 
 **Pruebas:** NO hay script `npm test` (ni linter). **34** suites son ficheros `.test.mjs` puros que
-se corren **uno a uno con node** (**4.304 aserciones**, medidas el 24-11-2026; 1.813 son del fuzz
+se corren **uno a uno con node** (**4.316 aserciones**, medidas el 24-11-2026; 1.813 son del fuzz
 determinista del Control de Ventas Diarias y 642 de `productSalesHistory`; la última en llegar es
 `cashOutReports`, los reportes de deudas internas y de extracciones de caja, con 73). Las tres de la
 corrección Burger Premium son `orderSale` (H1/H2: el candado de venta y la reparación de la mesa
@@ -134,11 +134,13 @@ npx esbuild src/features/sync/pushTrace.test.mjs --bundle --platform=node --form
   --outfile=<scratch>/pushTrace.bundle.mjs && node <scratch>/pushTrace.bundle.mjs
 ```
 
-Con todas dentro: **44 suites / 4.489 aserciones** en total, medidas el 24-11-2026 (43 suites dan un
+Con todas dentro: **44 suites / 4.501 aserciones** en total, medidas el 24-11-2026 (43 suites dan un
 recuento explícito de aserciones; la 44ª, `pushTrace`, valida por equivalencia de trazas y no suma).
 Las **43 suites que ya existían** dan salida **byte a byte idéntica** a la línea base tomada antes de
 tocar nada (las 10 empaquetadas se comparan sin las líneas de esbuild, que llevan el tiempo de la
-corrida), con control negativo; la nueva es `cashOutReports` (73). La cifra anterior, **42 suites /
+corrida), con control negativo; la nueva es `cashOutReports` (73). Después, el mismo 24-11-2026, `appBuild`
+pasó de 12 a **24 aserciones** (la versión legible de la Ayuda): +12 sobre las 4.304 y 4.489 de arriba, es
+decir 4.316 y 4.501, y las otras 43 suites siguen idénticas byte a byte a la línea base. La cifra anterior, **42 suites /
 3.774 aserciones** (06-10-2026), **no contaba `productSalesHistory`** (642 aserciones, llegada el
 12-11-2026): por eso el salto de 3.774 a 4.489 no es solo la suite nueva (4.416 + 73). Las tres
 medidas el 06-10-2026 eran `countsRepo` (41, con base real), `countWarnings` (10, node directo) y `appBuild`
@@ -1008,6 +1010,31 @@ bloquear); D4 = **sí** (bandera `conteoDiferenciaCongelada`, **APAGADA** por de
 6. **Versión de la app visible en la Ayuda** para los cuatro roles (hash del chunk `index-<hash>.js`),
    con comprobación de la última publicada vía `fetch('/index.html?version=…', {cache:'no-store'})`.
    `package.json` sigue en 0.1.0 y no sirve de versión.
+   **Nota del 24-11-2026 — versión legible.** La tarjeta de la Ayuda ahora MUESTRA la fecha y hora del
+   build («Versión del dd-mm-aaaa · HH:MM», en la hora local del aparato) en vez del código del chunk. La
+   fecha viaja en una `<meta name="app-build-time">` que `vite.config.js` pone solo al construir
+   (`apply: 'build'`) en el `index.html`, **nunca en el JS**: si entrara al bundle, el chunk cambiaría de
+   hash en cada build aunque el código fuera el mismo y la comprobación mentiría. **La comprobación sigue
+   por el hash** (`buildStatus` compara el hash corriendo contra el publicado); la fecha es solo lo que se
+   ve, y si falta cae al hash de antes. Cambios: `src/lib/appBuild.js` (+25: `buildTimeFromHtml` y
+   `buildTimeLabel`), `vite.config.js` (+14, solo líneas añadidas) y `AppVersionCard.jsx` (+15/−6, las
+   seis bajas son sustituciones en el sitio, leídas una a una). Cero esquema, cero sincronización, cero
+   escrituras a la base; `db.js`, `features/sync`, repos, reglas, índices, `package*.json` e `index.html`
+   sin diferencias contra el commit base. Verificado: `npm run build` exit 0; dos builds reales dieron el
+   **mismo** `index-*.js` (nombre y SHA-256) con **distinta** fecha en la meta, y la fecha no está en el JS
+   (el nombre literal `app-build-time` SÍ aparece en el JS, porque la tarjeta lee esa meta: es lo
+   esperado). El paso del plan «grep de `app-build-time` = 0 en el JS» era un **defecto del plan** y se
+   sustituyó por esa comprobación de la fecha. Identificadores libres 0 en los tres ficheros, con control
+   negativo. Mutaciones sobre `appBuild.js`: UTC ignorando `timeZone`, quitar ceros a la izquierda y no
+   validar la fecha del `content` las caza la suite; **NO la caza** quitar la comprobación de
+   `name="app-build-time"`: la suite solo prueba otra meta con un `content` que no es fecha, así que una
+   meta ajena con una fecha válida se leería como la del build (con el código real da `null`). Hueco
+   conocido de la suite, **no corregido** (no se tocaron las pruebas).
+   **Lo que NO se garantiza:** **nadie lo ha visto en un teléfono**. Los teléfonos con el build viejo
+   siguen mostrando el código del chunk hasta que se actualicen. Y el `index.html` cambia en **cada**
+   build (la fecha es nueva) aunque el código sea el mismo: no afecta a la comprobación (que mira el
+   hash), pero un `index.html` publicado distinto no significa que haya código nuevo. Mostrar la fecha
+   local del aparato depende de su zona horaria y de su reloj.
 
 **Validación (ejecutada por revisores independientes, no citada).**
 - Cada tarea: implementador + revisor nuevo que ejecutó build, suites byte a byte contra la línea base,
