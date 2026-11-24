@@ -1033,8 +1033,8 @@ bloquear); D4 = **sí** (bandera `conteoDiferenciaCongelada`, **APAGADA** por de
    **Lo que NO se garantiza:** **nadie lo ha visto en un teléfono**. Los teléfonos con el build viejo
    siguen mostrando el código del chunk hasta que se actualicen. Y el `index.html` cambia en **cada**
    build (la fecha es nueva) aunque el código sea el mismo: no afecta a la comprobación (que mira el
-   hash), pero un `index.html` publicado distinto no significa que haya código nuevo. Mostrar la fecha Tras un redespliegue con código IDÉNTICO cambian `index.html` y `sw.js` (la fecha va en el HTML), así que dos teléfonos pueden mostrar fechas distintas y decir los dos «al día»: la fecha es la del build que cada uno instaló, no prueba de código distinto.
-   local del aparato depende de su zona horaria y de su reloj.
+   hash), pero un `index.html` publicado distinto no significa que haya código nuevo. Mostrar la fecha
+   local del aparato depende de su zona horaria y de su reloj. Tras un redespliegue con código IDÉNTICO cambian `index.html` y `sw.js` (la fecha va en el HTML), así que dos teléfonos pueden mostrar fechas distintas y decir los dos «al día»: la fecha es la del build que cada uno instaló, no prueba de código distinto.
 
 **Validación (ejecutada por revisores independientes, no citada).**
 - Cada tarea: implementador + revisor nuevo que ejecutó build, suites byte a byte contra la línea base,
