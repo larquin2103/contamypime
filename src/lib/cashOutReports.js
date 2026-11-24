@@ -152,3 +152,87 @@ export function debtsReport(result, {
   }
   return { ...base, rows }
 }
+
+// ---------------------------------------------------------------------------
+// EXTRACCIONES Y RETIROS DE CAJA. Dos origenes distintos, una sola lista:
+//  - EXTRACCION: un `cashMovements` de tipo 'withdrawal' (salida de caja a mitad
+//    de turno, con su motivo y quien la autorizo). Rango por `createdAt`.
+//  - RETIRO AL CIERRE: lo que el vendedor retira al cerrar el turno
+//    (`shifts.ownerWithdrawal`, por moneda). Rango por `closedAt`. El turno no
+//    guarda quien lo autorizo: el reporte lo dice («no se registra»).
+// Los importes NO se convierten: cada moneda va por separado (como el cuadre).
+// ---------------------------------------------------------------------------
+const CURRENCY_ORDER = ['MN', 'USD', 'MLC']
+
+export function buildWithdrawals({
+  cashMovements = [], shifts = [], from = '', to = '',
+  dayOf, userName = () => '', shiftLabel = () => ''
+} = {}) {
+  const inRange = (iso) => {
+    const d = dayOf(iso)
+    if (from && d < from) return false
+    if (to && d > to) return false
+    return true
+  }
+  const shiftList = Array.isArray(shifts) ? shifts.filter(Boolean) : []
+  const shiftById = new Map(shiftList.map((s) => [s.id, s]))
+  const labelOf = (s) => (s ? shiftLabel(s) : '')
+
+  const lines = []
+  for (const m of Array.isArray(cashMovements) ? cashMovements : []) {
+    if (!m || m.type !== 'withdrawal' || !m.createdAt || !inRange(m.createdAt)) continue
+    lines.push({
+      at: m.createdAt, kind: 'extraccion', shift: labelOf(shiftById.get(m.shiftId)),
+      registeredBy: userName(m.userId), amount: round2(Number(m.amount) || 0), currency: m.currency || BASE,
+      reason: m.reason || '', authorizedBy: m.authorizedBy ? userName(m.authorizedBy) : ''
+    })
+  }
+  for (const s of shiftList) {
+    const ow = s.ownerWithdrawal
+    if (!s.closedAt || !ow || typeof ow !== 'object' || !inRange(s.closedAt)) continue
+    const curs = [...CURRENCY_ORDER.filter((c) => c in ow), ...Object.keys(ow).filter((c) => !CURRENCY_ORDER.includes(c))]
+    for (const cur of curs) {
+      const amount = round2(Number(ow[cur]) || 0)
+      if (!(amount > 0)) continue
+      lines.push({
+        at: s.closedAt, kind: 'retiro', shift: labelOf(s),
+        registeredBy: userName(s.closedBy || s.sellerId), amount, currency: cur,
+        reason: 'Retiro al cierre de turno', authorizedBy: ''
+      })
+    }
+  }
+  // Fecha descendente; a igual fecha, extraccion antes que retiro. El sort es
+  // estable: las monedas de un mismo retiro conservan el orden de `ownerWithdrawal`.
+  lines.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : (a.kind === b.kind ? 0 : a.kind === 'extraccion' ? -1 : 1)))
+
+  const raw = { extraccion: {}, retiro: {}, total: {} }
+  for (const l of lines) {
+    raw[l.kind][l.currency] = (raw[l.kind][l.currency] || 0) + l.amount
+    raw.total[l.currency] = (raw.total[l.currency] || 0) + l.amount
+  }
+  const totals = { extraccion: {}, retiro: {}, total: {} }
+  for (const k of Object.keys(raw)) {
+    for (const cur of sortCurrencies(Object.keys(raw[k]))) totals[k][cur] = round2(raw[k][cur])
+  }
+  return { lines, totals }
+}
+
+// De resultado a reporte exportable (8 columnas, orientacion horizontal).
+export function withdrawalsReport(result, { from = '', to = '', formatDateTime = (x) => x } = {}) {
+  const head = ['Fecha', 'Tipo', 'Turno', 'Registró', 'Monto', 'Moneda', 'Motivo', 'Autorizó']
+  const periodo = !from && !to ? 'Todo el periodo' : `Periodo: ${from || '...'} a ${to || '...'}`
+  const base = { title: 'Extracciones y retiros de caja', subtitle: periodo, head, orientation: 'landscape', filename: 'extracciones_caja' }
+  if (!result.lines.length) {
+    return { ...base, rows: [[{ content: 'Sin extracciones ni retiros en el periodo.', colSpan: head.length }]] }
+  }
+  const rows = result.lines.map((l) => [
+    formatDateTime(l.at), l.kind === 'retiro' ? 'Retiro al cierre' : 'Extracción', l.shift || '—', l.registeredBy,
+    l.amount, l.currency, l.reason,
+    l.kind === 'retiro' ? 'no se registra' : (l.authorizedBy || '—')
+  ])
+  // Pie por moneda, sin convertir: extracciones, retiros y total.
+  for (const [label, key] of [['Extracciones', 'extraccion'], ['Retiros al cierre', 'retiro'], ['TOTAL', 'total']]) {
+    for (const cur of Object.keys(result.totals[key])) rows.push([label, '', '', '', result.totals[key][cur], cur, '', ''])
+  }
+  return { ...base, rows }
+}

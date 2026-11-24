@@ -9,7 +9,7 @@
 //   c) las columnas de moneda solo existen si hay una deuda en divisa y el modulo
 //      `divisas` esta activo (data-driven, como el resto de reportes);
 //   d) el total y el resumen por deudor son la suma exacta de las filas.
-import { buildDebts, debtsReport } from './cashOutReports.js'
+import { buildDebts, debtsReport, buildWithdrawals, withdrawalsReport } from './cashOutReports.js'
 
 let pass = 0
 let fail = 0
@@ -207,6 +207,94 @@ const textOf = (rows) => rows.filter(isText).map((r) => r[0].content)
   ok(pos((r) => !isText(r) && r[0] === 'TOTAL') < pos((r) => isText(r) && r[0].content.includes('se deduce')) &&
     pos((r) => isText(r) && r[0].content.includes('se deduce')) < pos((r) => isText(r) && r[0].content === 'Resumen por deudor'), 'D13) orden del pie')
 }
+
+// ---------------------------------------------------------------------------
+// Extracciones y retiros de caja
+// ---------------------------------------------------------------------------
+const wd = (o) => ({ id: 'w', shiftId: 's1', userId: 'u1', type: 'withdrawal', amount: 100, currency: 'MN', reason: 'Compra', authorizedBy: 'own', createdAt: '2026-11-05T10:00:00', ...o })
+const sh = (o) => ({ id: 's1', sellerId: 'u1', area: 'Bar', closedAt: '2026-11-05T20:00', closedBy: 'u2', ownerWithdrawal: { MN: 300, USD: 0, MLC: 0 }, ...o })
+const wdeps = { ...deps, shiftLabel: (s) => (s ? `T:${s.id}` : '') }
+
+// W1 solo withdrawal; rango por createdAt
+{
+  const ms = [wd({ id: 'a' }), wd({ id: 'b', type: 'otro' }), wd({ id: 'c', createdAt: '2026-10-31T23:00:00' })]
+  const r = buildWithdrawals({ cashMovements: ms, shifts: [sh({ ownerWithdrawal: undefined })], from: '2026-11-01', to: '2026-11-30', ...wdeps })
+  eq(r.lines.length, 1, 'W1) solo withdrawal dentro del rango')
+  eq(r.lines[0].kind, 'extraccion', 'W1) kind extraccion')
+}
+
+// W2 retiro al cierre
+{
+  const r = buildWithdrawals({ shifts: [sh()], ...wdeps })
+  eq(r.lines.length, 1, 'W2) una linea')
+  eq([r.lines[0].kind, r.lines[0].amount, r.lines[0].currency, r.lines[0].reason, r.lines[0].registeredBy, r.lines[0].at],
+    ['retiro', 300, 'MN', 'Retiro al cierre de turno', 'u2', '2026-11-05T20:00'], 'W2) campos del retiro')
+  const sin = (o) => buildWithdrawals({ shifts: [sh(o)], ...wdeps }).lines.length
+  eq(sin({ ownerWithdrawal: undefined }), 0, 'W2) sin ownerWithdrawal')
+  eq(sin({ ownerWithdrawal: { MN: 0, USD: 0, MLC: 0 } }), 0, 'W2) todo en 0')
+  eq(sin({ closedAt: null }), 0, 'W2) sin closedAt')
+  eq(buildWithdrawals({ shifts: [sh()], from: '2026-11-06', ...wdeps }).lines.length, 0, 'W2) rango por closedAt')
+  eq(buildWithdrawals({ shifts: [sh({ closedBy: '' })], ...wdeps }).lines[0].registeredBy, 'u1', 'W2) registro cae al vendedor')
+  const dos = buildWithdrawals({ shifts: [sh({ ownerWithdrawal: { MN: 5, USD: 7, MLC: 0 } })], ...wdeps }).lines
+  eq(dos.map((l) => l.currency), ['MN', 'USD'], 'W2) solo monedas > 0, en orden')
+}
+
+// W3 textos del reporte
+{
+  const r = buildWithdrawals({ cashMovements: [wd({ authorizedBy: '' }), wd({ id: 'x', authorizedBy: 'own', createdAt: '2026-11-04T10:00:00' })], shifts: [sh()], ...wdeps })
+  const rep = withdrawalsReport(r)
+  const datos = rep.rows.filter((x) => !isText(x) && x[0] !== 'Extracciones' && x[0] !== 'Retiros al cierre' && x[0] !== 'TOTAL')
+  const byTipo = (t) => datos.filter((x) => x[1] === t)
+  eq(byTipo('Retiro al cierre')[0][7], 'no se registra', 'W3) retiro: Autorizo')
+  eq(byTipo('Extracción').map((x) => x[7]).sort(), ['own', '—'].sort(), 'W3) extraccion vacia -> raya')
+}
+
+// W4 textos numericos
+{
+  const r = buildWithdrawals({ cashMovements: [wd({ amount: '500' })], shifts: [sh({ ownerWithdrawal: { MN: '300' } })], ...wdeps })
+  eq(r.lines.map((l) => l.amount).sort(), [300, 500], 'W4) importes numericos')
+  ok(r.lines.every((l) => typeof l.amount === 'number'), 'W4) son numeros')
+}
+
+// W5 totales sin convertir
+{
+  const r = buildWithdrawals({ cashMovements: [wd({ amount: 500 }), wd({ id: 'u', amount: 20, currency: 'USD' })], shifts: [sh()], ...wdeps })
+  eq(r.totals, { extraccion: { MN: 500, USD: 20 }, retiro: { MN: 300 }, total: { MN: 800, USD: 20 } }, 'W5) totales')
+  const rep = withdrawalsReport(r)
+  const pie = rep.rows.filter((x) => !isText(x) && ['Extracciones', 'Retiros al cierre', 'TOTAL'].includes(x[0])).map((x) => [x[0], x[4], x[5]])
+  eq(pie, [['Extracciones', 500, 'MN'], ['Extracciones', 20, 'USD'], ['Retiros al cierre', 300, 'MN'], ['TOTAL', 800, 'MN'], ['TOTAL', 20, 'USD']], 'W5) filas de pie')
+}
+
+// W6 orden descendente, extraccion antes que retiro a igual fecha
+{
+  const r = buildWithdrawals({ cashMovements: [wd({ id: 'a', createdAt: '2026-11-01T10:00:00' }), wd({ id: 'b', createdAt: '2026-11-09T10:00:00' }), wd({ id: 'c', createdAt: '2026-11-05T20:00' })], shifts: [sh()], ...wdeps })
+  eq(r.lines.map((l) => l.at), ['2026-11-09T10:00:00', '2026-11-05T20:00', '2026-11-05T20:00', '2026-11-01T10:00:00'], 'W6) fechas descendentes')
+  eq(r.lines.slice(1, 3).map((l) => l.kind), ['extraccion', 'retiro'], 'W6) empate: extraccion primero')
+}
+
+// W7 turno desconocido
+{
+  const r = buildWithdrawals({ cashMovements: [wd({ shiftId: 'zz' })], ...wdeps })
+  eq(r.lines[0].shift, '', 'W7) turno no encontrado vacio')
+  eq(withdrawalsReport(r).rows[0][2], '—', 'W7) celda Turno raya')
+  eq(buildWithdrawals({ cashMovements: [wd()], shifts: [sh({ ownerWithdrawal: undefined })], ...wdeps }).lines[0].shift, 'T:s1', 'W7) turno conocido')
+}
+
+// W8 vacio
+{
+  const rep = withdrawalsReport(buildWithdrawals({ ...wdeps }), { from: '2026-11-01', to: '2026-11-30' })
+  eq(rep.rows, [[{ content: 'Sin extracciones ni retiros en el periodo.', colSpan: 8 }]], 'W8) vacio')
+  eq([rep.title, rep.filename, rep.orientation, rep.subtitle], ['Extracciones y retiros de caja', 'extracciones_caja', 'landscape', 'Periodo: 2026-11-01 a 2026-11-30'], 'W8) cabecera')
+}
+
+// W9 forma
+{
+  const r = buildWithdrawals({ cashMovements: [wd(), wd({ id: 'u', currency: 'USD' })], shifts: [sh()], ...wdeps })
+  const rep = withdrawalsReport(r)
+  eq(rep.head, ['Fecha', 'Tipo', 'Turno', 'Registró', 'Monto', 'Moneda', 'Motivo', 'Autorizó'], 'W9) head')
+  ok(rep.rows.every((x) => (isText(x) ? x[0].colSpan === 8 : x.length === 8)), 'W9) forma de filas')
+}
+
 
 console.log(`cashOutReports: ${pass} OK / ${fail} fallos`)
 if (fail) process.exit(1)
