@@ -22,8 +22,9 @@ import { cleanQty } from './qty.js'
 //    ubicacion; si el movimiento no esta (p. ej. aun no llego por la sync) la
 //    celda queda en «—» y el pie lo AVISA.
 //
-// QUE NO SE GARANTIZA: la MONEDA. La deuda guarda un valor en MN pero no su
-// moneda; con el modulo `divisas` se DEDUCE de la ficha actual del producto
+// QUE NO SE GARANTIZA: la MONEDA. La deuda guarda su valor en la moneda que
+// tenia el precio del producto al registrarla (`unitValue: product.price` en
+// CashScreen), pero no anota cual; con el modulo `divisas` se DEDUCE de la ficha actual del producto
 // (si hoy tiene precio en divisa, se informa en esa moneda). Si la ficha cambio
 // de moneda despues de la deuda, la columna Moneda se equivocaria; el pie lo dice.
 //
