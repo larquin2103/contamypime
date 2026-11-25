@@ -868,6 +868,53 @@ colecciones de sync nuevas.**
   la suma; aquí el inventario ya está en el libro mayor y no se descuadra nada). **No queda ningún
   rol huérfano.**
 
+## Fusión del 25-11-2026 — reportes de deudas internas y extracciones de caja + versión legible
+
+**FUSIONADO A `main` EL 25-11-2026**, con autorización explícita del dueño. Fast-forward de **16
+commits** de `claude/awesome-dirac-484azm`: `origin/main` pasó de `cf3344f` a **`5ac91e2`** (hash del
+**código**; esta acta va encima y lo adelanta: comprobar con `git fetch` + `git rev-parse origin/main`).
+Con `git push origin HEAD:main`, **sin `--force`**; verificado después: rama y `main` idénticas (`0 0`,
+`git diff` vacío) y `cf3344f` ancestro de `origin/main`.
+
+**Qué entró:** los reportes *Deudas internas* y *Extracciones y retiros de caja* (Reportes → Turnos y
+caja; ver la sección «Reportes») y la **versión legible** en la Ayuda (fecha y hora del build; ver el
+punto 6 de «Estado del trabajo (06-10-2026)»). Más sus specs/planes y un comentario corregido en
+`cashOutReports.js` (`5ac91e2`: la deuda guarda su valor en la moneda del precio del producto al
+registrarla, no siempre en MN; solo comentario).
+
+**Auditoría previa (25-11-2026, ejecutada por un auditor y contrastada por un revisor independiente,
+no citada):**
+- `npm run build` **exit 0** en los dos árboles; **44 suites / 4.503 aserciones**, 0 fallos (recontadas
+  una a una por el revisor: 4.318 de node directo + 164 con base real + 21 de `pushEcho`; `pushTrace`
+  por equivalencia de trazas). El primer recuento del auditor (3.150) **era un error de filtro**: las
+  suites imprimen el resultado en al menos cinco formatos distintos. En `main` eran 4.416.
+- Las **42 suites** comunes que no cambiaron dan salida **byte a byte idéntica** a `main`, con control
+  negativo; `appBuild` cambia a propósito (12 → 26) y `cashOutReports` es nueva (73).
+- **CERO cambios** en `src/db`, `src/features/sync`, `src/repositories`, `src/features/cash`,
+  `src/features/shifts`, reglas, índices, `package*.json` e `index.html`. Dexie v19,
+  `SYNC_COLLECTIONS` 34. **No hay que redesplegar reglas.**
+- **CERO escrituras** a la base; las líneas borradas en `src` son sustituciones en el sitio; **0
+  identificadores libres** (con control negativo); byte NUL de `reportsService.js` 1 → 1; puertas de
+  licencia sin cambios (los reportes son base, tras `isManager`).
+- `exportExcel` real de los dos árboles: **mismo SHA-256**. `exportExcel`, `exportPdf` y `plainRows`
+  no tienen ni una línea tocada.
+- `dist`: **una** meta `app-build-time`; el JS sale con el **mismo hash** en dos builds seguidos y la
+  fecha **no** está en el JS; `buildIdFromHtml(dist/index.html)` = hash del chunk.
+- Respaldo real del dueño (solo lectura): 0 celdas «usuario» en «Autorizó» y totales que cuadran con
+  una suma independiente.
+- **Peso:** +2.463 B gzip (+0,79 %); CSS idéntico.
+
+**Lo que NO se puede garantizar:** nadie ha abierto los dos reportes en un teléfono ni en un navegador,
+ni visto su PDF (el arnés de PDF falló por la interop de `jspdf-autotable`; que el PDF existente no
+cambió se apoya en que su código no se tocó); la moneda de una deuda con `divisas` es una deducción; del
+retiro al cierre no consta quién lo autorizó; los teléfonos con el build viejo siguen mostrando el
+código del chunk hasta actualizarse; y como la fecha va en el `index.html`, **cada despliegue renueva el
+service worker aunque el código no cambie**. HawkScan no se ejecutó (sin clave ni app levantada).
+**Convivencia de versiones: ninguna afectada** (sin esquema, sin formato de dato nuevo, sin escrituras).
+
+**Fusionar NO es desplegar:** en producción sigue el build anterior hasta que el dueño corra
+`npm run deploy`.
+
 ## Fusión del 23-09-2026 — Cocina en Mermas y en el Submayor por producto
 
 **FUSIONADO A `main` EL 23-09-2026**, con autorización explícita del dueño. Fast-forward de los
@@ -2664,8 +2711,8 @@ el **día local** del negocio (`localDay`, no UTC) y se excluyen las ventas anul
   navegador (ni la ficha en Reportes, ni el PDF o el Excel descargados); la **moneda de una deuda**
   con `divisas` es una deducción de la ficha de hoy; los cierres anteriores a `ownerWithdrawal` no
   muestran retiro y de ningún retiro al cierre consta quién lo autorizó. **El arnés de validación
-  era temporal y no se commiteó**: no protege contra regresiones futuras. **Está en la rama de
-  desarrollo, NO fusionado a `main`, NO desplegado y sin push.**
+  era temporal y no se commiteó**: no protege contra regresiones futuras. **Fusionado a `main` el
+  25-11-2026** (ver «Fusión del 25-11-2026»); **NO desplegado.**
 - **Defecto hallado en la revisión final de toda la rama (24-11-2026), ya corregido.** La columna
   «Autorizó» de los dos reportes mostraba **«usuario»** en todas las filas: el módulo buscaba
   `authorizedBy` como si fuera un **id** de usuario (`userName(d.authorizedBy)`), pero la app guarda
